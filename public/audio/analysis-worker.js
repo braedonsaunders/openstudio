@@ -448,63 +448,33 @@ function analyzeLongTerm(combinedAudio) {
     try {
       // Compute spectrum for HPCP
       const frameSize = 4096;
-      console.log('[Worker] Key detection - audio length:', combinedAudio.length, 'frameSize:', frameSize);
-
       const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
-      console.log('[Worker] Spectrum computed, type:', typeof spectrum, 'has spectrum:', !!spectrum?.spectrum);
 
       if (!spectrum || !spectrum.spectrum) {
-        throw new Error('Spectrum computation failed - no spectrum returned');
+        throw new Error('Spectrum computation failed');
       }
 
-      // Get spectrum as array to check it
+      // Get spectrum as array
       const spectrumArray = essentia.vectorToArray(spectrum.spectrum);
-      console.log('[Worker] Spectrum array length:', spectrumArray.length, 'first 5 values:', spectrumArray.slice(0, 5));
 
       // Check if spectrum has valid data
       const spectrumSum = spectrumArray.reduce((a, b) => a + Math.abs(b), 0);
       if (spectrumSum < 0.0001) {
-        console.log('[Worker] Spectrum is essentially zero, skipping key detection');
         throw new Error('Spectrum is silent');
       }
 
-      // Compute frequencies array for HPCP (required parameter)
+      // Compute frequencies array for HPCP
       const numBins = spectrumArray.length;
       const frequencies = new Float32Array(numBins);
       const nyquist = sampleRate / 2;
       for (let i = 0; i < numBins; i++) {
         frequencies[i] = (i / numBins) * nyquist;
       }
-      console.log('[Worker] Frequencies array - length:', numBins, 'nyquist:', nyquist, 'first 5:', Array.from(frequencies.slice(0, 5)));
 
-      // Try HPCP with the spectrum vector directly
-      console.log('[Worker] Calling HPCP...');
-      let hpcpResult;
-      let hpcpArray;
-
-      try {
-        // Method 1: Use spectrum vector directly with frequencies vector
-        const freqVector = essentia.arrayToVector(frequencies);
-        hpcpResult = essentia.HPCP(spectrum.spectrum, freqVector);
-        console.log('[Worker] HPCP result type:', typeof hpcpResult, 'has hpcp:', !!hpcpResult?.hpcp);
-        hpcpArray = essentia.vectorToArray(hpcpResult.hpcp);
-      } catch (hpcpError1) {
-        console.warn('[Worker] HPCP method 1 failed:', hpcpError1);
-
-        // Method 2: Try with arrays converted to vectors
-        try {
-          const specVector = essentia.arrayToVector(new Float32Array(spectrumArray));
-          const freqVector = essentia.arrayToVector(frequencies);
-          hpcpResult = essentia.HPCP(specVector, freqVector);
-          hpcpArray = essentia.vectorToArray(hpcpResult.hpcp);
-          console.log('[Worker] HPCP method 2 succeeded');
-        } catch (hpcpError2) {
-          console.warn('[Worker] HPCP method 2 failed:', hpcpError2);
-          throw hpcpError2;
-        }
-      }
-
-      console.log('[Worker] HPCP array:', hpcpArray);
+      // Compute HPCP
+      const freqVector = essentia.arrayToVector(frequencies);
+      const hpcpResult = essentia.HPCP(spectrum.spectrum, freqVector);
+      const hpcpArray = essentia.vectorToArray(hpcpResult.hpcp);
 
       if (!hpcpArray || hpcpArray.length !== 12) {
         throw new Error(`Invalid HPCP result: length=${hpcpArray?.length}`);
@@ -518,10 +488,7 @@ function analyzeLongTerm(combinedAudio) {
 
       // Detect key from accumulated HPCP
       const avgHPCP = Array.from(accumulatedHPCP).map(v => v / hpcpFrameCount);
-      console.log('[Worker] Accumulated HPCP (avg):', avgHPCP.map(v => v.toFixed(3)));
-
       const keyResult = detectKeyFromHPCP(avgHPCP);
-      console.log('[Worker] Key result:', keyResult);
 
       if (keyResult && keyResult.correlation > 0.5) {
         const { key, scale, correlation, margin } = keyResult;
@@ -595,7 +562,6 @@ function analyzeLongTerm(combinedAudio) {
         }
       }
     } catch (e) {
-      console.warn('[Worker] HPCP key detection failed:', e.message || e);
       // Fallback: try essentia's KeyExtractor with default parameters
       try {
         const keyResult = essentia.KeyExtractor(essentiaAudio);
@@ -606,7 +572,7 @@ function analyzeLongTerm(combinedAudio) {
           console.log(`[Worker] Key detected (fallback): ${lastKey} ${lastKeyScale}`);
         }
       } catch (e2) {
-        console.warn('[Worker] Key detection failed completely:', e2.message || e2);
+        // Key detection failed silently
       }
     }
 
