@@ -15,6 +15,8 @@ import {
   Gauge,
   AlertCircle,
   Info,
+  Zap,
+  PartyPopper,
 } from 'lucide-react';
 
 // Key colors for visualization
@@ -110,20 +112,6 @@ export function AnalysisPanel() {
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
-      {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-white/5 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-          <span className="text-sm font-medium text-gray-900 dark:text-white">Analysis</span>
-          {isAnalyzing && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/20 rounded text-[10px] text-emerald-600 dark:text-emerald-400">
-              <span className="w-1.5 h-1.5 bg-emerald-500 dark:bg-emerald-400 rounded-full animate-pulse" />
-              Live
-            </span>
-          )}
-        </div>
-      </div>
-
       {/* Show message when analysis is not available */}
       {!isWorkerReady && (
         <div className="px-4 py-3 border-b border-gray-200 dark:border-white/5">
@@ -258,6 +246,38 @@ export function AnalysisPanel() {
           </div>
         </div>
       )}
+
+      {/* Energy, Danceability, Tuning */}
+      <div className="px-4 pb-3">
+        <div className="grid grid-cols-3 gap-2">
+          {/* Energy */}
+          <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-2 text-center">
+            <Zap className="w-3.5 h-3.5 text-amber-500 mx-auto mb-1" />
+            <span className="text-[10px] text-gray-500 dark:text-zinc-500 block">Energy</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+              {localAnalysis && localAnalysis.energy > 0 ? `${(localAnalysis.energy * 100).toFixed(0)}%` : '--'}
+            </span>
+          </div>
+
+          {/* Danceability */}
+          <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-2 text-center">
+            <PartyPopper className="w-3.5 h-3.5 text-pink-500 mx-auto mb-1" />
+            <span className="text-[10px] text-gray-500 dark:text-zinc-500 block">Dance</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+              {localAnalysis && localAnalysis.danceability > 0 ? `${(localAnalysis.danceability * 100).toFixed(0)}%` : '--'}
+            </span>
+          </div>
+
+          {/* Tuning Frequency */}
+          <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg p-2 text-center">
+            <Gauge className="w-3.5 h-3.5 text-cyan-500 mx-auto mb-1" />
+            <span className="text-[10px] text-gray-500 dark:text-zinc-500 block">Tuning</span>
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">
+              {localAnalysis && localAnalysis.tuningFrequency ? `${localAnalysis.tuningFrequency.toFixed(0)}Hz` : '--'}
+            </span>
+          </div>
+        </div>
+      </div>
 
       {/* Tuner */}
       <div className="px-4 pb-3">
