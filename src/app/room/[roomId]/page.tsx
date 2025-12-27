@@ -98,6 +98,13 @@ export default function RoomPage() {
     },
   });
 
+  // Navigate to /rooms when user leaves (isConnected becomes false after joining)
+  useEffect(() => {
+    if (hasJoined && !isConnected) {
+      router.push('/rooms');
+    }
+  }, [hasJoined, isConnected, router]);
+
   // Test audio on mount
   useEffect(() => {
     const testAudioPermission = async () => {
