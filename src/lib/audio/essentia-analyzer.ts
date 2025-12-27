@@ -97,20 +97,27 @@ export class EssentiaAnalyzer {
         return;
       }
 
-      // Load essentia.js from CDN using script tags (non-blocking)
-      await this.loadEssentiaFromCDN();
-
-      // Get the global Essentia classes loaded by the scripts
-      const EssentiaWASM = (window as any).EssentiaWASM;
-      const Essentia = (window as any).Essentia;
+      // Load essentia.js from CDN
+      const { EssentiaWASM, Essentia } = await this.loadEssentiaFromCDN();
 
       if (!EssentiaWASM || !Essentia) {
         throw new Error('Failed to load essentia.js from CDN');
       }
 
-      // Initialize WASM module
-      this.essentiaWASM = await EssentiaWASM();
-      this.essentia = new Essentia(this.essentiaWASM);
+      // Initialize WASM module - EssentiaWASM returns the module directly
+      // Check if it's a function (factory) or already the module
+      if (typeof EssentiaWASM === 'function') {
+        this.essentiaWASM = await EssentiaWASM();
+      } else {
+        this.essentiaWASM = EssentiaWASM;
+      }
+
+      // Create Essentia instance
+      if (typeof Essentia === 'function') {
+        this.essentia = new Essentia(this.essentiaWASM);
+      } else {
+        this.essentia = Essentia;
+      }
 
       this.isInitialized = true;
       this.loadingInBackground = false;
@@ -122,11 +129,9 @@ export class EssentiaAnalyzer {
     }
   }
 
-  private async loadEssentiaFromCDN(): Promise<void> {
-    // Use dynamic import with ES modules from CDN (browser-compatible)
-    // The .es.js files are proper ES modules that work in browsers
+  private async loadEssentiaFromCDN(): Promise<{ EssentiaWASM: any; Essentia: any }> {
     try {
-      // Import WASM loader and core library as ES modules
+      // Import WASM loader and core library as ES modules from CDN
       const wasmModule = await import(
         /* webpackIgnore: true */
         // @ts-ignore - CDN URL import
@@ -138,9 +143,15 @@ export class EssentiaAnalyzer {
         'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.es.js'
       );
 
-      // Store on window for access
-      (window as any).EssentiaWASM = wasmModule.default || wasmModule.EssentiaWASM;
-      (window as any).Essentia = coreModule.default || coreModule.Essentia;
+      // Debug: log what we got to understand the module structure
+      console.log('WASM module exports:', Object.keys(wasmModule));
+      console.log('Core module exports:', Object.keys(coreModule));
+
+      // Try different export patterns
+      const EssentiaWASM = wasmModule.default ?? wasmModule.EssentiaWASM ?? wasmModule;
+      const Essentia = coreModule.default ?? coreModule.Essentia ?? coreModule;
+
+      return { EssentiaWASM, Essentia };
     } catch (error) {
       console.error('Failed to load essentia.js ES modules:', error);
       throw error;
