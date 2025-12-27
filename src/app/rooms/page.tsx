@@ -949,7 +949,7 @@ export default function RoomsPage() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const { user, profile, isLoading: authLoading, isInitialized } = useAuthStore();
+  const { user, profile, isLoading: authLoading, isInitialized, isProfileLoading } = useAuthStore();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCode, setRoomCode] = useState('');
@@ -1036,7 +1036,9 @@ export default function RoomsPage() {
     return <div className={`min-h-screen ${isDark ? 'bg-[#050508]' : 'bg-sky-100'}`} />;
   }
 
-  if (authLoading || !isInitialized) {
+  // Only show loading spinner during initial auth check, not during profile loading
+  // The rooms page is public and should show content even without a profile
+  if (authLoading && !isInitialized) {
     return (
       <div
         className={`min-h-screen flex items-center justify-center transition-colors ${

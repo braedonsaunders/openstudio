@@ -21,6 +21,8 @@ interface AuthState {
   // Loading states
   isLoading: boolean;
   isInitialized: boolean;
+  isProfileLoading: boolean;
+  profileError: string | null;
 
   // Actions - Auth
   initialize: () => Promise<void>;
@@ -72,6 +74,8 @@ const initialState = {
   unreadNotificationCount: 0,
   isLoading: false,
   isInitialized: false,
+  isProfileLoading: false,
+  profileError: null,
 };
 
 export const useAuthStore = create<AuthState>()(
@@ -84,7 +88,7 @@ export const useAuthStore = create<AuthState>()(
           const state = get();
           if (state.isInitialized || state.isLoading) return;
 
-          set({ isLoading: true });
+          set({ isLoading: true, isProfileLoading: true, profileError: null });
 
           try {
             const user = await authApi.getUser();
@@ -126,14 +130,21 @@ export const useAuthStore = create<AuthState>()(
                 pendingFriendRequests: friendsResult.pending,
                 isLoading: false,
                 isInitialized: true,
+                isProfileLoading: false,
+                profileError: profile ? null : 'Profile not found',
               });
             } else {
               // No user session - mark as initialized but not loading
-              set({ isLoading: false, isInitialized: true });
+              set({ isLoading: false, isInitialized: true, isProfileLoading: false, profileError: null });
             }
           } catch (error) {
             console.error('Failed to initialize auth:', error);
-            set({ isLoading: false, isInitialized: true });
+            set({
+              isLoading: false,
+              isInitialized: true,
+              isProfileLoading: false,
+              profileError: error instanceof Error ? error.message : 'Failed to initialize'
+            });
           }
         },
 
@@ -158,24 +169,42 @@ export const useAuthStore = create<AuthState>()(
         },
 
         signIn: async (email, password) => {
-          set({ isLoading: true });
+          set({ isLoading: true, isProfileLoading: true, profileError: null });
 
           try {
             const { user } = await authApi.signIn(email, password);
 
             if (user) {
-              // Set user immediately so modal can close, then fetch profile data
+              // Set user immediately so modal can close
               set({
                 user,
                 isInitialized: true,
                 isLoading: false,
               });
 
-              // Fetch profile data - this updates the store when complete
-              // Using void to indicate intentionally not awaiting
-              void get().refreshProfile().catch(() => {});
+              // Fetch profile data - AWAIT this to ensure profile loads
+              try {
+                const [profile, avatar, stats] = await Promise.all([
+                  authApi.getUserProfile(user.id),
+                  authApi.getUserAvatar(user.id),
+                  authApi.getUserStats(user.id),
+                ]);
 
-              // Also fetch other data in background
+                set({ profile, avatar, stats, isProfileLoading: false, profileError: null });
+
+                // Update streak (non-blocking)
+                if (profile) {
+                  authApi.updateStreak(user.id).catch(() => {});
+                }
+              } catch (profileError) {
+                console.error('Failed to load profile after sign in:', profileError);
+                set({
+                  isProfileLoading: false,
+                  profileError: profileError instanceof Error ? profileError.message : 'Failed to load profile'
+                });
+              }
+
+              // Also fetch other data in background (non-blocking)
               Promise.allSettled([
                 authApi.getUserInstruments(user.id),
                 authApi.getAllAchievements(),
@@ -196,10 +225,10 @@ export const useAuthStore = create<AuthState>()(
                 });
               }).catch(() => {});
             } else {
-              set({ isLoading: false, isInitialized: true });
+              set({ isLoading: false, isInitialized: true, isProfileLoading: false });
             }
           } catch (error) {
-            set({ isLoading: false, isInitialized: true });
+            set({ isLoading: false, isInitialized: true, isProfileLoading: false });
             throw error;
           }
         },
@@ -254,13 +283,23 @@ export const useAuthStore = create<AuthState>()(
           const { user } = get();
           if (!user) return;
 
-          const [profile, avatar, stats] = await Promise.all([
-            authApi.getUserProfile(user.id),
-            authApi.getUserAvatar(user.id),
-            authApi.getUserStats(user.id),
-          ]);
+          set({ isProfileLoading: true, profileError: null });
 
-          set({ profile, avatar, stats });
+          try {
+            const [profile, avatar, stats] = await Promise.all([
+              authApi.getUserProfile(user.id),
+              authApi.getUserAvatar(user.id),
+              authApi.getUserStats(user.id),
+            ]);
+
+            set({ profile, avatar, stats, isProfileLoading: false, profileError: null });
+          } catch (error) {
+            console.error('Failed to refresh profile:', error);
+            set({
+              isProfileLoading: false,
+              profileError: error instanceof Error ? error.message : 'Failed to load profile'
+            });
+          }
         },
 
         addInstrument: async (instrumentId, category, isPrimary = false) => {

@@ -29,7 +29,7 @@ export function UserMenu() {
   const [initTimeout, setInitTimeout] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { user, profile, avatar, signOut, isLoading, isInitialized, initialize, refreshProfile } = useAuthStore();
+  const { user, profile, avatar, signOut, isLoading, isInitialized, isProfileLoading, profileError, initialize, refreshProfile } = useAuthStore();
 
   // Trigger initialization on mount and set timeout fallback
   useEffect(() => {
@@ -47,12 +47,12 @@ export function UserMenu() {
     return () => clearTimeout(timeout);
   }, [isInitialized, isLoading, initialize]);
 
-  // If user is logged in but profile is missing, fetch it
+  // If user is logged in but profile is missing and not loading, try to fetch it
   useEffect(() => {
-    if (user && !profile && isInitialized && !isLoading) {
+    if (user && !profile && isInitialized && !isLoading && !isProfileLoading && !profileError) {
       refreshProfile();
     }
-  }, [user, profile, isInitialized, isLoading, refreshProfile]);
+  }, [user, profile, isInitialized, isLoading, isProfileLoading, profileError, refreshProfile]);
 
   // Close auth modal when user becomes authenticated
   useEffect(() => {
@@ -89,14 +89,41 @@ export function UserMenu() {
     setShowAuthModal(true);
   };
 
-  // Show skeleton until auth state is initialized (with timeout fallback)
-  // Also show skeleton when user is logged in but profile is still loading
-  if (((isLoading || !isInitialized) && !initTimeout) || (user && !profile)) {
+  // Show skeleton only during actual loading, not when profile failed to load
+  const isActuallyLoading = (isLoading || !isInitialized || isProfileLoading) && !initTimeout;
+
+  if (isActuallyLoading) {
     return (
       <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-800 animate-pulse" />
     );
   }
 
+  // If user is logged in but profile failed to load, show retry button
+  if (user && !profile && profileError) {
+    return (
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => refreshProfile()}
+          className="text-sm text-red-500 hover:text-red-400 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-red-500/10 hover:bg-red-500/20 transition-colors"
+        >
+          <span>Retry</span>
+        </button>
+      </div>
+    );
+  }
+
+  // If user is logged in but profile is still null (rare edge case), show simplified menu
+  if (user && !profile) {
+    return (
+      <div className="flex items-center gap-2">
+        <Button variant="ghost" size="sm" onClick={handleSignOut}>
+          Log Out
+        </Button>
+      </div>
+    );
+  }
+
+  // Not logged in - show login/signup buttons
   if (!user || !profile) {
     return (
       <>
@@ -117,6 +144,7 @@ export function UserMenu() {
     );
   }
 
+  // At this point, both user and profile are guaranteed to be non-null
   const progress = xpProgress(profile.totalXp);
   const levelTitle = getLevelTitle(profile.level);
 
