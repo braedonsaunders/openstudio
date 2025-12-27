@@ -7,6 +7,7 @@ import { CloudflareCalls } from '@/lib/cloudflare/calls';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useAuthStore } from '@/stores/auth-store';
 import { useAudioEngine } from './useAudioEngine';
 import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
 
@@ -20,7 +21,11 @@ interface UseRoomOptions {
 export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const realtimeRef = useRef<RealtimeRoomManager | null>(null);
   const cloudflareRef = useRef<CloudflareCalls | null>(null);
-  const userIdRef = useRef<string>(uuidv4());
+
+  // Use authenticated user ID if available, otherwise generate a random one for anonymous users
+  // This is initialized once, but updated in join() if auth state changes
+  const initialAuthUser = useAuthStore.getState().user;
+  const userIdRef = useRef<string>(initialAuthUser?.id || uuidv4());
 
   const {
     room,
@@ -77,6 +82,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     setError(null);
 
     try {
+      // Get fresh auth state in case user logged in after hook initialized
+      const authUser = useAuthStore.getState().user;
+
+      // Update userIdRef to use authenticated user ID if available
+      if (authUser?.id && userIdRef.current !== authUser.id) {
+        userIdRef.current = authUser.id;
+      }
+
       // Create user
       const user: User = {
         id: userIdRef.current,
@@ -127,21 +140,31 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           // Load all tracks into the store
           userTracksState.loadPersistedTracks(persistedTracks);
 
-          // Check if this user had any tracks previously (by owner ID)
-          const ownedTracks = persistedTracks.filter(t => t.ownerUserId === user.id);
+          // Check if this user had any tracks previously
+          // First try matching by owner ID (for authenticated users with persistent IDs)
+          let ownedTracks = persistedTracks.filter(t => t.ownerUserId === user.id);
+
+          // If no match by ID and user is not authenticated, try matching by username
+          // This handles anonymous users who rejoin with the same name
+          if (ownedTracks.length === 0 && !authUser && userName) {
+            ownedTracks = persistedTracks.filter(t =>
+              t.ownerUserName === userName && t.isActive === false
+            );
+          }
 
           if (ownedTracks.length > 0) {
             // User is rejoining - reassign their tracks back to them
             console.log(`Restoring ${ownedTracks.length} tracks for rejoining user ${user.name}`);
             for (const track of ownedTracks) {
               userTracksState.assignTrackToUser(track.id, user.id, user.name);
-              // Persist the reactivation
+              // Persist the reactivation and update owner ID
               fetch(`/api/rooms/${roomId}/user-tracks`, {
                 method: 'PATCH',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   trackId: track.id,
                   userId: user.id,
+                  ownerUserId: user.id,
                   isActive: true,
                 }),
               }).catch(err => console.error('Failed to update track status:', err));
