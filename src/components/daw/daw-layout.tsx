@@ -257,11 +257,25 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   // Handler functions
   const handleTrackSelect = useCallback((track: BackingTrack) => {
-    const { queue } = useRoomStore.getState();
+    // Get fresh state to avoid stale closure issues
+    const { queue, currentTrack: existingTrack } = useRoomStore.getState();
+
+    // Find the track by ID
     const trackIndex = queue.tracks.findIndex(t => t.id === track.id);
-    if (trackIndex !== -1) {
-      skipToTrack(trackIndex);
+
+    if (trackIndex === -1) {
+      console.warn('handleTrackSelect: Track not found in queue', track.id);
+      return;
     }
+
+    // Skip if already on this track (compare by ID to be safe)
+    if (existingTrack?.id === track.id) {
+      console.log('handleTrackSelect: Already on this track, skipping');
+      return;
+    }
+
+    console.log('handleTrackSelect: Selecting track', track.name, 'at index', trackIndex);
+    skipToTrack(trackIndex);
   }, [skipToTrack]);
 
   const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {

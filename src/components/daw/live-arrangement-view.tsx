@@ -41,8 +41,12 @@ export function LiveArrangementView({
   const [zoom, setZoom] = useState(1);
 
   const { isPlaying, currentTime, duration } = useAudioStore();
-  const { currentTrack, stemsAvailable, stemMixState, waveformData } = useRoomStore();
+  const { currentTrack, stemsAvailable, stemMixState, waveformData, queue } = useRoomStore();
   const { getTracksByUser, trackLevels } = useUserTracksStore();
+
+  // Fallback: if no currentTrack but queue has tracks, use the first one
+  // This ensures waveform is always visible when tracks exist
+  const displayTrack = currentTrack || (queue.tracks.length > 0 ? queue.tracks[0] : null);
 
   // Calculate session elapsed time
   const [sessionTime, setSessionTime] = useState(0);
@@ -76,11 +80,12 @@ export function LiveArrangementView({
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#0a0a0f]">
       {/* Seekable Backing Track (independent from live timeline) */}
-      {currentTrack && (
+      {/* Always show when there are tracks in the queue */}
+      {displayTrack && (
         <SeekableBackingTrack
-          track={currentTrack}
+          track={displayTrack}
           currentTime={currentTime}
-          duration={duration}
+          duration={duration || displayTrack.duration || 0}
           isPlaying={isPlaying}
           isMaster={isMaster}
           onSeek={onSeek}

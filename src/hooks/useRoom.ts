@@ -479,8 +479,20 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const skipToNext = useCallback(async () => {
     if (!isMaster) return;
 
+    // Get fresh state to avoid stale closure issues
+    const freshQueue = useRoomStore.getState().queue;
+    const nextIndex = freshQueue.currentIndex + 1;
+
+    // Check if there's a next track
+    if (nextIndex >= freshQueue.tracks.length) {
+      console.log('skipToNext: Already at last track');
+      return;
+    }
+
     // Check if currently playing to resume after switch
     const wasPlaying = useAudioStore.getState().isPlaying;
+
+    console.log('skipToNext: Moving to index', nextIndex);
 
     // Stop current playback and reset audio state
     pauseBackingTrack();
@@ -488,20 +500,32 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     useRoomStore.getState().setWaveformData(null);
 
     nextTrack();
-    realtimeRef.current?.broadcastNextTrack(queue.currentIndex + 1);
+    realtimeRef.current?.broadcastNextTrack(nextIndex);
 
     // Auto-play if was playing before
     if (wasPlaying) {
       // Small delay to allow track state to update
       setTimeout(() => play(), 100);
     }
-  }, [isMaster, nextTrack, queue.currentIndex, pauseBackingTrack, play]);
+  }, [isMaster, nextTrack, pauseBackingTrack, play]);
 
   const skipToPrevious = useCallback(async () => {
     if (!isMaster) return;
 
+    // Get fresh state to avoid stale closure issues
+    const freshQueue = useRoomStore.getState().queue;
+    const prevIndex = freshQueue.currentIndex - 1;
+
+    // Check if there's a previous track
+    if (prevIndex < 0) {
+      console.log('skipToPrevious: Already at first track');
+      return;
+    }
+
     // Check if currently playing to resume after switch
     const wasPlaying = useAudioStore.getState().isPlaying;
+
+    console.log('skipToPrevious: Moving to index', prevIndex);
 
     // Stop current playback and reset audio state
     pauseBackingTrack();
@@ -509,29 +533,44 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     useRoomStore.getState().setWaveformData(null);
 
     previousTrack();
-    realtimeRef.current?.broadcastNextTrack(Math.max(0, queue.currentIndex - 1));
+    realtimeRef.current?.broadcastNextTrack(prevIndex);
 
     // Auto-play if was playing before
     if (wasPlaying) {
       // Small delay to allow track state to update
       setTimeout(() => play(), 100);
     }
-  }, [isMaster, queue.currentIndex, pauseBackingTrack, previousTrack, play]);
+  }, [isMaster, pauseBackingTrack, previousTrack, play]);
 
   const skipToTrack = useCallback(async (trackIndex: number) => {
     if (!isMaster) return;
 
+    // Get fresh state to avoid stale closure issues
+    const freshQueue = useRoomStore.getState().queue;
+
+    // Validate track index
+    if (trackIndex < 0 || trackIndex >= freshQueue.tracks.length) {
+      console.warn('skipToTrack: Invalid track index', trackIndex);
+      return;
+    }
+
     // Don't do anything if trying to jump to the current track
-    if (trackIndex === queue.currentIndex) return;
+    if (trackIndex === freshQueue.currentIndex) {
+      console.log('skipToTrack: Already on this track, skipping');
+      return;
+    }
 
     // Check if currently playing to resume after switch
     const wasPlaying = useAudioStore.getState().isPlaying;
+
+    console.log('skipToTrack: Switching to track index', trackIndex, 'from', freshQueue.currentIndex);
 
     // Stop current playback and reset audio state
     pauseBackingTrack();
     useAudioStore.getState().setCurrentTime(0);
     useRoomStore.getState().setWaveformData(null);
 
+    // Perform the jump with fresh state
     jumpToTrack(trackIndex);
     realtimeRef.current?.broadcastNextTrack(trackIndex);
 
@@ -540,7 +579,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Small delay to allow track state to update
       setTimeout(() => play(), 100);
     }
-  }, [isMaster, queue.currentIndex, pauseBackingTrack, jumpToTrack, play]);
+  }, [isMaster, pauseBackingTrack, jumpToTrack, play]);
 
   // Chat
   const sendMessage = useCallback((message: string) => {
