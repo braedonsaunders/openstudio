@@ -1,6 +1,7 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { X } from 'lucide-react';
 import { Button } from './button';
@@ -27,6 +28,12 @@ export function Modal({
   variant = 'light',
 }: ModalProps) {
   const isDark = variant === 'dark';
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -48,10 +55,10 @@ export function Modal({
     };
   }, [isOpen, handleEscape]);
 
-  if (!isOpen) return null;
+  if (!isOpen || !mounted) return null;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto p-4">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/70 backdrop-blur-sm"
@@ -100,4 +107,6 @@ export function Modal({
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
