@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
+import ytdl from '@distube/ytdl-core';
 
 // This endpoint provides audio stream URL for a YouTube video
-// In production, you would use a service like youtube-dl, yt-dlp, or a third-party API
-// For now, we'll use a proxy approach with a public extraction service
+// Uses ytdl-core for reliable extraction
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -16,71 +16,64 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Option 1: Use Invidious API (privacy-respecting YouTube frontend)
-    // These are public instances - in production you'd host your own or use a paid service
-    const invidiousInstances = [
-      'https://inv.nadeko.net',
-      'https://invidious.nerdvpn.de',
-      'https://yt.artemislena.eu',
-    ];
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    let audioUrl: string | null = null;
-    let videoInfo: { title: string; author: string; lengthSeconds: number } | null = null;
+    // Get video info using ytdl-core
+    const info = await ytdl.getInfo(videoUrl);
 
-    for (const instance of invidiousInstances) {
-      try {
-        const response = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-          headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(5000),
-        });
+    // Find the best audio format
+    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
 
-        if (response.ok) {
-          const data = await response.json();
-
-          // Find the best audio format
-          const audioFormats = data.adaptiveFormats?.filter(
-            (f: { type: string }) => f.type?.startsWith('audio/')
-          ) || [];
-
-          // Prefer higher quality audio
-          const bestAudio = audioFormats.sort(
-            (a: { bitrate: number }, b: { bitrate: number }) => (b.bitrate || 0) - (a.bitrate || 0)
-          )[0];
-
-          if (bestAudio?.url) {
-            audioUrl = bestAudio.url;
-            videoInfo = {
-              title: data.title,
-              author: data.author,
-              lengthSeconds: data.lengthSeconds,
-            };
-            break;
-          }
-        }
-      } catch {
-        // Try next instance
-        continue;
-      }
+    if (audioFormats.length === 0) {
+      return NextResponse.json(
+        { error: 'No audio formats available for this video' },
+        { status: 404 }
+      );
     }
 
-    if (!audioUrl) {
+    // Sort by audio quality (bitrate) and pick the best one
+    const bestAudio = audioFormats.sort((a, b) => {
+      const bitrateA = a.audioBitrate || 0;
+      const bitrateB = b.audioBitrate || 0;
+      return bitrateB - bitrateA;
+    })[0];
+
+    if (!bestAudio.url) {
       return NextResponse.json(
-        { error: 'Could not extract audio. Try a different video.' },
+        { error: 'Could not extract audio URL' },
         { status: 404 }
       );
     }
 
     return NextResponse.json({
-      audioUrl,
+      audioUrl: bestAudio.url,
       videoId,
-      title: videoInfo?.title,
-      author: videoInfo?.author,
-      duration: videoInfo?.lengthSeconds,
+      title: info.videoDetails.title,
+      author: info.videoDetails.author.name,
+      duration: parseInt(info.videoDetails.lengthSeconds, 10),
     });
   } catch (error) {
     console.error('YouTube audio extraction error:', error);
+
+    // Provide more specific error messages
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+
+    if (errorMessage.includes('Video unavailable') || errorMessage.includes('private')) {
+      return NextResponse.json(
+        { error: 'This video is unavailable or private' },
+        { status: 404 }
+      );
+    }
+
+    if (errorMessage.includes('age-restricted')) {
+      return NextResponse.json(
+        { error: 'This video is age-restricted' },
+        { status: 403 }
+      );
+    }
+
     return NextResponse.json(
-      { error: 'Failed to extract audio' },
+      { error: 'Could not extract audio. Try a different video.' },
       { status: 500 }
     );
   }
