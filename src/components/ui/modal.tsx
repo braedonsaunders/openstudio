@@ -13,6 +13,7 @@ interface ModalProps {
   children: React.ReactNode;
   className?: string;
   showCloseButton?: boolean;
+  variant?: 'light' | 'dark';
 }
 
 export function Modal({
@@ -23,7 +24,9 @@ export function Modal({
   children,
   className,
   showCloseButton = true,
+  variant = 'light',
 }: ModalProps) {
+  const isDark = variant === 'dark';
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
@@ -48,7 +51,7 @@ export function Modal({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
         className="absolute inset-0 bg-black/70 backdrop-blur-sm"
@@ -58,20 +61,25 @@ export function Modal({
       {/* Modal */}
       <div
         className={cn(
-          'relative z-10 w-full max-w-lg mx-4 bg-white rounded-2xl shadow-2xl',
+          'relative z-10 w-full max-w-lg rounded-2xl shadow-2xl',
           'animate-in fade-in-0 zoom-in-95 duration-200',
+          'max-h-[90vh] overflow-y-auto',
+          isDark ? 'bg-gray-900' : 'bg-white',
           className
         )}
       >
         {/* Header */}
         {(title || showCloseButton) && (
-          <div className="flex items-center justify-between p-6 border-b border-slate-200">
+          <div className={cn(
+            "flex items-center justify-between p-6 border-b sticky top-0 z-10",
+            isDark ? 'border-gray-700 bg-gray-900' : 'border-slate-200 bg-white'
+          )}>
             <div>
               {title && (
-                <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
+                <h2 className={cn("text-xl font-semibold", isDark ? 'text-white' : 'text-slate-900')}>{title}</h2>
               )}
               {description && (
-                <p className="mt-1 text-sm text-slate-500">{description}</p>
+                <p className={cn("mt-1 text-sm", isDark ? 'text-gray-400' : 'text-slate-500')}>{description}</p>
               )}
             </div>
             {showCloseButton && (
@@ -79,7 +87,7 @@ export function Modal({
                 variant="ghost"
                 size="icon"
                 onClick={onClose}
-                className="text-slate-400 hover:text-slate-700"
+                className={isDark ? "text-gray-400 hover:text-white" : "text-slate-400 hover:text-slate-700"}
               >
                 <X className="w-5 h-5" />
               </Button>
