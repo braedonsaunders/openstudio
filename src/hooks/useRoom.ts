@@ -275,6 +275,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       realtime.on('chat:message', (data) => {
         const payload = data as { message: string; userId: string; timestamp: number };
+        // Skip messages from self (we already add them locally in sendMessage)
+        if (payload.userId === user.id) return;
         // Filter out blank messages
         const trimmedMessage = payload.message?.trim();
         if (!trimmedMessage) return;
