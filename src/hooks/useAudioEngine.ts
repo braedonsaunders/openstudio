@@ -98,16 +98,36 @@ export function useAudioEngine() {
       setInitialized(true);
 
       // Start performance monitoring
+      // Note: We get fresh state inside the interval to avoid stale closures
       if (!performanceIntervalRef.current) {
         performanceIntervalRef.current = setInterval(() => {
           if (globalEngine) {
+            // Get actual config from engine (which stays in sync with store settings)
+            const engineConfig = globalEngine.getConfig();
+
             const audioContextLatency = globalEngine.getContextLatency();
             const bufferLatency = globalEngine.getBufferLatency();
 
+            // Get effects metering if effects processor exists
+            const effectsMetering = globalEngine.getLocalEffectsMetering();
+            let effectsProcessingTime = 0;
+
+            // Estimate effects processing time based on active effects
+            // This is a rough estimate since actual processing happens in real-time
+            if (effectsMetering) {
+              // If compressor or limiter is actively reducing gain, effects are processing
+              const isProcessing = Math.abs(effectsMetering.compressorReduction) > 0.1 ||
+                                   Math.abs(effectsMetering.limiterReduction) > 0.1 ||
+                                   !effectsMetering.noiseGateOpen;
+              // Estimate ~0.1-0.5ms for effects processing when active
+              effectsProcessingTime = isProcessing ? 0.2 : 0.05;
+            }
+
             setPerformanceMetrics({
               audioContextLatency,
+              effectsProcessingTime,
               totalLatency: audioContextLatency + bufferLatency,
-              currentBufferSize: settings.bufferSize,
+              currentBufferSize: engineConfig.bufferSize,
             });
           }
         }, 200); // Update every 200ms
@@ -447,6 +467,17 @@ export function useAudioEngine() {
       globalEngine?.setStemVolume(stem, state.volume);
     });
   }, [stemMixState, stemsAvailable]);
+
+  // Sync settings changes to the engine
+  useEffect(() => {
+    if (!globalEngine) return;
+
+    globalEngine.updateConfig({
+      sampleRate: settings.sampleRate,
+      bufferSize: settings.bufferSize,
+      autoJitterBuffer: settings.autoJitterBuffer,
+    });
+  }, [settings.sampleRate, settings.bufferSize, settings.autoJitterBuffer]);
 
   // Destroy the global engine (call when leaving room)
   const destroyEngine = useCallback(() => {
