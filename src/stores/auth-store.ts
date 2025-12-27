@@ -164,7 +164,8 @@ export const useAuthStore = create<AuthState>()(
             const { user } = await authApi.signIn(email, password);
 
             if (user) {
-              const [profile, avatar, stats, instruments, achievements, unlockedAchievements, { friends, pending }] = await Promise.all([
+              // Fetch user data with individual error handling
+              const results = await Promise.allSettled([
                 authApi.getUserProfile(user.id),
                 authApi.getUserAvatar(user.id),
                 authApi.getUserStats(user.id),
@@ -174,9 +175,17 @@ export const useAuthStore = create<AuthState>()(
                 authApi.getFriends(user.id),
               ]);
 
-              // Update streak
+              const profile = results[0].status === 'fulfilled' ? results[0].value : null;
+              const avatar = results[1].status === 'fulfilled' ? results[1].value : null;
+              const stats = results[2].status === 'fulfilled' ? results[2].value : null;
+              const instruments = results[3].status === 'fulfilled' ? results[3].value : [];
+              const achievements = results[4].status === 'fulfilled' ? results[4].value : [];
+              const unlockedAchievements = results[5].status === 'fulfilled' ? results[5].value : [];
+              const friendsResult = results[6].status === 'fulfilled' ? results[6].value : { friends: [], pending: [] };
+
+              // Update streak (non-blocking)
               if (profile) {
-                await authApi.updateStreak(user.id);
+                authApi.updateStreak(user.id).catch(() => {});
               }
 
               set({
@@ -187,13 +196,17 @@ export const useAuthStore = create<AuthState>()(
                 instruments,
                 achievements,
                 unlockedAchievements,
-                friends,
-                pendingFriendRequests: pending,
+                friends: friendsResult.friends,
+                pendingFriendRequests: friendsResult.pending,
                 isInitialized: true,
+                isLoading: false,
               });
+            } else {
+              set({ isLoading: false });
             }
-          } finally {
+          } catch (error) {
             set({ isLoading: false });
+            throw error;
           }
         },
 
