@@ -2,19 +2,16 @@
 
 import { cn } from '@/lib/utils';
 import { StemMixerPanel } from './stem-mixer-panel';
-import { QueuePanel } from './queue-panel';
 import { AnalysisPanel } from './analysis-panel';
 import { ChatPanel } from './chat-panel';
 import { AIPanel } from './ai-panel';
 import type { PanelType } from './daw-layout';
-import type { BackingTrack, StemType } from '@/types';
+import type { StemType } from '@/types';
 import {
   Sliders,
-  ListMusic,
   Activity,
   MessageSquare,
   Sparkles,
-  X,
   ChevronLeft,
 } from 'lucide-react';
 
@@ -22,12 +19,6 @@ interface PanelDockProps {
   activePanel: PanelType;
   onPanelChange: (panel: PanelType) => void;
   onClose: () => void;
-  // Queue props
-  onTrackSelect: (track: BackingTrack) => void;
-  onTrackRemove: (trackId: string) => void;
-  onUpload: () => void;
-  onYouTubeSearch: () => void;
-  youtubePlayer?: React.ReactNode;
   // Mixer props
   onToggleStem: (stem: StemType, enabled: boolean) => void;
   onStemVolumeChange: (stem: StemType, volume: number) => void;
@@ -45,7 +36,6 @@ interface PanelDockProps {
 
 const panels: { id: PanelType; icon: typeof Sliders; label: string }[] = [
   { id: 'mixer', icon: Sliders, label: 'Mixer' },
-  { id: 'queue', icon: ListMusic, label: 'Backing' },
   { id: 'analysis', icon: Activity, label: 'Analysis' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
   { id: 'ai', icon: Sparkles, label: 'AI' },
@@ -55,11 +45,6 @@ export function PanelDock({
   activePanel,
   onPanelChange,
   onClose,
-  onTrackSelect,
-  onTrackRemove,
-  onUpload,
-  onYouTubeSearch,
-  youtubePlayer,
   onToggleStem,
   onStemVolumeChange,
   onSeparateTrack,
@@ -71,8 +56,8 @@ export function PanelDock({
   onSendMessage,
   width,
 }: PanelDockProps) {
-  // Navigate to AI panel when AI button is clicked
-  const handleOpenAIPanel = () => onPanelChange('ai');
+  // Ensure we have a valid panel (queue is no longer available)
+  const validPanel = activePanel === 'queue' ? 'mixer' : activePanel;
   return (
     <div
       className="bg-gray-50 dark:bg-[#0d0d14] border-l border-gray-200 dark:border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
@@ -87,7 +72,7 @@ export function PanelDock({
               onClick={() => onPanelChange(id)}
               className={cn(
                 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
-                activePanel === id
+                validPanel === id
                   ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
                   : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/5'
               )}
@@ -109,7 +94,7 @@ export function PanelDock({
 
       {/* Panel Content */}
       <div className="flex-1 overflow-hidden relative">
-        {activePanel === 'mixer' && (
+        {validPanel === 'mixer' && (
           <StemMixerPanel
             onToggleStem={onToggleStem}
             onStemVolumeChange={onStemVolumeChange}
@@ -119,33 +104,15 @@ export function PanelDock({
           />
         )}
 
-        {/* Queue panel - always render but hide when not active to keep YouTube player mounted */}
-        <div className={cn(
-          'h-full',
-          activePanel !== 'queue' && 'hidden'
-        )}>
-          <QueuePanel
-            onTrackSelect={onTrackSelect}
-            onTrackRemove={onTrackRemove}
-            onUpload={onUpload}
-            onAIGenerate={handleOpenAIPanel}
-            onYouTubeSearch={onYouTubeSearch}
-            youtubePlayer={youtubePlayer}
-            roomId={roomId}
-            userId={userId}
-            userName={userName}
-          />
-        </div>
-
-        {activePanel === 'analysis' && (
+        {validPanel === 'analysis' && (
           <AnalysisPanel />
         )}
 
-        {activePanel === 'chat' && (
+        {validPanel === 'chat' && (
           <ChatPanel roomId={roomId} onSendMessage={onSendMessage} />
         )}
 
-        {activePanel === 'ai' && (
+        {validPanel === 'ai' && (
           <AIPanel
             onSeparateTrack={onSeparateTrack}
             isSeparating={isSeparating}
