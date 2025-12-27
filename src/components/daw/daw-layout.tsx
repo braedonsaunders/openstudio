@@ -299,20 +299,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       setIsYouTubeModalOpen(false);
     } catch (error) {
       console.error('Failed to extract YouTube audio:', error);
-      // Fallback to iframe mode if extraction fails
-      console.log('Falling back to iframe mode');
-      const track: BackingTrack = {
-        id: uuidv4(), // Use UUID for database compatibility
-        name: video.title,
-        artist: video.channelTitle,
-        duration: parseDuration(video.duration),
-        url: '',
-        uploadedBy: 'youtube',
-        uploadedAt: new Date().toISOString(),
-        youtubeId: video.id, // YouTube video ID for playback
-      };
-      await addTrack(track);
-      setIsYouTubeModalOpen(false);
+      // Show error to user - no iframe fallback as it can't be analyzed
+      alert(`Failed to extract audio from YouTube: ${(error as Error).message}\n\nPlease try a different video or upload an audio file directly.`);
     }
   }, [addTrack]);
 
