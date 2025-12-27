@@ -134,11 +134,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const cobaltResponse = cobaltResult.data;
-    console.log(`Downloading audio from: ${cobaltResponse.url}`);
+    const audioUrl = cobaltResult.data.url;
+    const filename = cobaltResult.data.filename;
+    console.log(`Downloading audio from: ${audioUrl}`);
 
     // Download the audio
-    const audioResponse = await fetch(cobaltResponse.url, {
+    const audioResponse = await fetch(audioUrl, {
       signal: AbortSignal.timeout(120000), // 2 min timeout for large files
     });
 
@@ -184,7 +185,7 @@ export async function POST(request: NextRequest) {
       success: true,
       track: {
         id: trackId,
-        name: title || cobaltResponse.filename || `YouTube Video ${videoId}`,
+        name: title || filename || `YouTube Video ${videoId}`,
         artist: artist || 'Unknown Artist',
         duration: 0, // Will be detected on playback
         url: publicUrl,
