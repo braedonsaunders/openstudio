@@ -1,0 +1,321 @@
+'use client';
+
+import { useState, useCallback } from 'react';
+import { cn } from '@/lib/utils';
+import { Button } from '../ui/button';
+import { Slider } from '../ui/slider';
+import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { getLoopById } from '@/lib/audio/loop-library';
+import { AVAILABLE_SOUND_PRESETS } from '@/lib/audio/sound-engine';
+import type { LoopTrackState } from '@/types/loops';
+import {
+  Play,
+  Square,
+  Volume2,
+  VolumeX,
+  Headphones,
+  Trash2,
+  Settings,
+  ChevronDown,
+  Repeat,
+  Music,
+  Zap,
+} from 'lucide-react';
+
+interface LoopTrackHeaderProps {
+  track: LoopTrackState;
+  onPlay: () => void;
+  onStop: () => void;
+  onRemove: () => void;
+}
+
+export function LoopTrackHeader({
+  track,
+  onPlay,
+  onStop,
+  onRemove,
+}: LoopTrackHeaderProps) {
+  const {
+    setTrackVolume,
+    setTrackMuted,
+    setTrackSolo,
+    setTrackSoundPreset,
+    setTrackHumanize,
+  } = useLoopTracksStore();
+
+  const [showSettings, setShowSettings] = useState(false);
+
+  // Get loop definition
+  const loopDef = getLoopById(track.loopId);
+
+  // Get category icon
+  const getCategoryIcon = () => {
+    switch (loopDef?.category) {
+      case 'drums':
+        return '🥁';
+      case 'bass':
+        return '🎸';
+      case 'keys':
+        return '🎹';
+      case 'guitar':
+        return '🎸';
+      case 'synth':
+        return '🎹';
+      default:
+        return '🎵';
+    }
+  };
+
+  const handleVolumeChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setTrackVolume(track.id, parseFloat(e.target.value));
+    },
+    [track.id, setTrackVolume]
+  );
+
+  return (
+    <div
+      className="flex flex-col h-24 bg-slate-900 border-b border-slate-700"
+      style={{ borderLeftColor: track.color, borderLeftWidth: '3px' }}
+    >
+      {/* Top Row - Name and Controls */}
+      <div className="flex items-center gap-2 px-2 py-1.5 min-w-0">
+        {/* Play/Stop Button */}
+        <button
+          onClick={track.isPlaying ? onStop : onPlay}
+          className={cn(
+            'w-7 h-7 flex items-center justify-center rounded-full transition-colors',
+            track.isPlaying
+              ? 'bg-green-500 text-white hover:bg-green-600'
+              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+          )}
+        >
+          {track.isPlaying ? (
+            <Square className="w-3 h-3" />
+          ) : (
+            <Play className="w-3 h-3 ml-0.5" />
+          )}
+        </button>
+
+        {/* Loop Icon */}
+        <Repeat className="w-3.5 h-3.5 text-indigo-400" />
+
+        {/* Track Name */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1.5">
+            <span className="text-sm">{getCategoryIcon()}</span>
+            <span className="text-sm font-medium text-slate-200 truncate">
+              {track.name || loopDef?.name || 'Loop'}
+            </span>
+          </div>
+          <div className="text-xs text-slate-500 truncate">
+            {loopDef?.bpm} BPM • {loopDef?.bars} {loopDef?.bars === 1 ? 'bar' : 'bars'}
+          </div>
+        </div>
+
+        {/* Settings Toggle */}
+        <button
+          onClick={() => setShowSettings(!showSettings)}
+          className={cn(
+            'p-1 rounded transition-colors',
+            showSettings
+              ? 'bg-indigo-500/20 text-indigo-400'
+              : 'text-slate-400 hover:text-slate-300'
+          )}
+        >
+          <Settings className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Delete Button */}
+        <button
+          onClick={onRemove}
+          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+        >
+          <Trash2 className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Bottom Row - Volume and Mute/Solo */}
+      <div className="flex items-center gap-2 px-2 py-1">
+        {/* Mute */}
+        <button
+          onClick={() => setTrackMuted(track.id, !track.muted)}
+          className={cn(
+            'w-6 h-6 flex items-center justify-center rounded text-xs font-bold transition-colors',
+            track.muted
+              ? 'bg-red-500 text-white'
+              : 'bg-slate-700 text-slate-400 hover:text-slate-300'
+          )}
+          title="Mute"
+        >
+          M
+        </button>
+
+        {/* Solo */}
+        <button
+          onClick={() => setTrackSolo(track.id, !track.solo)}
+          className={cn(
+            'w-6 h-6 flex items-center justify-center rounded text-xs font-bold transition-colors',
+            track.solo
+              ? 'bg-amber-500 text-white'
+              : 'bg-slate-700 text-slate-400 hover:text-slate-300'
+          )}
+          title="Solo"
+        >
+          S
+        </button>
+
+        {/* Volume Slider */}
+        <div className="flex-1 flex items-center gap-2">
+          <Volume2 className="w-3.5 h-3.5 text-slate-500" />
+          <Slider
+            value={track.volume}
+            min={0}
+            max={1.5}
+            step={0.01}
+            onChange={handleVolumeChange}
+            className="flex-1"
+          />
+          <span className="text-xs text-slate-500 w-8 text-right">
+            {Math.round(track.volume * 100)}%
+          </span>
+        </div>
+
+        {/* Humanize Toggle */}
+        <button
+          onClick={() => setTrackHumanize(track.id, !track.humanizeEnabled)}
+          className={cn(
+            'p-1 rounded transition-colors',
+            track.humanizeEnabled
+              ? 'bg-purple-500/20 text-purple-400'
+              : 'text-slate-500 hover:text-slate-400'
+          )}
+          title="Humanize"
+        >
+          <Zap className="w-3.5 h-3.5" />
+        </button>
+      </div>
+
+      {/* Settings Panel (Expanded) */}
+      {showSettings && (
+        <LoopTrackSettings
+          track={track}
+          loopDef={loopDef}
+          onClose={() => setShowSettings(false)}
+        />
+      )}
+    </div>
+  );
+}
+
+// Settings Panel
+interface LoopTrackSettingsProps {
+  track: LoopTrackState;
+  loopDef: ReturnType<typeof getLoopById>;
+  onClose: () => void;
+}
+
+function LoopTrackSettings({ track, loopDef, onClose }: LoopTrackSettingsProps) {
+  const {
+    setTrackSoundPreset,
+    setTrackTempoLocked,
+    setTrackKeyLocked,
+    setTrackHumanize,
+  } = useLoopTracksStore();
+
+  // Get available presets for this category
+  const categoryPresets = loopDef?.category
+    ? AVAILABLE_SOUND_PRESETS[loopDef.category as keyof typeof AVAILABLE_SOUND_PRESETS] || []
+    : [];
+
+  return (
+    <div className="absolute top-full left-0 right-0 z-50 bg-slate-800 border border-slate-700 rounded-b-lg shadow-xl p-3 space-y-3">
+      {/* Sound Preset */}
+      <div>
+        <label className="text-xs font-medium text-slate-400 mb-1 block">Sound</label>
+        <select
+          value={track.soundPreset}
+          onChange={(e) => setTrackSoundPreset(track.id, e.target.value)}
+          className="w-full h-8 px-2 bg-slate-700 border border-slate-600 rounded text-sm text-slate-200 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+        >
+          {categoryPresets.map((preset) => (
+            <option key={preset.id} value={preset.id}>
+              {preset.name}
+            </option>
+          ))}
+        </select>
+      </div>
+
+      {/* Lock Controls */}
+      <div className="flex gap-4">
+        <label className="flex items-center gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            checked={track.tempoLocked}
+            onChange={(e) => setTrackTempoLocked(track.id, e.target.checked)}
+            className="rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
+          />
+          Lock Tempo
+        </label>
+        <label className="flex items-center gap-2 text-sm text-slate-300">
+          <input
+            type="checkbox"
+            checked={track.keyLocked}
+            onChange={(e) => setTrackKeyLocked(track.id, e.target.checked)}
+            className="rounded border-slate-600 bg-slate-700 text-indigo-500 focus:ring-indigo-500"
+          />
+          Lock Key
+        </label>
+      </div>
+
+      {/* Humanization */}
+      <div>
+        <label className="flex items-center gap-2 text-sm text-slate-300 mb-2">
+          <input
+            type="checkbox"
+            checked={track.humanizeEnabled}
+            onChange={(e) => setTrackHumanize(track.id, e.target.checked)}
+            className="rounded border-slate-600 bg-slate-700 text-purple-500 focus:ring-purple-500"
+          />
+          Humanize
+        </label>
+        {track.humanizeEnabled && (
+          <div className="grid grid-cols-2 gap-3 ml-6">
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Timing</label>
+              <Slider
+                value={track.humanizeTiming * 100}
+                min={0}
+                max={20}
+                step={1}
+                onChange={(e) =>
+                  setTrackHumanize(track.id, true, parseFloat(e.target.value) / 100, undefined)
+                }
+              />
+            </div>
+            <div>
+              <label className="text-xs text-slate-500 mb-1 block">Velocity</label>
+              <Slider
+                value={track.humanizeVelocity * 100}
+                min={0}
+                max={50}
+                step={1}
+                onChange={(e) =>
+                  setTrackHumanize(track.id, true, undefined, parseFloat(e.target.value) / 100)
+                }
+              />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Close */}
+      <button
+        onClick={onClose}
+        className="w-full py-1.5 bg-slate-700 hover:bg-slate-600 rounded text-sm text-slate-300 transition-colors"
+      >
+        Close
+      </button>
+    </div>
+  );
+}

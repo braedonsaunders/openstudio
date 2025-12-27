@@ -1,5 +1,6 @@
 import { supabase, getRealtimeChannel, RealtimeChannel } from './client';
 import type { User, BackingTrack, RoomMessage, TrackQueue, TrackAudioSettings, TrackEffectsChain, UserTrack } from '@/types';
+import type { LoopTrackState } from '@/types/loops';
 
 export interface RoomState {
   users: Record<string, User>;
@@ -95,6 +96,31 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'usertrack:settings' }, ({ payload }) => {
       this.emit('usertrack:settings', payload);
+    });
+
+    // Loop track events
+    this.channel.on('broadcast', { event: 'looptrack:add' }, ({ payload }) => {
+      this.emit('looptrack:add', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'looptrack:remove' }, ({ payload }) => {
+      this.emit('looptrack:remove', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'looptrack:update' }, ({ payload }) => {
+      this.emit('looptrack:update', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'looptrack:play' }, ({ payload }) => {
+      this.emit('looptrack:play', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'looptrack:stop' }, ({ payload }) => {
+      this.emit('looptrack:stop', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'looptrack:sync' }, ({ payload }) => {
+      this.emit('looptrack:sync', payload);
     });
 
     await this.channel.subscribe(async (status) => {
@@ -237,6 +263,55 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'usertrack:settings',
       payload: { trackId, settings, userId: this.userId },
+    });
+  }
+
+  // Loop track broadcasts
+  async broadcastLoopTrackAdd(track: LoopTrackState): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'looptrack:add',
+      payload: { track, userId: this.userId },
+    });
+  }
+
+  async broadcastLoopTrackRemove(trackId: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'looptrack:remove',
+      payload: { trackId, userId: this.userId },
+    });
+  }
+
+  async broadcastLoopTrackUpdate(trackId: string, updates: Partial<LoopTrackState>): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'looptrack:update',
+      payload: { trackId, updates, userId: this.userId },
+    });
+  }
+
+  async broadcastLoopTrackPlay(trackId: string, syncTimestamp: number, loopStartBeat: number = 0): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'looptrack:play',
+      payload: { trackId, syncTimestamp, loopStartBeat, userId: this.userId },
+    });
+  }
+
+  async broadcastLoopTrackStop(trackId: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'looptrack:stop',
+      payload: { trackId, userId: this.userId },
+    });
+  }
+
+  async broadcastLoopTrackSync(tracks: LoopTrackState[]): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'looptrack:sync',
+      payload: { tracks, userId: this.userId },
     });
   }
 
