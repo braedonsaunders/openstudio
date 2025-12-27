@@ -198,7 +198,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
         )}
       </div>
 
-      <div className="p-4 space-y-5 max-h-[70vh] overflow-y-auto">
+      <div className="p-4 space-y-5 max-h-[50vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
         {error && (
           <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">
             <AlertCircle className="w-4 h-4 shrink-0" />
