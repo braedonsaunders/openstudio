@@ -82,7 +82,7 @@ export function AnalysisPanel() {
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Draw spectrum
+  // Draw spectrum with logarithmic frequency scaling
   useEffect(() => {
     if (!canvasRef.current || !spectrumData || containerWidth === 0) return;
 
@@ -105,21 +105,42 @@ export function AnalysisPanel() {
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, width, height);
 
-    // Draw spectrum bars
-    const barCount = Math.min(128, Math.floor(width / 3));
+    // Use logarithmic frequency scaling for better musical representation
+    // Frequency bins: spectrumData has frequencyBinCount bins (usually 1024)
+    // Each bin represents sampleRate / fftSize Hz (e.g., 44100/2048 ≈ 21.5 Hz)
+    const nyquist = 22050; // Half of 44.1kHz
+    const minFreq = 20;
+    const maxFreq = 20000;
+    const barCount = Math.min(64, Math.floor(width / 4));
     const barWidth = width / barCount;
-    const step = Math.floor(spectrumData.length / barCount);
 
     for (let i = 0; i < barCount; i++) {
-      const value = spectrumData[i * step] || -100;
-      const normalized = Math.max(0, (value + 100) / 100);
+      // Logarithmic mapping: bar position -> frequency
+      const freqRatio = i / barCount;
+      const freq = minFreq * Math.pow(maxFreq / minFreq, freqRatio);
+
+      // Convert frequency to bin index
+      const binIndex = Math.round((freq / nyquist) * spectrumData.length);
+
+      // Average a few neighboring bins for smoother display
+      let sum = 0;
+      let count = 0;
+      const binRadius = Math.max(1, Math.floor(binIndex * 0.1));
+      for (let j = Math.max(0, binIndex - binRadius); j <= Math.min(spectrumData.length - 1, binIndex + binRadius); j++) {
+        sum += spectrumData[j];
+        count++;
+      }
+      const value = count > 0 ? sum / count : -100;
+
+      // Normalize from dB (-100 to -20 typical range) to 0-1
+      const normalized = Math.max(0, Math.min(1, (value + 90) / 70));
       const barHeight = normalized * height;
 
       // Gradient based on frequency (purple to cyan)
-      const hue = 280 - (i / barCount) * 100;
+      const hue = 280 - freqRatio * 100;
       ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.9)`;
-      ctx.shadowBlur = 6;
-      ctx.shadowColor = `hsla(${hue}, 80%, 60%, 0.4)`;
+      ctx.shadowBlur = 4;
+      ctx.shadowColor = `hsla(${hue}, 80%, 60%, 0.3)`;
       ctx.fillRect(i * barWidth + 0.5, height - barHeight, barWidth - 1, barHeight);
     }
     ctx.shadowBlur = 0;
@@ -222,8 +243,8 @@ export function AnalysisPanel() {
           <Waves className="w-3.5 h-3.5" />
           <span>Spectrum</span>
         </div>
-        <div ref={containerRef} className="bg-gray-900 dark:bg-[#0a0a0f] border-y border-gray-200 dark:border-white/5">
-          <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '80px' }} />
+        <div ref={containerRef} className="bg-gray-900 dark:bg-[#0a0a0f]">
+          <canvas ref={canvasRef} />
           <div className="flex justify-between px-3 py-1 text-[9px] text-gray-400 dark:text-zinc-600">
             <span>20Hz</span>
             <span>1kHz</span>
