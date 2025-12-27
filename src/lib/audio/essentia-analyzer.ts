@@ -238,6 +238,17 @@ export class EssentiaAnalyzer {
     }
   }
 
+  /**
+   * Reset all analysis buffers and state in the worker.
+   * Call this when switching tracks to clear old key/BPM data.
+   */
+  resetAnalysis(): void {
+    if (this.worker) {
+      this.worker.postMessage({ type: 'reset' });
+      console.log('Analysis worker reset - buffers cleared');
+    }
+  }
+
   dispose(): void {
     this.stopAnalysis();
 

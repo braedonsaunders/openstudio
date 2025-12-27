@@ -85,6 +85,7 @@ interface AnalysisState {
   setSpectrumData: (data: Float32Array | null) => void;
   setWaveformData: (data: Float32Array | null) => void;
   setTunerEnabled: (enabled: boolean) => void;
+  clearAnalysisData: () => void;
   reset: () => void;
 }
 
@@ -143,6 +144,13 @@ export const useAnalysisStore = create<AnalysisState>()(
     setWaveformData: (data) => set({ waveformData: data }),
 
     setTunerEnabled: (enabled) => set({ tunerEnabled: enabled }),
+
+    // Clear key/BPM data without resetting worker state - use when switching tracks
+    clearAnalysisData: () =>
+      set({
+        localAnalysis: null,
+        syncedAnalysis: null,
+      }),
 
     reset: () =>
       set({

@@ -108,7 +108,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   // - "Mic": Analyzes local microphone
   // - "Mix": Analyzes all audio (backing + all users' instruments)
   // Results are synced to all other room members
-  useAudioAnalysis({
+  const { resetAnalysis } = useAudioAnalysis({
     audioContext,
     backingTrackAnalyser,
     masterAnalyser,
@@ -117,6 +117,21 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     userId: currentUser?.id,
     isMaster,
   });
+
+  // Track previous track ID to detect track changes
+  const previousTrackIdRef = useRef<string | null>(null);
+
+  // Reset analysis when track changes (clears old key/BPM data)
+  useEffect(() => {
+    if (currentTrack?.id !== previousTrackIdRef.current) {
+      if (previousTrackIdRef.current !== null) {
+        // Track changed - reset analysis buffers
+        resetAnalysis();
+        console.log('Track changed - analysis reset for new track');
+      }
+      previousTrackIdRef.current = currentTrack?.id || null;
+    }
+  }, [currentTrack?.id, resetAnalysis]);
 
   // Check if current track is a YouTube track
   const isYouTubeTrack = !!currentTrack?.youtubeId;
