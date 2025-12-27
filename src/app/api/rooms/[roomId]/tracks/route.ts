@@ -138,6 +138,7 @@ export async function POST(
 
     if (error) {
       console.error('Error saving track:', error);
+      console.error('Track data:', JSON.stringify(track, null, 2));
       // If table doesn't exist, just return success
       if (error.code === '42P01') {
         return NextResponse.json(track);
@@ -147,7 +148,7 @@ export async function POST(
         return NextResponse.json(track);
       }
       return NextResponse.json(
-        { error: 'Failed to save track' },
+        { error: 'Failed to save track', details: error.message, code: error.code },
         { status: 500 }
       );
     }
