@@ -310,6 +310,19 @@ export function useAudioEngine() {
     await globalEngine?.resume();
   }, []);
 
+  // Set callback for when track ends naturally
+  const setOnTrackEnded = useCallback((callback: () => void) => {
+    globalEngine?.setOnTrackEnded(() => {
+      // Cancel animation frame when track ends
+      if (animationFrameRef.current) {
+        cancelAnimationFrame(animationFrameRef.current);
+        animationFrameRef.current = null;
+      }
+      setPlaying(false);
+      callback();
+    });
+  }, [setPlaying]);
+
   // Update jitter buffer from stats
   const updateFromStats = useCallback((stats: { jitter: number; packetLoss: number; roundTripTime: number }) => {
     if (!globalEngine) return;
@@ -388,6 +401,7 @@ export function useAudioEngine() {
     setStemVolume,
     resume,
     updateFromStats,
+    setOnTrackEnded,
     destroyEngine,
   };
 }

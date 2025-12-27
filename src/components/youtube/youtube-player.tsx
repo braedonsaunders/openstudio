@@ -68,6 +68,7 @@ interface YouTubePlayerProps {
   onError?: (error: string) => void;
   onDurationChange?: (duration: number) => void;
   onAudioElementReady?: (audioElement: HTMLAudioElement) => void;
+  onEnded?: () => void;
   autoPlay?: boolean;
   volume?: number;
   className?: string;
@@ -146,6 +147,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       onError,
       onDurationChange,
       onAudioElementReady,
+      onEnded,
       autoPlay = false,
       volume = 70,
       className,
@@ -271,8 +273,14 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
             onStateChange: (event) => {
               if (!mounted) return;
               const playing = event.data === window.YT.PlayerState.PLAYING;
+              const ended = event.data === window.YT.PlayerState.ENDED;
               setIsPlaying(playing);
               onStateChange?.(playing);
+
+              // Fire onEnded callback when video ends
+              if (ended) {
+                onEnded?.();
+              }
 
               // Start/stop time updates based on play state
               if (playing && !timeUpdateIntervalRef.current) {
@@ -351,6 +359,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
         onTimeUpdate?.(audio.currentTime, audio.duration);
       };
 
+      const handleEnded = () => {
+        setIsPlaying(false);
+        onStateChange?.(false);
+        onEnded?.();
+      };
+
       const handleError = () => {
         console.error('Audio element error:', audio.error);
         onError?.('Failed to load audio stream');
@@ -361,6 +375,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
       audio.addEventListener('play', handlePlay);
       audio.addEventListener('pause', handlePause);
       audio.addEventListener('timeupdate', handleTimeUpdate);
+      audio.addEventListener('ended', handleEnded);
       audio.addEventListener('error', handleError);
 
       return () => {
@@ -368,11 +383,12 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
         audio.removeEventListener('play', handlePlay);
         audio.removeEventListener('pause', handlePause);
         audio.removeEventListener('timeupdate', handleTimeUpdate);
+        audio.removeEventListener('ended', handleEnded);
         audio.removeEventListener('error', handleError);
         audio.pause();
         audio.src = '';
       };
-    }, [useAudioElement, audioStreamInfo, volume, autoPlay, onReady, onStateChange, onTimeUpdate, onDurationChange, onError, onAudioElementReady]);
+    }, [useAudioElement, audioStreamInfo, volume, autoPlay, onReady, onStateChange, onTimeUpdate, onDurationChange, onError, onEnded, onAudioElementReady]);
 
     // Update volume when prop changes
     useEffect(() => {

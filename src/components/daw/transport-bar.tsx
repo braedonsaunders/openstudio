@@ -34,6 +34,8 @@ interface TransportBarProps {
   onMuteToggle: () => void;
   onSettingsClick: () => void;
   onLeave: () => void;
+  loopEnabled: boolean;
+  onLoopToggle: () => void;
 }
 
 export function TransportBar({
@@ -46,9 +48,10 @@ export function TransportBar({
   onMuteToggle,
   onSettingsClick,
   onLeave,
+  loopEnabled,
+  onLoopToggle,
 }: TransportBarProps) {
   const [copied, setCopied] = useState(false);
-  const [loopEnabled, setLoopEnabled] = useState(false);
 
   const { isPlaying, currentTime, duration, isMuted } = useAudioStore();
   const { currentTrack, isMaster } = useRoomStore();
@@ -178,7 +181,7 @@ export function TransportBar({
 
         {/* Loop */}
         <button
-          onClick={() => setLoopEnabled(!loopEnabled)}
+          onClick={onLoopToggle}
           className={cn(
             'p-2 rounded-lg transition-all ml-2',
             loopEnabled
@@ -192,7 +195,7 @@ export function TransportBar({
         {/* Time Display */}
         <div className="flex items-center gap-2 ml-4 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-black/30">
           <span className="time-display text-lg font-medium text-gray-900 dark:text-white">
-            {formatTimeDetailed(currentTime)}
+            {formatTimeDetailed(duration > 0 ? Math.min(currentTime, duration) : currentTime)}
           </span>
           <span className="text-gray-400 dark:text-zinc-500">/</span>
           <span className="time-display text-sm text-gray-500 dark:text-zinc-400">

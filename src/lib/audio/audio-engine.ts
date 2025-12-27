@@ -46,6 +46,7 @@ export class AudioEngine {
   private workletNode: AudioWorkletNode | null = null;
   private onLevelUpdate: ((levels: Map<string, number>) => void) | null = null;
   private levelUpdateInterval: NodeJS.Timeout | null = null;
+  private onTrackEnded: (() => void) | null = null;
 
   constructor(config: Partial<AudioEngineConfig> = {}) {
     this.config = { ...defaultConfig, ...config };
@@ -279,6 +280,15 @@ export class AudioEngine {
     this.backingTrackSource.buffer = this.backingTrackBuffer;
     this.backingTrackSource.connect(this.backingTrackGain);
 
+    // Handle track end
+    this.backingTrackSource.onended = () => {
+      // Only trigger if we were playing and reached the end naturally
+      if (this.isPlaying) {
+        this.isPlaying = false;
+        this.onTrackEnded?.();
+      }
+    };
+
     const startTime = this.audioContext.currentTime + delay;
     console.log('Starting playback at offset:', offset, 'delay:', delay);
     this.backingTrackSource.start(startTime, offset);
@@ -297,6 +307,8 @@ export class AudioEngine {
     const delay = Math.max(0, syncTimestamp - now) / 1000;
     const startTime = this.audioContext.currentTime + delay;
 
+    let isFirst = true;
+
     // Play each stem that is enabled
     for (const [stemType, buffer] of this.stemBuffers.entries()) {
       const stemState = this.stemMixState[stemType as keyof StemMixState];
@@ -304,6 +316,17 @@ export class AudioEngine {
 
       const source = this.audioContext.createBufferSource();
       source.buffer = buffer;
+
+      // Hook track end to the first stem source
+      if (isFirst) {
+        source.onended = () => {
+          if (this.isPlaying) {
+            this.isPlaying = false;
+            this.onTrackEnded?.();
+          }
+        };
+        isFirst = false;
+      }
 
       let gainNode = this.stemGains.get(stemType);
       if (!gainNode) {
@@ -437,6 +460,10 @@ export class AudioEngine {
 
   setOnLevelUpdate(callback: (levels: Map<string, number>) => void): void {
     this.onLevelUpdate = callback;
+  }
+
+  setOnTrackEnded(callback: () => void): void {
+    this.onTrackEnded = callback;
   }
 
   private startLevelMonitoring(): void {

@@ -94,7 +94,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     leave,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser } = useAudioEngine();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
 
@@ -119,6 +119,19 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   // Check if current track is a YouTube track
   const isYouTubeTrack = !!currentTrack?.youtubeId;
+
+  // Handle track end for looping
+  useEffect(() => {
+    if (isYouTubeTrack) return; // YouTube handles its own looping
+
+    setOnTrackEnded(() => {
+      if (loopEnabled && currentTrack) {
+        // Restart playback from the beginning
+        setCurrentTime(0);
+        playBackingTrack(Date.now(), 0);
+      }
+    });
+  }, [loopEnabled, currentTrack, isYouTubeTrack, setOnTrackEnded, setCurrentTime, playBackingTrack]);
 
   // YouTube playback controls (defined before keyboard shortcuts that use them)
   const handleYouTubePlay = useCallback(() => {
@@ -285,6 +298,16 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const handleYouTubeDurationChange = useCallback((duration: number) => {
     if (duration > 0) setDuration(duration);
   }, [setDuration]);
+
+  // Handle YouTube track end for looping
+  const handleYouTubeEnded = useCallback(() => {
+    if (loopEnabled && currentTrack?.youtubeId) {
+      // Restart from beginning
+      setCurrentTime(0);
+      youtubePlayerRef.current?.seek(0);
+      youtubePlayerRef.current?.play();
+    }
+  }, [loopEnabled, currentTrack, setCurrentTime]);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
     setIsGenerating(true);
@@ -469,6 +492,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         onMuteToggle={() => setMuted(!isMuted)}
         onSettingsClick={() => setIsSettingsModalOpen(true)}
         onLeave={leave}
+        loopEnabled={loopEnabled}
+        onLoopToggle={() => setLoopEnabled(!loopEnabled)}
       />
 
       {/* Main Content Area */}
@@ -524,6 +549,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                   onStateChange={handleYouTubeStateChange}
                   onTimeUpdate={handleYouTubeTimeUpdate}
                   onDurationChange={handleYouTubeDurationChange}
+                  onEnded={handleYouTubeEnded}
                   volume={backingTrackVolume * 100}
                 />
               ) : undefined
