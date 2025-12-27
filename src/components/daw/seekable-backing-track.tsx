@@ -1,0 +1,382 @@
+'use client';
+
+import { useRef, useEffect, useState, useCallback } from 'react';
+import { cn } from '@/lib/utils';
+import {
+  Play,
+  Pause,
+  SkipBack,
+  SkipForward,
+  Volume2,
+  Music,
+  Waves,
+  ChevronDown,
+  ChevronUp,
+} from 'lucide-react';
+import type { BackingTrack, StemMixState } from '@/types';
+
+interface SeekableBackingTrackProps {
+  track: BackingTrack;
+  currentTime: number;
+  duration: number;
+  isPlaying: boolean;
+  isMaster: boolean;
+  onSeek: (time: number) => void;
+  stemsAvailable: boolean;
+  stemMixState: StemMixState;
+}
+
+const STEM_COLORS = {
+  vocals: '#ec4899',
+  drums: '#f97316',
+  bass: '#22c55e',
+  other: '#3b82f6',
+};
+
+export function SeekableBackingTrack({
+  track,
+  currentTime,
+  duration,
+  isPlaying,
+  isMaster,
+  onSeek,
+  stemsAvailable,
+  stemMixState,
+}: SeekableBackingTrackProps) {
+  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
+  const scrubberRef = useRef<HTMLDivElement>(null);
+  const waveformData = useRef<number[]>([]);
+  const [isDragging, setIsDragging] = useState(false);
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [hoverTime, setHoverTime] = useState<number | null>(null);
+
+  // Generate placeholder waveform data
+  useEffect(() => {
+    const samples = Math.floor(duration * 100);
+    waveformData.current = Array.from({ length: samples }, () => 0.2 + Math.random() * 0.8);
+  }, [duration]);
+
+  // Draw waveform
+  useEffect(() => {
+    const canvas = waveformCanvasRef.current;
+    if (!canvas || !duration) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const width = rect.width;
+    const height = rect.height;
+    const data = waveformData.current;
+    const progress = duration > 0 ? currentTime / duration : 0;
+
+    ctx.clearRect(0, 0, width, height);
+
+    if (data.length === 0) return;
+
+    const barWidth = 2;
+    const gap = 1;
+    const barsCount = Math.floor(width / (barWidth + gap));
+    const centerY = height / 2;
+
+    for (let i = 0; i < barsCount; i++) {
+      const sampleIndex = Math.floor((i / barsCount) * data.length);
+      const value = data[sampleIndex] || 0.5;
+      const barHeight = value * height * 0.7;
+      const x = i * (barWidth + gap);
+
+      const isPlayed = i / barsCount < progress;
+
+      // Gradient effect for played/unplayed
+      if (isPlayed) {
+        ctx.fillStyle = '#818cf8'; // Bright indigo
+        ctx.shadowBlur = 2;
+        ctx.shadowColor = '#818cf8';
+      } else {
+        ctx.fillStyle = '#3730a3'; // Darker indigo
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 0.6;
+      }
+
+      // Draw mirrored bar
+      const halfHeight = barHeight / 2;
+      ctx.fillRect(x, centerY - halfHeight, barWidth, barHeight);
+      ctx.globalAlpha = 1;
+    }
+
+    ctx.shadowBlur = 0;
+  }, [duration, currentTime]);
+
+  // Handle scrubber interaction
+  const handleScrubberClick = useCallback((e: React.MouseEvent) => {
+    if (!isMaster || !scrubberRef.current || !duration) return;
+
+    const rect = scrubberRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ratio = x / rect.width;
+    const seekTime = ratio * duration;
+
+    onSeek(Math.max(0, Math.min(duration, seekTime)));
+  }, [isMaster, duration, onSeek]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!scrubberRef.current || !duration) return;
+
+    const rect = scrubberRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const ratio = Math.max(0, Math.min(1, x / rect.width));
+    setHoverTime(ratio * duration);
+  }, [duration]);
+
+  const handleMouseLeave = useCallback(() => {
+    setHoverTime(null);
+  }, []);
+
+  const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
+
+  const formatTime = (seconds: number): string => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="bg-[#0d0d14] border-b border-white/10 shrink-0">
+      {/* Header */}
+      <div className="h-10 px-4 flex items-center justify-between border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <Music className="w-4 h-4 text-white" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-medium text-white truncate max-w-[200px]">{track.name}</span>
+            {track.artist && (
+              <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">{track.artist}</span>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
+            <Waves className="w-3 h-3 text-indigo-400" />
+            <span className="text-[10px] font-medium text-indigo-400">BACKING TRACK</span>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-3">
+          <span className="text-xs text-zinc-500">
+            Click timeline to seek {isMaster ? '' : '(master only)'}
+          </span>
+          <button
+            onClick={() => setIsExpanded(!isExpanded)}
+            className="p-1.5 rounded hover:bg-white/5 text-zinc-400 hover:text-white transition-colors"
+          >
+            {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Waveform and Scrubber */}
+      {isExpanded && (
+        <div className="relative">
+          {/* Waveform display */}
+          <div className="h-16 relative">
+            <canvas
+              ref={waveformCanvasRef}
+              className="absolute inset-0 w-full h-full"
+            />
+
+            {/* Progress overlay */}
+            <div
+              className="absolute top-0 bottom-0 left-0 bg-indigo-500/10 pointer-events-none"
+              style={{ width: `${progress}%` }}
+            />
+
+            {/* Playhead */}
+            <div
+              className="absolute top-0 bottom-0 w-0.5 bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.6)] pointer-events-none"
+              style={{ left: `${progress}%` }}
+            />
+          </div>
+
+          {/* Scrubber / Timeline */}
+          <div
+            ref={scrubberRef}
+            onClick={handleScrubberClick}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            className={cn(
+              'h-8 relative bg-[#0a0a0f] border-t border-white/5',
+              isMaster ? 'cursor-pointer' : 'cursor-default'
+            )}
+          >
+            {/* Timeline ticks */}
+            <div className="absolute inset-0 flex items-center">
+              {Array.from({ length: Math.ceil(duration / 10) + 1 }).map((_, i) => {
+                const time = i * 10;
+                const percent = (time / duration) * 100;
+                if (percent > 100) return null;
+
+                return (
+                  <div
+                    key={i}
+                    className="absolute flex flex-col items-center"
+                    style={{ left: `${percent}%` }}
+                  >
+                    <div className="w-px h-2 bg-zinc-600" />
+                    <span className="text-[9px] text-zinc-500 mt-0.5 font-mono">
+                      {formatTime(time)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Progress bar */}
+            <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-800">
+              <div
+                className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 transition-all duration-100"
+                style={{ width: `${progress}%` }}
+              />
+            </div>
+
+            {/* Hover time indicator */}
+            {hoverTime !== null && isMaster && (
+              <div
+                className="absolute top-0 bottom-0 w-px bg-white/30 pointer-events-none"
+                style={{ left: `${(hoverTime / duration) * 100}%` }}
+              >
+                <div className="absolute -top-5 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-zinc-800 rounded text-[9px] text-white font-mono whitespace-nowrap">
+                  {formatTime(hoverTime)}
+                </div>
+              </div>
+            )}
+
+            {/* Current time / Duration display */}
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs">
+              <span className="font-mono text-white">{formatTime(currentTime)}</span>
+              <span className="text-zinc-500">/</span>
+              <span className="font-mono text-zinc-400">{formatTime(duration)}</span>
+            </div>
+          </div>
+
+          {/* Stem lanes (if available) */}
+          {stemsAvailable && (
+            <div className="border-t border-white/5">
+              {Object.entries(STEM_COLORS).map(([stem, color]) => {
+                const state = stemMixState[stem as keyof typeof stemMixState];
+                if (!state?.enabled) return null;
+
+                return (
+                  <StemMiniLane
+                    key={stem}
+                    stemName={stem}
+                    color={color}
+                    volume={state.volume}
+                    duration={duration}
+                    currentTime={currentTime}
+                  />
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Mini stem lane for showing individual stem progress
+interface StemMiniLaneProps {
+  stemName: string;
+  color: string;
+  volume: number;
+  duration: number;
+  currentTime: number;
+}
+
+function StemMiniLane({
+  stemName,
+  color,
+  volume,
+  duration,
+  currentTime,
+}: StemMiniLaneProps) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const waveformData = useRef<number[]>([]);
+
+  useEffect(() => {
+    const samples = Math.floor(duration * 50);
+    waveformData.current = Array.from({ length: samples }, () => 0.2 + Math.random() * 0.6);
+  }, [duration]);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || !duration) return;
+
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const dpr = window.devicePixelRatio || 1;
+    const rect = canvas.getBoundingClientRect();
+
+    canvas.width = rect.width * dpr;
+    canvas.height = rect.height * dpr;
+    ctx.scale(dpr, dpr);
+
+    const width = rect.width;
+    const height = rect.height;
+    const data = waveformData.current;
+    const progress = duration > 0 ? currentTime / duration : 0;
+
+    ctx.clearRect(0, 0, width, height);
+
+    if (data.length === 0) return;
+
+    const barWidth = 2;
+    const gap = 1;
+    const barsCount = Math.floor(width / (barWidth + gap));
+    const centerY = height / 2;
+
+    for (let i = 0; i < barsCount; i++) {
+      const sampleIndex = Math.floor((i / barsCount) * data.length);
+      const value = (data[sampleIndex] || 0.5) * volume;
+      const barHeight = value * height * 0.8;
+      const x = i * (barWidth + gap);
+
+      const isPlayed = i / barsCount < progress;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = isPlayed ? 1 : 0.3;
+
+      const halfHeight = barHeight / 2;
+      ctx.fillRect(x, centerY - halfHeight, barWidth, barHeight);
+    }
+    ctx.globalAlpha = 1;
+  }, [duration, currentTime, color, volume]);
+
+  const stemLabels: Record<string, string> = {
+    vocals: 'VOC',
+    drums: 'DRM',
+    bass: 'BAS',
+    other: 'OTH',
+  };
+
+  return (
+    <div
+      className="h-6 relative border-t border-white/5"
+      style={{ opacity: volume }}
+    >
+      <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-10">
+        <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
+        <span className="text-[9px] font-medium text-zinc-500">{stemLabels[stemName]}</span>
+      </div>
+      <canvas
+        ref={canvasRef}
+        className="absolute inset-0 w-full h-full"
+      />
+    </div>
+  );
+}
