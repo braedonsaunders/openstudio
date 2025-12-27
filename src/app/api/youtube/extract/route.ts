@@ -141,14 +141,24 @@ export async function POST(request: NextRequest) {
     // Download the audio
     const audioResponse = await fetch(audioUrl, {
       signal: AbortSignal.timeout(120000), // 2 min timeout for large files
+      redirect: 'follow',
     });
 
+    console.log(`Audio response status: ${audioResponse.status}`);
+    console.log(`Audio response headers:`, Object.fromEntries(audioResponse.headers.entries()));
+
     if (!audioResponse.ok) {
+      const errorBody = await audioResponse.text();
+      console.error(`Audio download failed: ${errorBody}`);
       return NextResponse.json(
-        { error: `Failed to download audio: ${audioResponse.status}` },
+        { error: `Failed to download audio: ${audioResponse.status}`, details: errorBody },
         { status: 400 }
       );
     }
+
+    // Check content-length if available
+    const contentLength = audioResponse.headers.get('content-length');
+    console.log(`Content-Length header: ${contentLength}`);
 
     const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
     console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
