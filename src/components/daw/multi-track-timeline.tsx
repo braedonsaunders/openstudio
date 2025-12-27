@@ -206,6 +206,7 @@ export function MultiTrackTimeline({
     originalOffset: 0,
   });
   const [dragOffset, setDragOffset] = useState<number | null>(null);
+  const dragOffsetRef = useRef<number | null>(null);
 
   const { getCurrentSong, removeTrackFromSong, updateTrackInSong } = useSongsStore();
   const { queue, currentTrack, setCurrentTrack } = useRoomStore();
@@ -408,6 +409,7 @@ export function MultiTrackTimeline({
         originalOffset: trackRef.startOffset,
       });
       setDragOffset(trackRef.startOffset);
+      dragOffsetRef.current = trackRef.startOffset;
     },
     []
   );
@@ -421,13 +423,15 @@ export function MultiTrackTimeline({
       const deltaTime = deltaX / zoom;
       const newOffset = Math.max(0, dragState.originalOffset + deltaTime);
       setDragOffset(newOffset);
+      dragOffsetRef.current = newOffset;
     };
 
     const handleMouseUp = () => {
-      if (dragState.trackRefId && currentSong && dragOffset !== null) {
+      const finalOffset = dragOffsetRef.current;
+      if (dragState.trackRefId && currentSong && finalOffset !== null) {
         // Update the track's start offset
         updateTrackInSong(currentSong.id, dragState.trackRefId, {
-          startOffset: Math.round(dragOffset * 10) / 10, // Round to 0.1s
+          startOffset: Math.round(finalOffset * 10) / 10, // Round to 0.1s
         });
       }
       setDragState({
@@ -437,6 +441,7 @@ export function MultiTrackTimeline({
         originalOffset: 0,
       });
       setDragOffset(null);
+      dragOffsetRef.current = null;
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -446,7 +451,7 @@ export function MultiTrackTimeline({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, zoom, currentSong, dragOffset, updateTrackInSong]);
+  }, [dragState, zoom, currentSong, updateTrackInSong]);
 
   // Generate time markers
   const timeMarkers = useMemo(() => {
