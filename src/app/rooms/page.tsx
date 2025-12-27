@@ -960,7 +960,7 @@ export default function RoomsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  // Auth initialization is handled by AuthProvider at the app level
+  // Auth initialization is handled by onAuthStateChange in auth-store
 
   useEffect(() => {
     setMounted(true);

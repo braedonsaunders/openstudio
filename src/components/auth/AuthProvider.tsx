@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, createContext, useContext, type ReactNode } from 'react';
+import { createContext, useContext, type ReactNode } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useAuthStore } from '@/stores/auth-store';
 import type { UserProfile, Avatar, UserStats, UserInstrument, Achievement, UserAchievement } from '@/types/user';
@@ -25,6 +25,9 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
+// Auth initialization is handled by the onAuthStateChange listener in auth-store.ts
+// which fires INITIAL_SESSION when Supabase finishes restoring the session from localStorage
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const {
     user,
@@ -36,18 +39,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     unlockedAchievements,
     isLoading,
     isInitialized,
-    initialize,
     signIn,
     signUp,
     signInWithGoogle,
     signInWithDiscord,
     signOut,
   } = useAuthStore();
-
-  useEffect(() => {
-    initialize();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
 
   return (
     <AuthContext.Provider
