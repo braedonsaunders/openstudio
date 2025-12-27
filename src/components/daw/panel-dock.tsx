@@ -1,15 +1,15 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { StemMixerPanel } from './stem-mixer-panel';
+import { RoomUsersPanel } from './room-users-panel';
 import { AnalysisPanel } from './analysis-panel';
 import { ChatPanel } from './chat-panel';
 import { AIPanel } from './ai-panel';
 import { SetlistPanel } from './setlist-panel';
 import type { PanelType } from './daw-layout';
-import type { StemType } from '@/types';
+import type { StemType, User } from '@/types';
 import {
-  Sliders,
+  Users,
   Activity,
   MessageSquare,
   Sparkles,
@@ -21,7 +21,7 @@ interface PanelDockProps {
   activePanel: PanelType;
   onPanelChange: (panel: PanelType) => void;
   onClose: () => void;
-  // Mixer props
+  // Mixer props (kept for AI panel)
   onToggleStem: (stem: StemType, enabled: boolean) => void;
   onStemVolumeChange: (stem: StemType, volume: number) => void;
   onSeparateTrack: () => void;
@@ -32,13 +32,20 @@ interface PanelDockProps {
   userId: string;
   userName?: string;
   onSendMessage: (message: string) => void;
+  // Room users props
+  users: User[];
+  currentUser: User | null;
+  isMaster: boolean;
+  audioLevels: Map<string, number>;
+  onMuteUser?: (userId: string, muted: boolean) => void;
+  onVolumeChange?: (userId: string, volume: number) => void;
   // Layout props
   width?: number;
 }
 
-const panels: { id: PanelType; icon: typeof Sliders; label: string }[] = [
+const panels: { id: PanelType; icon: typeof Users; label: string }[] = [
+  { id: 'users', icon: Users, label: 'Members' },
   { id: 'setlist', icon: Music2, label: 'Setlist' },
-  { id: 'mixer', icon: Sliders, label: 'Mixer' },
   { id: 'analysis', icon: Activity, label: 'Analysis' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
   { id: 'ai', icon: Sparkles, label: 'AI' },
@@ -57,10 +64,16 @@ export function PanelDock({
   userId,
   userName,
   onSendMessage,
+  users,
+  currentUser,
+  isMaster,
+  audioLevels,
+  onMuteUser,
+  onVolumeChange,
   width,
 }: PanelDockProps) {
-  // Ensure we have a valid panel (queue is no longer available, redirect to setlist)
-  const validPanel = activePanel === 'queue' ? 'setlist' : activePanel;
+  // Redirect old panel types to new ones
+  const validPanel = activePanel === 'queue' ? 'setlist' : activePanel === 'mixer' ? 'users' : activePanel;
   return (
     <div
       className="bg-gray-50 dark:bg-[#0d0d14] border-l border-gray-200 dark:border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
@@ -97,21 +110,22 @@ export function PanelDock({
 
       {/* Panel Content */}
       <div className="flex-1 overflow-hidden relative">
+        {validPanel === 'users' && (
+          <RoomUsersPanel
+            users={users}
+            currentUser={currentUser}
+            isMaster={isMaster}
+            audioLevels={audioLevels}
+            onMuteUser={onMuteUser}
+            onVolumeChange={onVolumeChange}
+          />
+        )}
+
         {validPanel === 'setlist' && (
           <SetlistPanel
             roomId={roomId}
             userId={userId}
             userName={userName}
-          />
-        )}
-
-        {validPanel === 'mixer' && (
-          <StemMixerPanel
-            onToggleStem={onToggleStem}
-            onStemVolumeChange={onStemVolumeChange}
-            onSeparateTrack={onSeparateTrack}
-            isSeparating={isSeparating}
-            separationProgress={separationProgress}
           />
         )}
 

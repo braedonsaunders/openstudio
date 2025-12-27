@@ -22,7 +22,9 @@ import {
   Wifi,
   WifiOff,
   Zap,
+  Timer,
 } from 'lucide-react';
+import { MetronomeInline } from '@/components/daw/metronome-controls';
 import { UserMenu } from '@/components/auth/UserMenu';
 
 interface TransportBarProps {
@@ -37,6 +39,8 @@ interface TransportBarProps {
   onLeave: () => void;
   loopEnabled: boolean;
   onLoopToggle: () => void;
+  audioContext?: AudioContext | null;
+  masterGain?: AudioNode | null;
 }
 
 export function TransportBar({
@@ -51,6 +55,8 @@ export function TransportBar({
   onLeave,
   loopEnabled,
   onLoopToggle,
+  audioContext,
+  masterGain,
 }: TransportBarProps) {
   const [copied, setCopied] = useState(false);
 
@@ -316,8 +322,16 @@ export function TransportBar({
 
       {/* Right Section - Analysis & Controls */}
       <div className="flex items-center gap-3">
-        {/* BPM Badge */}
-        {displayBPM && (
+        {/* Metronome */}
+        {audioContext && (
+          <MetronomeInline
+            audioContext={audioContext}
+            masterGain={masterGain}
+          />
+        )}
+
+        {/* BPM Badge (shows detected BPM when metronome not active) */}
+        {displayBPM && !audioContext && (
           <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
             <span className="text-sm font-semibold text-gray-900 dark:text-white">{Math.round(displayBPM)}</span>
             <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>

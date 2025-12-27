@@ -21,6 +21,9 @@ import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { OutputSettingsModal } from '../settings/output-settings-modal';
+import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
+import { MixerView } from './mixer-view';
+import { AvatarWorldView } from './avatar-world-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
@@ -29,18 +32,29 @@ interface DAWLayoutProps {
   roomId: string;
 }
 
-export type PanelType = 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai' | 'setlist'; // Note: 'queue' kept for backwards compat but redirects to 'mixer'
+export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' kept for backwards compat
 
 export function DAWLayout({ roomId }: DAWLayoutProps) {
   // Theme
   const { resolvedTheme, toggleTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
+  // iOS Safari viewport fix - prevent scroll bounce and ensure full height
+  useEffect(() => {
+    document.documentElement.classList.add('daw-active');
+    return () => {
+      document.documentElement.classList.remove('daw-active');
+    };
+  }, []);
+
   // Panel state
   const [activePanel, setActivePanel] = useState<PanelType>('setlist');
   const [isPanelDockVisible, setIsPanelDockVisible] = useState(true);
   const [isBottomDockVisible, setIsBottomDockVisible] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Main view state (Timeline, Mixer, Avatar World)
+  const [mainView, setMainView] = useState<MainViewType>('timeline');
 
   // Resizable panel state
   const [leftPanelWidth, setLeftPanelWidth] = useState(340); // Default width for track headers
@@ -243,9 +257,24 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         case 'Tab':
           if (!e.shiftKey) {
             e.preventDefault();
-            const panels: PanelType[] = ['mixer', 'analysis', 'chat', 'ai'];
+            const panels: PanelType[] = ['users', 'analysis', 'chat', 'ai'];
             const currentIndex = panels.indexOf(activePanel);
             setActivePanel(panels[(currentIndex + 1) % panels.length]);
+          }
+          break;
+        case '1':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('timeline');
+          }
+          break;
+        case '2':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('mixer');
+          }
+          break;
+        case '3':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('avatar-world');
           }
           break;
       }
@@ -253,7 +282,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek]);
+  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek, setMainView]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
@@ -454,7 +483,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, [setStemVolume, storeStemVolume]);
 
   return (
-    <div className={`h-screen flex flex-col overflow-hidden transition-colors ${
+    <div className={`h-dvh flex flex-col overflow-hidden transition-colors ${
       isDark
         ? 'daw-theme bg-[#0a0a0f] text-white'
         : 'bg-gray-50 text-gray-900'
@@ -558,18 +587,55 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         {/* Left Resize Handle */}
         <ResizeHandle position="left" onResize={handleLeftResize} />
 
-        {/* Center Split View - Multi-track Timeline (top 1/3) + Live Session (bottom 2/3) */}
-        <CenterSplitView
-          roomId={roomId}
-          users={users}
-          currentUser={currentUser}
-          audioLevels={audioLevels}
-          isMaster={isMaster}
-          onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
-          onPlay={isYouTubeTrack ? handleYouTubePlay : play}
-          onStop={isYouTubeTrack ? handleYouTubePause : pause}
-          sessionStartTime={sessionStartTime}
-        />
+        {/* Main View Area - Timeline/Mixer/Avatar World */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* View Switcher */}
+          <div className="flex items-center justify-center py-2 px-4 border-b border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-[#0a0a0f]/50">
+            <MainViewSwitcher
+              activeView={mainView}
+              onViewChange={setMainView}
+              isMaster={isMaster}
+            />
+          </div>
+
+          {/* View Content */}
+          <div className="flex-1 overflow-hidden">
+            {mainView === 'timeline' && (
+              <CenterSplitView
+                roomId={roomId}
+                users={users}
+                currentUser={currentUser}
+                audioLevels={audioLevels}
+                isMaster={isMaster}
+                onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
+                onPlay={isYouTubeTrack ? handleYouTubePlay : play}
+                onStop={isYouTubeTrack ? handleYouTubePause : pause}
+                sessionStartTime={sessionStartTime}
+              />
+            )}
+
+            {mainView === 'mixer' && (
+              <MixerView
+                isMaster={isMaster}
+                onToggleStem={handleToggleStem}
+                onStemVolumeChange={handleStemVolume}
+                onSeparateTrack={handleSeparateTrack}
+                isSeparating={isSeparating}
+                separationProgress={separationProgress}
+                users={users}
+                audioLevels={audioLevels}
+              />
+            )}
+
+            {mainView === 'avatar-world' && (
+              <AvatarWorldView
+                users={users}
+                currentUser={currentUser}
+                audioLevels={audioLevels}
+              />
+            )}
+          </div>
+        </div>
 
         {/* Right Resize Handle */}
         {isPanelDockVisible && (
@@ -582,7 +648,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             activePanel={activePanel}
             onPanelChange={setActivePanel}
             onClose={() => setIsPanelDockVisible(false)}
-            // Mixer props
+            // Mixer props (kept for AI panel)
             onToggleStem={handleToggleStem}
             onStemVolumeChange={handleStemVolume}
             onSeparateTrack={handleSeparateTrack}
@@ -593,6 +659,13 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             userId={currentUser?.id || ''}
             userName={currentUser?.name}
             onSendMessage={sendMessage}
+            // Room users props
+            users={users}
+            currentUser={currentUser}
+            isMaster={isMaster}
+            audioLevels={audioLevels}
+            onMuteUser={muteUser}
+            onVolumeChange={setUserVolume}
             width={rightPanelWidth}
           />
         )}

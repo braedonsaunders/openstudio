@@ -22,8 +22,12 @@ export function UserTrackLane({
   const trackType = track.type || 'audio';
   if (trackType !== 'audio') return null;
 
-  const isActive = audioLevel > 0.05;
+  const isArmed = track.isArmed;
   const isMuted = track.isMuted;
+  // Only show as active if armed, not muted, and has signal
+  const isActive = isArmed && !isMuted && audioLevel > 0.05;
+  // When not armed, force the level to 0 for visualization
+  const effectiveLevel = isArmed ? audioLevel : 0;
 
   return (
     <div
@@ -58,9 +62,10 @@ export function UserTrackLane({
 
       {/* Dynamic Waveform Canvas */}
       <DynamicWaveform
-        audioLevel={audioLevel}
+        audioLevel={effectiveLevel}
         trackColor={track.color}
         isMuted={isMuted}
+        isArmed={isArmed}
         zoom={zoom}
         historySeconds={historySeconds}
       />
@@ -98,6 +103,15 @@ export function UserTrackLane({
         <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/30">
           <span className="text-xs text-zinc-400 bg-black/60 px-3 py-1.5 rounded-lg backdrop-blur-sm">
             MUTED
+          </span>
+        </div>
+      )}
+
+      {/* Unarmed indicator - shown when track is not armed (not receiving input) */}
+      {!isArmed && !isMuted && (
+        <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/20">
+          <span className="text-xs text-zinc-500 bg-black/40 px-3 py-1.5 rounded-lg backdrop-blur-sm">
+            NOT ARMED
           </span>
         </div>
       )}
