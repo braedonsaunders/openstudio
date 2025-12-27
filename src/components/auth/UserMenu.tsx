@@ -29,15 +29,12 @@ export function UserMenu() {
   const [initTimeout, setInitTimeout] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { user, profile, avatar, signOut, isLoading, isInitialized, isProfileLoading, profileError, initialize, refreshProfile } = useAuthStore();
+  const { user, profile, avatar, signOut, isLoading, isInitialized, isProfileLoading, profileError, refreshProfile } = useAuthStore();
 
-  // Trigger initialization on mount and set timeout fallback
+  // Fallback timeout - if still not initialized after 5 seconds, show login buttons
+  // NOTE: We do NOT call initialize() here because it races with the onAuthStateChange
+  // listener in auth-store.ts. The store handles its own initialization timeout.
   useEffect(() => {
-    if (!isInitialized && !isLoading) {
-      initialize();
-    }
-
-    // Fallback timeout - if still loading after 5 seconds, show login buttons
     const timeout = setTimeout(() => {
       if (!isInitialized) {
         setInitTimeout(true);
@@ -45,7 +42,7 @@ export function UserMenu() {
     }, 5000);
 
     return () => clearTimeout(timeout);
-  }, [isInitialized, isLoading, initialize]);
+  }, [isInitialized]);
 
   // If user is logged in but profile is missing and not loading, try to fetch it
   useEffect(() => {

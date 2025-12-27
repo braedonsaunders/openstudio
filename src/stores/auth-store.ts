@@ -491,6 +491,16 @@ export const useAuthStore = create<AuthState>()(
 // Subscribe to auth state changes - this runs synchronously when the module loads
 // to ensure the listener is registered before INITIAL_SESSION fires
 if (typeof window !== 'undefined') {
+  // Safety timeout: If INITIAL_SESSION doesn't fire within 5 seconds, initialize anyway
+  // This prevents the UI from being stuck in loading state forever
+  const initTimeout = setTimeout(() => {
+    const state = useAuthStore.getState();
+    if (!state.isInitialized && !state.isLoading) {
+      console.warn('[auth-store] INITIAL_SESSION timeout - initializing manually');
+      useAuthStore.getState().initialize();
+    }
+  }, 5000);
+
   authApi.supabaseAuth.auth.onAuthStateChange(async (event, session) => {
     const store = useAuthStore.getState();
 
@@ -500,6 +510,7 @@ if (typeof window !== 'undefined') {
       // This handler is mainly for OAuth flows where signIn() wasn't called directly
       const currentState = useAuthStore.getState();
       if (!currentState.isInitialized && !currentState.isLoading) {
+        clearTimeout(initTimeout);
         await useAuthStore.getState().initialize();
       }
     } else if (event === 'SIGNED_OUT') {
@@ -507,6 +518,7 @@ if (typeof window !== 'undefined') {
     } else if (event === 'INITIAL_SESSION') {
       // Handle initial session on page load - this fires when Supabase has
       // finished restoring the session from localStorage
+      clearTimeout(initTimeout);
       if (!store.isInitialized && !store.isLoading) {
         if (session?.user) {
           // User is logged in - load their data
