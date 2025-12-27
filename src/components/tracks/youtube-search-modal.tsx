@@ -8,12 +8,11 @@ import { Modal } from '../ui/modal';
 import {
   Search,
   Youtube,
-  Play,
   Plus,
   Loader2,
-  Clock,
   User,
   ExternalLink,
+  ChevronDown,
 } from 'lucide-react';
 
 interface YouTubeVideo {
@@ -44,10 +43,19 @@ export function YouTubeSearchModal({
   const [results, setResults] = useState<YouTubeVideo[]>([]);
   const [suggestions, setSuggestions] = useState<YouTubeVideo[]>([]);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [isLoadingSuggestions, setIsLoadingSuggestions] = useState(false);
+  const [isLoadingMoreSuggestions, setIsLoadingMoreSuggestions] = useState(false);
   const [addingId, setAddingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'search' | 'suggestions'>('search');
+
+  // Pagination state
+  const [searchNextPageToken, setSearchNextPageToken] = useState<string | null>(null);
+  const [searchTotalResults, setSearchTotalResults] = useState(0);
+  const [suggestionsNextPageToken, setSuggestionsNextPageToken] = useState<string | null>(null);
+  const [suggestionsTotalResults, setSuggestionsTotalResults] = useState(0);
+  const [lastSearchQuery, setLastSearchQuery] = useState('');
 
   // Load suggestions when modal opens with a current track
   useEffect(() => {
@@ -56,49 +64,105 @@ export function YouTubeSearchModal({
     }
   }, [isOpen, currentTrackId]);
 
-  const loadSuggestions = useCallback(async () => {
+  const loadSuggestions = useCallback(async (pageToken?: string) => {
     if (!currentTrackId) return;
 
-    setIsLoadingSuggestions(true);
+    if (pageToken) {
+      setIsLoadingMoreSuggestions(true);
+    } else {
+      setIsLoadingSuggestions(true);
+      setSuggestions([]);
+    }
+
     try {
-      const response = await fetch(`/api/youtube/related?videoId=${currentTrackId}&maxResults=8`);
+      const url = new URL('/api/youtube/related', window.location.origin);
+      url.searchParams.set('videoId', currentTrackId);
+      url.searchParams.set('maxResults', '8');
+      if (pageToken) {
+        url.searchParams.set('pageToken', pageToken);
+      }
+
+      const response = await fetch(url.toString());
       if (response.ok) {
         const data = await response.json();
-        setSuggestions(data.suggestions || []);
+        if (pageToken) {
+          setSuggestions(prev => [...prev, ...(data.suggestions || [])]);
+        } else {
+          setSuggestions(data.suggestions || []);
+        }
+        setSuggestionsNextPageToken(data.nextPageToken || null);
+        setSuggestionsTotalResults(data.totalResults || 0);
       }
     } catch {
       // Silently fail for suggestions
     } finally {
       setIsLoadingSuggestions(false);
+      setIsLoadingMoreSuggestions(false);
     }
   }, [currentTrackId]);
 
-  const handleSearch = useCallback(async () => {
+  const handleSearch = useCallback(async (pageToken?: string) => {
     if (!query.trim()) return;
 
-    setIsSearching(true);
+    if (pageToken) {
+      setIsLoadingMore(true);
+    } else {
+      setIsSearching(true);
+      setResults([]);
+      setLastSearchQuery(query);
+    }
     setError(null);
 
     try {
-      const response = await fetch(`/api/youtube/search?q=${encodeURIComponent(query)}&maxResults=10`);
+      const url = new URL('/api/youtube/search', window.location.origin);
+      url.searchParams.set('q', query);
+      url.searchParams.set('maxResults', '10');
+      if (pageToken) {
+        url.searchParams.set('pageToken', pageToken);
+      }
+
+      const response = await fetch(url.toString());
       if (!response.ok) {
         const data = await response.json();
         throw new Error(data.error || 'Search failed');
       }
 
       const data = await response.json();
-      setResults(data.results || []);
 
-      if (data.results?.length === 0) {
+      if (pageToken) {
+        setResults(prev => [...prev, ...(data.results || [])]);
+      } else {
+        setResults(data.results || []);
+      }
+
+      setSearchNextPageToken(data.nextPageToken || null);
+      setSearchTotalResults(data.totalResults || 0);
+
+      if (!pageToken && data.results?.length === 0) {
         setError('No results found. Try different keywords.');
       }
     } catch (err) {
       setError((err as Error).message);
-      setResults([]);
+      if (!pageToken) {
+        setResults([]);
+      }
     } finally {
       setIsSearching(false);
+      setIsLoadingMore(false);
     }
   }, [query]);
+
+  const handleLoadMoreResults = useCallback(() => {
+    if (searchNextPageToken && !isLoadingMore) {
+      handleSearch(searchNextPageToken);
+    }
+  }, [searchNextPageToken, isLoadingMore, handleSearch]);
+
+  const handleLoadMoreSuggestions = useCallback(() => {
+    if (suggestionsNextPageToken && !isLoadingMoreSuggestions) {
+      loadSuggestions(suggestionsNextPageToken);
+    }
+  }, [suggestionsNextPageToken, isLoadingMoreSuggestions, loadSuggestions]);
 
   const handleAddTrack = useCallback(async (video: YouTubeVideo) => {
     setAddingId(video.id);
@@ -237,7 +301,7 @@ export function YouTubeSearchModal({
                 />
               </div>
               <Button
-                onClick={handleSearch}
+                onClick={() => handleSearch()}
                 disabled={!query.trim() || isSearching}
                 className="h-11 px-5"
               >
@@ -249,6 +313,16 @@ export function YouTubeSearchModal({
               </Button>
             </div>
 
+            {/* Results header with count */}
+            {results.length > 0 && !isSearching && (
+              <div className="flex items-center justify-between text-sm text-slate-500 px-1">
+                <span>
+                  Showing {results.length} of {searchTotalResults.toLocaleString()} results
+                  {lastSearchQuery && <span className="text-slate-400"> for &quot;{lastSearchQuery}&quot;</span>}
+                </span>
+              </div>
+            )}
+
             {/* Results */}
             <div className="space-y-2 max-h-96 overflow-y-auto">
               {isSearching ? (
@@ -257,7 +331,40 @@ export function YouTubeSearchModal({
                   <p className="text-slate-500">Searching YouTube...</p>
                 </div>
               ) : results.length > 0 ? (
-                results.map((video) => renderVideoCard(video))
+                <>
+                  {results.map((video) => renderVideoCard(video))}
+
+                  {/* Load More Button */}
+                  {searchNextPageToken && (
+                    <div className="pt-3 pb-1">
+                      <Button
+                        variant="outline"
+                        onClick={handleLoadMoreResults}
+                        disabled={isLoadingMore}
+                        className="w-full"
+                      >
+                        {isLoadingMore ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Loading more...
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-4 h-4 mr-2" />
+                            Load more results
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* End of results indicator */}
+                  {!searchNextPageToken && results.length > 0 && (
+                    <p className="text-center text-sm text-slate-400 py-3">
+                      End of results
+                    </p>
+                  )}
+                </>
               ) : error ? (
                 <div className="py-12 text-center">
                   <p className="text-slate-500">{error}</p>
@@ -279,30 +386,72 @@ export function YouTubeSearchModal({
 
         {/* Suggestions Tab */}
         {activeTab === 'suggestions' && (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {isLoadingSuggestions ? (
-              <div className="py-12 text-center">
-                <Loader2 className="w-8 h-8 mx-auto text-indigo-500 animate-spin mb-3" />
-                <p className="text-slate-500">Loading suggestions...</p>
-              </div>
-            ) : suggestions.length > 0 ? (
-              <>
-                <p className="text-sm text-slate-500 mb-3">
-                  Based on your current track, you might also like:
-                </p>
-                {suggestions.map((video) => renderVideoCard(video))}
-              </>
-            ) : (
-              <div className="py-12 text-center">
-                <Youtube className="w-12 h-12 mx-auto text-slate-300 mb-3" />
-                <p className="text-slate-500">
-                  {currentTrackId
-                    ? 'No suggestions available for this track'
-                    : 'Play a track to get suggestions'}
-                </p>
+          <>
+            {/* Suggestions header with count */}
+            {suggestions.length > 0 && !isLoadingSuggestions && (
+              <div className="flex items-center justify-between text-sm text-slate-500 px-1">
+                <span>
+                  Showing {suggestions.length} of {suggestionsTotalResults.toLocaleString()} suggestions
+                </span>
               </div>
             )}
-          </div>
+
+            <div className="space-y-2 max-h-96 overflow-y-auto">
+              {isLoadingSuggestions ? (
+                <div className="py-12 text-center">
+                  <Loader2 className="w-8 h-8 mx-auto text-indigo-500 animate-spin mb-3" />
+                  <p className="text-slate-500">Loading suggestions...</p>
+                </div>
+              ) : suggestions.length > 0 ? (
+                <>
+                  <p className="text-sm text-slate-500 mb-3">
+                    Based on your current track, you might also like:
+                  </p>
+                  {suggestions.map((video) => renderVideoCard(video))}
+
+                  {/* Load More Button */}
+                  {suggestionsNextPageToken && (
+                    <div className="pt-3 pb-1">
+                      <Button
+                        variant="outline"
+                        onClick={handleLoadMoreSuggestions}
+                        disabled={isLoadingMoreSuggestions}
+                        className="w-full"
+                      >
+                        {isLoadingMoreSuggestions ? (
+                          <>
+                            <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                            Loading more...
+                          </>
+                        ) : (
+                          <>
+                            <ChevronDown className="w-4 h-4 mr-2" />
+                            Load more suggestions
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* End of suggestions indicator */}
+                  {!suggestionsNextPageToken && suggestions.length > 0 && (
+                    <p className="text-center text-sm text-slate-400 py-3">
+                      End of suggestions
+                    </p>
+                  )}
+                </>
+              ) : (
+                <div className="py-12 text-center">
+                  <Youtube className="w-12 h-12 mx-auto text-slate-300 mb-3" />
+                  <p className="text-slate-500">
+                    {currentTrackId
+                      ? 'No suggestions available for this track'
+                      : 'Play a track to get suggestions'}
+                  </p>
+                </div>
+              )}
+            </div>
+          </>
         )}
       </div>
     </Modal>

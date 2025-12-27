@@ -12,10 +12,19 @@ export interface YouTubeSearchResult {
   publishedAt: string;
 }
 
+export interface YouTubeSearchResponse {
+  results: YouTubeSearchResult[];
+  nextPageToken?: string;
+  prevPageToken?: string;
+  totalResults: number;
+  resultsPerPage: number;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const query = searchParams.get('q');
   const maxResults = searchParams.get('maxResults') || '10';
+  const pageToken = searchParams.get('pageToken');
 
   if (!query) {
     return NextResponse.json(
@@ -40,6 +49,11 @@ export async function GET(request: NextRequest) {
     searchUrl.searchParams.set('videoCategoryId', '10'); // Music category
     searchUrl.searchParams.set('maxResults', maxResults);
     searchUrl.searchParams.set('key', YOUTUBE_API_KEY);
+
+    // Add page token for pagination if provided
+    if (pageToken) {
+      searchUrl.searchParams.set('pageToken', pageToken);
+    }
 
     const searchResponse = await fetch(searchUrl.toString());
     if (!searchResponse.ok) {
@@ -80,7 +94,15 @@ export async function GET(request: NextRequest) {
       publishedAt: item.snippet.publishedAt,
     }));
 
-    return NextResponse.json({ results });
+    const response: YouTubeSearchResponse = {
+      results,
+      nextPageToken: searchData.nextPageToken,
+      prevPageToken: searchData.prevPageToken,
+      totalResults: searchData.pageInfo?.totalResults || results.length,
+      resultsPerPage: searchData.pageInfo?.resultsPerPage || parseInt(maxResults),
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('YouTube search error:', error);
     return NextResponse.json(

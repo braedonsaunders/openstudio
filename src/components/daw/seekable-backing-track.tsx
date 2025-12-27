@@ -24,6 +24,7 @@ interface SeekableBackingTrackProps {
   onSeek: (time: number) => void;
   stemsAvailable: boolean;
   stemMixState: StemMixState;
+  waveformData?: number[] | null;
 }
 
 const STEM_COLORS = {
@@ -42,19 +43,36 @@ export function SeekableBackingTrack({
   onSeek,
   stemsAvailable,
   stemMixState,
+  waveformData: realWaveformData,
 }: SeekableBackingTrackProps) {
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
-  const scrubberRef = useRef<HTMLDivElement>(null);
-  const waveformData = useRef<number[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
+  const placeholderWaveform = useRef<number[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
 
-  // Generate placeholder waveform data
+  // Detect if this is a YouTube track
+  const isYouTube = !!track.youtubeId;
+
+  // Generate placeholder waveform data only when needed
   useEffect(() => {
-    const samples = Math.floor(duration * 100);
-    waveformData.current = Array.from({ length: samples }, () => 0.2 + Math.random() * 0.8);
-  }, [duration]);
+    if (!realWaveformData && duration > 0) {
+      const samples = 300;
+      if (isYouTube) {
+        // YouTube: create a smooth, ghostly sine-wave pattern
+        placeholderWaveform.current = Array.from({ length: samples }, (_, i) => {
+          const x = i / samples;
+          // Layered sine waves for a flowing, ghostly look
+          return 0.3 + 0.2 * Math.sin(x * Math.PI * 8) + 0.15 * Math.sin(x * Math.PI * 16) + 0.1 * Math.sin(x * Math.PI * 4);
+        });
+      } else {
+        // Regular placeholder: random bars
+        placeholderWaveform.current = Array.from({ length: samples }, () => 0.2 + Math.random() * 0.8);
+      }
+    }
+  }, [duration, realWaveformData, isYouTube]);
+
+  // Get the waveform data to use
+  const waveformToRender = realWaveformData || placeholderWaveform.current;
 
   // Draw waveform
   useEffect(() => {
@@ -73,7 +91,7 @@ export function SeekableBackingTrack({
 
     const width = rect.width;
     const height = rect.height;
-    const data = waveformData.current;
+    const data = waveformToRender;
     const progress = duration > 0 ? currentTime / duration : 0;
 
     ctx.clearRect(0, 0, width, height);
@@ -93,15 +111,30 @@ export function SeekableBackingTrack({
 
       const isPlayed = i / barsCount < progress;
 
-      // Gradient effect for played/unplayed
-      if (isPlayed) {
-        ctx.fillStyle = '#818cf8'; // Bright indigo
-        ctx.shadowBlur = 2;
-        ctx.shadowColor = '#818cf8';
+      if (isYouTube) {
+        // YouTube skeleton style: red/pink gradient with dashed/ghostly appearance
+        if (isPlayed) {
+          ctx.fillStyle = '#f87171'; // Red-400
+          ctx.shadowBlur = 3;
+          ctx.shadowColor = '#ef4444';
+          ctx.globalAlpha = 0.9;
+        } else {
+          ctx.fillStyle = '#7f1d1d'; // Red-900 (very dark)
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.35;
+        }
       } else {
-        ctx.fillStyle = '#3730a3'; // Darker indigo
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 0.6;
+        // Normal waveform style (indigo for real/uploaded tracks)
+        if (isPlayed) {
+          ctx.fillStyle = '#818cf8'; // Bright indigo
+          ctx.shadowBlur = 2;
+          ctx.shadowColor = '#818cf8';
+          ctx.globalAlpha = 1;
+        } else {
+          ctx.fillStyle = '#3730a3'; // Darker indigo
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.6;
+        }
       }
 
       // Draw mirrored bar
@@ -111,13 +144,13 @@ export function SeekableBackingTrack({
     }
 
     ctx.shadowBlur = 0;
-  }, [duration, currentTime]);
+  }, [duration, currentTime, waveformToRender, isYouTube]);
 
-  // Handle scrubber interaction
-  const handleScrubberClick = useCallback((e: React.MouseEvent) => {
-    if (!isMaster || !scrubberRef.current || !duration) return;
+  // Handle scrubber interaction - uses currentTarget for position
+  const handleScrubberClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isMaster || !duration) return;
 
-    const rect = scrubberRef.current.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const ratio = x / rect.width;
     const seekTime = ratio * duration;
@@ -125,10 +158,10 @@ export function SeekableBackingTrack({
     onSeek(Math.max(0, Math.min(duration, seekTime)));
   }, [isMaster, duration, onSeek]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!scrubberRef.current || !duration) return;
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!duration) return;
 
-    const rect = scrubberRef.current.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const ratio = Math.max(0, Math.min(1, x / rect.width));
     setHoverTime(ratio * duration);
@@ -151,7 +184,12 @@ export function SeekableBackingTrack({
       {/* Header */}
       <div className="h-10 px-4 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <div className={cn(
+            "w-7 h-7 rounded-lg flex items-center justify-center shadow-lg",
+            isYouTube
+              ? "bg-gradient-to-br from-red-500 to-red-700 shadow-red-500/20"
+              : "bg-gradient-to-br from-indigo-500 to-purple-600 shadow-indigo-500/20"
+          )}>
             <Music className="w-4 h-4 text-white" />
           </div>
           <div className="flex flex-col">
@@ -160,9 +198,16 @@ export function SeekableBackingTrack({
               <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">{track.artist}</span>
             )}
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
-            <Waves className="w-3 h-3 text-indigo-400" />
-            <span className="text-[10px] font-medium text-indigo-400">BACKING TRACK</span>
+          <div className={cn(
+            "flex items-center gap-1.5 px-2 py-0.5 rounded border",
+            isYouTube
+              ? "bg-red-500/10 border-red-500/20"
+              : "bg-indigo-500/10 border-indigo-500/20"
+          )}>
+            <Waves className={cn("w-3 h-3", isYouTube ? "text-red-400" : "text-indigo-400")} />
+            <span className={cn("text-[10px] font-medium", isYouTube ? "text-red-400" : "text-indigo-400")}>
+              {isYouTube ? "YOUTUBE" : "BACKING TRACK"}
+            </span>
           </div>
         </div>
 
@@ -182,8 +227,16 @@ export function SeekableBackingTrack({
       {/* Waveform and Scrubber */}
       {isExpanded && (
         <div className="relative">
-          {/* Waveform display */}
-          <div className="h-16 relative">
+          {/* Waveform display - clickable for seeking */}
+          <div
+            onClick={handleScrubberClick}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            className={cn(
+              'h-16 relative',
+              isMaster ? 'cursor-pointer' : 'cursor-default'
+            )}
+          >
             <canvas
               ref={waveformCanvasRef}
               className="absolute inset-0 w-full h-full"
@@ -191,20 +244,39 @@ export function SeekableBackingTrack({
 
             {/* Progress overlay */}
             <div
-              className="absolute top-0 bottom-0 left-0 bg-indigo-500/10 pointer-events-none"
+              className={cn(
+                "absolute top-0 bottom-0 left-0 pointer-events-none",
+                isYouTube ? "bg-red-500/10" : "bg-indigo-500/10"
+              )}
               style={{ width: `${progress}%` }}
             />
 
             {/* Playhead */}
             <div
-              className="absolute top-0 bottom-0 w-0.5 bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.6)] pointer-events-none"
+              className={cn(
+                "absolute top-0 bottom-0 w-0.5 pointer-events-none",
+                isYouTube
+                  ? "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)]"
+                  : "bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.6)]"
+              )}
               style={{ left: `${progress}%` }}
             />
+
+            {/* Hover time indicator on waveform */}
+            {hoverTime !== null && isMaster && (
+              <div
+                className="absolute top-0 bottom-0 w-px bg-white/30 pointer-events-none"
+                style={{ left: `${(hoverTime / duration) * 100}%` }}
+              >
+                <div className="absolute top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-zinc-800 rounded text-[9px] text-white font-mono whitespace-nowrap">
+                  {formatTime(hoverTime)}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Scrubber / Timeline */}
+          {/* Timeline - also clickable for seeking */}
           <div
-            ref={scrubberRef}
             onClick={handleScrubberClick}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
@@ -213,34 +285,39 @@ export function SeekableBackingTrack({
               isMaster ? 'cursor-pointer' : 'cursor-default'
             )}
           >
-            {/* Timeline ticks */}
+            {/* Timeline ticks - adaptive intervals based on duration */}
             <div className="absolute inset-0 flex items-center">
-              {Array.from({ length: Math.ceil(duration / 10) + 1 }).map((_, i) => {
-                const time = i * 10;
-                const percent = (time / duration) * 100;
-                if (percent > 100) return null;
+              {(() => {
+                // Calculate interval based on duration to show ~6-10 markers max
+                const getInterval = () => {
+                  if (duration <= 60) return 10;      // 10s intervals for < 1 min
+                  if (duration <= 180) return 30;     // 30s intervals for < 3 min
+                  if (duration <= 360) return 60;     // 1 min intervals for < 6 min
+                  if (duration <= 600) return 90;     // 1.5 min intervals for < 10 min
+                  return 120;                          // 2 min intervals for longer tracks
+                };
+                const interval = getInterval();
+                const tickCount = Math.ceil(duration / interval) + 1;
 
-                return (
-                  <div
-                    key={i}
-                    className="absolute flex flex-col items-center"
-                    style={{ left: `${percent}%` }}
-                  >
-                    <div className="w-px h-2 bg-zinc-600" />
-                    <span className="text-[9px] text-zinc-500 mt-0.5 font-mono">
-                      {formatTime(time)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                return Array.from({ length: tickCount }).map((_, i) => {
+                  const time = i * interval;
+                  const percent = (time / duration) * 100;
+                  if (percent > 100) return null;
 
-            {/* Progress bar */}
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-800">
-              <div
-                className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 transition-all duration-100"
-                style={{ width: `${progress}%` }}
-              />
+                  return (
+                    <div
+                      key={i}
+                      className="absolute flex flex-col items-center"
+                      style={{ left: `${percent}%` }}
+                    >
+                      <div className="w-px h-2 bg-zinc-600" />
+                      <span className="text-[9px] text-zinc-500 mt-0.5 font-mono">
+                        {formatTime(time)}
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
             {/* Hover time indicator */}

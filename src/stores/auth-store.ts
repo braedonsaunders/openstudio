@@ -81,7 +81,9 @@ export const useAuthStore = create<AuthState>()(
         ...initialState,
 
         initialize: async () => {
-          if (get().isInitialized) return;
+          // Prevent concurrent calls - check both isInitialized and isLoading
+          const state = get();
+          if (state.isInitialized || state.isLoading) return;
 
           set({ isLoading: true });
 
@@ -114,11 +116,15 @@ export const useAuthStore = create<AuthState>()(
                 unlockedAchievements,
                 friends,
                 pendingFriendRequests: pending,
+                isLoading: false,
+                isInitialized: true,
               });
+            } else {
+              // No user session - mark as initialized but not loading
+              set({ isLoading: false, isInitialized: true });
             }
           } catch (error) {
             console.error('Failed to initialize auth:', error);
-          } finally {
             set({ isLoading: false, isInitialized: true });
           }
         },
@@ -127,9 +133,16 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true });
 
           try {
-            await authApi.signUp(email, password, username, displayName);
+            const result = await authApi.signUp(email, password, username, displayName);
+
+            // Check if email confirmation is required
+            if (result.user && !result.session) {
+              // Email confirmation required - don't initialize yet
+              throw new Error('Please check your email to confirm your account before signing in.');
+            }
 
             // After signup, initialize to load profile
+            set({ isInitialized: false }); // Reset to allow re-initialization
             await get().initialize();
           } finally {
             set({ isLoading: false });
@@ -406,9 +419,9 @@ export const useAuthStore = create<AuthState>()(
       }),
       {
         name: 'openstudio-auth',
-        partialize: (state) => ({
-          // Only persist non-sensitive data
-          isInitialized: state.isInitialized,
+        partialize: () => ({
+          // Don't persist anything - always fetch fresh session on load
+          // This ensures the auth state is always in sync with Supabase
         }),
       }
     )

@@ -11,9 +11,9 @@ export function Card({ className, variant = 'default', children, ...props }: Car
     <div
       className={cn(
         'rounded-2xl p-6',
-        variant === 'default' && 'bg-white border border-slate-200',
-        variant === 'elevated' && 'bg-white shadow-lg shadow-slate-200/50 border border-slate-100',
-        variant === 'bordered' && 'bg-slate-50/50 border border-slate-200',
+        variant === 'default' && 'bg-white dark:bg-gray-900 border border-slate-200 dark:border-gray-800',
+        variant === 'elevated' && 'bg-white dark:bg-gray-900 shadow-lg shadow-slate-200/50 dark:shadow-none border border-slate-100 dark:border-gray-800',
+        variant === 'bordered' && 'bg-slate-50/50 dark:bg-gray-900/50 border border-slate-200 dark:border-gray-800',
         className
       )}
       {...props}
@@ -37,7 +37,7 @@ interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {}
 
 export function CardTitle({ className, children, ...props }: CardTitleProps) {
   return (
-    <h3 className={cn('text-lg font-semibold text-slate-900', className)} {...props}>
+    <h3 className={cn('text-lg font-semibold text-slate-900 dark:text-white', className)} {...props}>
       {children}
     </h3>
   );

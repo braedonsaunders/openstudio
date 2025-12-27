@@ -46,6 +46,7 @@ export class AudioEngine {
   private workletNode: AudioWorkletNode | null = null;
   private onLevelUpdate: ((levels: Map<string, number>) => void) | null = null;
   private levelUpdateInterval: NodeJS.Timeout | null = null;
+  private onTrackEnded: (() => void) | null = null;
 
   constructor(config: Partial<AudioEngineConfig> = {}) {
     this.config = { ...defaultConfig, ...config };
@@ -183,11 +184,26 @@ export class AudioEngine {
     }
 
     try {
-      const response = await fetch(url, { mode: 'cors' });
+      console.log('Loading backing track from:', url);
+      const response = await fetch(url);
       if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('Failed to fetch audio:', response.status, errorText);
         throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
       }
+
+      const contentType = response.headers.get('Content-Type') || '';
+      if (!contentType.startsWith('audio/')) {
+        console.error('Response is not audio:', contentType);
+        throw new Error(`Invalid content type: ${contentType}`);
+      }
+
       const arrayBuffer = await response.arrayBuffer();
+      if (arrayBuffer.byteLength === 0) {
+        throw new Error('Audio file is empty');
+      }
+
+      console.log('Decoding audio data, size:', arrayBuffer.byteLength);
       this.backingTrackBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
       console.log('Backing track loaded successfully, duration:', this.backingTrackBuffer.duration);
     } catch (error) {
@@ -235,13 +251,22 @@ export class AudioEngine {
   }
 
   playBackingTrack(syncTimestamp: number, offset: number = 0): void {
-    if (!this.audioContext || !this.backingTrackBuffer || !this.backingTrackGain) {
-      console.error('Cannot play: audio context, buffer, or gain not ready');
+    if (!this.audioContext) {
+      console.error('Cannot play: audio context not initialized');
+      return;
+    }
+    if (!this.backingTrackBuffer) {
+      console.error('Cannot play: no audio buffer loaded');
+      return;
+    }
+    if (!this.backingTrackGain) {
+      console.error('Cannot play: gain node not ready');
       return;
     }
 
     // Resume if suspended
     if (this.audioContext.state === 'suspended') {
+      console.log('Resuming suspended audio context');
       this.audioContext.resume();
     }
 
@@ -255,7 +280,17 @@ export class AudioEngine {
     this.backingTrackSource.buffer = this.backingTrackBuffer;
     this.backingTrackSource.connect(this.backingTrackGain);
 
+    // Handle track end
+    this.backingTrackSource.onended = () => {
+      // Only trigger if we were playing and reached the end naturally
+      if (this.isPlaying) {
+        this.isPlaying = false;
+        this.onTrackEnded?.();
+      }
+    };
+
     const startTime = this.audioContext.currentTime + delay;
+    console.log('Starting playback at offset:', offset, 'delay:', delay);
     this.backingTrackSource.start(startTime, offset);
 
     this.playbackStartTime = startTime;
@@ -272,6 +307,8 @@ export class AudioEngine {
     const delay = Math.max(0, syncTimestamp - now) / 1000;
     const startTime = this.audioContext.currentTime + delay;
 
+    let isFirst = true;
+
     // Play each stem that is enabled
     for (const [stemType, buffer] of this.stemBuffers.entries()) {
       const stemState = this.stemMixState[stemType as keyof StemMixState];
@@ -279,6 +316,17 @@ export class AudioEngine {
 
       const source = this.audioContext.createBufferSource();
       source.buffer = buffer;
+
+      // Hook track end to the first stem source
+      if (isFirst) {
+        source.onended = () => {
+          if (this.isPlaying) {
+            this.isPlaying = false;
+            this.onTrackEnded?.();
+          }
+        };
+        isFirst = false;
+      }
 
       let gainNode = this.stemGains.get(stemType);
       if (!gainNode) {
@@ -361,6 +409,36 @@ export class AudioEngine {
     return this.backingTrackBuffer?.duration || 0;
   }
 
+  /**
+   * Extract waveform data from the loaded backing track buffer
+   * @param numBars Number of bars/samples to generate for visualization
+   * @returns Normalized array of amplitude values (0-1)
+   */
+  extractWaveformData(numBars: number = 200): number[] {
+    if (!this.backingTrackBuffer) return [];
+
+    const channelData = this.backingTrackBuffer.getChannelData(0);
+    const samplesPerBar = Math.floor(channelData.length / numBars);
+    const waveform: number[] = [];
+
+    for (let i = 0; i < numBars; i++) {
+      let sum = 0;
+      const start = i * samplesPerBar;
+      const end = Math.min(start + samplesPerBar, channelData.length);
+
+      for (let j = start; j < end; j++) {
+        sum += Math.abs(channelData[j]);
+      }
+      waveform.push(sum / (end - start));
+    }
+
+    // Normalize to 0-1 range
+    const max = Math.max(...waveform);
+    if (max === 0) return waveform.map(() => 0.5);
+
+    return waveform.map((v) => Math.max(0.1, v / max));
+  }
+
   isCurrentlyPlaying(): boolean {
     return this.isPlaying;
   }
@@ -382,6 +460,10 @@ export class AudioEngine {
 
   setOnLevelUpdate(callback: (levels: Map<string, number>) => void): void {
     this.onLevelUpdate = callback;
+  }
+
+  setOnTrackEnded(callback: () => void): void {
+    this.onTrackEnded = callback;
   }
 
   private startLevelMonitoring(): void {

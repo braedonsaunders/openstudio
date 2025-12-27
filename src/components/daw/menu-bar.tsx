@@ -48,7 +48,10 @@ import {
   HelpCircle,
   Info,
   ChevronRight,
+  Sun,
+  Moon,
 } from 'lucide-react';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 interface MenuItem {
   label: string;
@@ -143,6 +146,8 @@ export function MenuBar({
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -288,7 +293,7 @@ export function MenuBar({
   return (
     <div
       ref={menuBarRef}
-      className="h-6 bg-[#0d0d12] border-b border-white/5 flex items-center px-2 gap-0 shrink-0 select-none"
+      className="h-6 bg-gray-100 dark:bg-[#0d0d12] border-b border-gray-200 dark:border-white/5 flex items-center px-2 gap-0 shrink-0 select-none"
     >
       {menus.map((menu) => (
         <div key={menu.label} className="relative">
@@ -298,8 +303,8 @@ export function MenuBar({
             className={cn(
               'px-2.5 py-0.5 text-[11px] font-medium rounded transition-colors',
               openMenu === menu.label
-                ? 'bg-white/10 text-white'
-                : 'text-zinc-400 hover:text-zinc-200 hover:bg-white/5'
+                ? 'bg-gray-200 dark:bg-white/10 text-gray-900 dark:text-white'
+                : 'text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-zinc-200 hover:bg-gray-200 dark:hover:bg-white/5'
             )}
           >
             {menu.label}
@@ -307,10 +312,10 @@ export function MenuBar({
 
           {/* Dropdown */}
           {openMenu === menu.label && (
-            <div className="absolute top-full left-0 mt-0.5 min-w-[200px] bg-[#1a1a22] border border-white/10 rounded-lg shadow-xl shadow-black/50 py-1 z-50">
+            <div className="absolute top-full left-0 mt-0.5 min-w-[200px] bg-white dark:bg-[#1a1a22] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl shadow-black/20 dark:shadow-black/50 py-1 z-50">
               {menu.items.map((item, index) =>
                 item.divider ? (
-                  <div key={`divider-${index}`} className="h-px bg-white/5 my-1 mx-2" />
+                  <div key={`divider-${index}`} className="h-px bg-gray-200 dark:bg-white/5 my-1 mx-2" />
                 ) : (
                   <button
                     key={item.label}
@@ -319,21 +324,21 @@ export function MenuBar({
                     className={cn(
                       'w-full px-3 py-1.5 flex items-center gap-2.5 text-left transition-colors',
                       item.disabled
-                        ? 'text-zinc-600 cursor-not-allowed'
-                        : 'text-zinc-300 hover:bg-white/5 hover:text-white'
+                        ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+                        : 'text-gray-600 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 hover:text-gray-900 dark:hover:text-white'
                     )}
                   >
-                    <span className="w-4 flex items-center justify-center text-zinc-500">
+                    <span className="w-4 flex items-center justify-center text-gray-400 dark:text-zinc-500">
                       {item.icon}
                     </span>
                     <span className="flex-1 text-[11px]">{item.label}</span>
                     {item.shortcut && (
-                      <span className="text-[10px] text-zinc-500 font-mono">
+                      <span className="text-[10px] text-gray-400 dark:text-zinc-500 font-mono">
                         {item.shortcut}
                       </span>
                     )}
                     {item.submenu && (
-                      <ChevronRight className="w-3 h-3 text-zinc-500" />
+                      <ChevronRight className="w-3 h-3 text-gray-400 dark:text-zinc-500" />
                     )}
                   </button>
                 )
@@ -343,11 +348,18 @@ export function MenuBar({
         </div>
       ))}
 
-      {/* Right side - keyboard shortcut hint */}
+      {/* Right side - theme toggle and keyboard shortcut hint */}
       <div className="flex-1" />
       <button
+        onClick={toggleTheme}
+        className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      >
+        {isDark ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
+      </button>
+      <button
         onClick={onShowShortcuts}
-        className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-zinc-500 hover:text-zinc-300 transition-colors"
+        className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
       >
         <Keyboard className="w-3 h-3" />
         <span>?</span>

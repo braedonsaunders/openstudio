@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { cn } from '@/lib/utils';
+import { v4 as uuidv4 } from 'uuid';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
@@ -12,13 +12,16 @@ import { TransportBar } from './transport-bar';
 import { TrackHeadersPanel } from './track-headers-panel';
 import { LiveArrangementView } from './live-arrangement-view';
 import { PanelDock } from './panel-dock';
+import { ResizeHandle } from './resize-handle';
 import { BottomDock } from './bottom-dock';
 import { KeyboardShortcuts } from './keyboard-shortcuts';
 import { AIGenerator } from '../tracks/ai-generator';
 import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
-import { AudioSettingsModal, type AudioSettings } from '../settings/audio-settings-modal';
+import { OutputSettingsModal } from '../settings/output-settings-modal';
+import { useTheme } from '@/components/theme/ThemeProvider';
+import { Sun, Moon } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
 import type { SunoGenerationConfig, SunoGenerationProgress } from '@/lib/ai/suno';
 
@@ -29,11 +32,34 @@ interface DAWLayoutProps {
 export type PanelType = 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai';
 
 export function DAWLayout({ roomId }: DAWLayoutProps) {
+  // Theme
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
   // Panel state
   const [activePanel, setActivePanel] = useState<PanelType>('mixer');
   const [isPanelDockVisible, setIsPanelDockVisible] = useState(true);
   const [isBottomDockVisible, setIsBottomDockVisible] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Resizable panel state
+  const [leftPanelWidth, setLeftPanelWidth] = useState(340); // Default width for track headers
+  const [rightPanelWidth, setRightPanelWidth] = useState(320); // Default w-80 = 320px
+
+  // Panel resize constraints
+  const MIN_LEFT_WIDTH = 180;
+  const MAX_LEFT_WIDTH = 400;
+  const MIN_RIGHT_WIDTH = 280;
+  const MAX_RIGHT_WIDTH = 500;
+
+  // Resize handlers
+  const handleLeftResize = useCallback((delta: number) => {
+    setLeftPanelWidth((prev) => Math.min(MAX_LEFT_WIDTH, Math.max(MIN_LEFT_WIDTH, prev + delta)));
+  }, []);
+
+  const handleRightResize = useCallback((delta: number) => {
+    setRightPanelWidth((prev) => Math.min(MAX_RIGHT_WIDTH, Math.max(MIN_RIGHT_WIDTH, prev + delta)));
+  }, []);
 
   // Modal state
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -46,7 +72,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const [generationProgress, setGenerationProgress] = useState<SunoGenerationProgress | null>(null);
   const [isSeparating, setIsSeparating] = useState(false);
   const [separationProgress, setSeparationProgress] = useState(0);
-  const [audioSettings, setAudioSettings] = useState<AudioSettings | undefined>();
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [sessionStartTime] = useState(() => Date.now());
 
@@ -69,7 +94,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     leave,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser } = useAudioEngine();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
 
@@ -94,6 +119,19 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   // Check if current track is a YouTube track
   const isYouTubeTrack = !!currentTrack?.youtubeId;
+
+  // Handle track end for looping
+  useEffect(() => {
+    if (isYouTubeTrack) return; // YouTube handles its own looping
+
+    setOnTrackEnded(() => {
+      if (loopEnabled && currentTrack) {
+        // Restart playback from the beginning
+        setCurrentTime(0);
+        playBackingTrack(Date.now(), 0);
+      }
+    });
+  }, [loopEnabled, currentTrack, isYouTubeTrack, setOnTrackEnded, setCurrentTime, playBackingTrack]);
 
   // YouTube playback controls (defined before keyboard shortcuts that use them)
   const handleYouTubePlay = useCallback(() => {
@@ -199,6 +237,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {
     // UploadModal handles the actual upload to R2, we just add the track
+    console.log('handleUpload received:', uploadedTrack);
     const track: BackingTrack = {
       id: uploadedTrack.id,
       name: uploadedTrack.name,
@@ -208,6 +247,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       uploadedBy: currentUser?.id || 'user',
       uploadedAt: new Date().toISOString(),
     };
+    console.log('Adding track to queue:', track);
     await addTrack(track);
   }, [addTrack, currentUser]);
 
@@ -262,14 +302,14 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       // Fallback to iframe mode if extraction fails
       console.log('Falling back to iframe mode');
       const track: BackingTrack = {
-        id: video.id,
+        id: uuidv4(), // Use UUID for database compatibility
         name: video.title,
         artist: video.channelTitle,
         duration: parseDuration(video.duration),
         url: '',
         uploadedBy: 'youtube',
         uploadedAt: new Date().toISOString(),
-        youtubeId: video.id,
+        youtubeId: video.id, // YouTube video ID for playback
       };
       await addTrack(track);
       setIsYouTubeModalOpen(false);
@@ -296,6 +336,16 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const handleYouTubeDurationChange = useCallback((duration: number) => {
     if (duration > 0) setDuration(duration);
   }, [setDuration]);
+
+  // Handle YouTube track end for looping
+  const handleYouTubeEnded = useCallback(() => {
+    if (loopEnabled && currentTrack?.youtubeId) {
+      // Restart from beginning
+      setCurrentTime(0);
+      youtubePlayerRef.current?.seek(0);
+      youtubePlayerRef.current?.play();
+    }
+  }, [loopEnabled, currentTrack, setCurrentTime]);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
     setIsGenerating(true);
@@ -407,12 +457,12 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     storeStemVolume(stem as 'vocals' | 'drums' | 'bass' | 'other', volume);
   }, [setStemVolume, storeStemVolume]);
 
-  const handleSettingsChange = useCallback((settings: AudioSettings) => {
-    setAudioSettings(settings);
-  }, []);
-
   return (
-    <div className="daw-theme h-screen flex flex-col bg-[#0a0a0f] text-white overflow-hidden">
+    <div className={`h-screen flex flex-col overflow-hidden transition-colors ${
+      isDark
+        ? 'daw-theme bg-[#0a0a0f] text-white'
+        : 'bg-gray-50 text-gray-900'
+    }`}>
       {/* Desktop Menu Bar */}
       <MenuBar
         onNewSession={() => {}}
@@ -467,11 +517,13 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         onMuteToggle={() => setMuted(!isMuted)}
         onSettingsClick={() => setIsSettingsModalOpen(true)}
         onLeave={leave}
+        loopEnabled={loopEnabled}
+        onLoopToggle={() => setLoopEnabled(!loopEnabled)}
       />
 
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0">
-        {/* Track Headers Panel - Left */}
+        {/* Track Headers Panel - Left (Resizable) */}
         <TrackHeadersPanel
           users={users}
           currentUser={currentUser}
@@ -480,7 +532,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onMuteUser={muteUser}
           onVolumeChange={setUserVolume}
           onMuteSelf={() => setMuted(!isMuted)}
+          width={leftPanelWidth}
         />
+
+        {/* Left Resize Handle */}
+        <ResizeHandle position="left" onResize={handleLeftResize} />
 
         {/* Live Arrangement View - Center (River Flow Design) */}
         <LiveArrangementView
@@ -492,7 +548,12 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           sessionStartTime={sessionStartTime}
         />
 
-        {/* Panel Dock - Right */}
+        {/* Right Resize Handle */}
+        {isPanelDockVisible && (
+          <ResizeHandle position="right" onResize={handleRightResize} />
+        )}
+
+        {/* Panel Dock - Right (Resizable) */}
         {isPanelDockVisible && (
           <PanelDock
             activePanel={activePanel}
@@ -513,6 +574,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                   onStateChange={handleYouTubeStateChange}
                   onTimeUpdate={handleYouTubeTimeUpdate}
                   onDurationChange={handleYouTubeDurationChange}
+                  onEnded={handleYouTubeEnded}
                   volume={backingTrackVolume * 100}
                 />
               ) : undefined
@@ -526,6 +588,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             // Chat props
             roomId={roomId}
             onSendMessage={sendMessage}
+            width={rightPanelWidth}
           />
         )}
       </div>
@@ -577,11 +640,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         currentTrackId={currentTrack?.youtubeId}
       />
 
-      <AudioSettingsModal
+      <OutputSettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
-        onSettingsChange={handleSettingsChange}
-        currentSettings={audioSettings}
       />
 
     </div>

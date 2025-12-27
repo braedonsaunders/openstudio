@@ -41,7 +41,7 @@ export async function signUp(email: string, password: string, username: string, 
     .from('user_profiles')
     .select('username')
     .eq('username', username)
-    .single();
+    .maybeSingle();
 
   if (existingUser) {
     throw new Error('Username already taken');
@@ -61,13 +61,8 @@ export async function signUp(email: string, password: string, username: string, 
 
   if (error) throw error;
 
-  // The trigger will create the profile, but we need to update username
-  if (data.user) {
-    await supabaseAuth
-      .from('user_profiles')
-      .update({ username, display_name: displayName })
-      .eq('id', data.user.id);
-  }
+  // Profile, stats, and avatar are created by the database trigger on auth.users
+  // No need to create them client-side
 
   return data;
 }
@@ -78,7 +73,16 @@ export async function signIn(email: string, password: string) {
     password,
   });
 
-  if (error) throw error;
+  if (error) {
+    // Provide user-friendly error messages
+    if (error.message.includes('Invalid login credentials')) {
+      throw new Error('Invalid email or password. Please check your credentials and try again.');
+    }
+    if (error.message.includes('Email not confirmed')) {
+      throw new Error('Please verify your email address before signing in.');
+    }
+    throw error;
+  }
   return data;
 }
 
@@ -201,7 +205,7 @@ export async function checkUsernameAvailable(username: string): Promise<boolean>
     .from('user_profiles')
     .select('username')
     .eq('username', username)
-    .single();
+    .maybeSingle();
 
   return !data;
 }

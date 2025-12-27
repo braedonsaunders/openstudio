@@ -19,14 +19,6 @@ const sizeClasses = {
   xl: 'w-24 h-24 text-3xl',
 };
 
-const frameSizes = {
-  xs: 'w-7 h-7',
-  sm: 'w-10 h-10',
-  md: 'w-14 h-14',
-  lg: 'w-20 h-20',
-  xl: 'w-28 h-28',
-};
-
 const frameColors: Record<string, string> = {
   bronze: 'ring-amber-600',
   silver: 'ring-gray-400',
@@ -34,6 +26,29 @@ const frameColors: Record<string, string> = {
   diamond: 'ring-cyan-300 ring-opacity-80',
   fire: 'ring-orange-500',
 };
+
+// Simple fallback avatar component
+function FallbackAvatar({
+  size,
+  username,
+  className,
+}: {
+  size: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  username?: string;
+  className?: string;
+}) {
+  const initial = username ? username.charAt(0).toUpperCase() : '?';
+  return (
+    <div className={`relative inline-flex items-center justify-center ${className || ''}`}>
+      <div
+        className={`relative rounded-full overflow-hidden ${sizeClasses[size]} flex items-center justify-center font-bold text-white`}
+        style={{ background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)' }}
+      >
+        {initial}
+      </div>
+    </div>
+  );
+}
 
 export function AvatarDisplay({
   avatar,
@@ -43,179 +58,185 @@ export function AvatarDisplay({
   showEffects = true,
   className = '',
 }: AvatarDisplayProps) {
-  // Get background style
-  const getBackgroundStyle = (): React.CSSProperties => {
-    if (!avatar) {
-      return {
+  // If no avatar or avatar is malformed, show fallback
+  if (!avatar || typeof avatar !== 'object') {
+    return <FallbackAvatar size={size} username={username} className={className} />;
+  }
+
+  try {
+    // Safely get background style
+    const getBackgroundStyle = (): React.CSSProperties => {
+      const defaultBackground = {
         background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
       };
-    }
 
-    const bg = avatar.background;
-    if (bg.type === 'solid') {
-      return { backgroundColor: bg.colors[0] };
-    } else if (bg.type === 'gradient') {
-      return {
-        background: `linear-gradient(135deg, ${bg.colors[0]} 0%, ${bg.colors[1] || bg.colors[0]} 100%)`,
-      };
-    }
-    return {
-      background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+      try {
+        const bg = avatar?.background;
+        if (!bg || typeof bg !== 'object') {
+          return defaultBackground;
+        }
+
+        if (bg.type === 'solid' && Array.isArray(bg.colors) && bg.colors[0]) {
+          return { backgroundColor: bg.colors[0] };
+        } else if (bg.type === 'gradient' && Array.isArray(bg.colors) && bg.colors[0]) {
+          return {
+            background: `linear-gradient(135deg, ${bg.colors[0]} 0%, ${bg.colors[1] || bg.colors[0]} 100%)`,
+          };
+        }
+        return defaultBackground;
+      } catch {
+        return defaultBackground;
+      }
     };
-  };
 
-  // Get initials for fallback
-  const getInitials = () => {
-    if (username) {
-      return username.charAt(0).toUpperCase();
-    }
-    return '?';
-  };
+    // Get initials for fallback
+    const getInitials = () => {
+      if (username) {
+        return username.charAt(0).toUpperCase();
+      }
+      return '?';
+    };
 
-  // Get skin tone
-  const skinTone = avatar?.skinTone || '#f5d0c5';
+    // Safely get avatar properties with defaults
+    const skinTone = avatar?.skinTone || '#f5d0c5';
+    const hairColor = avatar?.head?.hair?.color || '#4a3728';
+    const outfitColor = avatar?.body?.outfit?.topColor || '#3b82f6';
+    const frame = avatar?.frame;
+    const frameClass = frame && typeof frame === 'string' && frameColors[frame] ? frameColors[frame] : '';
+    const auraEffect = showEffects && avatar?.effects?.aura;
+    const particleEffect = showEffects && avatar?.effects?.particles;
 
-  // Get hair color
-  const hairColor = avatar?.head?.hair?.color || '#4a3728';
+    return (
+      <div className={`relative inline-flex items-center justify-center ${className}`}>
+        {/* Aura effect */}
+        {auraEffect === 'fire' && (
+          <div className="absolute inset-0 animate-pulse">
+            <div className={`absolute inset-0 ${sizeClasses[size]} rounded-full bg-orange-500/30 blur-md`} />
+          </div>
+        )}
+        {auraEffect === 'electric' && (
+          <div className="absolute inset-0 animate-pulse">
+            <div className={`absolute inset-0 ${sizeClasses[size]} rounded-full bg-blue-400/30 blur-md`} />
+          </div>
+        )}
 
-  // Get outfit colors
-  const outfitColor = avatar?.body?.outfit?.topColor || '#3b82f6';
-
-  // Check for frame
-  const frame = avatar?.frame;
-  const frameClass = frame && frameColors[frame] ? frameColors[frame] : '';
-
-  // Check for effects
-  const auraEffect = showEffects && avatar?.effects?.aura;
-  const particleEffect = showEffects && avatar?.effects?.particles;
-
-  return (
-    <div className={`relative inline-flex items-center justify-center ${className}`}>
-      {/* Aura effect */}
-      {auraEffect === 'fire' && (
-        <div className="absolute inset-0 animate-pulse">
-          <div className={`absolute inset-0 ${sizeClasses[size]} rounded-full bg-orange-500/30 blur-md`} />
-        </div>
-      )}
-      {auraEffect === 'electric' && (
-        <div className="absolute inset-0 animate-pulse">
-          <div className={`absolute inset-0 ${sizeClasses[size]} rounded-full bg-blue-400/30 blur-md`} />
-        </div>
-      )}
-
-      {/* Frame container */}
-      <div
-        className={`
-          relative rounded-full overflow-hidden
-          ${sizeClasses[size]}
-          ${showFrame && frame ? `ring-2 ${frameClass}` : ''}
-        `}
-        style={getBackgroundStyle()}
-      >
-        {/* Avatar illustration */}
-        <div className="absolute inset-0 flex items-end justify-center overflow-hidden">
-          {/* Simple avatar rendering */}
-          <svg
-            viewBox="0 0 100 100"
-            className="w-full h-full"
-            style={{ transform: 'translateY(10%)' }}
-          >
-            {/* Body/Outfit */}
-            <ellipse
-              cx="50"
-              cy="95"
-              rx="35"
-              ry="25"
-              fill={outfitColor}
-            />
-
-            {/* Neck */}
-            <rect
-              x="42"
-              y="55"
-              width="16"
-              height="15"
-              fill={skinTone}
-            />
-
-            {/* Head */}
-            <ellipse
-              cx="50"
-              cy="40"
-              rx="22"
-              ry="25"
-              fill={skinTone}
-            />
-
-            {/* Hair */}
-            <ellipse
-              cx="50"
-              cy="28"
-              rx="20"
-              ry="18"
-              fill={hairColor}
-            />
-
-            {/* Eyes */}
-            <circle cx="42" cy="42" r="3" fill="#1a1a2e" />
-            <circle cx="58" cy="42" r="3" fill="#1a1a2e" />
-            <circle cx="43" cy="41" r="1" fill="white" />
-            <circle cx="59" cy="41" r="1" fill="white" />
-
-            {/* Mouth based on expression */}
-            {avatar?.expression === 'happy' || avatar?.expression === 'excited' ? (
-              <path
-                d="M 42 52 Q 50 58 58 52"
-                fill="none"
-                stroke="#1a1a2e"
-                strokeWidth="2"
-                strokeLinecap="round"
+        {/* Frame container */}
+        <div
+          className={`
+            relative rounded-full overflow-hidden
+            ${sizeClasses[size]}
+            ${showFrame && frame ? `ring-2 ${frameClass}` : ''}
+          `}
+          style={getBackgroundStyle()}
+        >
+          {/* Avatar illustration */}
+          <div className="absolute inset-0 flex items-end justify-center overflow-hidden">
+            {/* Simple avatar rendering */}
+            <svg
+              viewBox="0 0 100 100"
+              className="w-full h-full"
+              style={{ transform: 'translateY(10%)' }}
+            >
+              {/* Body/Outfit */}
+              <ellipse
+                cx="50"
+                cy="95"
+                rx="35"
+                ry="25"
+                fill={outfitColor}
               />
-            ) : avatar?.expression === 'focused' ? (
-              <line
-                x1="44"
-                y1="52"
-                x2="56"
-                y2="52"
-                stroke="#1a1a2e"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            ) : (
-              <path
-                d="M 44 52 Q 50 54 56 52"
-                fill="none"
-                stroke="#1a1a2e"
-                strokeWidth="2"
-                strokeLinecap="round"
-              />
-            )}
 
-            {/* Eyebrows */}
-            <line x1="38" y1="35" x2="45" y2="36" stroke={hairColor} strokeWidth="2" strokeLinecap="round" />
-            <line x1="55" y1="36" x2="62" y2="35" stroke={hairColor} strokeWidth="2" strokeLinecap="round" />
-          </svg>
+              {/* Neck */}
+              <rect
+                x="42"
+                y="55"
+                width="16"
+                height="15"
+                fill={skinTone}
+              />
+
+              {/* Head */}
+              <ellipse
+                cx="50"
+                cy="40"
+                rx="22"
+                ry="25"
+                fill={skinTone}
+              />
+
+              {/* Hair */}
+              <ellipse
+                cx="50"
+                cy="28"
+                rx="20"
+                ry="18"
+                fill={hairColor}
+              />
+
+              {/* Eyes */}
+              <circle cx="42" cy="42" r="3" fill="#1a1a2e" />
+              <circle cx="58" cy="42" r="3" fill="#1a1a2e" />
+              <circle cx="43" cy="41" r="1" fill="white" />
+              <circle cx="59" cy="41" r="1" fill="white" />
+
+              {/* Mouth based on expression */}
+              {avatar?.expression === 'happy' || avatar?.expression === 'excited' ? (
+                <path
+                  d="M 42 52 Q 50 58 58 52"
+                  fill="none"
+                  stroke="#1a1a2e"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              ) : avatar?.expression === 'focused' ? (
+                <line
+                  x1="44"
+                  y1="52"
+                  x2="56"
+                  y2="52"
+                  stroke="#1a1a2e"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              ) : (
+                <path
+                  d="M 44 52 Q 50 54 56 52"
+                  fill="none"
+                  stroke="#1a1a2e"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                />
+              )}
+
+              {/* Eyebrows */}
+              <line x1="38" y1="35" x2="45" y2="36" stroke={hairColor} strokeWidth="2" strokeLinecap="round" />
+              <line x1="55" y1="36" x2="62" y2="35" stroke={hairColor} strokeWidth="2" strokeLinecap="round" />
+            </svg>
+          </div>
+
+          {/* Fallback initial if no avatar */}
+          {!avatar && (
+            <div className="absolute inset-0 flex items-center justify-center font-bold text-white">
+              {getInitials()}
+            </div>
+          )}
         </div>
 
-        {/* Fallback initial if no avatar */}
-        {!avatar && (
-          <div className="absolute inset-0 flex items-center justify-center font-bold text-white">
-            {getInitials()}
+        {/* Particle effects */}
+        {particleEffect === 'notes' && (
+          <div className="absolute -top-1 -right-1 text-xs">
+            <span className="animate-bounce inline-block">🎵</span>
+          </div>
+        )}
+        {particleEffect === 'stars' && (
+          <div className="absolute -top-1 -right-1 text-xs">
+            <span className="animate-pulse inline-block">✨</span>
           </div>
         )}
       </div>
-
-      {/* Particle effects */}
-      {particleEffect === 'notes' && (
-        <div className="absolute -top-1 -right-1 text-xs">
-          <span className="animate-bounce inline-block">🎵</span>
-        </div>
-      )}
-      {particleEffect === 'stars' && (
-        <div className="absolute -top-1 -right-1 text-xs">
-          <span className="animate-pulse inline-block">✨</span>
-        </div>
-      )}
-    </div>
-  );
+    );
+  } catch {
+    // If anything goes wrong, return a simple fallback
+    return <FallbackAvatar size={size} username={username} className={className} />;
+  }
 }

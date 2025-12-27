@@ -63,6 +63,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     pauseBackingTrack,
     seekTo,
     updateFromStats,
+    destroyEngine,
   } = useAudioEngine();
 
   // Join room
@@ -153,12 +154,16 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         setIsMaster(true);
         updateUser(user.id, { isMaster: true });
 
-        // Load existing tracks from database
+        // Load existing tracks from database (includes both file uploads and YouTube tracks)
         try {
           const response = await fetch(`/api/rooms/${roomId}/tracks`);
           if (response.ok) {
             const tracks = await response.json();
             if (tracks.length > 0) {
+              console.log('Loaded tracks from database:', tracks.length, 'tracks');
+              tracks.forEach((t: BackingTrack) => {
+                console.log(`  - ${t.name} (${t.youtubeId ? 'YouTube: ' + t.youtubeId : 'file upload'})`);
+              });
               setQueue({
                 tracks,
                 currentIndex: 0,
@@ -213,9 +218,27 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         const payload = data as { trackId: string; timestamp: number; syncTime: number };
         const track = queue.tracks.find((t) => t.id === payload.trackId);
         if (track) {
-          await loadBackingTrack(track);
-          playBackingTrack(payload.syncTime, payload.timestamp);
-          setQueuePlaying(true);
+          // YouTube tracks are handled by the YouTube player component, not audio engine
+          if (track.youtubeId) {
+            setQueuePlaying(true);
+            return;
+          }
+
+          // Ensure audio engine is initialized
+          try {
+            await initialize();
+          } catch (err) {
+            console.error('Failed to initialize audio engine for sync:', err);
+            return;
+          }
+
+          const loadSuccess = await loadBackingTrack(track);
+          if (loadSuccess) {
+            playBackingTrack(payload.syncTime, payload.timestamp);
+            setQueuePlaying(true);
+          } else {
+            console.error('Failed to load track for playback sync');
+          }
         }
       });
 
@@ -313,28 +336,70 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current = null;
     cloudflareRef.current = null;
 
+    // Clean up the audio engine
+    destroyEngine();
+
     reset();
-  }, [reset, roomId]);
+  }, [reset, roomId, destroyEngine]);
 
   // Master controls
   const play = useCallback(async () => {
-    if (!isMaster || !currentTrack) return;
+    console.log('Play called, isMaster:', isMaster, 'currentTrack:', currentTrack?.id);
+    if (!isMaster || !currentTrack) {
+      console.log('Play aborted: not master or no current track');
+      return;
+    }
+
+    // Skip audio engine for YouTube tracks - they use the YouTube player
+    if (currentTrack.youtubeId) {
+      console.log('YouTube track, delegating to YouTube player');
+      // YouTube playback is handled by YouTubePlayer component
+      // Just update state and broadcast
+      realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, Date.now() + 100);
+      setQueuePlaying(true);
+      return;
+    }
+
+    console.log('Playing uploaded track:', currentTrack.name, 'URL:', currentTrack.url);
+
+    // Ensure audio engine is initialized before attempting playback
+    try {
+      await initialize();
+    } catch (err) {
+      console.error('Failed to initialize audio engine:', err);
+      return;
+    }
 
     const syncTime = Date.now() + 100; // 100ms in future for sync
-    await loadBackingTrack(currentTrack);
+    console.log('Loading backing track...');
+    const loadSuccess = await loadBackingTrack(currentTrack);
+
+    if (!loadSuccess) {
+      console.error('Failed to load backing track, cannot play');
+      return;
+    }
+
+    console.log('Playing backing track at offset:', queue.currentTime);
     playBackingTrack(syncTime, queue.currentTime);
 
     realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, syncTime);
     setQueuePlaying(true);
-  }, [isMaster, currentTrack, loadBackingTrack, playBackingTrack, queue.currentTime, setQueuePlaying]);
+  }, [isMaster, currentTrack, initialize, loadBackingTrack, playBackingTrack, queue.currentTime, setQueuePlaying]);
 
   const pause = useCallback(async () => {
     if (!isMaster || !currentTrack) return;
 
+    // Get the current playback time before pausing
+    const { currentTime } = useAudioStore.getState();
+
     pauseBackingTrack();
-    realtimeRef.current?.broadcastPause(currentTrack.id, queue.currentTime);
+
+    // Save the current time so we can resume from this position
+    setQueueTime(currentTime);
+
+    realtimeRef.current?.broadcastPause(currentTrack.id, currentTime);
     setQueuePlaying(false);
-  }, [isMaster, currentTrack, pauseBackingTrack, queue.currentTime, setQueuePlaying]);
+  }, [isMaster, currentTrack, pauseBackingTrack, setQueueTime, setQueuePlaying]);
 
   const seek = useCallback(async (time: number) => {
     if (!isMaster || !currentTrack) return;
@@ -346,6 +411,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   // Queue management
   const addTrack = useCallback(async (track: BackingTrack) => {
+    console.log('addTrack called with:', { id: track.id, name: track.name, url: track.url, youtubeId: track.youtubeId });
     addToQueue(track);
 
     const updatedQueue = {
@@ -355,19 +421,28 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     realtimeRef.current?.broadcastQueueUpdate(updatedQueue);
 
-    // Persist track to database
+    // Persist track to database (both file uploads and YouTube tracks)
     try {
-      await fetch(`/api/rooms/${roomId}/tracks`, {
+      const response = await fetch(`/api/rooms/${roomId}/tracks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(track),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to persist track:', response.status, errorData);
+      } else {
+        const savedTrack = await response.json();
+        console.log('Track persisted to database:', savedTrack);
+      }
     } catch (err) {
       console.error('Failed to persist track:', err);
     }
 
     // If this is the first track, set it as current
     if (queue.tracks.length === 0) {
+      console.log('Setting as current track (first in queue)');
       setCurrentTrack(track);
       setQueue({ ...updatedQueue, currentIndex: 0 });
     }
