@@ -1,8 +1,8 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
-import { useMetronomeStore, selectEffectiveBpm } from '@/stores/metronome-store';
-import { useAnalysisStore } from '@/stores/analysis-store';
+import { useMetronomeStore } from '@/stores/metronome-store';
+import { useSessionTempoStore, selectTempo, selectTimeSignature } from '@/stores/session-tempo-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { MetronomeEngine } from '@/lib/audio/metronome-engine';
 
@@ -20,7 +20,7 @@ interface UseMetronomeResult {
   // Current state
   isPlaying: boolean;
   currentBeat: number;
-  effectiveBpm: number;
+  tempo: number;
 
   // Controls
   start: (syncTimestamp?: number, offset?: number) => void;
@@ -35,10 +35,11 @@ interface UseMetronomeResult {
 }
 
 /**
- * Hook to manage the metronome engine with automatic BPM syncing
+ * Hook to manage the metronome engine with automatic tempo syncing
+ *
  * Integrates with:
- * - Metronome store for settings
- * - Analysis store for BPM detection (follow mode)
+ * - Metronome store for settings (volume, click type, etc.)
+ * - Session Tempo store for BPM and time signature
  * - Audio store for playback state sync
  */
 export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
@@ -46,30 +47,23 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
 
   const engineRef = useRef<MetronomeEngine | null>(null);
 
-  // Store state
+  // Metronome settings store
   const {
     enabled,
-    bpm,
     volume,
-    bpmMode,
-    lockedBpm,
-    beatsPerBar,
-    beatUnit,
     clickType,
     accentFirstBeat,
     broadcastEnabled,
     isPlaying,
     setCurrentBeat,
     setIsPlaying,
-    setAnalyzerBpm,
-    recordTap,
+    setEnabled,
   } = useMetronomeStore();
 
-  // Get effective BPM from store
-  const effectiveBpm = useMetronomeStore(selectEffectiveBpm);
-
-  // Analysis store for BPM following
-  const { syncedAnalysis, localAnalysis } = useAnalysisStore();
+  // Session tempo store
+  const tempo = useSessionTempoStore(selectTempo);
+  const { beatsPerBar, beatUnit } = useSessionTempoStore(selectTimeSignature);
+  const recordTap = useSessionTempoStore((s) => s.recordTap);
 
   // Audio store for playback sync
   const audioIsPlaying = useAudioStore((s) => s.isPlaying);
@@ -89,7 +83,7 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     );
 
     engine.setCallbacks({
-      onBeat: (beat, isAccent) => {
+      onBeat: (beat) => {
         setCurrentBeat(beat);
       },
     });
@@ -111,28 +105,13 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     const engine = engineRef.current;
     if (!engine) return;
 
-    engine.updateSettings({
-      bpm: effectiveBpm,
-      volume,
-      beatsPerBar,
-      beatUnit,
-      clickType,
-      accentFirstBeat,
-      broadcastEnabled,
-    });
-  }, [effectiveBpm, volume, beatsPerBar, beatUnit, clickType, accentFirstBeat, broadcastEnabled]);
-
-  // ==========================================================================
-  // BPM Follow Mode
-  // ==========================================================================
-
-  // Update analyzer BPM when analysis data changes
-  useEffect(() => {
-    const detectedBpm = syncedAnalysis?.bpm || localAnalysis?.bpm;
-    if (detectedBpm !== null && detectedBpm !== undefined) {
-      setAnalyzerBpm(detectedBpm);
-    }
-  }, [syncedAnalysis?.bpm, localAnalysis?.bpm, setAnalyzerBpm]);
+    engine.setBpm(tempo);
+    engine.setVolume(volume);
+    engine.setBeatsPerBar(beatsPerBar);
+    engine.setBeatUnit(beatUnit);
+    engine.setClickType(clickType);
+    engine.setAccentFirstBeat(accentFirstBeat);
+  }, [tempo, volume, beatsPerBar, beatUnit, clickType, accentFirstBeat]);
 
   // ==========================================================================
   // Broadcast Management
@@ -156,7 +135,6 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
   // ==========================================================================
 
   // Auto-start/stop with backing track playback (optional behavior)
-  // This syncs the metronome to start when the backing track starts
   useEffect(() => {
     const engine = engineRef.current;
     if (!engine || !enabled) return;
@@ -165,10 +143,6 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
       // Start metronome synced with playback
       engine.start(undefined, currentTime);
       setIsPlaying(true);
-    } else if (!audioIsPlaying && engine.isPlaying()) {
-      // Optionally stop with playback (remove this if metronome should be independent)
-      // engine.stop();
-      // setIsPlaying(false);
     }
   }, [audioIsPlaying, enabled, currentTime, setIsPlaying]);
 
@@ -212,6 +186,19 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
   }, []);
 
   // ==========================================================================
+  // Toggle enabled state
+  // ==========================================================================
+
+  const handleToggle = useCallback(() => {
+    setEnabled(!enabled);
+    if (!enabled) {
+      start();
+    } else {
+      stop();
+    }
+  }, [enabled, setEnabled, start, stop]);
+
+  // ==========================================================================
   // Return
   // ==========================================================================
 
@@ -219,10 +206,10 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     engine: engineRef.current,
     isPlaying,
     currentBeat: useMetronomeStore((s) => s.currentBeat),
-    effectiveBpm,
+    tempo,
     start,
     stop,
-    toggle,
+    toggle: handleToggle,
     tap,
     getBroadcastStream,
   };

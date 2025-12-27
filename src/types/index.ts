@@ -48,6 +48,11 @@ export interface BackingTrack {
   aiGenerated?: boolean;
   youtubeId?: string;
   thumbnail?: string;
+  // Musical metadata (can be set manually or detected via analysis)
+  bpm?: number;
+  key?: string;
+  keyScale?: 'major' | 'minor';
+  timeSignature?: [number, number]; // e.g., [4, 4] for 4/4
 }
 
 export interface AudioStems {

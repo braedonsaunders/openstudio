@@ -7,6 +7,7 @@ import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { useTrackPersistence } from '@/hooks/useTrackPersistence';
 import { useTrackAudioSync } from '@/hooks/useTrackAudioSync';
+import { useSessionTempoSync } from '@/hooks/use-session-tempo-sync';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { MenuBar } from './menu-bar';
@@ -118,6 +119,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   // Sync track audio state (mute/solo/volume/effects) with audio engine
   useTrackAudioSync(currentUser?.id);
+
+  // Sync session tempo from track/analyzer to loop scheduler
+  useSessionTempoSync();
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);

@@ -510,12 +510,10 @@ export class MetronomeEngine {
 
   /**
    * Update settings from store
+   * Note: BPM, beatsPerBar, and beatUnit are managed separately via session-tempo-store
    */
   updateSettings(settings: Partial<MetronomeSettings>): void {
-    if (settings.bpm !== undefined) this.setBpm(settings.bpm);
     if (settings.volume !== undefined) this.setVolume(settings.volume);
-    if (settings.beatsPerBar !== undefined) this.setBeatsPerBar(settings.beatsPerBar);
-    if (settings.beatUnit !== undefined) this.setBeatUnit(settings.beatUnit);
     if (settings.clickType !== undefined) this.setClickType(settings.clickType);
     if (settings.accentFirstBeat !== undefined) this.setAccentFirstBeat(settings.accentFirstBeat);
 

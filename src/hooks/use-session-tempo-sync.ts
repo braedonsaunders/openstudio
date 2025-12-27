@@ -1,0 +1,137 @@
+'use client';
+
+import { useEffect } from 'react';
+import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-tempo-store';
+import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { useRoomStore } from '@/stores/room-store';
+
+/**
+ * Hook to synchronize session tempo across all stores and track sources.
+ *
+ * This hook:
+ * 1. Updates session tempo store when the backing track changes (if track has BPM metadata)
+ * 2. Updates session tempo store when synced analysis data changes
+ * 3. Updates loop tracks store master tempo from session tempo
+ *
+ * Should be used once at a high level in the application (e.g., in StudioPage or RoomPage).
+ */
+export function useSessionTempoSync(): void {
+  const setTrackMetadata = useSessionTempoStore((s) => s.setTrackMetadata);
+  const setAnalyzerData = useSessionTempoStore((s) => s.setAnalyzerData);
+  const tempo = useSessionTempoStore(selectTempo);
+  const { key, scale: keyScale } = useSessionTempoStore(selectKey);
+
+  const setMasterTempo = useLoopTracksStore((s) => s.setMasterTempo);
+  const setMasterKey = useLoopTracksStore((s) => s.setMasterKey);
+
+  // ==========================================================================
+  // Sync backing track metadata to session tempo store
+  // ==========================================================================
+  useEffect(() => {
+    // Subscribe to room store currentTrack changes
+    const unsubscribe = useRoomStore.subscribe(
+      (state) => state.currentTrack,
+      (currentTrack) => {
+        if (currentTrack) {
+          // Update session tempo with track metadata
+          setTrackMetadata({
+            bpm: currentTrack.bpm,
+            key: currentTrack.key,
+            keyScale: currentTrack.keyScale,
+            timeSignature: currentTrack.timeSignature,
+          });
+        } else {
+          // Clear track metadata when no track
+          setTrackMetadata(null);
+        }
+      },
+      { fireImmediately: true }
+    );
+
+    return unsubscribe;
+  }, [setTrackMetadata]);
+
+  // ==========================================================================
+  // Sync analyzer data to session tempo store
+  // ==========================================================================
+  useEffect(() => {
+    // Subscribe to room store synced analysis changes
+    const unsubscribe = useRoomStore.subscribe(
+      (state) => state.syncedAnalysis,
+      (syncedAnalysis) => {
+        if (syncedAnalysis) {
+          setAnalyzerData({
+            bpm: syncedAnalysis.bpm,
+            key: syncedAnalysis.key,
+            keyScale: syncedAnalysis.keyScale,
+            // Could add confidence here if available
+            bpmConfidence: 0.8, // Default confidence for synced data
+          });
+        } else {
+          setAnalyzerData({
+            bpm: null,
+            key: null,
+            keyScale: null,
+            bpmConfidence: 0,
+          });
+        }
+      },
+      { fireImmediately: true }
+    );
+
+    return unsubscribe;
+  }, [setAnalyzerData]);
+
+  // ==========================================================================
+  // Sync session tempo to loop tracks store
+  // ==========================================================================
+  useEffect(() => {
+    // Update loop tracks store whenever session tempo changes
+    setMasterTempo(tempo);
+  }, [tempo, setMasterTempo]);
+
+  // ==========================================================================
+  // Sync session key to loop tracks store
+  // ==========================================================================
+  useEffect(() => {
+    // Update loop tracks store whenever session key changes
+    // Combine key and scale into the format loop tracks expects (e.g., "Am" or "C")
+    if (key) {
+      const keyString = keyScale === 'minor' ? `${key}m` : key;
+      setMasterKey(keyString);
+    } else {
+      setMasterKey(null);
+    }
+  }, [key, keyScale, setMasterKey]);
+}
+
+/**
+ * Hook to get the current session tempo state for display.
+ * Provides a convenient way to access tempo info without subscribing to changes.
+ */
+export function useSessionTempoDisplay() {
+  const tempo = useSessionTempoStore(selectTempo);
+  const source = useSessionTempoStore((s) => s.source);
+  const trackTempo = useSessionTempoStore((s) => s.trackTempo);
+  const analyzerTempo = useSessionTempoStore((s) => s.analyzerTempo);
+  const analyzerConfidence = useSessionTempoStore((s) => s.analyzerConfidence);
+  const { key, scale: keyScale } = useSessionTempoStore(selectKey);
+  const { beatsPerBar, beatUnit } = useSessionTempoStore((s) => ({
+    beatsPerBar: s.beatsPerBar,
+    beatUnit: s.beatUnit,
+  }));
+
+  return {
+    tempo,
+    source,
+    trackTempo,
+    analyzerTempo,
+    analyzerConfidence,
+    key,
+    keyScale,
+    beatsPerBar,
+    beatUnit,
+    hasTrackTempo: trackTempo !== null,
+    hasAnalyzerTempo: analyzerTempo !== null,
+  };
+}
