@@ -61,40 +61,8 @@ export async function signUp(email: string, password: string, username: string, 
 
   if (error) throw error;
 
-  // Create or update the user profile
-  // Use upsert to handle cases where trigger may or may not have created the profile
-  if (data.user) {
-    const { error: profileError } = await supabaseAuth
-      .from('user_profiles')
-      .upsert({
-        id: data.user.id,
-        username,
-        display_name: displayName,
-        created_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
-      }, {
-        onConflict: 'id',
-        ignoreDuplicates: false,
-      });
-
-    if (profileError) {
-      console.error('Profile creation error:', profileError);
-      // Don't throw - the user is created, profile can be fixed later
-    }
-
-    // Also create initial stats and avatar records
-    await Promise.all([
-      supabaseAuth.from('user_stats').upsert({
-        user_id: data.user.id,
-        total_jam_seconds: 0,
-        total_sessions: 0,
-      }, { onConflict: 'user_id' }),
-      supabaseAuth.from('user_avatars').upsert({
-        user_id: data.user.id,
-        avatar_data: {},
-      }, { onConflict: 'user_id' }),
-    ]).catch(err => console.error('Error creating user records:', err));
-  }
+  // Profile, stats, and avatar are created by the database trigger on auth.users
+  // No need to create them client-side
 
   return data;
 }
