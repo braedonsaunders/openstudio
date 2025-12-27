@@ -6,8 +6,9 @@ import { generateRoomId } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import { useAuthStore } from '@/stores/auth-store';
 import { motion, useSpring } from 'framer-motion';
-import { Music, ArrowRight, Zap, Radio, Sun, Moon } from 'lucide-react';
+import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus } from 'lucide-react';
 
 // Theme toggle button
 function ThemeToggle() {
@@ -276,11 +277,19 @@ export default function HomePage() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
+  const { user, profile, isLoading, isInitialized, initialize } = useAuthStore();
 
   const [roomCode, setRoomCode] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
   const [isHovering, setIsHovering] = useState(false);
+
+  // Initialize auth on mount
+  useEffect(() => {
+    if (!isInitialized && !isLoading) {
+      initialize();
+    }
+  }, [isInitialized, isLoading, initialize]);
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -292,15 +301,24 @@ export default function HomePage() {
 
   const handleCreateRoom = useCallback(async () => {
     setIsCreating(true);
-    const newRoomId = generateRoomId();
-    router.push(`/room/${newRoomId}`);
-  }, [router]);
+    // If logged in, go to rooms page to use the create modal
+    if (user) {
+      router.push('/rooms');
+    } else {
+      const newRoomId = generateRoomId();
+      router.push(`/room/${newRoomId}`);
+    }
+  }, [router, user]);
 
   const handleJoinRoom = useCallback(() => {
     if (roomCode.trim()) {
       router.push(`/room/${roomCode.trim()}`);
     }
   }, [router, roomCode]);
+
+  const handleBrowseRooms = useCallback(() => {
+    router.push('/rooms');
+  }, [router]);
 
   return (
     <div className={`fixed inset-0 overflow-hidden transition-colors duration-500 ${
@@ -413,46 +431,81 @@ export default function HomePage() {
             transition={{ duration: 0.5, delay: 0.7 }}
             className="space-y-4"
           >
-            {/* Main button */}
-            <motion.button
-              onClick={handleCreateRoom}
-              disabled={isCreating}
-              onMouseEnter={() => setIsHovering(true)}
-              onMouseLeave={() => setIsHovering(false)}
-              className="group relative px-8 py-4 text-lg font-semibold rounded-2xl overflow-hidden"
-              whileHover={{ scale: 1.02 }}
-              whileTap={{ scale: 0.98 }}
-            >
-              {/* Button glow */}
-              <motion.div
-                className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"
-                animate={{
-                  opacity: isHovering ? 1 : 0.9,
-                }}
-              />
-              <motion.div
-                className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 blur-xl opacity-50 -z-10"
-                animate={{
-                  opacity: isHovering ? 0.8 : 0.4,
-                  scale: isHovering ? 1.1 : 1,
-                }}
-              />
+            {/* Welcome message for logged in users */}
+            {user && profile && (
+              <motion.p
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                className={`text-sm mb-2 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}
+              >
+                Welcome back, {profile.displayName}!
+              </motion.p>
+            )}
 
-              <span className="relative flex items-center justify-center gap-2 text-white">
-                {isCreating ? (
-                  <motion.div
-                    className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
-                    animate={{ rotate: 360 }}
-                    transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                  />
-                ) : (
-                  <>
-                    <span>Start Jamming</span>
-                    <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
-                  </>
-                )}
-              </span>
-            </motion.button>
+            {/* Main buttons */}
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              {/* Create/Start button */}
+              <motion.button
+                onClick={handleCreateRoom}
+                disabled={isCreating}
+                onMouseEnter={() => setIsHovering(true)}
+                onMouseLeave={() => setIsHovering(false)}
+                className="group relative px-8 py-4 text-lg font-semibold rounded-2xl overflow-hidden"
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                {/* Button glow */}
+                <motion.div
+                  className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"
+                  animate={{
+                    opacity: isHovering ? 1 : 0.9,
+                  }}
+                />
+                <motion.div
+                  className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 blur-xl opacity-50 -z-10"
+                  animate={{
+                    opacity: isHovering ? 0.8 : 0.4,
+                    scale: isHovering ? 1.1 : 1,
+                  }}
+                />
+
+                <span className="relative flex items-center justify-center gap-2 text-white">
+                  {isCreating ? (
+                    <motion.div
+                      className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
+                      animate={{ rotate: 360 }}
+                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                    />
+                  ) : (
+                    <>
+                      {user ? <Plus className="w-5 h-5" /> : null}
+                      <span>{user ? 'Create Room' : 'Start Jamming'}</span>
+                      <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                    </>
+                  )}
+                </span>
+              </motion.button>
+
+              {/* Browse Rooms button - only for logged in users */}
+              {user && (
+                <motion.button
+                  onClick={handleBrowseRooms}
+                  initial={{ opacity: 0, scale: 0.9 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  transition={{ delay: 0.2 }}
+                  className={`group flex items-center gap-2 px-6 py-4 text-lg font-semibold rounded-2xl transition-all ${
+                    isDark
+                      ? 'bg-white/10 hover:bg-white/20 text-white'
+                      : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
+                  }`}
+                  whileHover={{ scale: 1.02 }}
+                  whileTap={{ scale: 0.98 }}
+                >
+                  <FolderOpen className="w-5 h-5" />
+                  <span>Browse Rooms</span>
+                </motion.button>
+              )}
+            </div>
 
             {/* Join room input */}
             <div className="flex items-center justify-center gap-2">
@@ -468,7 +521,7 @@ export default function HomePage() {
                       : 'bg-slate-900/5 border-slate-900/10 text-slate-900 placeholder:text-slate-400 focus:border-purple-500 focus:ring-purple-500/20'
                   }`}
                   onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
-                  maxLength={6}
+                  maxLength={8}
                 />
               </div>
               {roomCode.trim() && (
