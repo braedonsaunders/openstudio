@@ -12,6 +12,7 @@ import { TransportBar } from './transport-bar';
 import { TrackHeadersPanel } from './track-headers-panel';
 import { LiveArrangementView } from './live-arrangement-view';
 import { PanelDock } from './panel-dock';
+import { ResizeHandle } from './resize-handle';
 import { BottomDock } from './bottom-dock';
 import { KeyboardShortcuts } from './keyboard-shortcuts';
 import { AIGenerator } from '../tracks/ai-generator';
@@ -34,6 +35,25 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const [isPanelDockVisible, setIsPanelDockVisible] = useState(true);
   const [isBottomDockVisible, setIsBottomDockVisible] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Resizable panel state
+  const [leftPanelWidth, setLeftPanelWidth] = useState(240); // Default w-60 = 240px
+  const [rightPanelWidth, setRightPanelWidth] = useState(320); // Default w-80 = 320px
+
+  // Panel resize constraints
+  const MIN_LEFT_WIDTH = 180;
+  const MAX_LEFT_WIDTH = 400;
+  const MIN_RIGHT_WIDTH = 280;
+  const MAX_RIGHT_WIDTH = 500;
+
+  // Resize handlers
+  const handleLeftResize = useCallback((delta: number) => {
+    setLeftPanelWidth((prev) => Math.min(MAX_LEFT_WIDTH, Math.max(MIN_LEFT_WIDTH, prev + delta)));
+  }, []);
+
+  const handleRightResize = useCallback((delta: number) => {
+    setRightPanelWidth((prev) => Math.min(MAX_RIGHT_WIDTH, Math.max(MIN_RIGHT_WIDTH, prev + delta)));
+  }, []);
 
   // Modal state
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
@@ -424,7 +444,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0">
-        {/* Track Headers Panel - Left */}
+        {/* Track Headers Panel - Left (Resizable) */}
         <TrackHeadersPanel
           users={users}
           currentUser={currentUser}
@@ -433,7 +453,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onMuteUser={muteUser}
           onVolumeChange={setUserVolume}
           onMuteSelf={() => setMuted(!isMuted)}
+          width={leftPanelWidth}
         />
+
+        {/* Left Resize Handle */}
+        <ResizeHandle position="left" onResize={handleLeftResize} />
 
         {/* Live Arrangement View - Center (River Flow Design) */}
         <LiveArrangementView
@@ -445,7 +469,12 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           sessionStartTime={sessionStartTime}
         />
 
-        {/* Panel Dock - Right */}
+        {/* Right Resize Handle */}
+        {isPanelDockVisible && (
+          <ResizeHandle position="right" onResize={handleRightResize} />
+        )}
+
+        {/* Panel Dock - Right (Resizable) */}
         {isPanelDockVisible && (
           <PanelDock
             activePanel={activePanel}
@@ -479,6 +508,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             // Chat props
             roomId={roomId}
             onSendMessage={sendMessage}
+            width={rightPanelWidth}
           />
         )}
       </div>

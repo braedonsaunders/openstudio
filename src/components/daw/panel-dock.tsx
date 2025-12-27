@@ -38,6 +38,8 @@ interface PanelDockProps {
   // Chat props
   roomId: string;
   onSendMessage: (message: string) => void;
+  // Layout props
+  width?: number;
 }
 
 const panels: { id: PanelType; icon: typeof Sliders; label: string }[] = [
@@ -65,9 +67,13 @@ export function PanelDock({
   separationProgress,
   roomId,
   onSendMessage,
+  width,
 }: PanelDockProps) {
   return (
-    <div className="w-80 bg-[#0d0d14] border-l border-white/5 flex flex-col shrink-0 z-10 panel-slide-right">
+    <div
+      className="bg-[#0d0d14] border-l border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
+      style={{ width: width ? `${width}px` : '320px' }}
+    >
       {/* Tab Header */}
       <div className="h-12 flex items-center border-b border-white/5 bg-[#12121a]">
         <div className="flex-1 flex items-center gap-1 px-2">
