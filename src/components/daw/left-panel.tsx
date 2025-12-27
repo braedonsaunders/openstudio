@@ -13,6 +13,8 @@ interface LeftPanelProps {
   onUpload: () => void;
   onYouTubeSearch: () => void;
   onAIGenerate: () => void;
+  onLoopPlay: (trackId: string) => void;
+  onLoopStop: (trackId: string) => void;
   youtubePlayer?: React.ReactNode;
   roomId: string;
   userId: string;
@@ -36,6 +38,8 @@ export function LeftPanel({
   onUpload,
   onYouTubeSearch,
   onAIGenerate,
+  onLoopPlay,
+  onLoopStop,
   youtubePlayer,
   roomId,
   userId,
@@ -104,6 +108,8 @@ export function LeftPanel({
           onUpload={onUpload}
           onYouTubeSearch={onYouTubeSearch}
           onAIGenerate={onAIGenerate}
+          onLoopPlay={onLoopPlay}
+          onLoopStop={onLoopStop}
           youtubePlayer={youtubePlayer}
           roomId={roomId}
           userId={userId}

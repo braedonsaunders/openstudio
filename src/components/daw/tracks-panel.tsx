@@ -17,6 +17,7 @@ import {
   Volume2,
   VolumeX,
   Play,
+  Square,
   Plus,
 } from 'lucide-react';
 import type { BackingTrack } from '@/types';
@@ -28,6 +29,8 @@ interface TracksPanelProps {
   onUpload: () => void;
   onAIGenerate: () => void;
   onYouTubeSearch: () => void;
+  onLoopPlay: (trackId: string) => void;
+  onLoopStop: (trackId: string) => void;
   youtubePlayer?: React.ReactNode;
   roomId: string;
   userId: string;
@@ -40,6 +43,8 @@ export function TracksPanel({
   onUpload,
   onAIGenerate,
   onYouTubeSearch,
+  onLoopPlay,
+  onLoopStop,
   youtubePlayer,
   roomId,
   userId,
@@ -101,6 +106,14 @@ export function TracksPanel({
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins}:${secs.toString().padStart(2, '0')}`;
+  };
+
+  // Calculate loop duration from BPM and bars
+  const getLoopDuration = (loopDef: LoopDefinition | undefined): number => {
+    if (!loopDef) return 0;
+    const beatsPerBar = loopDef.timeSignature[0];
+    const totalBeats = loopDef.bars * beatsPerBar;
+    return (totalBeats / loopDef.bpm) * 60;
   };
 
   const getSourceIcon = (track: BackingTrack) => {
@@ -272,35 +285,70 @@ export function TracksPanel({
                 </div>
                 {loopTracks.map((track) => {
                   const loopDef = getLoopById(track.loopId);
+                  const loopDuration = getLoopDuration(loopDef);
                   return (
                     <div
                       key={track.id}
-                      className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                      className={cn(
+                        'group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors',
+                        track.isPlaying && 'bg-amber-500/10'
+                      )}
                     >
-                      <div
-                        className="w-5 h-5 rounded flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: `${track.color}20` }}
+                      {/* Play/Stop Button */}
+                      <button
+                        onClick={() => track.isPlaying ? onLoopStop(track.id) : onLoopPlay(track.id)}
+                        className={cn(
+                          'w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors',
+                          track.isPlaying
+                            ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30'
+                            : 'hover:bg-gray-200 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400'
+                        )}
+                        style={!track.isPlaying ? { backgroundColor: `${track.color}20` } : undefined}
+                        title={track.isPlaying ? 'Stop loop' : 'Play loop'}
                       >
-                        <Repeat className="w-3 h-3" style={{ color: track.color }} />
-                      </div>
+                        {track.isPlaying ? (
+                          <Square className="w-2.5 h-2.5 fill-current" />
+                        ) : (
+                          <Play className="w-3 h-3 fill-current" style={{ color: track.color }} />
+                        )}
+                      </button>
+
+                      {/* Track Info */}
                       <div className="flex-1 min-w-0">
-                        <div className="text-xs text-gray-700 dark:text-zinc-300 truncate">
+                        <div className={cn(
+                          'text-xs truncate',
+                          track.isPlaying ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-700 dark:text-zinc-300'
+                        )}>
                           {track.name || loopDef?.name || 'Loop'}
                         </div>
+                        <div className="text-[9px] text-gray-400 dark:text-zinc-600">
+                          {loopDef?.bpm} BPM • {loopDef?.bars} bars
+                        </div>
                       </div>
+
+                      {/* Duration */}
+                      <span className="text-[10px] text-gray-500 dark:text-zinc-500 tabular-nums shrink-0">
+                        {formatTime(loopDuration)}
+                      </span>
+
+                      {/* Mute Button */}
                       <button
                         onClick={() => setTrackMuted(track.id, !track.muted)}
                         className={cn(
                           'p-0.5 rounded transition-colors',
-                          track.muted ? 'text-red-400' : 'text-gray-400 dark:text-zinc-600'
+                          track.muted ? 'text-red-400' : 'text-gray-400 dark:text-zinc-600 hover:text-gray-600 dark:hover:text-zinc-400'
                         )}
+                        title={track.muted ? 'Unmute' : 'Mute'}
                       >
                         {track.muted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
                       </button>
+
+                      {/* Remove Button */}
                       {isMaster && (
                         <button
                           onClick={() => handleRemoveLoopTrack(track.id)}
                           className="p-0.5 text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                          title="Remove loop"
                         >
                           <X className="w-3 h-3" />
                         </button>

@@ -90,6 +90,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     muteUser,
     setUserVolume,
     leave,
+    // Loop track controls
+    playLoopTrack,
+    stopLoopTrack,
   } = useRoom(roomId);
 
   const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack } = useAudioEngine();
@@ -524,6 +527,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onUpload={() => setIsUploadModalOpen(true)}
           onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
           onAIGenerate={handleOpenAIPanel}
+          onLoopPlay={playLoopTrack}
+          onLoopStop={stopLoopTrack}
           youtubePlayer={
             isYouTubeTrack && currentTrack?.youtubeId ? (
               <YouTubePlayer
