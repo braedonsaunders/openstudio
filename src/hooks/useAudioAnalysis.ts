@@ -85,7 +85,9 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
   // Connect to audio context when available
   useEffect(() => {
+    console.log('Connect to audio context effect:', { audioContext: !!audioContext, isWorkerReady });
     if (audioContext && isWorkerReady) {
+      console.log('Connecting analyzer to audio context...');
       analyzerRef.current.connectToAudioContext(audioContext);
     }
   }, [audioContext, isWorkerReady]);
@@ -150,7 +152,20 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   // - Audio is playing
   // - Analyser is ready
   useEffect(() => {
-    if (!isWorkerReady || !audioContext) return;
+    console.log('Analysis effect running:', {
+      isWorkerReady,
+      audioContext: !!audioContext,
+      analysisSource,
+      backingTrackAnalyser: !!backingTrackAnalyser,
+      masterAnalyser: !!masterAnalyser,
+      isPlaying,
+      isMaster,
+    });
+
+    if (!isWorkerReady || !audioContext) {
+      console.log('Analysis effect early return - not ready');
+      return;
+    }
 
     const startAnalysis = async () => {
       try {
@@ -161,7 +176,9 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
         } else if (analysisSource === 'backing' && backingTrackAnalyser) {
           // Backing track analysis from audio engine
           // Only analyze when playing and user is master
+          console.log('Backing source - checking conditions:', { isPlaying, isMaster });
           if (isPlaying && isMaster) {
+            console.log('Calling analyzeFromAnalyserNode...');
             analyzerRef.current.analyzeFromAnalyserNode(backingTrackAnalyser);
             setIsAnalyzing(true);
             console.log('Started backing track analysis (master)');
@@ -189,6 +206,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
     // Cleanup when dependencies change
     return () => {
+      console.log('Analysis effect cleanup running');
       if (analysisSource === 'backing' || analysisSource === 'mixed') {
         analyzerRef.current.stopAnalysis();
         setIsAnalyzing(false);
