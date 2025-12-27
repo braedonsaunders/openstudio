@@ -534,14 +534,21 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       return;
     }
 
-    // Check if currently playing to resume after switch
+    // Get the target track DIRECTLY
+    const targetTrack = freshQueue.tracks[nextIndex];
+    if (!targetTrack) {
+      console.error('skipToNext: Target track is null');
+      return;
+    }
+
     const wasPlaying = useAudioStore.getState().isPlaying;
 
-    console.log('skipToNext: Moving to index', nextIndex);
+    console.log('skipToNext: Moving to', targetTrack.name, 'at index', nextIndex);
 
     // Stop current playback and reset audio state
     pauseBackingTrack();
     useAudioStore.getState().setCurrentTime(0);
+    useAudioStore.getState().setDuration(targetTrack.duration || 0);
     useRoomStore.getState().setWaveformData(null);
 
     nextTrack();
@@ -549,10 +556,26 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // Auto-play if was playing before
     if (wasPlaying) {
-      // Small delay to allow track state to update
-      setTimeout(() => play(), 100);
+      if (targetTrack.youtubeId) {
+        realtimeRef.current?.broadcastPlay(targetTrack.id, 0, Date.now() + 100);
+        setQueuePlaying(true);
+        return;
+      }
+
+      try {
+        await initialize();
+        const loadSuccess = await loadBackingTrack(targetTrack);
+        if (loadSuccess) {
+          const syncTime = Date.now() + 100;
+          playBackingTrack(syncTime, 0);
+          realtimeRef.current?.broadcastPlay(targetTrack.id, 0, syncTime);
+          setQueuePlaying(true);
+        }
+      } catch (err) {
+        console.error('skipToNext: Error during playback:', err);
+      }
     }
-  }, [nextTrack, pauseBackingTrack, play]);
+  }, [nextTrack, pauseBackingTrack, initialize, loadBackingTrack, playBackingTrack, setQueuePlaying]);
 
   const skipToPrevious = useCallback(async () => {
     // Get ALL fresh state to avoid stale closure issues
@@ -573,14 +596,21 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       return;
     }
 
-    // Check if currently playing to resume after switch
+    // Get the target track DIRECTLY
+    const targetTrack = freshQueue.tracks[prevIndex];
+    if (!targetTrack) {
+      console.error('skipToPrevious: Target track is null');
+      return;
+    }
+
     const wasPlaying = useAudioStore.getState().isPlaying;
 
-    console.log('skipToPrevious: Moving to index', prevIndex);
+    console.log('skipToPrevious: Moving to', targetTrack.name, 'at index', prevIndex);
 
     // Stop current playback and reset audio state
     pauseBackingTrack();
     useAudioStore.getState().setCurrentTime(0);
+    useAudioStore.getState().setDuration(targetTrack.duration || 0);
     useRoomStore.getState().setWaveformData(null);
 
     previousTrack();
@@ -588,10 +618,26 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // Auto-play if was playing before
     if (wasPlaying) {
-      // Small delay to allow track state to update
-      setTimeout(() => play(), 100);
+      if (targetTrack.youtubeId) {
+        realtimeRef.current?.broadcastPlay(targetTrack.id, 0, Date.now() + 100);
+        setQueuePlaying(true);
+        return;
+      }
+
+      try {
+        await initialize();
+        const loadSuccess = await loadBackingTrack(targetTrack);
+        if (loadSuccess) {
+          const syncTime = Date.now() + 100;
+          playBackingTrack(syncTime, 0);
+          realtimeRef.current?.broadcastPlay(targetTrack.id, 0, syncTime);
+          setQueuePlaying(true);
+        }
+      } catch (err) {
+        console.error('skipToPrevious: Error during playback:', err);
+      }
     }
-  }, [pauseBackingTrack, previousTrack, play]);
+  }, [pauseBackingTrack, previousTrack, initialize, loadBackingTrack, playBackingTrack, setQueuePlaying]);
 
   const skipToTrack = useCallback(async (trackIndex: number) => {
     // Get ALL fresh state to avoid stale closure issues
@@ -615,30 +661,59 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       return;
     }
 
-    // Allow clicking on the same track - user might want to restart or just ensure it's selected
-    // Only skip the expensive operations if truly the same track
-    const isSameTrack = trackIndex === freshQueue.currentIndex;
+    // Get the ACTUAL track we're switching to - don't rely on store state later
+    const targetTrack = freshQueue.tracks[trackIndex];
+    if (!targetTrack) {
+      console.error('skipToTrack: Target track is null at index', trackIndex);
+      return;
+    }
 
-    // Check if currently playing to resume after switch
+    const isSameTrack = trackIndex === freshQueue.currentIndex;
     const wasPlaying = useAudioStore.getState().isPlaying;
 
-    console.log('skipToTrack: Switching to track index', trackIndex, 'from', freshQueue.currentIndex, 'isSameTrack:', isSameTrack);
+    console.log('skipToTrack: Switching to', targetTrack.name, 'at index', trackIndex, 'isSameTrack:', isSameTrack);
 
-    // Always stop and reset, even for same track (user clicked, so reset to beginning)
+    // 1. Stop current playback completely
     pauseBackingTrack();
     useAudioStore.getState().setCurrentTime(0);
+    useAudioStore.getState().setDuration(targetTrack.duration || 0);
     useRoomStore.getState().setWaveformData(null);
 
-    // Perform the jump
+    // 2. Update store state
     jumpToTrack(trackIndex);
     realtimeRef.current?.broadcastNextTrack(trackIndex);
 
-    // Auto-play if was playing before, OR if user clicked a different track (they probably want to hear it)
+    // 3. Auto-play if needed - DO THIS DIRECTLY, not via setTimeout
     if (wasPlaying || !isSameTrack) {
-      // Small delay to allow track state to update
-      setTimeout(() => play(), 100);
+      // For YouTube tracks, just update state - the player handles it
+      if (targetTrack.youtubeId) {
+        console.log('skipToTrack: YouTube track, broadcasting play');
+        realtimeRef.current?.broadcastPlay(targetTrack.id, 0, Date.now() + 100);
+        setQueuePlaying(true);
+        return;
+      }
+
+      // For regular tracks, load and play directly with the target track
+      console.log('skipToTrack: Loading and playing track directly:', targetTrack.name, targetTrack.url);
+
+      try {
+        await initialize();
+        const loadSuccess = await loadBackingTrack(targetTrack);
+        if (!loadSuccess) {
+          console.error('skipToTrack: Failed to load track');
+          return;
+        }
+
+        const syncTime = Date.now() + 100;
+        playBackingTrack(syncTime, 0);
+        realtimeRef.current?.broadcastPlay(targetTrack.id, 0, syncTime);
+        setQueuePlaying(true);
+        console.log('skipToTrack: Playback started for', targetTrack.name);
+      } catch (err) {
+        console.error('skipToTrack: Error during playback setup:', err);
+      }
     }
-  }, [pauseBackingTrack, jumpToTrack, play]);
+  }, [pauseBackingTrack, jumpToTrack, initialize, loadBackingTrack, playBackingTrack, setQueuePlaying]);
 
   // Chat
   const sendMessage = useCallback((message: string) => {
