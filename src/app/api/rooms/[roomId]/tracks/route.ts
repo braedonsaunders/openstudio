@@ -127,7 +127,7 @@ export async function POST(
         room_id: roomId,
         name: track.name,
         artist: track.artist || null,
-        duration: track.duration || 0,
+        duration: Math.round(track.duration || 0),
         url: track.url || '',
         uploaded_by: track.uploadedBy || 'user',
         youtube_id: track.youtubeId || null,
