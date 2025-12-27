@@ -44,9 +44,7 @@ export function SeekableBackingTrack({
   stemMixState,
 }: SeekableBackingTrackProps) {
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
-  const scrubberRef = useRef<HTMLDivElement>(null);
   const waveformData = useRef<number[]>([]);
-  const [isDragging, setIsDragging] = useState(false);
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
 
@@ -113,11 +111,11 @@ export function SeekableBackingTrack({
     ctx.shadowBlur = 0;
   }, [duration, currentTime]);
 
-  // Handle scrubber interaction
-  const handleScrubberClick = useCallback((e: React.MouseEvent) => {
-    if (!isMaster || !scrubberRef.current || !duration) return;
+  // Handle scrubber interaction - uses currentTarget for position
+  const handleScrubberClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!isMaster || !duration) return;
 
-    const rect = scrubberRef.current.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const ratio = x / rect.width;
     const seekTime = ratio * duration;
@@ -125,10 +123,10 @@ export function SeekableBackingTrack({
     onSeek(Math.max(0, Math.min(duration, seekTime)));
   }, [isMaster, duration, onSeek]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!scrubberRef.current || !duration) return;
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    if (!duration) return;
 
-    const rect = scrubberRef.current.getBoundingClientRect();
+    const rect = e.currentTarget.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const ratio = Math.max(0, Math.min(1, x / rect.width));
     setHoverTime(ratio * duration);
@@ -182,8 +180,16 @@ export function SeekableBackingTrack({
       {/* Waveform and Scrubber */}
       {isExpanded && (
         <div className="relative">
-          {/* Waveform display */}
-          <div className="h-16 relative">
+          {/* Waveform display - clickable for seeking */}
+          <div
+            onClick={handleScrubberClick}
+            onMouseMove={handleMouseMove}
+            onMouseLeave={handleMouseLeave}
+            className={cn(
+              'h-16 relative',
+              isMaster ? 'cursor-pointer' : 'cursor-default'
+            )}
+          >
             <canvas
               ref={waveformCanvasRef}
               className="absolute inset-0 w-full h-full"
@@ -200,11 +206,22 @@ export function SeekableBackingTrack({
               className="absolute top-0 bottom-0 w-0.5 bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.6)] pointer-events-none"
               style={{ left: `${progress}%` }}
             />
+
+            {/* Hover time indicator on waveform */}
+            {hoverTime !== null && isMaster && (
+              <div
+                className="absolute top-0 bottom-0 w-px bg-white/30 pointer-events-none"
+                style={{ left: `${(hoverTime / duration) * 100}%` }}
+              >
+                <div className="absolute top-1 left-1/2 -translate-x-1/2 px-1.5 py-0.5 bg-zinc-800 rounded text-[9px] text-white font-mono whitespace-nowrap">
+                  {formatTime(hoverTime)}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Scrubber / Timeline */}
+          {/* Timeline - also clickable for seeking */}
           <div
-            ref={scrubberRef}
             onClick={handleScrubberClick}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
@@ -213,34 +230,39 @@ export function SeekableBackingTrack({
               isMaster ? 'cursor-pointer' : 'cursor-default'
             )}
           >
-            {/* Timeline ticks */}
+            {/* Timeline ticks - adaptive intervals based on duration */}
             <div className="absolute inset-0 flex items-center">
-              {Array.from({ length: Math.ceil(duration / 10) + 1 }).map((_, i) => {
-                const time = i * 10;
-                const percent = (time / duration) * 100;
-                if (percent > 100) return null;
+              {(() => {
+                // Calculate interval based on duration to show ~6-10 markers max
+                const getInterval = () => {
+                  if (duration <= 60) return 10;      // 10s intervals for < 1 min
+                  if (duration <= 180) return 30;     // 30s intervals for < 3 min
+                  if (duration <= 360) return 60;     // 1 min intervals for < 6 min
+                  if (duration <= 600) return 90;     // 1.5 min intervals for < 10 min
+                  return 120;                          // 2 min intervals for longer tracks
+                };
+                const interval = getInterval();
+                const tickCount = Math.ceil(duration / interval) + 1;
 
-                return (
-                  <div
-                    key={i}
-                    className="absolute flex flex-col items-center"
-                    style={{ left: `${percent}%` }}
-                  >
-                    <div className="w-px h-2 bg-zinc-600" />
-                    <span className="text-[9px] text-zinc-500 mt-0.5 font-mono">
-                      {formatTime(time)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+                return Array.from({ length: tickCount }).map((_, i) => {
+                  const time = i * interval;
+                  const percent = (time / duration) * 100;
+                  if (percent > 100) return null;
 
-            {/* Progress bar */}
-            <div className="absolute bottom-0 left-0 right-0 h-1 bg-zinc-800">
-              <div
-                className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 transition-all duration-100"
-                style={{ width: `${progress}%` }}
-              />
+                  return (
+                    <div
+                      key={i}
+                      className="absolute flex flex-col items-center"
+                      style={{ left: `${percent}%` }}
+                    >
+                      <div className="w-px h-2 bg-zinc-600" />
+                      <span className="text-[9px] text-zinc-500 mt-0.5 font-mono">
+                        {formatTime(time)}
+                      </span>
+                    </div>
+                  );
+                });
+              })()}
             </div>
 
             {/* Hover time indicator */}
