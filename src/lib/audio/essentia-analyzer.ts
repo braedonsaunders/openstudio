@@ -59,12 +59,37 @@ export class EssentiaAnalyzer {
   private lastKeyScale: 'major' | 'minor' | null = null;
   private bpmBuffer: number[] = [];
   private keyBuffer: { key: string; scale: string }[] = [];
+  private initializationPromise: Promise<void> | null = null;
+  private loadingInBackground = false;
 
   async initialize(sampleRate: number = 44100): Promise<void> {
     if (this.isInitialized) return;
 
+    // If already loading, wait for that to complete
+    if (this.initializationPromise) {
+      return this.initializationPromise;
+    }
+
     this.sampleRate = sampleRate;
 
+    // Start loading in background without blocking
+    this.initializationPromise = this.loadInBackground();
+
+    // Don't await - let it load in background
+    return;
+  }
+
+  // Starts background loading - called once and runs async
+  startBackgroundLoading(): void {
+    if (this.isInitialized || this.loadingInBackground) return;
+
+    this.loadingInBackground = true;
+    this.loadInBackground().catch((error) => {
+      console.warn('Background essentia.js loading failed:', error);
+    });
+  }
+
+  private async loadInBackground(): Promise<void> {
     try {
       // Only run in browser environment
       if (typeof window === 'undefined') {
@@ -72,7 +97,7 @@ export class EssentiaAnalyzer {
         return;
       }
 
-      // Load essentia.js from CDN using script tags (most compatible approach)
+      // Load essentia.js from CDN using script tags (non-blocking)
       await this.loadEssentiaFromCDN();
 
       // Get the global Essentia classes loaded by the scripts
@@ -88,37 +113,38 @@ export class EssentiaAnalyzer {
       this.essentia = new Essentia(this.essentiaWASM);
 
       this.isInitialized = true;
-      console.log('Essentia.js initialized successfully');
+      this.loadingInBackground = false;
+      console.log('Essentia.js initialized successfully (background)');
     } catch (error) {
       console.warn('Essentia.js initialization failed (analysis will be disabled):', error);
-      // Don't throw - allow app to continue without analysis
       this.isInitialized = false;
+      this.loadingInBackground = false;
     }
   }
 
   private async loadEssentiaFromCDN(): Promise<void> {
-    // Helper to load a script from CDN
-    const loadScript = (src: string): Promise<void> => {
-      return new Promise((resolve, reject) => {
-        // Check if already loaded
-        if (document.querySelector(`script[src="${src}"]`)) {
-          resolve();
-          return;
-        }
+    // Use dynamic import with ES modules from CDN (browser-compatible)
+    // The .es.js files are proper ES modules that work in browsers
+    try {
+      // Import WASM loader and core library as ES modules
+      const wasmModule = await import(
+        /* webpackIgnore: true */
+        // @ts-ignore - CDN URL import
+        'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.es.js'
+      );
+      const coreModule = await import(
+        /* webpackIgnore: true */
+        // @ts-ignore - CDN URL import
+        'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.es.js'
+      );
 
-        const script = document.createElement('script');
-        script.src = src;
-        script.async = true;
-        script.onload = () => resolve();
-        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
-        document.head.appendChild(script);
-      });
-    };
-
-    // Load essentia.js UMD builds from CDN
-    // Using the UMD builds because they expose globals
-    await loadScript('https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.umd.js');
-    await loadScript('https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.umd.js');
+      // Store on window for access
+      (window as any).EssentiaWASM = wasmModule.default || wasmModule.EssentiaWASM;
+      (window as any).Essentia = coreModule.default || coreModule.Essentia;
+    } catch (error) {
+      console.error('Failed to load essentia.js ES modules:', error);
+      throw error;
+    }
   }
 
   setOnAnalysis(callback: (data: AnalysisData) => void): void {

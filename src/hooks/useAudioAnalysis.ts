@@ -44,36 +44,41 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
   const { addMessage, currentUser } = useRoomStore();
 
-  // Initialize the analyzer
+  // Initialize the analyzer in background - doesn't block audio
   useEffect(() => {
-    const initAnalyzer = async () => {
-      if (isInitializedRef.current) return;
+    if (isInitializedRef.current) return;
 
-      try {
-        await analyzerRef.current.initialize();
-        // Check if initialization actually succeeded
-        const ready = analyzerRef.current.isReady();
-        setWorkerReady(ready);
+    // Start background loading (non-blocking)
+    analyzerRef.current.startBackgroundLoading();
+
+    // Poll for readiness without blocking
+    const checkInterval = setInterval(() => {
+      const ready = analyzerRef.current.isReady();
+      if (ready) {
+        setWorkerReady(true);
         isInitializedRef.current = true;
-
-        if (!ready) {
-          console.log('Audio analysis disabled - essentia.js failed to load');
-        }
-      } catch (error) {
-        setAnalysisError('Failed to initialize audio analysis');
-        setWorkerReady(false);
-        console.error('Failed to initialize analyzer:', error);
+        clearInterval(checkInterval);
+        console.log('Audio analysis ready');
       }
-    };
+    }, 500); // Check every 500ms
 
-    initAnalyzer();
+    // Stop polling after 30 seconds (loading timeout)
+    const timeout = setTimeout(() => {
+      clearInterval(checkInterval);
+      if (!analyzerRef.current.isReady()) {
+        console.log('Audio analysis disabled - essentia.js loading timed out');
+        setWorkerReady(false);
+      }
+    }, 30000);
 
     return () => {
+      clearInterval(checkInterval);
+      clearTimeout(timeout);
       if (visualizationFrameRef.current) {
         cancelAnimationFrame(visualizationFrameRef.current);
       }
     };
-  }, [setWorkerReady, setAnalysisError]);
+  }, [setWorkerReady]);
 
   // Connect to audio context when available
   useEffect(() => {
