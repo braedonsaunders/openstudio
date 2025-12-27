@@ -50,29 +50,29 @@ export function LiveChannelsPanel({
     getTracksByUser,
     getInactiveTracks,
     trackLevels,
-    addTrack,
     removeTrack,
     assignTrackToUser,
-    loadDevices,
-    devicesLoaded,
   } = useUserTracksStore();
 
-  // Load devices on mount
+  // Load devices on mount - use getState() to avoid dependency issues
   useEffect(() => {
+    const { devicesLoaded, loadDevices } = useUserTracksStore.getState();
     if (!devicesLoaded) {
       loadDevices();
     }
-  }, [devicesLoaded, loadDevices]);
+  }, []);
 
   // Initialize a default track for current user if they don't have any
+  // Use getState() to avoid unstable store refs in effect dependencies
   useEffect(() => {
     if (currentUser) {
+      const { getTracksByUser, addTrack } = useUserTracksStore.getState();
       const userTracks = getTracksByUser(currentUser.id);
       if (userTracks.length === 0) {
         addTrack(currentUser.id, 'Channel 1');
       }
     }
-  }, [currentUser, getTracksByUser, addTrack]);
+  }, [currentUser]);
 
   // Get local user tracks
   const localTracks = currentUser ? getTracksByUser(currentUser.id) : [];
