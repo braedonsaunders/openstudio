@@ -65,7 +65,7 @@ interface UserTracksState {
   deviceChannels: Map<string, number>;
 
   // Actions
-  addTrack: (userId: string, name?: string, settings?: Partial<TrackAudioSettings>) => UserTrack;
+  addTrack: (userId: string, name?: string, settings?: Partial<TrackAudioSettings>, userName?: string) => UserTrack;
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<UserTrack>) => void;
   updateTrackSettings: (trackId: string, settings: Partial<TrackAudioSettings>) => void;
@@ -97,6 +97,14 @@ interface UserTracksState {
   getTracksByUser: (userId: string) => UserTrack[];
   getTrack: (trackId: string) => UserTrack | undefined;
   getAllTracks: () => UserTrack[];
+  getInactiveTracks: () => UserTrack[];
+  getTracksByOwner: (ownerUserId: string) => UserTrack[];
+
+  // Ownership and persistence actions
+  setUserTracksActive: (userId: string, active: boolean) => void;
+  assignTrackToUser: (trackId: string, newUserId: string, newUserName?: string) => void;
+  restoreUserTracks: (tracks: UserTrack[]) => void;
+  loadPersistedTracks: (tracks: UserTrack[]) => void;
 
   // Reset
   reset: () => void;
@@ -120,7 +128,7 @@ export const useUserTracksStore = create<UserTracksState>()(
     devicesLoaded: false,
     deviceChannels: new Map(),
 
-    addTrack: (userId, name, settings) => {
+    addTrack: (userId, name, settings, userName) => {
       const state = get();
       const userTracks = state.userTrackOrder.get(userId) || [];
       const trackNumber = userTracks.length + 1;
@@ -137,6 +145,10 @@ export const useUserTracksStore = create<UserTracksState>()(
         isArmed: true, // New tracks are armed by default
         isRecording: false,
         createdAt: Date.now(),
+        // Ownership fields
+        ownerUserId: userId,
+        ownerUserName: userName,
+        isActive: true,
       };
 
       set((state) => {
@@ -409,6 +421,109 @@ export const useUserTracksStore = create<UserTracksState>()(
       }
       return allTracks;
     },
+
+    getInactiveTracks: () => {
+      const state = get();
+      const inactiveTracks: UserTrack[] = [];
+      for (const track of state.tracks.values()) {
+        if (track.isActive === false) {
+          inactiveTracks.push(track);
+        }
+      }
+      return inactiveTracks;
+    },
+
+    getTracksByOwner: (ownerUserId) => {
+      const state = get();
+      const tracks: UserTrack[] = [];
+      for (const track of state.tracks.values()) {
+        if (track.ownerUserId === ownerUserId) {
+          tracks.push(track);
+        }
+      }
+      return tracks;
+    },
+
+    setUserTracksActive: (userId, active) =>
+      set((state) => {
+        const tracks = new Map(state.tracks);
+        for (const [id, track] of tracks) {
+          if (track.userId === userId) {
+            tracks.set(id, { ...track, isActive: active });
+          }
+        }
+        return { tracks };
+      }),
+
+    assignTrackToUser: (trackId, newUserId, newUserName) =>
+      set((state) => {
+        const track = state.tracks.get(trackId);
+        if (!track) return state;
+
+        const oldUserId = track.userId;
+        const tracks = new Map(state.tracks);
+        const userTrackOrder = new Map(state.userTrackOrder);
+
+        // Update track ownership
+        tracks.set(trackId, {
+          ...track,
+          userId: newUserId,
+          isActive: true,
+        });
+
+        // Remove from old user's order
+        const oldOrder = userTrackOrder.get(oldUserId) || [];
+        userTrackOrder.set(
+          oldUserId,
+          oldOrder.filter((id) => id !== trackId)
+        );
+
+        // Add to new user's order
+        const newOrder = userTrackOrder.get(newUserId) || [];
+        userTrackOrder.set(newUserId, [...newOrder, trackId]);
+
+        return { tracks, userTrackOrder };
+      }),
+
+    restoreUserTracks: (tracksToRestore) =>
+      set((state) => {
+        const tracks = new Map(state.tracks);
+        const userTrackOrder = new Map(state.userTrackOrder);
+
+        for (const track of tracksToRestore) {
+          // Restore track and mark as active
+          tracks.set(track.id, { ...track, isActive: true });
+
+          // Add to user track order if not already there
+          const order = userTrackOrder.get(track.userId) || [];
+          if (!order.includes(track.id)) {
+            userTrackOrder.set(track.userId, [...order, track.id]);
+          }
+        }
+
+        return { tracks, userTrackOrder };
+      }),
+
+    loadPersistedTracks: (persistedTracks) =>
+      set((state) => {
+        const tracks = new Map(state.tracks);
+        const userTrackOrder = new Map(state.userTrackOrder);
+
+        for (const track of persistedTracks) {
+          // Don't overwrite existing tracks (already loaded)
+          if (!tracks.has(track.id)) {
+            tracks.set(track.id, track);
+
+            // Add to user track order
+            const order = userTrackOrder.get(track.userId) || [];
+            if (!order.includes(track.id)) {
+              userTrackOrder.set(track.userId, [...order, track.id]);
+            }
+          }
+        }
+
+        return { tracks, userTrackOrder };
+      }),
 
     removeUserTracks: (userId) =>
       set((state) => {

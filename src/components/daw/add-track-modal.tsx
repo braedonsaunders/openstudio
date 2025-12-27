@@ -20,6 +20,8 @@ interface AddTrackModalProps {
   isOpen: boolean;
   onClose: () => void;
   userId: string;
+  userName?: string;
+  roomId?: string;
 }
 
 const DEFAULT_SETTINGS: TrackAudioSettings = {
@@ -41,7 +43,7 @@ const DEFAULT_SETTINGS: TrackAudioSettings = {
   monitoringVolume: 1,
 };
 
-export function AddTrackModal({ isOpen, onClose, userId }: AddTrackModalProps) {
+export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: AddTrackModalProps) {
   const { inputDevices, devicesLoaded, loadDevices, addTrack, getTracksByUser } = useUserTracksStore();
 
   const [trackName, setTrackName] = useState('');
@@ -160,13 +162,27 @@ export function AddTrackModal({ isOpen, onClose, userId }: AddTrackModalProps) {
     }
   }, [settings]);
 
-  const handleCreate = useCallback(() => {
+  const handleCreate = useCallback(async () => {
     if (!userId) return;
 
     stopTesting();
-    addTrack(userId, trackName, settings);
+    const newTrack = addTrack(userId, trackName, settings, userName);
+
+    // Persist the new track to the database
+    if (roomId) {
+      try {
+        await fetch(`/api/rooms/${roomId}/user-tracks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(newTrack),
+        });
+      } catch (err) {
+        console.error('Failed to persist track:', err);
+      }
+    }
+
     onClose();
-  }, [userId, trackName, settings, addTrack, onClose, stopTesting]);
+  }, [userId, userName, roomId, trackName, settings, addTrack, onClose, stopTesting]);
 
   return (
     <Modal

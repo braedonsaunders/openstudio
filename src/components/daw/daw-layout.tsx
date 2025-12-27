@@ -5,6 +5,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
+import { useTrackPersistence } from '@/hooks/useTrackPersistence';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { MenuBar } from './menu-bar';
@@ -98,6 +99,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
+
+  // Track persistence - automatically saves track settings changes to database
+  useTrackPersistence(roomId);
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
@@ -575,6 +579,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onVolumeChange={setUserVolume}
           onMuteSelf={() => setMuted(!isMuted)}
           width={leftPanelWidth}
+          roomId={roomId}
         />
 
         {/* Left Resize Handle */}

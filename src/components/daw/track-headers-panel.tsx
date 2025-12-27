@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react';
 import { TrackHeader } from './track-header';
 import { UserTrackHeader } from './user-track-header';
+import { InactiveTrackHeader } from './inactive-track-header';
 import { AddTrackModal } from './add-track-modal';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { Plus } from 'lucide-react';
@@ -17,6 +18,7 @@ interface TrackHeadersPanelProps {
   onVolumeChange: (userId: string, volume: number) => void;
   onMuteSelf: () => void;
   width?: number;
+  roomId?: string;
 }
 
 // Track color palette for remote users
@@ -42,14 +44,17 @@ export function TrackHeadersPanel({
   onVolumeChange,
   onMuteSelf,
   width,
+  roomId,
 }: TrackHeadersPanelProps) {
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
 
   const {
     getTracksByUser,
+    getInactiveTracks,
     trackLevels,
     addTrack,
     removeTrack,
+    assignTrackToUser,
     loadDevices,
     devicesLoaded,
   } = useUserTracksStore();
@@ -74,6 +79,9 @@ export function TrackHeadersPanel({
   // Get local user tracks
   const localTracks = currentUser ? getTracksByUser(currentUser.id) : [];
 
+  // Get inactive tracks (from users who left)
+  const inactiveTracks = getInactiveTracks().filter(t => t.userId !== currentUser?.id);
+
   // Remote users (excluding current user)
   const remoteUsers = users.filter((u) => u.id !== currentUser?.id);
 
@@ -81,7 +89,46 @@ export function TrackHeadersPanel({
   const getUserColor = (index: number) => TRACK_COLORS[index % TRACK_COLORS.length];
 
   // Count total tracks for display
-  const totalTracks = localTracks.length + remoteUsers.length;
+  const totalTracks = localTracks.length + remoteUsers.length + inactiveTracks.length;
+
+  // Handle claiming an abandoned track
+  const handleClaimTrack = async (trackId: string) => {
+    if (!currentUser) return;
+    assignTrackToUser(trackId, currentUser.id, currentUser.name);
+
+    // Persist to database
+    if (roomId) {
+      try {
+        await fetch(`/api/rooms/${roomId}/user-tracks`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            trackId,
+            userId: currentUser.id,
+            isActive: true,
+          }),
+        });
+      } catch (err) {
+        console.error('Failed to claim track:', err);
+      }
+    }
+  };
+
+  // Handle deleting an abandoned track
+  const handleDeleteTrack = async (trackId: string) => {
+    removeTrack(trackId);
+
+    // Delete from database
+    if (roomId) {
+      try {
+        await fetch(`/api/rooms/${roomId}/user-tracks?trackId=${trackId}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.error('Failed to delete track:', err);
+      }
+    }
+  };
 
   return (
     <div
@@ -154,8 +201,28 @@ export function TrackHeadersPanel({
           </div>
         )}
 
+        {/* Inactive Tracks (from users who left) */}
+        {inactiveTracks.length > 0 && (
+          <div className="border-t border-gray-200 dark:border-white/10">
+            <div className="px-3 py-1.5 bg-gray-100/50 dark:bg-white/[0.02]">
+              <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">
+                Disconnected
+              </span>
+            </div>
+            {inactiveTracks.map((track, index) => (
+              <InactiveTrackHeader
+                key={track.id}
+                track={track}
+                trackNumber={localTracks.length + remoteUsers.length + index + 1}
+                onClaim={() => handleClaimTrack(track.id)}
+                onDelete={() => handleDeleteTrack(track.id)}
+              />
+            ))}
+          </div>
+        )}
+
         {/* Empty state for no remote users */}
-        {remoteUsers.length === 0 && localTracks.length === 0 && (
+        {remoteUsers.length === 0 && localTracks.length === 0 && inactiveTracks.length === 0 && (
           <div className="p-4 text-center">
             <p className="text-sm text-gray-500 dark:text-zinc-500">No tracks yet</p>
             <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Add a track to get started</p>
@@ -179,6 +246,8 @@ export function TrackHeadersPanel({
         isOpen={showAddTrackModal}
         onClose={() => setShowAddTrackModal(false)}
         userId={currentUser?.id || ''}
+        userName={currentUser?.name}
+        roomId={roomId}
       />
     </div>
   );
