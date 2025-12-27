@@ -1,13 +1,13 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateRoomId } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { useAuthStore } from '@/stores/auth-store';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus } from 'lucide-react';
 
 // Theme toggle button
@@ -39,6 +39,195 @@ function ThemeToggle() {
         )}
       </motion.div>
     </motion.button>
+  );
+}
+
+// Animated campfire for night scene
+function Campfire() {
+  return (
+    <div className="absolute bottom-[12%] left-1/2 -translate-x-1/2 z-10">
+      <svg width="120" height="100" viewBox="0 0 120 100">
+        {/* Logs */}
+        <rect x="25" y="75" width="70" height="12" rx="6" fill="#78350f" transform="rotate(-10 60 80)" />
+        <rect x="25" y="75" width="70" height="12" rx="6" fill="#92400e" transform="rotate(10 60 80)" />
+        <rect x="40" y="78" width="40" height="10" rx="5" fill="#451a03" />
+
+        {/* Fire glow */}
+        <ellipse cx="60" cy="70" rx="40" ry="20" fill="url(#fireGlow)" />
+
+        {/* Flames */}
+        <motion.g>
+          {/* Main center flame */}
+          <motion.path
+            d="M60 75 Q50 50 55 35 Q60 20 60 15 Q60 20 65 35 Q70 50 60 75"
+            fill="url(#flameGradient)"
+            animate={{
+              d: [
+                "M60 75 Q50 50 55 35 Q60 20 60 15 Q60 20 65 35 Q70 50 60 75",
+                "M60 75 Q48 55 53 38 Q58 22 60 12 Q62 22 67 38 Q72 55 60 75",
+                "M60 75 Q52 48 57 32 Q62 18 60 10 Q58 18 63 32 Q68 48 60 75",
+                "M60 75 Q50 50 55 35 Q60 20 60 15 Q60 20 65 35 Q70 50 60 75",
+              ],
+            }}
+            transition={{ duration: 0.5, repeat: Infinity, ease: "easeInOut" }}
+          />
+
+          {/* Left flame */}
+          <motion.path
+            d="M45 75 Q38 58 42 45 Q46 35 45 30 Q44 35 48 45 Q52 58 45 75"
+            fill="url(#flameGradient2)"
+            animate={{
+              d: [
+                "M45 75 Q38 58 42 45 Q46 35 45 30 Q44 35 48 45 Q52 58 45 75",
+                "M45 75 Q36 60 40 48 Q44 38 45 32 Q46 38 50 48 Q54 60 45 75",
+                "M45 75 Q40 55 44 42 Q48 32 45 28 Q42 32 46 42 Q50 55 45 75",
+                "M45 75 Q38 58 42 45 Q46 35 45 30 Q44 35 48 45 Q52 58 45 75",
+              ],
+            }}
+            transition={{ duration: 0.4, repeat: Infinity, ease: "easeInOut", delay: 0.1 }}
+          />
+
+          {/* Right flame */}
+          <motion.path
+            d="M75 75 Q82 58 78 45 Q74 35 75 30 Q76 35 72 45 Q68 58 75 75"
+            fill="url(#flameGradient2)"
+            animate={{
+              d: [
+                "M75 75 Q82 58 78 45 Q74 35 75 30 Q76 35 72 45 Q68 58 75 75",
+                "M75 75 Q84 60 80 48 Q76 38 75 32 Q74 38 70 48 Q66 60 75 75",
+                "M75 75 Q80 55 76 42 Q72 32 75 28 Q78 32 74 42 Q70 55 75 75",
+                "M75 75 Q82 58 78 45 Q74 35 75 30 Q76 35 72 45 Q68 58 75 75",
+              ],
+            }}
+            transition={{ duration: 0.45, repeat: Infinity, ease: "easeInOut", delay: 0.2 }}
+          />
+        </motion.g>
+
+        {/* Sparks */}
+        {[0, 1, 2, 3, 4].map((i) => (
+          <motion.circle
+            key={i}
+            cx={55 + i * 3}
+            cy="40"
+            r="1.5"
+            fill="#fbbf24"
+            animate={{
+              y: [0, -30, -50],
+              x: [0, (i % 2 === 0 ? 10 : -10), (i % 2 === 0 ? 15 : -15)],
+              opacity: [1, 0.8, 0],
+              scale: [1, 0.8, 0.3],
+            }}
+            transition={{
+              duration: 1.5,
+              repeat: Infinity,
+              delay: i * 0.3,
+              ease: "easeOut",
+            }}
+          />
+        ))}
+
+        <defs>
+          <linearGradient id="flameGradient" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#dc2626" />
+            <stop offset="40%" stopColor="#f97316" />
+            <stop offset="70%" stopColor="#fbbf24" />
+            <stop offset="100%" stopColor="#fef08a" />
+          </linearGradient>
+          <linearGradient id="flameGradient2" x1="0%" y1="100%" x2="0%" y2="0%">
+            <stop offset="0%" stopColor="#ea580c" />
+            <stop offset="50%" stopColor="#f97316" />
+            <stop offset="100%" stopColor="#fcd34d" />
+          </linearGradient>
+          <radialGradient id="fireGlow" cx="50%" cy="50%" r="50%">
+            <stop offset="0%" stopColor="#f97316" stopOpacity="0.6" />
+            <stop offset="100%" stopColor="#f97316" stopOpacity="0" />
+          </radialGradient>
+        </defs>
+      </svg>
+    </div>
+  );
+}
+
+// Animated butterflies for day scene
+function Butterflies() {
+  const butterflies = useMemo(() => [
+    { startX: 20, startY: 30, color: '#f472b6' },
+    { startX: 70, startY: 25, color: '#a855f7' },
+    { startX: 45, startY: 35, color: '#60a5fa' },
+    { startX: 85, startY: 40, color: '#fbbf24' },
+  ], []);
+
+  return (
+    <div className="absolute inset-0 pointer-events-none overflow-hidden">
+      {butterflies.map((butterfly, i) => (
+        <motion.div
+          key={i}
+          className="absolute"
+          style={{ left: `${butterfly.startX}%`, top: `${butterfly.startY}%` }}
+          animate={{
+            x: [0, 50, -30, 80, 20, -40, 0],
+            y: [0, -20, 30, -10, 40, 10, 0],
+          }}
+          transition={{
+            duration: 20 + i * 5,
+            repeat: Infinity,
+            ease: "easeInOut",
+          }}
+        >
+          <motion.svg
+            width="24"
+            height="20"
+            viewBox="0 0 24 20"
+            animate={{ rotateY: [0, 180, 0] }}
+            transition={{ duration: 0.3, repeat: Infinity }}
+          >
+            {/* Left wing */}
+            <motion.ellipse
+              cx="8"
+              cy="10"
+              rx="7"
+              ry="8"
+              fill={butterfly.color}
+              fillOpacity="0.8"
+              animate={{ scaleX: [1, 0.3, 1] }}
+              transition={{ duration: 0.2, repeat: Infinity }}
+            />
+            {/* Right wing */}
+            <motion.ellipse
+              cx="16"
+              cy="10"
+              rx="7"
+              ry="8"
+              fill={butterfly.color}
+              fillOpacity="0.8"
+              animate={{ scaleX: [1, 0.3, 1] }}
+              transition={{ duration: 0.2, repeat: Infinity }}
+            />
+            {/* Body */}
+            <ellipse cx="12" cy="10" rx="1.5" ry="6" fill="#1e293b" />
+          </motion.svg>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
+
+// Animated picnic blanket for day scene
+function PicnicBlanket() {
+  return (
+    <div className="absolute bottom-[8%] left-1/2 -translate-x-1/2 z-5">
+      <svg width="200" height="60" viewBox="0 0 200 60">
+        <ellipse cx="100" cy="40" rx="90" ry="20" fill="url(#blanketPattern)" />
+        <defs>
+          <pattern id="blanketPattern" x="0" y="0" width="20" height="20" patternUnits="userSpaceOnUse">
+            <rect width="10" height="10" fill="#ef4444" />
+            <rect x="10" width="10" height="10" fill="#fef2f2" />
+            <rect y="10" width="10" height="10" fill="#fef2f2" />
+            <rect x="10" y="10" width="10" height="10" fill="#ef4444" />
+          </pattern>
+        </defs>
+      </svg>
+    </div>
   );
 }
 
@@ -81,13 +270,13 @@ function Clouds() {
 
 // Animated stars for night scene
 function Stars() {
-  const stars = Array.from({ length: 50 }, (_, i) => ({
+  const stars = useMemo(() => Array.from({ length: 50 }, (_, i) => ({
     x: `${Math.random() * 100}%`,
     y: `${Math.random() * 40}%`,
     size: Math.random() * 2 + 1,
     duration: Math.random() * 3 + 2,
     delay: Math.random() * 2,
-  }));
+  })), []);
 
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
@@ -120,7 +309,13 @@ function Stars() {
 // Day scene - Forest meadow with sunlight
 function DayScene() {
   return (
-    <div className="absolute inset-0">
+    <motion.div
+      className="absolute inset-0"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 1.5, ease: "easeInOut" }}
+    >
       {/* Sky gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-sky-300 via-sky-200 to-amber-100" />
 
@@ -145,6 +340,9 @@ function DayScene() {
       {/* Clouds */}
       <Clouds />
 
+      {/* Butterflies */}
+      <Butterflies />
+
       {/* Distant mountains */}
       <svg className="absolute bottom-[25%] left-0 right-0 w-full h-[30%]" viewBox="0 0 1440 300" preserveAspectRatio="none">
         <path d="M0 300 L0 180 Q200 80 400 150 Q600 50 800 120 Q1000 40 1200 100 Q1350 60 1440 130 L1440 300 Z" fill="#94a3b8" fillOpacity="0.3" />
@@ -154,10 +352,9 @@ function DayScene() {
       {/* Forest trees background */}
       <div className="absolute bottom-[20%] left-0 right-0 h-[20%]">
         <svg className="w-full h-full" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          {/* Background trees */}
           {Array.from({ length: 20 }).map((_, i) => (
-            <g key={i} transform={`translate(${i * 75 + Math.random() * 30}, ${20 + Math.random() * 30})`}>
-              <polygon points="30,150 60,0 90,150" fill="#166534" fillOpacity={0.6 + Math.random() * 0.2} />
+            <g key={i} transform={`translate(${i * 75 + 15}, ${20 + (i % 3) * 10})`}>
+              <polygon points="30,150 60,0 90,150" fill="#166534" fillOpacity={0.6 + (i % 3) * 0.1} />
               <rect x="55" y="150" width="10" height="30" fill="#78350f" fillOpacity="0.6" />
             </g>
           ))}
@@ -178,8 +375,11 @@ function DayScene() {
         </svg>
       </div>
 
+      {/* Picnic blanket */}
+      <PicnicBlanket />
+
       {/* Animated grass/flowers */}
-      <div className="absolute bottom-[5%] left-0 right-0 h-[15%] flex items-end justify-around">
+      <div className="absolute bottom-[5%] left-0 right-0 h-[15%] flex items-end justify-around pointer-events-none">
         {Array.from({ length: 30 }).map((_, i) => (
           <motion.div
             key={i}
@@ -188,16 +388,16 @@ function DayScene() {
               rotateZ: [-3, 3, -3],
             }}
             transition={{
-              duration: 2 + Math.random() * 2,
+              duration: 2 + (i % 3),
               repeat: Infinity,
               ease: 'easeInOut',
-              delay: Math.random(),
+              delay: i * 0.1,
             }}
           >
             <svg width="20" height="40" viewBox="0 0 20 40">
               <path d="M10 40 Q8 25 10 10 Q12 0 10 0" stroke="#4ade80" strokeWidth="2" fill="none" />
-              {Math.random() > 0.7 && (
-                <circle cx="10" cy="5" r="4" fill={['#fbbf24', '#f472b6', '#c084fc', '#60a5fa'][Math.floor(Math.random() * 4)]} />
+              {i % 4 === 0 && (
+                <circle cx="10" cy="5" r="4" fill={['#fbbf24', '#f472b6', '#c084fc', '#60a5fa'][i % 4]} />
               )}
             </svg>
           </motion.div>
@@ -265,14 +465,20 @@ function DayScene() {
           </motion.svg>
         </motion.div>
       ))}
-    </div>
+    </motion.div>
   );
 }
 
 // Night scene - Tropical beach sunset with city skyline
 function NightScene() {
   return (
-    <div className="absolute inset-0">
+    <motion.div
+      className="absolute inset-0"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 1.5, ease: "easeInOut" }}
+    >
       {/* Sunset sky gradient */}
       <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-900 via-60% to-orange-500" />
 
@@ -305,7 +511,6 @@ function NightScene() {
               <stop offset="100%" stopColor="#312e81" />
             </linearGradient>
           </defs>
-          {/* Buildings silhouette */}
           <rect x="50" y="50" width="30" height="100" fill="url(#buildingGradient)" />
           <rect x="90" y="30" width="25" height="120" fill="url(#buildingGradient)" />
           <rect x="120" y="60" width="35" height="90" fill="url(#buildingGradient)" />
@@ -318,19 +523,18 @@ function NightScene() {
           <rect x="1280" y="35" width="40" height="115" fill="url(#buildingGradient)" />
           <rect x="1340" y="65" width="30" height="85" fill="url(#buildingGradient)" />
 
-          {/* Windows - twinkling lights */}
           {Array.from({ length: 40 }).map((_, i) => (
             <motion.rect
               key={i}
-              x={50 + (i % 10) * 25 + Math.random() * 15}
-              y={40 + Math.floor(i / 10) * 25 + Math.random() * 10}
+              x={50 + (i % 10) * 25 + (i % 7) * 2}
+              y={40 + Math.floor(i / 10) * 25 + (i % 5) * 2}
               width="3"
               height="4"
               fill="#fef08a"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{
-                duration: 1 + Math.random() * 2,
-                delay: Math.random() * 2,
+                duration: 1 + (i % 3),
+                delay: (i % 10) * 0.2,
                 repeat: Infinity,
               }}
             />
@@ -338,15 +542,15 @@ function NightScene() {
           {Array.from({ length: 40 }).map((_, i) => (
             <motion.rect
               key={`right-${i}`}
-              x={1150 + (i % 10) * 20 + Math.random() * 10}
-              y={40 + Math.floor(i / 10) * 25 + Math.random() * 10}
+              x={1150 + (i % 10) * 20 + (i % 5)}
+              y={40 + Math.floor(i / 10) * 25 + (i % 4) * 2}
               width="3"
               height="4"
               fill="#fef08a"
               animate={{ opacity: [0.3, 1, 0.3] }}
               transition={{
-                duration: 1 + Math.random() * 2,
-                delay: Math.random() * 2,
+                duration: 1 + (i % 3),
+                delay: (i % 10) * 0.2,
                 repeat: Infinity,
               }}
             />
@@ -405,11 +609,9 @@ function NightScene() {
             </linearGradient>
           </defs>
           <rect x="0" y="0" width="1440" height="250" fill="url(#oceanGradient)" />
-          {/* Sun reflection on water */}
           <ellipse cx="720" cy="20" rx="150" ry="200" fill="url(#sunReflection)" />
         </svg>
 
-        {/* Animated waves */}
         <motion.svg
           className="absolute top-0 left-0 w-full"
           viewBox="0 0 1440 50"
@@ -423,6 +625,9 @@ function NightScene() {
 
       {/* Beach sand */}
       <div className="absolute bottom-0 left-0 right-0 h-[12%] bg-gradient-to-t from-amber-900/80 to-amber-800/60" />
+
+      {/* Campfire */}
+      <Campfire />
 
       {/* Shooting stars */}
       {[0, 1, 2].map((i) => (
@@ -455,484 +660,231 @@ function NightScene() {
           key={i}
           className="absolute w-2 h-2 rounded-full"
           style={{
-            left: `${10 + Math.random() * 80}%`,
-            bottom: `${15 + Math.random() * 20}%`,
+            left: `${10 + (i * 6) % 80}%`,
+            bottom: `${15 + (i * 3) % 20}%`,
             background: 'radial-gradient(circle, rgba(250, 204, 21, 0.9), transparent)',
           }}
           animate={{
             opacity: [0, 1, 0],
             scale: [0.5, 1, 0.5],
-            x: [0, Math.random() * 40 - 20, 0],
-            y: [0, Math.random() * 30 - 15, 0],
+            x: [0, (i % 2 === 0 ? 20 : -20), 0],
+            y: [0, (i % 3 === 0 ? -15 : 15), 0],
           }}
           transition={{
-            duration: 3 + Math.random() * 2,
-            delay: Math.random() * 5,
+            duration: 3 + (i % 3),
+            delay: i * 0.5,
             repeat: Infinity,
             ease: 'easeInOut',
           }}
         />
       ))}
-    </div>
+    </motion.div>
   );
 }
 
-// Musician with Guitar - sitting position
-function GuitaristCharacter({ position, delay }: { position: 'left' | 'center-left' | 'center' | 'center-right' | 'right'; delay: number }) {
-  const positionStyles = {
-    'left': 'left-[8%] bottom-[8%]',
-    'center-left': 'left-[25%] bottom-[10%]',
-    'center': 'left-[45%] bottom-[8%]',
-    'center-right': 'left-[62%] bottom-[10%]',
-    'right': 'left-[80%] bottom-[8%]',
+// Musician character - Generic with different instruments
+function MusicianCharacter({
+  type,
+  position,
+  isVisible,
+  delay
+}: {
+  type: 'guitarist' | 'drummer' | 'keyboardist' | 'singer' | 'bassist';
+  position: string;
+  isVisible: boolean;
+  delay: number;
+}) {
+  const characters: Record<string, ReactNode> = {
+    guitarist: (
+      <motion.svg width="80" height="110" viewBox="0 0 100 140" animate={{ y: [0, -3, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}>
+        <ellipse cx="50" cy="135" rx="25" ry="4" fill="rgba(0,0,0,0.15)" />
+        <ellipse cx="35" cy="115" rx="18" ry="7" fill="#1e40af" />
+        <ellipse cx="65" cy="115" rx="18" ry="7" fill="#1e40af" />
+        <rect x="38" y="70" width="24" height="35" rx="4" fill="#dc2626" />
+        <motion.g animate={{ rotate: [-2, 2, -2] }} transition={{ duration: 2, repeat: Infinity }} style={{ transformOrigin: '35px 80px' }}>
+          <rect x="18" y="75" width="22" height="8" rx="4" fill="#fcd34d" />
+        </motion.g>
+        <motion.g animate={{ rotate: [2, -2, 2] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ transformOrigin: '65px 80px' }}>
+          <rect x="60" y="75" width="22" height="8" rx="4" fill="#fcd34d" />
+        </motion.g>
+        <circle cx="50" cy="55" r="18" fill="#fcd34d" />
+        <path d="M32 50 Q38 32 50 30 Q62 32 68 50" fill="#451a03" />
+        <circle cx="44" cy="55" r="2.5" fill="#1e293b" />
+        <circle cx="56" cy="55" r="2.5" fill="#1e293b" />
+        <path d="M44 62 Q50 67 56 62" stroke="#1e293b" strokeWidth="1.5" fill="none" />
+        <motion.g animate={{ rotate: [-1, 1, -1] }} transition={{ duration: 2, repeat: Infinity }} style={{ transformOrigin: '50px 95px' }}>
+          <ellipse cx="50" cy="95" rx="15" ry="10" fill="#92400e" />
+          <ellipse cx="50" cy="95" rx="4" ry="2.5" fill="#1e293b" />
+          <rect x="48" y="68" width="4" height="27" fill="#78350f" />
+        </motion.g>
+      </motion.svg>
+    ),
+    drummer: (
+      <motion.svg width="110" height="120" viewBox="0 0 140 150" animate={{ y: [0, -2, 0] }} transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}>
+        <ellipse cx="70" cy="142" rx="45" ry="4" fill="rgba(0,0,0,0.15)" />
+        <ellipse cx="70" cy="125" rx="35" ry="8" fill="#525252" />
+        <ellipse cx="70" cy="108" rx="26" ry="22" fill="#1e293b" />
+        <ellipse cx="70" cy="108" rx="22" ry="17" fill="#334155" />
+        <circle cx="70" cy="108" r="8" fill="#f59e0b" />
+        <ellipse cx="35" cy="98" rx="12" ry="8" fill="#475569" />
+        <ellipse cx="105" cy="98" rx="12" ry="8" fill="#475569" />
+        <motion.ellipse cx="118" cy="68" rx="10" ry="2.5" fill="#fbbf24" animate={{ rotate: [-5, 5, -5], y: [0, 2, 0] }} transition={{ duration: 0.5, repeat: Infinity }} style={{ transformOrigin: '118px 68px' }} />
+        <rect x="58" y="52" width="24" height="30" rx="4" fill="#7c3aed" />
+        <circle cx="70" cy="38" r="15" fill="#fcd34d" />
+        <rect x="55" y="28" width="30" height="4" rx="2" fill="#ef4444" />
+        <circle cx="64" cy="38" r="2.5" fill="#1e293b" />
+        <circle cx="76" cy="38" r="2.5" fill="#1e293b" />
+        <ellipse cx="70" cy="44" rx="4" ry="2.5" fill="#1e293b" />
+        <motion.g animate={{ rotate: [-15, 15, -15] }} transition={{ duration: 0.4, repeat: Infinity }} style={{ transformOrigin: '45px 60px' }}>
+          <rect x="28" y="55" width="22" height="7" rx="3" fill="#fcd34d" />
+          <rect x="18" y="54" width="16" height="2.5" rx="1" fill="#a16207" />
+        </motion.g>
+        <motion.g animate={{ rotate: [15, -15, 15] }} transition={{ duration: 0.35, repeat: Infinity }} style={{ transformOrigin: '95px 60px' }}>
+          <rect x="90" y="55" width="22" height="7" rx="3" fill="#fcd34d" />
+          <rect x="102" y="54" width="16" height="2.5" rx="1" fill="#a16207" />
+        </motion.g>
+      </motion.svg>
+    ),
+    keyboardist: (
+      <motion.svg width="100" height="105" viewBox="0 0 130 130" animate={{ y: [0, -2, 0] }} transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}>
+        <ellipse cx="65" cy="122" rx="40" ry="4" fill="rgba(0,0,0,0.15)" />
+        <rect x="15" y="82" width="100" height="4" fill="#525252" />
+        <rect x="22" y="86" width="4" height="30" fill="#525252" />
+        <rect x="104" y="86" width="4" height="30" fill="#525252" />
+        <rect x="18" y="72" width="94" height="13" rx="2" fill="#1e293b" />
+        {Array.from({ length: 13 }).map((_, i) => (
+          <motion.rect key={i} x={20 + i * 7} y="74" width="5" height="9" rx="1" fill="white" animate={{ y: i % 3 === 0 ? [74, 75, 74] : [74, 74, 74] }} transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.1 }} />
+        ))}
+        <rect x="52" y="38" width="26" height="30" rx="4" fill="#10b981" />
+        <circle cx="65" cy="24" r="14" fill="#fcd34d" />
+        <circle cx="58" cy="24" r="5" fill="none" stroke="#1e293b" strokeWidth="1.5" />
+        <circle cx="72" cy="24" r="5" fill="none" stroke="#1e293b" strokeWidth="1.5" />
+        <circle cx="58" cy="24" r="1.5" fill="#1e293b" />
+        <circle cx="72" cy="24" r="1.5" fill="#1e293b" />
+        <path d="M58 30 Q65 34 72 30" stroke="#1e293b" strokeWidth="1.5" fill="none" />
+        <path d="M51 20 Q57 8 65 8 Q73 8 79 20" fill="#78350f" />
+        <motion.rect x="32" y="48" width="22" height="7" rx="3" fill="#fcd34d" animate={{ rotate: [-3, 3, -3] }} transition={{ duration: 1, repeat: Infinity }} style={{ transformOrigin: '52px 52px' }} />
+        <motion.rect x="76" y="48" width="22" height="7" rx="3" fill="#fcd34d" animate={{ rotate: [3, -3, 3] }} transition={{ duration: 0.8, repeat: Infinity }} style={{ transformOrigin: '78px 52px' }} />
+      </motion.svg>
+    ),
+    singer: (
+      <motion.svg width="65" height="120" viewBox="0 0 80 150" animate={{ y: [0, -4, 0] }} transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}>
+        <ellipse cx="40" cy="142" rx="18" ry="4" fill="rgba(0,0,0,0.15)" />
+        <rect x="30" y="100" width="8" height="38" rx="4" fill="#1e40af" />
+        <rect x="42" y="100" width="8" height="38" rx="4" fill="#1e40af" />
+        <motion.g animate={{ rotate: [-3, 3, -3] }} transition={{ duration: 2, repeat: Infinity }} style={{ transformOrigin: '40px 100px' }}>
+          <path d="M27 60 L31 100 L49 100 L53 60 Q40 55 27 60" fill="#f472b6" />
+          <motion.g animate={{ rotate: [-5, 5, -5] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ transformOrigin: '27px 65px' }}>
+            <rect x="12" y="60" width="18" height="7" rx="3" fill="#fcd34d" />
+          </motion.g>
+          <motion.g animate={{ rotate: [5, -5, 5] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ transformOrigin: '53px 65px' }}>
+            <rect x="50" y="60" width="18" height="7" rx="3" fill="#fcd34d" />
+            <rect x="66" y="55" width="4" height="16" rx="2" fill="#525252" />
+            <ellipse cx="68" cy="52" rx="5" ry="7" fill="#374151" />
+          </motion.g>
+          <circle cx="40" cy="42" r="16" fill="#fcd34d" />
+          <path d="M24 40 Q22 22 40 17 Q58 22 56 40 L56 52 Q48 48 40 52 Q32 48 24 52 Z" fill="#1e293b" />
+          <path d="M33 42 Q36 40 39 42" stroke="#1e293b" strokeWidth="1.5" fill="none" />
+          <path d="M41 42 Q44 40 47 42" stroke="#1e293b" strokeWidth="1.5" fill="none" />
+          <motion.ellipse cx="40" cy="49" rx="4" ry="3" fill="#1e293b" animate={{ ry: [2.5, 4, 2.5] }} transition={{ duration: 1, repeat: Infinity }} />
+        </motion.g>
+        <motion.text x="58" y="28" fontSize="12" fill="#f472b6" animate={{ y: [28, 15], opacity: [1, 0], x: [58, 66] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}>♪</motion.text>
+      </motion.svg>
+    ),
+    bassist: (
+      <motion.svg width="72" height="125" viewBox="0 0 90 160" animate={{ y: [0, -3, 0] }} transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}>
+        <ellipse cx="45" cy="152" rx="22" ry="4" fill="rgba(0,0,0,0.15)" />
+        <rect x="34" y="105" width="8" height="42" rx="4" fill="#1e40af" />
+        <rect x="48" y="105" width="8" height="42" rx="4" fill="#1e40af" />
+        <motion.g animate={{ rotate: [-2, 2, -2] }} transition={{ duration: 3, repeat: Infinity }} style={{ transformOrigin: '45px 105px' }}>
+          <rect x="30" y="55" width="30" height="45" rx="4" fill="#0ea5e9" />
+          <motion.g animate={{ rotate: [-1, 1, -1] }} transition={{ duration: 2, repeat: Infinity }} style={{ transformOrigin: '52px 88px' }}>
+            <ellipse cx="55" cy="98" rx="13" ry="17" fill="#dc2626" />
+            <rect x="52" y="50" width="5" height="45" fill="#78350f" />
+            <rect x="49" y="43" width="12" height="10" rx="2" fill="#78350f" />
+          </motion.g>
+          <motion.rect x="14" y="60" width="18" height="7" rx="3" fill="#fcd34d" animate={{ rotate: [-3, 3, -3] }} transition={{ duration: 1.5, repeat: Infinity }} style={{ transformOrigin: '30px 64px' }} />
+          <circle cx="45" cy="40" r="15" fill="#fcd34d" />
+          <path d="M30 37 Q32 22 45 18 Q58 22 60 37 L58 40 Q45 37 32 40 Z" fill="#4f46e5" />
+          <rect x="30" y="35" width="30" height="5" rx="2" fill="#6366f1" />
+          <rect x="34" y="38" width="9" height="5" rx="2" fill="#1e293b" />
+          <rect x="47" y="38" width="9" height="5" rx="2" fill="#1e293b" />
+          <path d="M40 50 Q45 53 50 50" stroke="#1e293b" strokeWidth="1.5" fill="none" />
+        </motion.g>
+      </motion.svg>
+    ),
   };
 
   return (
-    <motion.div
-      className={`absolute ${positionStyles[position]}`}
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 2, delay, ease: 'easeOut' }}
-    >
-      <motion.svg
-        width="100"
-        height="140"
-        viewBox="0 0 100 140"
-        animate={{ y: [0, -3, 0] }}
-        transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {/* Shadow */}
-        <ellipse cx="50" cy="135" rx="30" ry="5" fill="rgba(0,0,0,0.2)" />
-
-        {/* Legs sitting cross-legged */}
-        <ellipse cx="35" cy="120" rx="20" ry="8" fill="#1e40af" />
-        <ellipse cx="65" cy="120" rx="20" ry="8" fill="#1e40af" />
-
-        {/* Body */}
-        <rect x="35" y="70" width="30" height="40" rx="5" fill="#dc2626" />
-
-        {/* Arms */}
-        <motion.g
-          animate={{ rotate: [-2, 2, -2] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '35px 80px' }}
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          className={`absolute ${position}`}
+          initial={{ opacity: 0, y: 30 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 20 }}
+          transition={{ duration: 1.5, delay, ease: 'easeOut' }}
         >
-          <rect x="15" y="75" width="25" height="10" rx="5" fill="#fcd34d" />
-        </motion.g>
-        <motion.g
-          animate={{ rotate: [2, -2, 2] }}
-          transition={{ duration: 1.5, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '65px 80px' }}
-        >
-          <rect x="60" y="75" width="25" height="10" rx="5" fill="#fcd34d" />
-        </motion.g>
-
-        {/* Head */}
-        <circle cx="50" cy="55" r="20" fill="#fcd34d" />
-
-        {/* Hair */}
-        <path d="M30 50 Q35 30 50 28 Q65 30 70 50" fill="#451a03" />
-
-        {/* Eyes */}
-        <circle cx="43" cy="55" r="3" fill="#1e293b" />
-        <circle cx="57" cy="55" r="3" fill="#1e293b" />
-
-        {/* Smile */}
-        <path d="M43 62 Q50 68 57 62" stroke="#1e293b" strokeWidth="2" fill="none" />
-
-        {/* Guitar */}
-        <motion.g
-          animate={{ rotate: [-1, 1, -1] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '50px 100px' }}
-        >
-          <ellipse cx="50" cy="100" rx="18" ry="12" fill="#92400e" />
-          <ellipse cx="50" cy="100" rx="5" ry="3" fill="#1e293b" />
-          <rect x="48" y="70" width="4" height="30" fill="#78350f" />
-          <rect x="45" y="65" width="10" height="8" rx="2" fill="#78350f" />
-          {/* Strings */}
-          <line x1="47" y1="88" x2="47" y2="110" stroke="#fcd34d" strokeWidth="0.5" />
-          <line x1="50" y1="88" x2="50" y2="110" stroke="#fcd34d" strokeWidth="0.5" />
-          <line x1="53" y1="88" x2="53" y2="110" stroke="#fcd34d" strokeWidth="0.5" />
-        </motion.g>
-      </motion.svg>
-    </motion.div>
+          {characters[type]}
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
-// Drummer character
-function DrummerCharacter({ position, delay }: { position: string; delay: number }) {
+// Audience member
+function AudienceMember({ position, variant, isVisible }: { position: string; variant: number; isVisible: boolean }) {
+  const colors = ['#f472b6', '#a855f7', '#3b82f6', '#10b981', '#f59e0b'];
+  const hairColors = ['#451a03', '#1e293b', '#78350f', '#dc2626', '#fbbf24'];
+
   return (
-    <motion.div
-      className={`absolute ${position}`}
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 2, delay, ease: 'easeOut' }}
-    >
-      <motion.svg
-        width="140"
-        height="150"
-        viewBox="0 0 140 150"
-        animate={{ y: [0, -2, 0] }}
-        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {/* Shadow */}
-        <ellipse cx="70" cy="145" rx="50" ry="5" fill="rgba(0,0,0,0.2)" />
-
-        {/* Drum set base */}
-        <ellipse cx="70" cy="130" rx="40" ry="10" fill="#525252" />
-
-        {/* Bass drum */}
-        <ellipse cx="70" cy="110" rx="30" ry="25" fill="#1e293b" />
-        <ellipse cx="70" cy="110" rx="25" ry="20" fill="#334155" />
-        <circle cx="70" cy="110" r="10" fill="#f59e0b" />
-
-        {/* Side drums */}
-        <ellipse cx="30" cy="100" rx="15" ry="10" fill="#475569" />
-        <ellipse cx="30" cy="95" rx="15" ry="5" fill="#64748b" />
-        <ellipse cx="110" cy="100" rx="15" ry="10" fill="#475569" />
-        <ellipse cx="110" cy="95" rx="15" ry="5" fill="#64748b" />
-
-        {/* Cymbal */}
-        <motion.ellipse
-          cx="125"
-          cy="70"
-          rx="12"
-          ry="3"
-          fill="#fbbf24"
-          animate={{ rotate: [-5, 5, -5], y: [0, 2, 0] }}
-          transition={{ duration: 0.5, repeat: Infinity }}
-          style={{ transformOrigin: '125px 70px' }}
-        />
-        <line x1="125" y1="70" x2="125" y2="130" stroke="#71717a" strokeWidth="2" />
-
-        {/* Character sitting */}
-        <rect x="55" y="50" width="30" height="35" rx="5" fill="#7c3aed" />
-
-        {/* Head */}
-        <circle cx="70" cy="35" r="18" fill="#fcd34d" />
-
-        {/* Headband */}
-        <rect x="52" y="25" width="36" height="5" rx="2" fill="#ef4444" />
-
-        {/* Eyes */}
-        <circle cx="63" cy="35" r="3" fill="#1e293b" />
-        <circle cx="77" cy="35" r="3" fill="#1e293b" />
-
-        {/* Excited expression */}
-        <ellipse cx="70" cy="42" rx="5" ry="3" fill="#1e293b" />
-
-        {/* Arms with drumsticks */}
-        <motion.g
-          animate={{ rotate: [-15, 15, -15] }}
-          transition={{ duration: 0.4, repeat: Infinity }}
-          style={{ transformOrigin: '45px 60px' }}
+    <AnimatePresence>
+      {isVisible && (
+        <motion.div
+          className={`absolute ${position}`}
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          exit={{ opacity: 0, scale: 0.8 }}
+          transition={{ duration: 1.2, ease: 'easeOut' }}
         >
-          <rect x="25" y="55" width="25" height="8" rx="4" fill="#fcd34d" />
-          <rect x="15" y="53" width="20" height="3" rx="1" fill="#a16207" />
-        </motion.g>
-        <motion.g
-          animate={{ rotate: [15, -15, 15] }}
-          transition={{ duration: 0.35, repeat: Infinity }}
-          style={{ transformOrigin: '95px 60px' }}
-        >
-          <rect x="90" y="55" width="25" height="8" rx="4" fill="#fcd34d" />
-          <rect x="105" y="53" width="20" height="3" rx="1" fill="#a16207" />
-        </motion.g>
-
-        {/* Legs */}
-        <rect x="50" y="80" width="12" height="25" rx="5" fill="#1e40af" />
-        <rect x="78" y="80" width="12" height="25" rx="5" fill="#1e40af" />
-      </motion.svg>
-    </motion.div>
-  );
-}
-
-// Keyboard player
-function KeyboardistCharacter({ position, delay }: { position: string; delay: number }) {
-  return (
-    <motion.div
-      className={`absolute ${position}`}
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 2, delay, ease: 'easeOut' }}
-    >
-      <motion.svg
-        width="130"
-        height="130"
-        viewBox="0 0 130 130"
-        animate={{ y: [0, -2, 0] }}
-        transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {/* Shadow */}
-        <ellipse cx="65" cy="125" rx="45" ry="5" fill="rgba(0,0,0,0.2)" />
-
-        {/* Keyboard stand */}
-        <rect x="10" y="85" width="110" height="5" fill="#525252" />
-        <rect x="20" y="90" width="5" height="35" fill="#525252" />
-        <rect x="105" y="90" width="5" height="35" fill="#525252" />
-
-        {/* Keyboard */}
-        <rect x="15" y="75" width="100" height="15" rx="2" fill="#1e293b" />
-        {/* White keys */}
-        {Array.from({ length: 14 }).map((_, i) => (
-          <motion.rect
-            key={i}
-            x={17 + i * 7}
-            y="77"
-            width="6"
-            height="11"
-            rx="1"
-            fill="white"
-            animate={{ y: i % 3 === 0 ? [77, 78, 77] : [77, 77, 77] }}
-            transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.1 }}
-          />
-        ))}
-        {/* Black keys */}
-        {[0, 1, 3, 4, 5, 7, 8, 10, 11, 12].map((i, idx) => (
-          <rect key={idx} x={21 + i * 7} y="77" width="4" height="6" rx="1" fill="#1e293b" />
-        ))}
-
-        {/* Character */}
-        <rect x="50" y="35" width="30" height="35" rx="5" fill="#10b981" />
-
-        {/* Head */}
-        <circle cx="65" cy="22" r="16" fill="#fcd34d" />
-
-        {/* Glasses */}
-        <circle cx="58" cy="22" r="6" fill="none" stroke="#1e293b" strokeWidth="2" />
-        <circle cx="72" cy="22" r="6" fill="none" stroke="#1e293b" strokeWidth="2" />
-        <line x1="64" y1="22" x2="66" y2="22" stroke="#1e293b" strokeWidth="2" />
-
-        {/* Eyes behind glasses */}
-        <circle cx="58" cy="22" r="2" fill="#1e293b" />
-        <circle cx="72" cy="22" r="2" fill="#1e293b" />
-
-        {/* Smile */}
-        <path d="M58 28 Q65 33 72 28" stroke="#1e293b" strokeWidth="1.5" fill="none" />
-
-        {/* Hair */}
-        <path d="M49 18 Q55 5 65 5 Q75 5 81 18" fill="#78350f" />
-
-        {/* Arms playing keyboard */}
-        <motion.g
-          animate={{ rotate: [-3, 3, -3] }}
-          transition={{ duration: 1, repeat: Infinity }}
-          style={{ transformOrigin: '50px 50px' }}
-        >
-          <rect x="30" y="45" width="25" height="8" rx="4" fill="#fcd34d" />
-        </motion.g>
-        <motion.g
-          animate={{ rotate: [3, -3, 3] }}
-          transition={{ duration: 0.8, repeat: Infinity }}
-          style={{ transformOrigin: '80px 50px' }}
-        >
-          <rect x="75" y="45" width="25" height="8" rx="4" fill="#fcd34d" />
-        </motion.g>
-
-        {/* Legs on stool */}
-        <rect x="55" y="68" width="8" height="20" rx="4" fill="#1e40af" />
-        <rect x="67" y="68" width="8" height="20" rx="4" fill="#1e40af" />
-
-        {/* Stool */}
-        <rect x="48" y="88" width="34" height="8" rx="2" fill="#78350f" />
-      </motion.svg>
-    </motion.div>
-  );
-}
-
-// Singer with microphone
-function SingerCharacter({ position, delay }: { position: string; delay: number }) {
-  return (
-    <motion.div
-      className={`absolute ${position}`}
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 2, delay, ease: 'easeOut' }}
-    >
-      <motion.svg
-        width="80"
-        height="150"
-        viewBox="0 0 80 150"
-        animate={{ y: [0, -4, 0] }}
-        transition={{ duration: 3.5, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {/* Shadow */}
-        <ellipse cx="40" cy="145" rx="20" ry="5" fill="rgba(0,0,0,0.2)" />
-
-        {/* Legs standing */}
-        <rect x="28" y="100" width="10" height="40" rx="5" fill="#1e40af" />
-        <rect x="42" y="100" width="10" height="40" rx="5" fill="#1e40af" />
-
-        {/* Body swaying */}
-        <motion.g
-          animate={{ rotate: [-3, 3, -3] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '40px 100px' }}
-        >
-          {/* Torso */}
-          <path d="M25 60 L30 100 L50 100 L55 60 Q40 55 25 60" fill="#f472b6" />
-
-          {/* Arms */}
-          <motion.g
-            animate={{ rotate: [-5, 5, -5] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            style={{ transformOrigin: '25px 65px' }}
+          <motion.svg
+            width="40"
+            height="60"
+            viewBox="0 0 40 60"
+            animate={{ y: [0, -2, 0], rotate: [-2, 2, -2] }}
+            transition={{ duration: 2 + variant * 0.5, repeat: Infinity, ease: 'easeInOut' }}
           >
-            <rect x="10" y="60" width="20" height="8" rx="4" fill="#fcd34d" />
-          </motion.g>
-          <motion.g
-            animate={{ rotate: [5, -5, 5] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            style={{ transformOrigin: '55px 65px' }}
-          >
-            <rect x="50" y="60" width="20" height="8" rx="4" fill="#fcd34d" />
-            {/* Microphone */}
-            <rect x="68" y="55" width="5" height="20" rx="2" fill="#525252" />
-            <ellipse cx="70" cy="52" rx="6" ry="8" fill="#374151" />
-          </motion.g>
-
-          {/* Head */}
-          <circle cx="40" cy="42" r="18" fill="#fcd34d" />
-
-          {/* Long hair */}
-          <path d="M22 40 Q20 20 40 15 Q60 20 58 40 L58 55 Q50 50 40 55 Q30 50 22 55 Z" fill="#1e293b" />
-
-          {/* Eyes closed - singing */}
-          <path d="M32 42 Q35 40 38 42" stroke="#1e293b" strokeWidth="2" fill="none" />
-          <path d="M42 42 Q45 40 48 42" stroke="#1e293b" strokeWidth="2" fill="none" />
-
-          {/* Singing mouth */}
-          <motion.ellipse
-            cx="40"
-            cy="50"
-            rx="5"
-            ry="4"
-            fill="#1e293b"
-            animate={{ ry: [3, 5, 3] }}
-            transition={{ duration: 1, repeat: Infinity }}
-          />
-        </motion.g>
-
-        {/* Music notes floating */}
-        <motion.text
-          x="60"
-          y="30"
-          fontSize="14"
-          fill="#f472b6"
-          animate={{ y: [30, 15], opacity: [1, 0], x: [60, 70] }}
-          transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}
-        >
-          ♪
-        </motion.text>
-        <motion.text
-          x="15"
-          y="35"
-          fontSize="12"
-          fill="#a855f7"
-          animate={{ y: [35, 20], opacity: [1, 0], x: [15, 5] }}
-          transition={{ duration: 2.5, repeat: Infinity, ease: 'easeOut', delay: 0.5 }}
-        >
-          ♫
-        </motion.text>
-      </motion.svg>
-    </motion.div>
-  );
-}
-
-// Bass player
-function BassistCharacter({ position, delay }: { position: string; delay: number }) {
-  return (
-    <motion.div
-      className={`absolute ${position}`}
-      initial={{ opacity: 0, y: 50 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 2, delay, ease: 'easeOut' }}
-    >
-      <motion.svg
-        width="90"
-        height="160"
-        viewBox="0 0 90 160"
-        animate={{ y: [0, -3, 0] }}
-        transition={{ duration: 4.5, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {/* Shadow */}
-        <ellipse cx="45" cy="155" rx="25" ry="5" fill="rgba(0,0,0,0.2)" />
-
-        {/* Legs */}
-        <rect x="32" y="105" width="10" height="45" rx="5" fill="#1e40af" />
-        <rect x="48" y="105" width="10" height="45" rx="5" fill="#1e40af" />
-
-        {/* Body swaying slightly */}
-        <motion.g
-          animate={{ rotate: [-2, 2, -2] }}
-          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: '45px 105px' }}
-        >
-          {/* Torso */}
-          <rect x="28" y="55" width="34" height="50" rx="5" fill="#0ea5e9" />
-
-          {/* Bass guitar */}
-          <motion.g
-            animate={{ rotate: [-1, 1, -1] }}
-            transition={{ duration: 2, repeat: Infinity }}
-            style={{ transformOrigin: '50px 90px' }}
-          >
-            <ellipse cx="55" cy="100" rx="15" ry="20" fill="#dc2626" />
-            <ellipse cx="55" cy="100" rx="4" ry="5" fill="#1e293b" />
-            <rect x="52" y="50" width="6" height="50" fill="#78350f" />
-            <rect x="48" y="42" width="14" height="12" rx="2" fill="#78350f" />
-            {/* Tuning pegs */}
-            <circle cx="50" cy="45" r="2" fill="#fcd34d" />
-            <circle cx="60" cy="45" r="2" fill="#fcd34d" />
-            <circle cx="50" cy="52" r="2" fill="#fcd34d" />
-            <circle cx="60" cy="52" r="2" fill="#fcd34d" />
-            {/* Strings */}
-            <line x1="53" y1="52" x2="53" y2="115" stroke="#e5e7eb" strokeWidth="0.5" />
-            <line x1="55" y1="52" x2="55" y2="115" stroke="#e5e7eb" strokeWidth="0.5" />
-            <line x1="57" y1="52" x2="57" y2="115" stroke="#e5e7eb" strokeWidth="0.5" />
-          </motion.g>
-
-          {/* Arms */}
-          <motion.rect
-            x="12"
-            y="60"
-            width="20"
-            height="8"
-            rx="4"
-            fill="#fcd34d"
-            animate={{ rotate: [-3, 3, -3] }}
-            transition={{ duration: 1.5, repeat: Infinity }}
-            style={{ transformOrigin: '28px 64px' }}
-          />
-          <motion.rect
-            x="58"
-            y="70"
-            width="20"
-            height="8"
-            rx="4"
-            fill="#fcd34d"
-            animate={{ y: [70, 75, 70] }}
-            transition={{ duration: 1, repeat: Infinity }}
-          />
-
-          {/* Head */}
-          <circle cx="45" cy="38" r="17" fill="#fcd34d" />
-
-          {/* Beanie hat */}
-          <path d="M28 35 Q30 18 45 15 Q60 18 62 35 L60 38 Q45 35 30 38 Z" fill="#4f46e5" />
-          <rect x="28" y="33" width="34" height="6" rx="2" fill="#6366f1" />
-
-          {/* Cool sunglasses */}
-          <rect x="33" y="36" width="10" height="6" rx="2" fill="#1e293b" />
-          <rect x="47" y="36" width="10" height="6" rx="2" fill="#1e293b" />
-          <line x1="43" y1="39" x2="47" y2="39" stroke="#1e293b" strokeWidth="2" />
-
-          {/* Slight smile */}
-          <path d="M39 48 Q45 52 51 48" stroke="#1e293b" strokeWidth="1.5" fill="none" />
-        </motion.g>
-      </motion.svg>
-    </motion.div>
+            <ellipse cx="20" cy="57" rx="12" ry="3" fill="rgba(0,0,0,0.1)" />
+            {/* Body */}
+            <rect x="12" y="30" width="16" height="24" rx="3" fill={colors[variant % colors.length]} />
+            {/* Head */}
+            <circle cx="20" cy="20" r="12" fill="#fcd34d" />
+            {/* Hair */}
+            <path d={variant % 2 === 0 ? "M8 18 Q12 6 20 5 Q28 6 32 18" : "M8 16 Q10 4 20 4 Q30 4 32 16 L32 22 Q26 20 20 22 Q14 20 8 22 Z"} fill={hairColors[variant % hairColors.length]} />
+            {/* Eyes */}
+            <circle cx="16" cy="20" r="1.5" fill="#1e293b" />
+            <circle cx="24" cy="20" r="1.5" fill="#1e293b" />
+            {/* Smile */}
+            <path d="M16 25 Q20 28 24 25" stroke="#1e293b" strokeWidth="1" fill="none" />
+            {/* Raised hands clapping */}
+            <motion.g
+              animate={{ rotate: [-10, 10, -10] }}
+              transition={{ duration: 0.5, repeat: Infinity }}
+              style={{ transformOrigin: '8px 35px' }}
+            >
+              <rect x="2" y="28" width="10" height="5" rx="2" fill="#fcd34d" />
+            </motion.g>
+            <motion.g
+              animate={{ rotate: [10, -10, 10] }}
+              transition={{ duration: 0.5, repeat: Infinity }}
+              style={{ transformOrigin: '32px 35px' }}
+            >
+              <rect x="28" y="28" width="10" height="5" rx="2" fill="#fcd34d" />
+            </motion.g>
+          </motion.svg>
+        </motion.div>
+      )}
+    </AnimatePresence>
   );
 }
 
@@ -945,24 +897,24 @@ function FloatingMusicNotes({ isDark }: { isDark: boolean }) {
 
   return (
     <div className="absolute inset-0 pointer-events-none overflow-hidden">
-      {Array.from({ length: 12 }).map((_, i) => (
+      {Array.from({ length: 10 }).map((_, i) => (
         <motion.div
           key={i}
-          className="absolute text-2xl"
+          className="absolute text-xl"
           style={{
-            left: `${10 + (i % 6) * 15}%`,
-            bottom: '20%',
+            left: `${10 + (i % 5) * 18}%`,
+            bottom: '18%',
             color: colors[i % colors.length],
           }}
           animate={{
-            y: [0, -300, -400],
-            x: [0, (i % 2 === 0 ? 30 : -30), (i % 2 === 0 ? -20 : 20)],
+            y: [0, -250, -350],
+            x: [0, (i % 2 === 0 ? 25 : -25), (i % 2 === 0 ? -15 : 15)],
             opacity: [0, 1, 0],
-            rotate: [0, (i % 2 === 0 ? 20 : -20), 0],
+            rotate: [0, (i % 2 === 0 ? 15 : -15), 0],
           }}
           transition={{
-            duration: 6 + Math.random() * 4,
-            delay: i * 0.8,
+            duration: 5 + (i % 4),
+            delay: i * 0.7,
             repeat: Infinity,
             ease: 'easeOut',
           }}
@@ -978,16 +930,16 @@ function FloatingMusicNotes({ isDark }: { isDark: boolean }) {
 function FeaturePill({ icon: Icon, text, delay, isDark }: { icon: React.ElementType; text: string; delay: number; isDark: boolean }) {
   return (
     <motion.div
-      initial={{ opacity: 0, y: 20 }}
+      initial={{ opacity: 0, y: 15 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay }}
-      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm backdrop-blur-md ${
+      className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs backdrop-blur-md ${
         isDark
           ? 'bg-white/10 border border-white/20 text-white'
           : 'bg-white/70 border border-white/50 text-slate-700 shadow-lg'
       }`}
     >
-      <Icon className={`w-4 h-4 ${isDark ? 'text-purple-400' : 'text-purple-600'}`} />
+      <Icon className={`w-3 h-3 ${isDark ? 'text-purple-400' : 'text-purple-600'}`} />
       <span className="font-medium">{text}</span>
     </motion.div>
   );
@@ -1004,6 +956,17 @@ export default function HomePage() {
   const [isHovering, setIsHovering] = useState(false);
   const [mounted, setMounted] = useState(false);
 
+  // State for characters coming and going
+  const [visibleMusicians, setVisibleMusicians] = useState({
+    guitarist: true,
+    drummer: true,
+    keyboardist: true,
+    singer: true,
+    bassist: true,
+  });
+
+  const [visibleAudience, setVisibleAudience] = useState([true, false, true, false, true]);
+
   // Initialize auth on mount
   useEffect(() => {
     if (!isInitialized && !isLoading) {
@@ -1015,9 +978,36 @@ export default function HomePage() {
     setMounted(true);
   }, []);
 
+  // Randomize musicians and audience
+  useEffect(() => {
+    const musicianInterval = setInterval(() => {
+      setVisibleMusicians(prev => {
+        const keys = Object.keys(prev) as Array<keyof typeof prev>;
+        const randomKey = keys[Math.floor(Math.random() * keys.length)];
+        // Keep at least 3 musicians visible
+        const visibleCount = Object.values(prev).filter(Boolean).length;
+        if (visibleCount <= 3 && prev[randomKey]) return prev;
+        return { ...prev, [randomKey]: !prev[randomKey] };
+      });
+    }, 8000);
+
+    const audienceInterval = setInterval(() => {
+      setVisibleAudience(prev => {
+        const newState = [...prev];
+        const randomIndex = Math.floor(Math.random() * newState.length);
+        newState[randomIndex] = !newState[randomIndex];
+        return newState;
+      });
+    }, 5000);
+
+    return () => {
+      clearInterval(musicianInterval);
+      clearInterval(audienceInterval);
+    };
+  }, []);
+
   const handleCreateRoom = useCallback(async () => {
     setIsCreating(true);
-    // If logged in, go to rooms page to use the create modal
     if (user) {
       router.push('/rooms');
     } else {
@@ -1044,16 +1034,25 @@ export default function HomePage() {
 
   return (
     <div className="fixed inset-0 overflow-hidden">
-      {/* Scene based on theme */}
-      {isDark ? <NightScene /> : <DayScene />}
+      {/* Scene based on theme - with AnimatePresence for smooth transitions */}
+      <AnimatePresence mode="wait">
+        {isDark ? <NightScene key="night" /> : <DayScene key="day" />}
+      </AnimatePresence>
 
-      {/* Animated Musicians - positioned across the scene */}
+      {/* Animated Musicians - positioned across the scene with coming/going */}
       <div className="absolute inset-0 pointer-events-none">
-        <GuitaristCharacter position="left" delay={0.5} />
-        <DrummerCharacter position="left-[20%] bottom-[6%]" delay={0.8} />
-        <KeyboardistCharacter position="left-[38%] bottom-[5%]" delay={1.1} />
-        <SingerCharacter position="left-[58%] bottom-[8%]" delay={1.4} />
-        <BassistCharacter position="left-[75%] bottom-[4%]" delay={1.7} />
+        <MusicianCharacter type="guitarist" position="left-[5%] bottom-[6%]" isVisible={visibleMusicians.guitarist} delay={0.2} />
+        <MusicianCharacter type="drummer" position="left-[18%] bottom-[4%]" isVisible={visibleMusicians.drummer} delay={0.4} />
+        <MusicianCharacter type="keyboardist" position="left-[35%] bottom-[3%]" isVisible={visibleMusicians.keyboardist} delay={0.6} />
+        <MusicianCharacter type="singer" position="right-[32%] bottom-[6%]" isVisible={visibleMusicians.singer} delay={0.8} />
+        <MusicianCharacter type="bassist" position="right-[8%] bottom-[2%]" isVisible={visibleMusicians.bassist} delay={1} />
+
+        {/* Audience members */}
+        <AudienceMember position="left-[12%] bottom-[2%]" variant={0} isVisible={visibleAudience[0]} />
+        <AudienceMember position="left-[28%] bottom-[1%]" variant={1} isVisible={visibleAudience[1]} />
+        <AudienceMember position="right-[25%] bottom-[2%]" variant={2} isVisible={visibleAudience[2]} />
+        <AudienceMember position="right-[18%] bottom-[1%]" variant={3} isVisible={visibleAudience[3]} />
+        <AudienceMember position="right-[3%] bottom-[1%]" variant={4} isVisible={visibleAudience[4]} />
       </div>
 
       {/* Floating music notes */}
@@ -1061,30 +1060,30 @@ export default function HomePage() {
 
       {/* Header */}
       <header className="absolute top-0 left-0 right-0 z-50">
-        <div className="max-w-7xl mx-auto px-6 h-20 flex items-center justify-between">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <motion.div
-            className="flex items-center gap-3"
+            className="flex items-center gap-2.5"
             initial={{ opacity: 0, x: -20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
             <div className="relative">
-              <div className="w-11 h-11 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-xl flex items-center justify-center shadow-lg">
-                <Music className="w-5 h-5 text-white" />
+              <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center shadow-lg">
+                <Music className="w-4 h-4 text-white" />
               </div>
               <motion.div
-                className="absolute -inset-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-xl opacity-50 blur-lg -z-10"
-                animate={{ opacity: [0.3, 0.6, 0.3] }}
+                className="absolute -inset-1 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-lg opacity-50 blur-lg -z-10"
+                animate={{ opacity: [0.3, 0.5, 0.3] }}
                 transition={{ duration: 2, repeat: Infinity }}
               />
             </div>
-            <span className={`text-xl font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>
+            <span className={`text-lg font-bold tracking-tight ${isDark ? 'text-white' : 'text-slate-800'}`}>
               OpenStudio
             </span>
           </motion.div>
 
           <motion.div
-            className="flex items-center gap-3"
+            className="flex items-center gap-2"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
@@ -1095,186 +1094,156 @@ export default function HomePage() {
         </div>
       </header>
 
-      {/* Main content - centered card */}
-      <main className="absolute inset-0 flex items-center justify-center z-10">
+      {/* Main content - SHORTER and WIDER card */}
+      <main className="absolute inset-0 flex items-center justify-center z-10 pt-8">
         <motion.div
-          initial={{ opacity: 0, y: 30, scale: 0.95 }}
+          initial={{ opacity: 0, y: 20, scale: 0.95 }}
           animate={{ opacity: 1, y: 0, scale: 1 }}
           transition={{ duration: 0.8, delay: 0.3 }}
-          className={`text-center px-8 py-10 max-w-xl mx-4 rounded-3xl backdrop-blur-xl ${
+          className={`text-center px-10 py-6 max-w-2xl w-full mx-4 rounded-2xl backdrop-blur-xl ${
             isDark
               ? 'bg-black/40 border border-white/10 shadow-2xl'
               : 'bg-white/60 border border-white/50 shadow-2xl'
           }`}
         >
-          {/* Live indicator */}
-          <motion.div
-            initial={{ opacity: 0, scale: 0.9 }}
-            animate={{ opacity: 1, scale: 1 }}
-            transition={{ duration: 0.5, delay: 0.5 }}
-            className="inline-flex items-center gap-2 mb-6"
-          >
+          {/* Live indicator + headline in one row */}
+          <div className="flex items-center justify-center gap-3 mb-3">
             <span className="relative flex h-2 w-2">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
-            <span className={`text-sm tracking-wide uppercase font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
-              Live Sessions Active
+            <span className={`text-xs tracking-wide uppercase font-medium ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Live
             </span>
-          </motion.div>
+          </div>
 
-          {/* Main headline */}
+          {/* Main headline - more compact */}
           <motion.h1
-            initial={{ opacity: 0, y: 20 }}
+            initial={{ opacity: 0, y: 15 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.6 }}
-            className="text-4xl md:text-5xl lg:text-6xl font-bold mb-4 tracking-tight leading-none"
+            transition={{ duration: 0.6, delay: 0.5 }}
+            className="text-3xl md:text-4xl font-bold mb-2 tracking-tight leading-none"
           >
-            <span className={`block ${isDark ? 'text-white' : 'text-slate-800'}`}>Play</span>
-            <span className="block bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
+            <span className={`${isDark ? 'text-white' : 'text-slate-800'}`}>Play </span>
+            <span className="bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
               Together
             </span>
           </motion.h1>
 
-          {/* Subtitle */}
+          {/* Subtitle - single line */}
           <motion.p
-            initial={{ opacity: 0, y: 15 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 0.8 }}
-            className={`text-base md:text-lg mb-8 ${isDark ? 'text-slate-300' : 'text-slate-600'}`}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            transition={{ duration: 0.5, delay: 0.7 }}
+            className={`text-sm mb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
           >
-            Real-time jamming with musicians worldwide.
-            <br />
-            <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>Sub-30ms latency. Zero downloads.</span>
+            Real-time jamming worldwide • Sub-30ms latency • Zero downloads
           </motion.p>
 
-          {/* CTA Section */}
+          {/* CTA Section - more compact */}
           <motion.div
-            initial={{ opacity: 0, y: 15 }}
+            initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5, delay: 1 }}
-            className="space-y-4"
+            transition={{ duration: 0.5, delay: 0.9 }}
+            className="space-y-3"
           >
             {/* Welcome message for logged in users */}
             {user && profile && (
-              <motion.p
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                className={`text-sm mb-2 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}
-              >
+              <p className={`text-xs ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
                 Welcome back, {profile.displayName}!
-              </motion.p>
+              </p>
             )}
 
-            {/* Main buttons */}
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              {/* Create/Start button */}
+            {/* Main buttons - horizontal layout */}
+            <div className="flex items-center justify-center gap-2 flex-wrap">
               <motion.button
                 onClick={handleCreateRoom}
                 disabled={isCreating}
                 onMouseEnter={() => setIsHovering(true)}
                 onMouseLeave={() => setIsHovering(false)}
-                className="group relative px-8 py-4 text-lg font-semibold rounded-2xl overflow-hidden shadow-xl"
+                className="group relative px-5 py-2.5 text-sm font-semibold rounded-xl overflow-hidden shadow-lg"
                 whileHover={{ scale: 1.02 }}
                 whileTap={{ scale: 0.98 }}
               >
-                {/* Button glow */}
                 <motion.div
                   className="absolute inset-0 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"
-                  animate={{
-                    opacity: isHovering ? 1 : 0.9,
-                  }}
+                  animate={{ opacity: isHovering ? 1 : 0.9 }}
                 />
                 <motion.div
-                  className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 blur-xl opacity-50 -z-10"
-                  animate={{
-                    opacity: isHovering ? 0.8 : 0.4,
-                    scale: isHovering ? 1.1 : 1,
-                  }}
+                  className="absolute -inset-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 blur-lg opacity-40 -z-10"
+                  animate={{ opacity: isHovering ? 0.7 : 0.3, scale: isHovering ? 1.1 : 1 }}
                 />
-
-                <span className="relative flex items-center justify-center gap-2 text-white">
+                <span className="relative flex items-center justify-center gap-1.5 text-white">
                   {isCreating ? (
-                    <motion.div
-                      className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full"
-                      animate={{ rotate: 360 }}
-                      transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
-                    />
+                    <motion.div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full" animate={{ rotate: 360 }} transition={{ duration: 1, repeat: Infinity, ease: 'linear' }} />
                   ) : (
                     <>
-                      {user ? <Plus className="w-5 h-5" /> : null}
+                      {user ? <Plus className="w-4 h-4" /> : null}
                       <span>{user ? 'Create Room' : 'Start Jamming'}</span>
-                      <ArrowRight className="w-5 h-5 group-hover:translate-x-1 transition-transform" />
+                      <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                     </>
                   )}
                 </span>
               </motion.button>
 
-              {/* Browse Rooms button - only for logged in users */}
               {user && (
                 <motion.button
                   onClick={handleBrowseRooms}
                   initial={{ opacity: 0, scale: 0.9 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ delay: 0.2 }}
-                  className={`group flex items-center gap-2 px-6 py-4 text-lg font-semibold rounded-2xl transition-all ${
-                    isDark
-                      ? 'bg-white/10 hover:bg-white/20 text-white'
-                      : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
+                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all ${
+                    isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
                   }`}
                   whileHover={{ scale: 1.02 }}
                   whileTap={{ scale: 0.98 }}
                 >
-                  <FolderOpen className="w-5 h-5" />
-                  <span>Browse Rooms</span>
+                  <FolderOpen className="w-4 h-4" />
+                  <span>Browse</span>
                 </motion.button>
               )}
-            </div>
 
-            {/* Join room input */}
-            <div className="flex items-center justify-center gap-2">
-              <span className={`text-sm ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>or join</span>
-              <div className="relative">
+              {/* Join input inline */}
+              <div className="flex items-center gap-1.5">
+                <span className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>or</span>
                 <Input
                   value={roomCode}
                   onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
-                  placeholder="ROOM CODE"
-                  className={`w-32 text-center text-sm tracking-widest uppercase ${
+                  placeholder="CODE"
+                  className={`w-20 text-center text-xs tracking-widest uppercase h-9 ${
                     isDark
-                      ? 'bg-white/10 border-white/20 text-white placeholder:text-slate-500 focus:border-purple-400 focus:ring-purple-400/20'
-                      : 'bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400 focus:border-purple-500 focus:ring-purple-500/20'
+                      ? 'bg-white/10 border-white/20 text-white placeholder:text-slate-500'
+                      : 'bg-white/80 border-slate-200 text-slate-900 placeholder:text-slate-400'
                   }`}
                   onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
                   maxLength={8}
                 />
+                {roomCode.trim() && (
+                  <motion.button
+                    initial={{ opacity: 0, scale: 0.8 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    onClick={handleJoinRoom}
+                    className={`p-2 rounded-lg transition-colors ${
+                      isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                    }`}
+                  >
+                    <ArrowRight className="w-3.5 h-3.5" />
+                  </motion.button>
+                )}
               </div>
-              {roomCode.trim() && (
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  onClick={handleJoinRoom}
-                  className={`p-2 rounded-lg transition-colors ${
-                    isDark
-                      ? 'bg-white/10 hover:bg-white/20 text-white'
-                      : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-                  }`}
-                >
-                  <ArrowRight className="w-4 h-4" />
-                </motion.button>
-              )}
             </div>
           </motion.div>
 
-          {/* Feature pills */}
+          {/* Feature pills - smaller */}
           <motion.div
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
-            transition={{ duration: 0.5, delay: 1.3 }}
-            className="flex flex-wrap items-center justify-center gap-3 mt-8"
+            transition={{ duration: 0.5, delay: 1.1 }}
+            className="flex flex-wrap items-center justify-center gap-2 mt-4"
           >
-            <FeaturePill icon={Zap} text="Sub-30ms latency" delay={1.4} isDark={isDark} />
-            <FeaturePill icon={Radio} text="AI stem separation" delay={1.5} isDark={isDark} />
-            <FeaturePill icon={Music} text="AI backing tracks" delay={1.6} isDark={isDark} />
+            <FeaturePill icon={Zap} text="Low latency" delay={1.2} isDark={isDark} />
+            <FeaturePill icon={Radio} text="AI stems" delay={1.3} isDark={isDark} />
+            <FeaturePill icon={Music} text="Backing tracks" delay={1.4} isDark={isDark} />
           </motion.div>
         </motion.div>
       </main>
@@ -1283,12 +1252,10 @@ export default function HomePage() {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ duration: 0.5, delay: 2 }}
-        className="absolute bottom-6 left-0 right-0 text-center z-20"
+        transition={{ duration: 0.5, delay: 1.5 }}
+        className="absolute bottom-3 left-0 right-0 text-center z-20"
       >
-        <p className={`text-xs tracking-wide font-medium ${
-          isDark ? 'text-white/50' : 'text-slate-600/70'
-        }`}>
+        <p className={`text-[10px] tracking-wide font-medium ${isDark ? 'text-white/40' : 'text-slate-500/60'}`}>
           POWERED BY CLOUDFLARE CALLS
         </p>
       </motion.div>
