@@ -187,34 +187,6 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
         className
       )}
     >
-      {/* Header */}
-      <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100">
-        <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-indigo-600" />
-          <h3 className="font-semibold text-slate-900">Audio Analysis</h3>
-          {isAnalyzing && (
-            <span className="flex items-center gap-1.5 px-2 py-0.5 bg-emerald-50 rounded-full">
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-              <span className="text-xs font-medium text-emerald-700">Live</span>
-            </span>
-          )}
-          {syncedAnalysis && (
-            <span className="px-2 py-0.5 bg-blue-50 rounded-full text-xs font-medium text-blue-700">
-              Synced
-            </span>
-          )}
-        </div>
-
-        {compact && (
-          <button
-            onClick={() => setIsExpanded(false)}
-            className="p-1 hover:bg-slate-100 rounded-lg transition-colors"
-          >
-            <ChevronUp className="w-4 h-4 text-slate-400" />
-          </button>
-        )}
-      </div>
-
       {/* Main content */}
       <div className="p-5 space-y-5">
         {/* Key and BPM - Main display */}
@@ -367,41 +339,39 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
         )}
 
         {/* Additional analysis info */}
-        {localAnalysis && (
-          <div className="grid grid-cols-3 gap-2">
-            {/* Energy */}
-            <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
-              <Zap className="w-3.5 h-3.5 text-amber-500 mb-1" />
-              <span className="text-xs text-slate-500">Energy</span>
-              <span className="text-sm font-semibold text-slate-700">
-                {localAnalysis.energy > 0 ? (localAnalysis.energy * 100).toFixed(0) + '%' : '--'}
-              </span>
-            </div>
-
-            {/* Danceability */}
-            <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
-              <Music2 className="w-3.5 h-3.5 text-pink-500 mb-1" />
-              <span className="text-xs text-slate-500">Dance</span>
-              <span className="text-sm font-semibold text-slate-700">
-                {localAnalysis.danceability > 0 ? (localAnalysis.danceability * 100).toFixed(0) + '%' : '--'}
-              </span>
-            </div>
-
-            {/* Tuning */}
-            <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
-              <Target className="w-3.5 h-3.5 text-cyan-500 mb-1" />
-              <span className="text-xs text-slate-500">Tuning</span>
-              <span className={cn(
-                'text-sm font-semibold',
-                localAnalysis.tuningFrequency && Math.abs(localAnalysis.tuningFrequency - 440) > 2
-                  ? 'text-amber-600'
-                  : 'text-slate-700'
-              )}>
-                {localAnalysis.tuningFrequency ? `${localAnalysis.tuningFrequency.toFixed(1)}Hz` : '440Hz'}
-              </span>
-            </div>
+        <div className="grid grid-cols-3 gap-2">
+          {/* Energy */}
+          <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
+            <Zap className="w-3.5 h-3.5 text-amber-500 mb-1" />
+            <span className="text-xs text-slate-500">Energy</span>
+            <span className="text-sm font-semibold text-slate-700">
+              {localAnalysis && localAnalysis.energy > 0 ? (localAnalysis.energy * 100).toFixed(0) + '%' : '--'}
+            </span>
           </div>
-        )}
+
+          {/* Danceability */}
+          <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
+            <Music2 className="w-3.5 h-3.5 text-pink-500 mb-1" />
+            <span className="text-xs text-slate-500">Dance</span>
+            <span className="text-sm font-semibold text-slate-700">
+              {localAnalysis && localAnalysis.danceability > 0 ? (localAnalysis.danceability * 100).toFixed(0) + '%' : '--'}
+            </span>
+          </div>
+
+          {/* Tuning */}
+          <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
+            <Target className="w-3.5 h-3.5 text-cyan-500 mb-1" />
+            <span className="text-xs text-slate-500">Tuning</span>
+            <span className={cn(
+              'text-sm font-semibold',
+              localAnalysis?.tuningFrequency && Math.abs(localAnalysis.tuningFrequency - 440) > 2
+                ? 'text-amber-600'
+                : 'text-slate-700'
+            )}>
+              {localAnalysis?.tuningFrequency ? `${localAnalysis.tuningFrequency.toFixed(1)}Hz` : '440Hz'}
+            </span>
+          </div>
+        </div>
 
         {/* Source selection */}
         <div className="flex items-center gap-2">

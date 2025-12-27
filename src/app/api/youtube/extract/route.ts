@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { spawn } from 'child_process';
+import { promises as fs } from 'fs';
+import path from 'path';
+import os from 'os';
 
 const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
 const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
@@ -17,17 +21,51 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
-// Cobalt API instance from instances.cobalt.best
-const COBALT_API = 'https://cobalt-backend.canine.tools';
+// Download audio using yt-dlp
+async function downloadWithYtDlp(videoUrl: string, outputPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const args = [
+      '-x', // Extract audio
+      '--audio-format', 'mp3',
+      '--audio-quality', '0', // Best quality
+      '-o', outputPath,
+      '--no-playlist',
+      '--no-warnings',
+      videoUrl,
+    ];
 
-interface CobaltResponse {
-  status: 'tunnel' | 'redirect' | 'picker' | 'error';
-  url?: string;
-  filename?: string;
-  error?: { code: string };
+    console.log(`Running yt-dlp with args:`, args.join(' '));
+
+    const proc = spawn('yt-dlp', args);
+
+    let stderr = '';
+
+    proc.stdout.on('data', (data) => {
+      console.log(`yt-dlp stdout: ${data}`);
+    });
+
+    proc.stderr.on('data', (data) => {
+      stderr += data.toString();
+      console.error(`yt-dlp stderr: ${data}`);
+    });
+
+    proc.on('error', (error) => {
+      reject(new Error(`Failed to start yt-dlp: ${error.message}. Make sure yt-dlp is installed.`));
+    });
+
+    proc.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+      } else {
+        reject(new Error(`yt-dlp exited with code ${code}: ${stderr}`));
+      }
+    });
+  });
 }
 
 export async function POST(request: NextRequest) {
+  let tempDir: string | null = null;
+
   try {
     const { videoId, title, artist } = await request.json();
 
@@ -42,74 +80,37 @@ export async function POST(request: NextRequest) {
 
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Use Cobalt API to get audio URL
-    let cobaltResponse: CobaltResponse;
+    // Create temp directory for download
+    tempDir = await fs.mkdtemp(path.join(os.tmpdir(), 'yt-audio-'));
+    const tempFilePath = path.join(tempDir, `${videoId}.mp3`);
+
+    // Download with yt-dlp
     try {
-      const response = await fetch(COBALT_API, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: videoUrl,
-          downloadMode: 'audio',
-          audioFormat: 'mp3',
-        }),
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Cobalt API error:', response.status, errorText);
-        throw new Error(`Cobalt API returned ${response.status}: ${errorText}`);
-      }
-
-      cobaltResponse = await response.json();
-      console.log('Cobalt response:', JSON.stringify(cobaltResponse));
+      await downloadWithYtDlp(videoUrl, tempFilePath);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Failed to call Cobalt API:', errorMessage);
+      console.error('yt-dlp failed:', errorMessage);
       return NextResponse.json(
         { error: `Failed to extract audio: ${errorMessage}` },
         { status: 400 }
       );
     }
 
-    // Handle response
-    if (cobaltResponse.status === 'error') {
-      const errorMsg = cobaltResponse.error?.code || 'Unknown error';
-      console.error('Cobalt returned error:', errorMsg);
+    // Read the downloaded file
+    let audioBuffer: Buffer;
+    try {
+      audioBuffer = await fs.readFile(tempFilePath);
+      console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
+    } catch {
       return NextResponse.json(
-        { error: `Cobalt error: ${errorMsg}` },
+        { error: 'Failed to read downloaded audio file' },
         { status: 400 }
       );
     }
-
-    const audioUrl = cobaltResponse.url;
-    if (!audioUrl) {
-      return NextResponse.json(
-        { error: 'No audio URL returned from Cobalt' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`Downloading audio from: ${audioUrl}`);
-
-    // Download the audio
-    const audioResponse = await fetch(audioUrl);
-    if (!audioResponse.ok) {
-      return NextResponse.json(
-        { error: `Failed to download audio: ${audioResponse.status}` },
-        { status: 400 }
-      );
-    }
-
-    const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
-    console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
 
     if (audioBuffer.length === 0) {
       return NextResponse.json(
-        { error: 'Failed to download audio - empty response' },
+        { error: 'Failed to download audio - empty file' },
         { status: 400 }
       );
     }
@@ -139,7 +140,7 @@ export async function POST(request: NextRequest) {
       success: true,
       track: {
         id: trackId,
-        name: title || cobaltResponse.filename || `YouTube Video ${videoId}`,
+        name: title || `YouTube Video ${videoId}`,
         artist: artist || 'Unknown Artist',
         duration: 0, // Will be detected on playback
         url: publicUrl,
@@ -154,5 +155,14 @@ export async function POST(request: NextRequest) {
       { error: 'Failed to extract audio from YouTube' },
       { status: 500 }
     );
+  } finally {
+    // Clean up temp directory
+    if (tempDir) {
+      try {
+        await fs.rm(tempDir, { recursive: true, force: true });
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
   }
 }
