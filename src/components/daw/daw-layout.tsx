@@ -21,6 +21,9 @@ import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { OutputSettingsModal } from '../settings/output-settings-modal';
+import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
+import { MixerView } from './mixer-view';
+import { AvatarWorldView } from './avatar-world-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
@@ -29,7 +32,7 @@ interface DAWLayoutProps {
   roomId: string;
 }
 
-export type PanelType = 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' kept for backwards compat but redirects to 'mixer'
+export type PanelType = 'users' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' and 'mixer' kept for backwards compat but redirect to 'users'
 
 export function DAWLayout({ roomId }: DAWLayoutProps) {
   // Theme
@@ -45,10 +48,13 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, []);
 
   // Panel state
-  const [activePanel, setActivePanel] = useState<PanelType>('mixer');
+  const [activePanel, setActivePanel] = useState<PanelType>('users');
   const [isPanelDockVisible, setIsPanelDockVisible] = useState(true);
   const [isBottomDockVisible, setIsBottomDockVisible] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
+
+  // Main view state (Timeline, Mixer, Avatar World)
+  const [mainView, setMainView] = useState<MainViewType>('timeline');
 
   // Resizable panel state
   const [leftPanelWidth, setLeftPanelWidth] = useState(340); // Default width for track headers
@@ -251,9 +257,24 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         case 'Tab':
           if (!e.shiftKey) {
             e.preventDefault();
-            const panels: PanelType[] = ['mixer', 'analysis', 'chat', 'ai'];
+            const panels: PanelType[] = ['users', 'analysis', 'chat', 'ai'];
             const currentIndex = panels.indexOf(activePanel);
             setActivePanel(panels[(currentIndex + 1) % panels.length]);
+          }
+          break;
+        case '1':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('timeline');
+          }
+          break;
+        case '2':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('mixer');
+          }
+          break;
+        case '3':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('avatar-world');
           }
           break;
       }
@@ -261,7 +282,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek]);
+  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek, setMainView]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
@@ -568,15 +589,52 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         {/* Left Resize Handle */}
         <ResizeHandle position="left" onResize={handleLeftResize} />
 
-        {/* Live Arrangement View - Center (River Flow Design) */}
-        <LiveArrangementView
-          users={users}
-          currentUser={currentUser}
-          audioLevels={audioLevels}
-          isMaster={isMaster}
-          onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
-          sessionStartTime={sessionStartTime}
-        />
+        {/* Main View Area - Timeline/Mixer/Avatar World */}
+        <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
+          {/* View Switcher */}
+          <div className="flex items-center justify-center py-2 px-4 border-b border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-[#0a0a0f]/50">
+            <MainViewSwitcher
+              activeView={mainView}
+              onViewChange={setMainView}
+              isMaster={isMaster}
+            />
+          </div>
+
+          {/* View Content */}
+          <div className="flex-1 overflow-hidden">
+            {mainView === 'timeline' && (
+              <LiveArrangementView
+                users={users}
+                currentUser={currentUser}
+                audioLevels={audioLevels}
+                isMaster={isMaster}
+                onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
+                sessionStartTime={sessionStartTime}
+              />
+            )}
+
+            {mainView === 'mixer' && (
+              <MixerView
+                isMaster={isMaster}
+                onToggleStem={handleToggleStem}
+                onStemVolumeChange={handleStemVolume}
+                onSeparateTrack={handleSeparateTrack}
+                isSeparating={isSeparating}
+                separationProgress={separationProgress}
+                users={users}
+                audioLevels={audioLevels}
+              />
+            )}
+
+            {mainView === 'avatar-world' && (
+              <AvatarWorldView
+                users={users}
+                currentUser={currentUser}
+                audioLevels={audioLevels}
+              />
+            )}
+          </div>
+        </div>
 
         {/* Right Resize Handle */}
         {isPanelDockVisible && (
@@ -589,7 +647,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             activePanel={activePanel}
             onPanelChange={setActivePanel}
             onClose={() => setIsPanelDockVisible(false)}
-            // Mixer props
+            // Mixer props (kept for AI panel)
             onToggleStem={handleToggleStem}
             onStemVolumeChange={handleStemVolume}
             onSeparateTrack={handleSeparateTrack}
@@ -600,6 +658,13 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             userId={currentUser?.id || ''}
             userName={currentUser?.name}
             onSendMessage={sendMessage}
+            // Room users props
+            users={users}
+            currentUser={currentUser}
+            isMaster={isMaster}
+            audioLevels={audioLevels}
+            onMuteUser={muteUser}
+            onVolumeChange={setUserVolume}
             width={rightPanelWidth}
           />
         )}
