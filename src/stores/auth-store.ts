@@ -164,49 +164,37 @@ export const useAuthStore = create<AuthState>()(
             const { user } = await authApi.signIn(email, password);
 
             if (user) {
-              // IMMEDIATELY set user and mark initialized so modal closes
-              // Profile data will load in the background
+              // Set user immediately so modal can close, then fetch profile data
               set({
                 user,
                 isInitialized: true,
                 isLoading: false,
               });
 
-              // Fetch profile data in the background (non-blocking)
-              // This allows the modal to close immediately after successful auth
+              // Fetch profile data - this updates the store when complete
+              // Using void to indicate intentionally not awaiting
+              void get().refreshProfile().catch(() => {});
+
+              // Also fetch other data in background
               Promise.allSettled([
-                authApi.getUserProfile(user.id),
-                authApi.getUserAvatar(user.id),
-                authApi.getUserStats(user.id),
                 authApi.getUserInstruments(user.id),
                 authApi.getAllAchievements(),
                 authApi.getUserAchievements(user.id),
                 authApi.getFriends(user.id),
               ]).then((results) => {
-                const profile = results[0].status === 'fulfilled' ? results[0].value : null;
-                const avatar = results[1].status === 'fulfilled' ? results[1].value : null;
-                const stats = results[2].status === 'fulfilled' ? results[2].value : null;
-                const instruments = results[3].status === 'fulfilled' ? results[3].value : [];
-                const achievements = results[4].status === 'fulfilled' ? results[4].value : [];
-                const unlockedAchievements = results[5].status === 'fulfilled' ? results[5].value : [];
-                const friendsResult = results[6].status === 'fulfilled' ? results[6].value : { friends: [], pending: [] };
+                const instruments = results[0].status === 'fulfilled' ? results[0].value : [];
+                const achievements = results[1].status === 'fulfilled' ? results[1].value : [];
+                const unlockedAchievements = results[2].status === 'fulfilled' ? results[2].value : [];
+                const friendsResult = results[3].status === 'fulfilled' ? results[3].value : { friends: [], pending: [] };
 
-                // Update streak (non-blocking)
-                if (profile) {
-                  authApi.updateStreak(user.id).catch(() => {});
-                }
-
-                set({
-                  profile,
-                  avatar,
-                  stats,
+                useAuthStore.setState({
                   instruments,
                   achievements,
                   unlockedAchievements,
                   friends: friendsResult.friends,
                   pendingFriendRequests: friendsResult.pending,
                 });
-              });
+              }).catch(() => {});
             } else {
               set({ isLoading: false, isInitialized: true });
             }
