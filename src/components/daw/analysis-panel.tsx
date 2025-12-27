@@ -12,6 +12,7 @@ import {
   Target,
   Waves,
   Gauge,
+  AlertCircle,
 } from 'lucide-react';
 
 // Key colors for visualization
@@ -39,6 +40,7 @@ export function AnalysisPanel() {
     syncedAnalysis,
     analysisSource,
     isAnalyzing,
+    isWorkerReady,
     spectrumData,
     tunerEnabled,
     setAnalysisSource,
@@ -110,6 +112,18 @@ export function AnalysisPanel() {
           )}
         </div>
       </div>
+
+      {/* Show message when analysis is not available */}
+      {!isWorkerReady && (
+        <div className="px-4 py-3 border-b border-white/5">
+          <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
+            <span className="text-xs text-amber-400">
+              Audio analysis unavailable - feature loading failed
+            </span>
+          </div>
+        </div>
+      )}
 
       {/* Key & BPM Display */}
       <div className="p-4 grid grid-cols-2 gap-3">

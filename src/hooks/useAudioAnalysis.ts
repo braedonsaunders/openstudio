@@ -51,10 +51,17 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
       try {
         await analyzerRef.current.initialize();
-        setWorkerReady(true);
+        // Check if initialization actually succeeded
+        const ready = analyzerRef.current.isReady();
+        setWorkerReady(ready);
         isInitializedRef.current = true;
+
+        if (!ready) {
+          console.log('Audio analysis disabled - essentia.js failed to load');
+        }
       } catch (error) {
         setAnalysisError('Failed to initialize audio analysis');
+        setWorkerReady(false);
         console.error('Failed to initialize analyzer:', error);
       }
     };
