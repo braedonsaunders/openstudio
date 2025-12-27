@@ -306,51 +306,99 @@ function Stars() {
   );
 }
 
+// Parallax layer animation config - different speeds for depth effect
+const parallaxTransition = {
+  duration: 0.8,
+  ease: [0.22, 1, 0.36, 1] as const, // Custom easeOutQuint for smooth deceleration
+};
+
 // Day scene - Forest meadow with sunlight
 function DayScene() {
   return (
     <motion.div
-      className="absolute inset-0"
+      className="absolute inset-0 overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 1.5, ease: "easeInOut" }}
+      transition={{ duration: 0.6, ease: "easeInOut" }}
     >
-      {/* Sky gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-sky-300 via-sky-200 to-amber-100" />
-
-      {/* Sun */}
+      {/* Layer 1: Sky gradient - slowest, furthest back */}
       <motion.div
-        className="absolute top-[8%] right-[15%]"
-        animate={{
-          scale: [1, 1.05, 1],
-          opacity: [0.9, 1, 0.9],
-        }}
-        transition={{
-          duration: 4,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
+        className="absolute inset-0"
+        initial={{ x: '-30%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '-30%' }}
+        transition={{ ...parallaxTransition, duration: 1 }}
       >
-        <div className="w-24 h-24 rounded-full bg-gradient-to-br from-yellow-200 to-amber-300 shadow-2xl"
-          style={{ boxShadow: '0 0 100px 30px rgba(255, 220, 100, 0.5)' }}
-        />
+        <div className="absolute inset-0 bg-gradient-to-b from-sky-300 via-sky-200 to-amber-100" />
       </motion.div>
 
-      {/* Clouds */}
-      <Clouds />
+      {/* Layer 2: Sun - slow, far away */}
+      <motion.div
+        className="absolute top-[8%] right-[15%]"
+        initial={{ x: '-25%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '-25%', opacity: 0 }}
+        transition={{ ...parallaxTransition, duration: 0.9 }}
+      >
+        <motion.div
+          animate={{
+            scale: [1, 1.05, 1],
+            opacity: [0.9, 1, 0.9],
+          }}
+          transition={{
+            duration: 4,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        >
+          <div className="w-24 h-24 rounded-full bg-gradient-to-br from-yellow-200 to-amber-300 shadow-2xl"
+            style={{ boxShadow: '0 0 100px 30px rgba(255, 220, 100, 0.5)' }}
+          />
+        </motion.div>
+      </motion.div>
 
-      {/* Butterflies */}
-      <Butterflies />
+      {/* Layer 3: Clouds - medium-slow */}
+      <motion.div
+        initial={{ x: '-40%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '-40%' }}
+        transition={{ ...parallaxTransition, duration: 0.85 }}
+      >
+        <Clouds />
+      </motion.div>
 
-      {/* Distant mountains */}
-      <svg className="absolute bottom-[25%] left-0 right-0 w-full h-[30%]" viewBox="0 0 1440 300" preserveAspectRatio="none">
-        <path d="M0 300 L0 180 Q200 80 400 150 Q600 50 800 120 Q1000 40 1200 100 Q1350 60 1440 130 L1440 300 Z" fill="#94a3b8" fillOpacity="0.3" />
-        <path d="M0 300 L0 200 Q150 120 350 180 Q550 100 700 160 Q900 80 1100 140 Q1300 100 1440 160 L1440 300 Z" fill="#64748b" fillOpacity="0.3" />
-      </svg>
+      {/* Layer 4: Butterflies - medium */}
+      <motion.div
+        initial={{ x: '-50%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '-50%', opacity: 0 }}
+        transition={{ ...parallaxTransition, duration: 0.8 }}
+      >
+        <Butterflies />
+      </motion.div>
 
-      {/* Forest trees background */}
-      <div className="absolute bottom-[20%] left-0 right-0 h-[20%]">
+      {/* Layer 5: Distant mountains - medium */}
+      <motion.div
+        initial={{ x: '-55%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '-55%' }}
+        transition={{ ...parallaxTransition, duration: 0.75 }}
+      >
+        <svg className="absolute bottom-[25%] left-0 right-0 w-full h-[30%]" viewBox="0 0 1440 300" preserveAspectRatio="none">
+          <path d="M0 300 L0 180 Q200 80 400 150 Q600 50 800 120 Q1000 40 1200 100 Q1350 60 1440 130 L1440 300 Z" fill="#94a3b8" fillOpacity="0.3" />
+          <path d="M0 300 L0 200 Q150 120 350 180 Q550 100 700 160 Q900 80 1100 140 Q1300 100 1440 160 L1440 300 Z" fill="#64748b" fillOpacity="0.3" />
+        </svg>
+      </motion.div>
+
+      {/* Layer 6: Forest trees - medium-fast */}
+      <motion.div
+        className="absolute bottom-[20%] left-0 right-0 h-[20%]"
+        initial={{ x: '-70%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '-70%' }}
+        transition={{ ...parallaxTransition, duration: 0.7 }}
+      >
         <svg className="w-full h-full" viewBox="0 0 1440 200" preserveAspectRatio="none">
           {Array.from({ length: 20 }).map((_, i) => (
             <g key={i} transform={`translate(${i * 75 + 15}, ${20 + (i % 3) * 10})`}>
@@ -359,10 +407,16 @@ function DayScene() {
             </g>
           ))}
         </svg>
-      </div>
+      </motion.div>
 
-      {/* Meadow ground */}
-      <div className="absolute bottom-0 left-0 right-0 h-[30%]">
+      {/* Layer 7: Meadow ground - fast, closest */}
+      <motion.div
+        className="absolute bottom-0 left-0 right-0 h-[30%]"
+        initial={{ x: '-85%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '-85%' }}
+        transition={{ ...parallaxTransition, duration: 0.65, ease: [0.32, 0, 0.67, 0] }}
+      >
         <svg className="w-full h-full" viewBox="0 0 1440 300" preserveAspectRatio="none">
           <ellipse cx="720" cy="400" rx="1000" ry="250" fill="url(#meadowGradient)" />
           <defs>
@@ -373,13 +427,26 @@ function DayScene() {
             </linearGradient>
           </defs>
         </svg>
-      </div>
+      </motion.div>
 
-      {/* Picnic blanket */}
-      <PicnicBlanket />
+      {/* Layer 8: Picnic blanket - fast */}
+      <motion.div
+        initial={{ x: '-90%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '-90%', opacity: 0 }}
+        transition={{ ...parallaxTransition, duration: 0.6 }}
+      >
+        <PicnicBlanket />
+      </motion.div>
 
-      {/* Animated grass/flowers */}
-      <div className="absolute bottom-[5%] left-0 right-0 h-[15%] flex items-end justify-around pointer-events-none">
+      {/* Layer 9: Animated grass/flowers - fastest, foreground */}
+      <motion.div
+        className="absolute bottom-[5%] left-0 right-0 h-[15%] flex items-end justify-around pointer-events-none"
+        initial={{ x: '-100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '-100%' }}
+        transition={{ ...parallaxTransition, duration: 0.55 }}
+      >
         {Array.from({ length: 30 }).map((_, i) => (
           <motion.div
             key={i}
@@ -402,69 +469,83 @@ function DayScene() {
             </svg>
           </motion.div>
         ))}
-      </div>
+      </motion.div>
 
-      {/* Floating leaves */}
-      {[
-        { startX: '10%', startY: '-5%', duration: 15, delay: 0 },
-        { startX: '30%', startY: '-5%', duration: 18, delay: 3 },
-        { startX: '60%', startY: '-5%', duration: 14, delay: 6 },
-        { startX: '85%', startY: '-5%', duration: 20, delay: 2 },
-      ].map((leaf, i) => (
-        <motion.div
-          key={i}
-          className="absolute"
-          style={{ left: leaf.startX, top: leaf.startY }}
-          animate={{
-            y: ['0%', '120vh'],
-            x: [0, 50, -30, 40, 0],
-            rotate: [0, 180, 360, 540, 720],
-          }}
-          transition={{
-            duration: leaf.duration,
-            delay: leaf.delay,
-            repeat: Infinity,
-            ease: 'linear',
-          }}
-        >
-          <svg width="20" height="20" viewBox="0 0 20 20">
-            <ellipse cx="10" cy="10" rx="8" ry="4" fill="#22c55e" transform="rotate(45 10 10)" />
-          </svg>
-        </motion.div>
-      ))}
-
-      {/* Birds flying */}
-      {[
-        { x: '20%', y: '15%', duration: 25, delay: 0 },
-        { x: '40%', y: '20%', duration: 30, delay: 5 },
-        { x: '70%', y: '12%', duration: 22, delay: 10 },
-      ].map((bird, i) => (
-        <motion.div
-          key={i}
-          className="absolute"
-          style={{ left: bird.x, top: bird.y }}
-          animate={{
-            x: [0, 200, 400],
-            y: [0, -20, 0],
-          }}
-          transition={{
-            duration: bird.duration,
-            delay: bird.delay,
-            repeat: Infinity,
-            ease: 'linear',
-          }}
-        >
-          <motion.svg
-            width="20"
-            height="10"
-            viewBox="0 0 20 10"
-            animate={{ scaleY: [1, 0.5, 1] }}
-            transition={{ duration: 0.3, repeat: Infinity }}
+      {/* Floating leaves - overlay, fades in after slide */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+      >
+        {[
+          { startX: '10%', startY: '-5%', duration: 15, delay: 0 },
+          { startX: '30%', startY: '-5%', duration: 18, delay: 3 },
+          { startX: '60%', startY: '-5%', duration: 14, delay: 6 },
+          { startX: '85%', startY: '-5%', duration: 20, delay: 2 },
+        ].map((leaf, i) => (
+          <motion.div
+            key={i}
+            className="absolute"
+            style={{ left: leaf.startX, top: leaf.startY }}
+            animate={{
+              y: ['0%', '120vh'],
+              x: [0, 50, -30, 40, 0],
+              rotate: [0, 180, 360, 540, 720],
+            }}
+            transition={{
+              duration: leaf.duration,
+              delay: leaf.delay,
+              repeat: Infinity,
+              ease: 'linear',
+            }}
           >
-            <path d="M0 5 Q5 0 10 5 Q15 0 20 5" stroke="#374151" strokeWidth="1.5" fill="none" />
-          </motion.svg>
-        </motion.div>
-      ))}
+            <svg width="20" height="20" viewBox="0 0 20 20">
+              <ellipse cx="10" cy="10" rx="8" ry="4" fill="#22c55e" transform="rotate(45 10 10)" />
+            </svg>
+          </motion.div>
+        ))}
+      </motion.div>
+
+      {/* Birds flying - overlay, fades in after slide */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5, delay: 0.3 }}
+      >
+        {[
+          { x: '20%', y: '15%', duration: 25, delay: 0 },
+          { x: '40%', y: '20%', duration: 30, delay: 5 },
+          { x: '70%', y: '12%', duration: 22, delay: 10 },
+        ].map((bird, i) => (
+          <motion.div
+            key={i}
+            className="absolute"
+            style={{ left: bird.x, top: bird.y }}
+            animate={{
+              x: [0, 200, 400],
+              y: [0, -20, 0],
+            }}
+            transition={{
+              duration: bird.duration,
+              delay: bird.delay,
+              repeat: Infinity,
+              ease: 'linear',
+            }}
+          >
+            <motion.svg
+              width="20"
+              height="10"
+              viewBox="0 0 20 10"
+              animate={{ scaleY: [1, 0.5, 1] }}
+              transition={{ duration: 0.3, repeat: Infinity }}
+            >
+              <path d="M0 5 Q5 0 10 5 Q15 0 20 5" stroke="#374151" strokeWidth="1.5" fill="none" />
+            </motion.svg>
+          </motion.div>
+        ))}
+      </motion.div>
     </motion.div>
   );
 }
@@ -473,37 +554,65 @@ function DayScene() {
 function NightScene() {
   return (
     <motion.div
-      className="absolute inset-0"
+      className="absolute inset-0 overflow-hidden"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
-      transition={{ duration: 1.5, ease: "easeInOut" }}
+      transition={{ duration: 0.6, ease: "easeInOut" }}
     >
-      {/* Sunset sky gradient */}
-      <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-900 via-60% to-orange-500" />
-
-      {/* Stars */}
-      <Stars />
-
-      {/* Moon */}
+      {/* Layer 1: Sunset sky gradient - slowest, furthest back */}
       <motion.div
-        className="absolute top-[10%] left-[15%]"
-        animate={{
-          opacity: [0.8, 1, 0.8],
-        }}
-        transition={{
-          duration: 5,
-          repeat: Infinity,
-          ease: 'easeInOut',
-        }}
+        className="absolute inset-0"
+        initial={{ x: '30%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '30%' }}
+        transition={{ ...parallaxTransition, duration: 1 }}
       >
-        <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-100 to-gray-300"
-          style={{ boxShadow: '0 0 60px 15px rgba(255, 255, 255, 0.2)' }}
-        />
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-900 via-60% to-orange-500" />
       </motion.div>
 
-      {/* City skyline in the distance */}
-      <div className="absolute bottom-[30%] left-0 right-0">
+      {/* Layer 2: Stars - slow, far away */}
+      <motion.div
+        initial={{ x: '25%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '25%', opacity: 0 }}
+        transition={{ ...parallaxTransition, duration: 0.95 }}
+      >
+        <Stars />
+      </motion.div>
+
+      {/* Layer 3: Moon - slow */}
+      <motion.div
+        className="absolute top-[10%] left-[15%]"
+        initial={{ x: '35%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '35%', opacity: 0 }}
+        transition={{ ...parallaxTransition, duration: 0.9 }}
+      >
+        <motion.div
+          animate={{
+            opacity: [0.8, 1, 0.8],
+          }}
+          transition={{
+            duration: 5,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        >
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-100 to-gray-300"
+            style={{ boxShadow: '0 0 60px 15px rgba(255, 255, 255, 0.2)' }}
+          />
+        </motion.div>
+      </motion.div>
+
+      {/* Layer 4: City skyline - medium */}
+      <motion.div
+        className="absolute bottom-[30%] left-0 right-0"
+        initial={{ x: '55%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '55%' }}
+        transition={{ ...parallaxTransition, duration: 0.75 }}
+      >
         <svg className="w-full h-32" viewBox="0 0 1440 150" preserveAspectRatio="none">
           <defs>
             <linearGradient id="buildingGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -556,46 +665,59 @@ function NightScene() {
             />
           ))}
         </svg>
-      </div>
+      </motion.div>
 
-      {/* Palm trees silhouettes */}
-      <div className="absolute bottom-[15%] left-[5%]">
-        <motion.svg
-          width="120"
-          height="200"
-          viewBox="0 0 120 200"
-          animate={{ rotate: [-2, 2, -2] }}
-          transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: 'bottom center' }}
-        >
-          <path d="M60 200 Q55 150 60 50" stroke="#1e1b4b" strokeWidth="8" fill="none" />
-          <ellipse cx="60" cy="50" rx="50" ry="15" fill="#1e1b4b" transform="rotate(-30 60 50)" />
-          <ellipse cx="60" cy="50" rx="45" ry="12" fill="#1e1b4b" transform="rotate(20 60 50)" />
-          <ellipse cx="60" cy="50" rx="40" ry="10" fill="#1e1b4b" transform="rotate(-60 60 50)" />
-          <ellipse cx="60" cy="50" rx="48" ry="13" fill="#1e1b4b" transform="rotate(50 60 50)" />
-          <ellipse cx="60" cy="50" rx="35" ry="10" fill="#1e1b4b" transform="rotate(-10 60 50)" />
-        </motion.svg>
-      </div>
+      {/* Layer 5: Palm trees silhouettes - medium-fast */}
+      <motion.div
+        initial={{ x: '70%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '70%' }}
+        transition={{ ...parallaxTransition, duration: 0.7 }}
+      >
+        <div className="absolute bottom-[15%] left-[5%]">
+          <motion.svg
+            width="120"
+            height="200"
+            viewBox="0 0 120 200"
+            animate={{ rotate: [-2, 2, -2] }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ transformOrigin: 'bottom center' }}
+          >
+            <path d="M60 200 Q55 150 60 50" stroke="#1e1b4b" strokeWidth="8" fill="none" />
+            <ellipse cx="60" cy="50" rx="50" ry="15" fill="#1e1b4b" transform="rotate(-30 60 50)" />
+            <ellipse cx="60" cy="50" rx="45" ry="12" fill="#1e1b4b" transform="rotate(20 60 50)" />
+            <ellipse cx="60" cy="50" rx="40" ry="10" fill="#1e1b4b" transform="rotate(-60 60 50)" />
+            <ellipse cx="60" cy="50" rx="48" ry="13" fill="#1e1b4b" transform="rotate(50 60 50)" />
+            <ellipse cx="60" cy="50" rx="35" ry="10" fill="#1e1b4b" transform="rotate(-10 60 50)" />
+          </motion.svg>
+        </div>
 
-      <div className="absolute bottom-[15%] right-[8%]">
-        <motion.svg
-          width="100"
-          height="180"
-          viewBox="0 0 100 180"
-          animate={{ rotate: [2, -2, 2] }}
-          transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
-          style={{ transformOrigin: 'bottom center' }}
-        >
-          <path d="M50 180 Q45 130 50 40" stroke="#1e1b4b" strokeWidth="7" fill="none" />
-          <ellipse cx="50" cy="40" rx="45" ry="12" fill="#1e1b4b" transform="rotate(-25 50 40)" />
-          <ellipse cx="50" cy="40" rx="40" ry="10" fill="#1e1b4b" transform="rotate(30 50 40)" />
-          <ellipse cx="50" cy="40" rx="35" ry="9" fill="#1e1b4b" transform="rotate(-55 50 40)" />
-          <ellipse cx="50" cy="40" rx="42" ry="11" fill="#1e1b4b" transform="rotate(60 50 40)" />
-        </motion.svg>
-      </div>
+        <div className="absolute bottom-[15%] right-[8%]">
+          <motion.svg
+            width="100"
+            height="180"
+            viewBox="0 0 100 180"
+            animate={{ rotate: [2, -2, 2] }}
+            transition={{ duration: 5, repeat: Infinity, ease: 'easeInOut' }}
+            style={{ transformOrigin: 'bottom center' }}
+          >
+            <path d="M50 180 Q45 130 50 40" stroke="#1e1b4b" strokeWidth="7" fill="none" />
+            <ellipse cx="50" cy="40" rx="45" ry="12" fill="#1e1b4b" transform="rotate(-25 50 40)" />
+            <ellipse cx="50" cy="40" rx="40" ry="10" fill="#1e1b4b" transform="rotate(30 50 40)" />
+            <ellipse cx="50" cy="40" rx="35" ry="9" fill="#1e1b4b" transform="rotate(-55 50 40)" />
+            <ellipse cx="50" cy="40" rx="42" ry="11" fill="#1e1b4b" transform="rotate(60 50 40)" />
+          </motion.svg>
+        </div>
+      </motion.div>
 
-      {/* Ocean with reflection */}
-      <div className="absolute bottom-0 left-0 right-0 h-[25%]">
+      {/* Layer 6: Ocean with reflection - fast */}
+      <motion.div
+        className="absolute bottom-0 left-0 right-0 h-[25%]"
+        initial={{ x: '85%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '85%' }}
+        transition={{ ...parallaxTransition, duration: 0.65, ease: [0.32, 0, 0.67, 0] }}
+      >
         <svg className="w-full h-full" viewBox="0 0 1440 250" preserveAspectRatio="none">
           <defs>
             <linearGradient id="oceanGradient" x1="0%" y1="0%" x2="0%" y2="100%">
@@ -621,63 +743,92 @@ function NightScene() {
         >
           <path d="M0 25 Q60 10 120 25 Q180 40 240 25 Q300 10 360 25 Q420 40 480 25 Q540 10 600 25 Q660 40 720 25 Q780 10 840 25 Q900 40 960 25 Q1020 10 1080 25 Q1140 40 1200 25 Q1260 10 1320 25 Q1380 40 1440 25 L1440 50 L0 50 Z" fill="rgba(139, 92, 246, 0.3)" />
         </motion.svg>
-      </div>
+      </motion.div>
 
-      {/* Beach sand */}
-      <div className="absolute bottom-0 left-0 right-0 h-[12%] bg-gradient-to-t from-amber-900/80 to-amber-800/60" />
+      {/* Layer 7: Beach sand - fastest, closest */}
+      <motion.div
+        className="absolute bottom-0 left-0 right-0 h-[12%]"
+        initial={{ x: '100%' }}
+        animate={{ x: 0 }}
+        exit={{ x: '100%' }}
+        transition={{ ...parallaxTransition, duration: 0.55 }}
+      >
+        <div className="w-full h-full bg-gradient-to-t from-amber-900/80 to-amber-800/60" />
+      </motion.div>
 
-      {/* Campfire */}
-      <Campfire />
+      {/* Layer 8: Campfire - fastest, foreground */}
+      <motion.div
+        initial={{ x: '90%', opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        exit={{ x: '90%', opacity: 0 }}
+        transition={{ ...parallaxTransition, duration: 0.6 }}
+      >
+        <Campfire />
+      </motion.div>
 
-      {/* Shooting stars */}
-      {[0, 1, 2].map((i) => (
-        <motion.div
-          key={i}
-          className="absolute w-1 h-1 bg-white rounded-full"
-          style={{
-            left: `${20 + i * 30}%`,
-            top: '10%',
-            boxShadow: '0 0 6px 2px rgba(255, 255, 255, 0.8)',
-          }}
-          animate={{
-            x: [0, 200],
-            y: [0, 100],
-            opacity: [0, 1, 0],
-          }}
-          transition={{
-            duration: 1.5,
-            delay: i * 8 + 5,
-            repeat: Infinity,
-            repeatDelay: 20,
-            ease: 'easeOut',
-          }}
-        />
-      ))}
+      {/* Shooting stars - overlay, fades in after slide */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5, delay: 0.5 }}
+      >
+        {[0, 1, 2].map((i) => (
+          <motion.div
+            key={i}
+            className="absolute w-1 h-1 bg-white rounded-full"
+            style={{
+              left: `${20 + i * 30}%`,
+              top: '10%',
+              boxShadow: '0 0 6px 2px rgba(255, 255, 255, 0.8)',
+            }}
+            animate={{
+              x: [0, 200],
+              y: [0, 100],
+              opacity: [0, 1, 0],
+            }}
+            transition={{
+              duration: 1.5,
+              delay: i * 8 + 5,
+              repeat: Infinity,
+              repeatDelay: 20,
+              ease: 'easeOut',
+            }}
+          />
+        ))}
+      </motion.div>
 
-      {/* Fireflies */}
-      {Array.from({ length: 15 }).map((_, i) => (
-        <motion.div
-          key={i}
-          className="absolute w-2 h-2 rounded-full"
-          style={{
-            left: `${10 + (i * 6) % 80}%`,
-            bottom: `${15 + (i * 3) % 20}%`,
-            background: 'radial-gradient(circle, rgba(250, 204, 21, 0.9), transparent)',
-          }}
-          animate={{
-            opacity: [0, 1, 0],
-            scale: [0.5, 1, 0.5],
-            x: [0, (i % 2 === 0 ? 20 : -20), 0],
-            y: [0, (i % 3 === 0 ? -15 : 15), 0],
-          }}
-          transition={{
-            duration: 3 + (i % 3),
-            delay: i * 0.5,
-            repeat: Infinity,
-            ease: 'easeInOut',
-          }}
-        />
-      ))}
+      {/* Fireflies - overlay, fades in after slide */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.5, delay: 0.4 }}
+      >
+        {Array.from({ length: 15 }).map((_, i) => (
+          <motion.div
+            key={i}
+            className="absolute w-2 h-2 rounded-full"
+            style={{
+              left: `${10 + (i * 6) % 80}%`,
+              bottom: `${15 + (i * 3) % 20}%`,
+              background: 'radial-gradient(circle, rgba(250, 204, 21, 0.9), transparent)',
+            }}
+            animate={{
+              opacity: [0, 1, 0],
+              scale: [0.5, 1, 0.5],
+              x: [0, (i % 2 === 0 ? 20 : -20), 0],
+              y: [0, (i % 3 === 0 ? -15 : 15), 0],
+            }}
+            transition={{
+              duration: 3 + (i % 3),
+              delay: i * 0.5,
+              repeat: Infinity,
+              ease: 'easeInOut',
+            }}
+          />
+        ))}
+      </motion.div>
     </motion.div>
   );
 }
@@ -1034,8 +1185,8 @@ export default function HomePage() {
 
   return (
     <div className="fixed inset-0 overflow-hidden">
-      {/* Scene based on theme - with AnimatePresence for smooth transitions */}
-      <AnimatePresence mode="wait">
+      {/* Scene based on theme - with AnimatePresence for smooth parallax slide transitions */}
+      <AnimatePresence mode="sync">
         {isDark ? <NightScene key="night" /> : <DayScene key="day" />}
       </AnimatePresence>
 
