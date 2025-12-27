@@ -90,7 +90,7 @@ function UserCard({
         {/* Avatar with activity indicator */}
         <div className="relative">
           <AvatarDisplay
-            avatar={user.avatar || null}
+            avatar={null}
             username={user.name}
             size="md"
             showEffects={isActive}

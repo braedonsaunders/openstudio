@@ -315,7 +315,7 @@ function UserAvatar({
 
         <div className="relative">
           <AvatarDisplay
-            avatar={user.avatar || null}
+            avatar={null}
             username={user.name}
             size="xl"
             showEffects
