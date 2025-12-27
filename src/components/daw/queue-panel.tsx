@@ -22,7 +22,6 @@ interface QueuePanelProps {
   onUpload: () => void;
   onAIGenerate: () => void;
   onYouTubeSearch: () => void;
-  youtubePlayer?: React.ReactNode;
 }
 
 export function QueuePanel({
@@ -31,7 +30,6 @@ export function QueuePanel({
   onUpload,
   onAIGenerate,
   onYouTubeSearch,
-  youtubePlayer,
 }: QueuePanelProps) {
   const { queue, currentTrack, isMaster } = useRoomStore();
   const { isPlaying, currentTime, duration } = useAudioStore();
@@ -88,38 +86,29 @@ export function QueuePanel({
         <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
           <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Now Playing</div>
 
-          {/* YouTube Player (embedded in queue when playing YouTube track) */}
-          {currentTrack.youtubeId && youtubePlayer && (
-            <div className="mb-3">
-              {youtubePlayer}
+          {/* Track info - YouTube player is rendered separately in PanelDock to prevent unmounting */}
+          <div className="flex items-center gap-3">
+            <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
+              <Music className="w-6 h-6 text-white" />
             </div>
-          )}
-
-          {/* Track info (only show for non-YouTube or when no player) */}
-          {(!currentTrack.youtubeId || !youtubePlayer) && (
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
-                <Music className="w-6 h-6 text-white" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-white truncate">{currentTrack.name}</div>
-                {currentTrack.artist && (
-                  <div className="text-xs text-zinc-500 truncate">{currentTrack.artist}</div>
-                )}
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
-                    <div
-                      className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                      style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-                    />
-                  </div>
-                  <span className="text-[10px] text-zinc-500 shrink-0">
-                    {formatTime(currentTime)} / {formatTime(duration)}
-                  </span>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium text-white truncate">{currentTrack.name}</div>
+              {currentTrack.artist && (
+                <div className="text-xs text-zinc-500 truncate">{currentTrack.artist}</div>
+              )}
+              <div className="flex items-center gap-2 mt-1">
+                <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full transition-all duration-300"
+                    style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
+                  />
                 </div>
+                <span className="text-[10px] text-zinc-500 shrink-0">
+                  {formatTime(currentTime)} / {formatTime(duration)}
+                </span>
               </div>
             </div>
-          )}
+          </div>
         </div>
       )}
 
