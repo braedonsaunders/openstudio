@@ -443,8 +443,8 @@ function analyzeLongTerm(combinedAudio) {
   try {
     const essentiaAudio = essentia.arrayToVector(combinedAudio);
 
-    // Key detection using HPCP with Krumhansl-Kessler correlation
-    // More accurate than essentia's KeyExtractor for real music
+    // Key detection using essentia's Key algorithm with HPCP
+    // Uses well-researched profiles (bgate, edma, krumhansl, etc.)
     try {
       // Compute spectrum for HPCP
       const frameSize = 4096;
@@ -464,15 +464,14 @@ function analyzeLongTerm(combinedAudio) {
       }
 
       // Compute frequencies array for HPCP
-      // Each bin k in the spectrum represents frequency k * sampleRate / fftSize
       const numBins = spectrumArray.length;
       const frequencies = new Float32Array(numBins);
-      const fftSize = (numBins - 1) * 2; // Spectrum length is fftSize/2 + 1
+      const fftSize = (numBins - 1) * 2;
       for (let i = 0; i < numBins; i++) {
         frequencies[i] = (i * sampleRate) / fftSize;
       }
 
-      // Compute HPCP
+      // Compute HPCP with higher resolution for better key detection
       const freqVector = essentia.arrayToVector(frequencies);
       const hpcpResult = essentia.HPCP(spectrum.spectrum, freqVector);
       const hpcpArray = essentia.vectorToArray(hpcpResult.hpcp);
@@ -487,88 +486,115 @@ function analyzeLongTerm(combinedAudio) {
       }
       hpcpFrameCount++;
 
-      // Detect key from accumulated HPCP
+      // Use accumulated HPCP for key detection
       const avgHPCP = Array.from(accumulatedHPCP).map(v => v / hpcpFrameCount);
-      const keyResult = detectKeyFromHPCP(avgHPCP);
+      const hpcpVector = essentia.arrayToVector(new Float32Array(avgHPCP));
 
-      if (keyResult && keyResult.correlation > 0.5) {
-        const { key, scale, correlation, margin } = keyResult;
+      // Try multiple profile types and use consensus
+      const profiles = ['bgate', 'edma', 'krumhansl', 'temperley', 'shaath'];
+      const keyVotes = {};
+
+      for (const profile of profiles) {
+        try {
+          const keyResult = essentia.Key(hpcpVector, true, 4, 12, 0.2, profile, 0.6, false, true, true);
+
+          if (keyResult && keyResult.key && keyResult.strength > 0.1) {
+            const keyId = `${keyResult.key}_${keyResult.scale}`;
+            if (!keyVotes[keyId]) {
+              keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
+            }
+            keyVotes[keyId].count++;
+            keyVotes[keyId].totalStrength += keyResult.strength;
+            keyVotes[keyId].strengths.push(keyResult.strength);
+          }
+        } catch (profileError) {
+          // Profile not available, skip
+        }
+      }
+
+      // Find best consensus key
+      let bestKeyId = null;
+      let bestScore = 0;
+
+      for (const [keyId, data] of Object.entries(keyVotes)) {
+        // Score = count * average strength
+        const avgStrength = data.totalStrength / data.count;
+        const score = data.count * avgStrength;
+        if (score > bestScore) {
+          bestScore = score;
+          bestKeyId = keyId;
+        }
+      }
+
+      if (bestKeyId && keyVotes[bestKeyId].count >= 2) {
+        const [detectedKey, detectedScale] = bestKeyId.split('_');
+        const avgStrength = keyVotes[bestKeyId].totalStrength / keyVotes[bestKeyId].count;
 
         keyBuffer.push({
-          key: key,
-          scale: scale,
-          strength: correlation,
-          margin: margin,
+          key: detectedKey,
+          scale: detectedScale,
+          strength: avgStrength,
+          profileCount: keyVotes[bestKeyId].count,
           timestamp: Date.now()
         });
 
-        // Keep buffer size reasonable for stability
+        // Keep buffer size reasonable
         if (keyBuffer.length > 10) {
           keyBuffer.shift();
         }
 
         // Update key if we have enough samples
         if (keyBuffer.length >= 3) {
-          // Count occurrences of each key weighted by correlation
           const keyCounts = {};
           keyBuffer.forEach(k => {
             const keyId = `${k.key}_${k.scale}`;
             if (!keyCounts[keyId]) {
-              keyCounts[keyId] = { count: 0, totalCorr: 0, totalMargin: 0 };
+              keyCounts[keyId] = { count: 0, totalStrength: 0 };
             }
             keyCounts[keyId].count++;
-            keyCounts[keyId].totalCorr += k.strength;
-            keyCounts[keyId].totalMargin += k.margin;
+            keyCounts[keyId].totalStrength += k.strength;
           });
 
-          // Find best key
-          let bestKeyId = null;
-          let bestScore = 0;
+          // Find most common key
+          let bestKey = null;
+          let bestKeyScore = 0;
           for (const [keyId, data] of Object.entries(keyCounts)) {
-            // Score = count * average correlation * (1 + average margin)
-            const avgCorr = data.totalCorr / data.count;
-            const avgMargin = data.totalMargin / data.count;
-            const score = data.count * avgCorr * (1 + avgMargin);
-            if (score > bestScore) {
-              bestScore = score;
-              bestKeyId = keyId;
+            const score = data.count * (data.totalStrength / data.count);
+            if (score > bestKeyScore) {
+              bestKeyScore = score;
+              bestKey = keyId;
             }
           }
 
-          if (bestKeyId) {
-            const [detectedKey, detectedScale] = bestKeyId.split('_');
-            const keyData = keyCounts[bestKeyId];
-            const avgCorrelation = keyData.totalCorr / keyData.count;
+          if (bestKey) {
+            const [key, scale] = bestKey.split('_');
+            const keyData = keyCounts[bestKey];
+            const avgStrength = keyData.totalStrength / keyData.count;
 
-            // Only update if correlation is good and key has appeared multiple times
-            if (keyData.count >= 2 && avgCorrelation > 0.55) {
-              const newKeyId = `${detectedKey}_${detectedScale}`;
+            if (keyData.count >= 2 && avgStrength > 0.3) {
+              const newKeyId = `${key}_${scale}`;
               const currentKeyId = `${lastKey}_${lastKeyScale}`;
 
-              // Apply modest hysteresis to prevent flickering
-              const shouldChange = !lastKey || // No previous key
-                newKeyId !== currentKeyId && ( // Different key AND
-                  keyData.count >= 4 ||  // Strong consensus OR
-                  avgCorrelation > 0.7   // High correlation
-                );
+              const shouldChange = !lastKey ||
+                (newKeyId !== currentKeyId && (keyData.count >= 4 || avgStrength > 0.5));
 
               if (shouldChange && newKeyId !== currentKeyId) {
-                lastKey = detectedKey;
-                lastKeyScale = detectedScale;
-                lastKeyStrength = Math.min(avgCorrelation, 1);
-                // Show top 3 candidates for debugging
+                lastKey = key;
+                lastKeyScale = scale;
+                lastKeyStrength = Math.min(avgStrength, 1);
+
                 const sortedKeys = Object.entries(keyCounts)
-                  .map(([k, d]) => ({ key: k, score: d.count * (d.totalCorr / d.count) }))
+                  .map(([k, d]) => ({ key: k, score: d.count * (d.totalStrength / d.count) }))
                   .sort((a, b) => b.score - a.score)
                   .slice(0, 3);
-                console.log(`[Worker] Key: ${lastKey} ${lastKeyScale} (corr: ${lastKeyStrength.toFixed(2)}) | Top 3: ${sortedKeys.map(k => k.key.replace('_', ' ')).join(', ')}`);
+                console.log(`[Worker] Key: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)}) | Top 3: ${sortedKeys.map(k => k.key.replace('_', ' ')).join(', ')}`);
               }
             }
           }
         }
       }
     } catch (e) {
-      // Fallback: try essentia's KeyExtractor with default parameters
+      // Fallback: try KeyExtractor directly on audio
       try {
         const keyResult = essentia.KeyExtractor(essentiaAudio);
         if (keyResult && keyResult.key && keyResult.strength > 0.5 && !lastKey) {
