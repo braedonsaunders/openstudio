@@ -44,6 +44,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     setQueuePlaying,
     setQueueTime,
     nextTrack,
+    previousTrack,
+    jumpToTrack,
     addMessage,
     setConnected,
     setJoining,
@@ -475,17 +477,41 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const skipToNext = useCallback(() => {
     if (!isMaster) return;
 
+    // Stop current playback and reset audio state
+    pauseBackingTrack();
+    useAudioStore.getState().setCurrentTime(0);
+    useRoomStore.getState().setWaveformData(null);
+
     nextTrack();
     realtimeRef.current?.broadcastNextTrack(queue.currentIndex + 1);
-  }, [isMaster, nextTrack, queue.currentIndex]);
+  }, [isMaster, nextTrack, queue.currentIndex, pauseBackingTrack]);
 
   const skipToPrevious = useCallback(() => {
     if (!isMaster) return;
 
-    const { previousTrack } = useRoomStore.getState();
+    // Stop current playback and reset audio state
+    pauseBackingTrack();
+    useAudioStore.getState().setCurrentTime(0);
+    useRoomStore.getState().setWaveformData(null);
+
     previousTrack();
     realtimeRef.current?.broadcastNextTrack(Math.max(0, queue.currentIndex - 1));
-  }, [isMaster, queue.currentIndex]);
+  }, [isMaster, queue.currentIndex, pauseBackingTrack, previousTrack]);
+
+  const skipToTrack = useCallback((trackIndex: number) => {
+    if (!isMaster) return;
+
+    // Don't do anything if trying to jump to the current track
+    if (trackIndex === queue.currentIndex) return;
+
+    // Stop current playback and reset audio state
+    pauseBackingTrack();
+    useAudioStore.getState().setCurrentTime(0);
+    useRoomStore.getState().setWaveformData(null);
+
+    jumpToTrack(trackIndex);
+    realtimeRef.current?.broadcastNextTrack(trackIndex);
+  }, [isMaster, queue.currentIndex, pauseBackingTrack, jumpToTrack]);
 
   // Chat
   const sendMessage = useCallback((message: string) => {
@@ -540,6 +566,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     removeTrack,
     skipToNext,
     skipToPrevious,
+    skipToTrack,
     sendMessage,
     muteUser,
     setUserVolume,
