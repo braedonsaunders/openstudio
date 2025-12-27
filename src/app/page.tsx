@@ -5,11 +5,44 @@ import { useRouter } from 'next/navigation';
 import { generateRoomId } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
 import { UserMenu } from '@/components/auth/UserMenu';
+import { useTheme } from '@/components/theme/ThemeProvider';
 import { motion, useSpring } from 'framer-motion';
-import { Music, ArrowRight, Zap, Radio } from 'lucide-react';
+import { Music, ArrowRight, Zap, Radio, Sun, Moon } from 'lucide-react';
+
+// Theme toggle button
+function ThemeToggle() {
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
+  return (
+    <motion.button
+      onClick={toggleTheme}
+      className={`relative p-2.5 rounded-xl transition-colors ${
+        isDark
+          ? 'bg-white/10 hover:bg-white/20 text-white'
+          : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
+      }`}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+    >
+      <motion.div
+        initial={false}
+        animate={{ rotate: isDark ? 0 : 180, scale: 1 }}
+        transition={{ duration: 0.3, ease: 'easeInOut' }}
+      >
+        {isDark ? (
+          <Sun className="w-5 h-5" />
+        ) : (
+          <Moon className="w-5 h-5" />
+        )}
+      </motion.div>
+    </motion.button>
+  );
+}
 
 // Circular audio visualizer ring
-function AudioRing({ mouseX, mouseY }: { mouseX: number; mouseY: number }) {
+function AudioRing({ isDark }: { isDark: boolean }) {
   const bars = 64;
   const [heights, setHeights] = useState<number[]>(Array(bars).fill(20));
 
@@ -23,6 +56,14 @@ function AudioRing({ mouseX, mouseY }: { mouseX: number; mouseY: number }) {
     }, 50);
     return () => clearInterval(interval);
   }, []);
+
+  const gradientColors = isDark
+    ? 'rgba(99, 102, 241, 0.8), rgba(168, 85, 247, 0.8), rgba(236, 72, 153, 0.6)'
+    : 'rgba(79, 70, 229, 0.6), rgba(147, 51, 234, 0.6), rgba(219, 39, 119, 0.5)';
+
+  const glowColor = isDark
+    ? 'rgba(139, 92, 246, 0.5)'
+    : 'rgba(139, 92, 246, 0.3)';
 
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
@@ -44,11 +85,8 @@ function AudioRing({ mouseX, mouseY }: { mouseX: number; mouseY: number }) {
                 x: x - 1.5,
                 y: y,
                 rotate: angle + 90,
-                background: `linear-gradient(to top,
-                  rgba(99, 102, 241, 0.8),
-                  rgba(168, 85, 247, 0.8),
-                  rgba(236, 72, 153, 0.6))`,
-                boxShadow: `0 0 ${height / 3}px rgba(139, 92, 246, 0.5)`,
+                background: `linear-gradient(to top, ${gradientColors})`,
+                boxShadow: `0 0 ${height / 3}px ${glowColor}`,
                 borderRadius: 2,
               }}
               animate={{ height }}
@@ -62,13 +100,13 @@ function AudioRing({ mouseX, mouseY }: { mouseX: number; mouseY: number }) {
 }
 
 // Pulsing concentric rings
-function PulseRings() {
+function PulseRings({ isDark }: { isDark: boolean }) {
   return (
     <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
       {[1, 2, 3, 4].map((ring) => (
         <motion.div
           key={ring}
-          className="absolute rounded-full border border-white/5"
+          className={`absolute rounded-full border ${isDark ? 'border-white/5' : 'border-slate-900/5'}`}
           style={{
             width: 300 + ring * 150,
             height: 300 + ring * 150,
@@ -90,7 +128,7 @@ function PulseRings() {
 }
 
 // Floating frequency particles - fixed positions for SSR
-function FrequencyParticles() {
+function FrequencyParticles({ isDark }: { isDark: boolean }) {
   const particles = useMemo(() => [
     { id: 0, x: 5, y: 15, size: 3, duration: 4, delay: 0 },
     { id: 1, x: 12, y: 45, size: 5, duration: 5, delay: 0.5 },
@@ -115,6 +153,10 @@ function FrequencyParticles() {
     { id: 20, x: 92, y: 18, size: 3, duration: 5, delay: 0.8 },
   ], []);
 
+  const particleColor = isDark
+    ? 'rgba(139, 92, 246, 0.8)'
+    : 'rgba(124, 58, 237, 0.6)';
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
       {particles.map((p) => (
@@ -126,7 +168,7 @@ function FrequencyParticles() {
             top: `${p.y}%`,
             width: p.size,
             height: p.size,
-            background: `radial-gradient(circle, rgba(139, 92, 246, 0.8), transparent)`,
+            background: `radial-gradient(circle, ${particleColor}, transparent)`,
           }}
           animate={{
             y: [0, -30, 0],
@@ -146,10 +188,14 @@ function FrequencyParticles() {
 }
 
 // Interactive cursor glow
-function CursorGlow({ mouseX, mouseY }: { mouseX: number; mouseY: number }) {
+function CursorGlow({ mouseX, mouseY, isDark }: { mouseX: number; mouseY: number; isDark: boolean }) {
   const springConfig = { damping: 25, stiffness: 200 };
   const x = useSpring(mouseX, springConfig);
   const y = useSpring(mouseY, springConfig);
+
+  const glowColor = isDark
+    ? 'rgba(99, 102, 241, 0.15)'
+    : 'rgba(99, 102, 241, 0.1)';
 
   return (
     <motion.div
@@ -161,7 +207,7 @@ function CursorGlow({ mouseX, mouseY }: { mouseX: number; mouseY: number }) {
         height: 400,
         marginLeft: -200,
         marginTop: -200,
-        background: 'radial-gradient(circle, rgba(99, 102, 241, 0.15) 0%, transparent 70%)',
+        background: `radial-gradient(circle, ${glowColor} 0%, transparent 70%)`,
         filter: 'blur(40px)',
       }}
     />
@@ -177,9 +223,9 @@ function WaveformLine() {
     const interval = setInterval(() => {
       let d = 'M 0 50';
       for (let i = 0; i <= points; i++) {
-        const x = (i / points) * 100;
-        const y = 50 + Math.sin(Date.now() / 500 + i * 0.2) * 20 + Math.sin(Date.now() / 300 + i * 0.5) * 10;
-        d += ` L ${x} ${y}`;
+        const xPos = (i / points) * 100;
+        const yPos = 50 + Math.sin(Date.now() / 500 + i * 0.2) * 20 + Math.sin(Date.now() / 300 + i * 0.5) * 10;
+        d += ` L ${xPos} ${yPos}`;
       }
       setPath(d);
     }, 50);
@@ -208,15 +254,19 @@ function WaveformLine() {
 }
 
 // Feature pill
-function FeaturePill({ icon: Icon, text, delay }: { icon: React.ElementType; text: string; delay: number }) {
+function FeaturePill({ icon: Icon, text, delay, isDark }: { icon: React.ElementType; text: string; delay: number; isDark: boolean }) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 20 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.5, delay }}
-      className="flex items-center gap-2 px-4 py-2 bg-white/5 border border-white/10 rounded-full text-sm text-slate-300 backdrop-blur-sm"
+      className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm backdrop-blur-sm ${
+        isDark
+          ? 'bg-white/5 border border-white/10 text-slate-300'
+          : 'bg-slate-900/5 border border-slate-900/10 text-slate-600'
+      }`}
     >
-      <Icon className="w-4 h-4 text-indigo-400" />
+      <Icon className={`w-4 h-4 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} />
       <span>{text}</span>
     </motion.div>
   );
@@ -224,6 +274,9 @@ function FeaturePill({ icon: Icon, text, delay }: { icon: React.ElementType; tex
 
 export default function HomePage() {
   const router = useRouter();
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
   const [roomCode, setRoomCode] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [mousePos, setMousePos] = useState({ x: 0, y: 0 });
@@ -250,23 +303,29 @@ export default function HomePage() {
   }, [router, roomCode]);
 
   return (
-    <div className="fixed inset-0 bg-[#050508] text-white overflow-hidden">
+    <div className={`fixed inset-0 overflow-hidden transition-colors duration-500 ${
+      isDark ? 'bg-[#050508] text-white' : 'bg-[#fafafa] text-slate-900'
+    }`}>
       {/* Ambient background */}
       <div className="absolute inset-0">
         {/* Deep gradient */}
-        <div className="absolute inset-0 bg-gradient-to-b from-indigo-950/20 via-transparent to-purple-950/20" />
+        <div className={`absolute inset-0 transition-colors duration-500 ${
+          isDark
+            ? 'bg-gradient-to-b from-indigo-950/20 via-transparent to-purple-950/20'
+            : 'bg-gradient-to-b from-indigo-100/50 via-transparent to-purple-100/50'
+        }`} />
 
         {/* Noise texture */}
-        <div className="absolute inset-0 opacity-[0.015]" style={{
+        <div className={`absolute inset-0 ${isDark ? 'opacity-[0.015]' : 'opacity-[0.03]'}`} style={{
           backgroundImage: `url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E")`,
         }} />
       </div>
 
       {/* Interactive elements */}
-      <CursorGlow mouseX={mousePos.x} mouseY={mousePos.y} />
-      <FrequencyParticles />
-      <PulseRings />
-      <AudioRing mouseX={mousePos.x} mouseY={mousePos.y} />
+      <CursorGlow mouseX={mousePos.x} mouseY={mousePos.y} isDark={isDark} />
+      <FrequencyParticles isDark={isDark} />
+      <PulseRings isDark={isDark} />
+      <AudioRing isDark={isDark} />
       <WaveformLine />
 
       {/* Header */}
@@ -292,10 +351,12 @@ export default function HomePage() {
           </motion.div>
 
           <motion.div
+            className="flex items-center gap-3"
             initial={{ opacity: 0, x: 20 }}
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
+            <ThemeToggle />
             <UserMenu />
           </motion.div>
         </div>
@@ -315,7 +376,9 @@ export default function HomePage() {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
               <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
             </span>
-            <span className="text-sm text-slate-400 tracking-wide uppercase">Live Sessions Active</span>
+            <span className={`text-sm tracking-wide uppercase ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              Live Sessions Active
+            </span>
           </motion.div>
 
           {/* Main headline */}
@@ -325,8 +388,8 @@ export default function HomePage() {
             transition={{ duration: 0.6, delay: 0.3 }}
             className="text-5xl md:text-7xl lg:text-8xl font-bold mb-6 tracking-tight leading-none"
           >
-            <span className="block text-white">Play</span>
-            <span className="block bg-gradient-to-r from-indigo-400 via-purple-400 to-pink-400 bg-clip-text text-transparent">
+            <span className="block">Play</span>
+            <span className="block bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 bg-clip-text text-transparent">
               Together
             </span>
           </motion.h1>
@@ -336,11 +399,11 @@ export default function HomePage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.5, delay: 0.5 }}
-            className="text-lg md:text-xl text-slate-400 mb-10 max-w-lg mx-auto"
+            className={`text-lg md:text-xl mb-10 max-w-lg mx-auto ${isDark ? 'text-slate-400' : 'text-slate-600'}`}
           >
             Real-time jamming with musicians worldwide.
             <br />
-            <span className="text-slate-500">Sub-30ms latency. Zero downloads.</span>
+            <span className={isDark ? 'text-slate-500' : 'text-slate-400'}>Sub-30ms latency. Zero downloads.</span>
           </motion.p>
 
           {/* CTA Section */}
@@ -393,13 +456,17 @@ export default function HomePage() {
 
             {/* Join room input */}
             <div className="flex items-center justify-center gap-2">
-              <span className="text-slate-600 text-sm">or join</span>
+              <span className={`text-sm ${isDark ? 'text-slate-600' : 'text-slate-400'}`}>or join</span>
               <div className="relative">
                 <Input
                   value={roomCode}
                   onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
                   placeholder="ROOM CODE"
-                  className="w-32 text-center text-sm tracking-widest bg-white/5 border-white/10 text-white placeholder:text-slate-600 focus:border-purple-500 focus:ring-purple-500/20 uppercase"
+                  className={`w-32 text-center text-sm tracking-widest uppercase ${
+                    isDark
+                      ? 'bg-white/5 border-white/10 text-white placeholder:text-slate-600 focus:border-purple-500 focus:ring-purple-500/20'
+                      : 'bg-slate-900/5 border-slate-900/10 text-slate-900 placeholder:text-slate-400 focus:border-purple-500 focus:ring-purple-500/20'
+                  }`}
                   onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
                   maxLength={6}
                 />
@@ -409,7 +476,11 @@ export default function HomePage() {
                   initial={{ opacity: 0, scale: 0.8 }}
                   animate={{ opacity: 1, scale: 1 }}
                   onClick={handleJoinRoom}
-                  className="p-2 rounded-lg bg-white/10 hover:bg-white/20 transition-colors"
+                  className={`p-2 rounded-lg transition-colors ${
+                    isDark
+                      ? 'bg-white/10 hover:bg-white/20'
+                      : 'bg-slate-900/10 hover:bg-slate-900/20'
+                  }`}
                 >
                   <ArrowRight className="w-4 h-4" />
                 </motion.button>
@@ -424,9 +495,9 @@ export default function HomePage() {
             transition={{ duration: 0.5, delay: 1 }}
             className="flex flex-wrap items-center justify-center gap-3 mt-12"
           >
-            <FeaturePill icon={Zap} text="Sub-30ms latency" delay={1.1} />
-            <FeaturePill icon={Radio} text="AI stem separation" delay={1.2} />
-            <FeaturePill icon={Music} text="AI backing tracks" delay={1.3} />
+            <FeaturePill icon={Zap} text="Sub-30ms latency" delay={1.1} isDark={isDark} />
+            <FeaturePill icon={Radio} text="AI stem separation" delay={1.2} isDark={isDark} />
+            <FeaturePill icon={Music} text="AI backing tracks" delay={1.3} isDark={isDark} />
           </motion.div>
         </div>
       </main>
@@ -438,16 +509,16 @@ export default function HomePage() {
         transition={{ duration: 0.5, delay: 1.5 }}
         className="absolute bottom-6 left-0 right-0 text-center"
       >
-        <p className="text-xs text-slate-700 tracking-wide">
+        <p className={`text-xs tracking-wide ${isDark ? 'text-slate-700' : 'text-slate-400'}`}>
           POWERED BY CLOUDFLARE CALLS
         </p>
       </motion.div>
 
       {/* Corner decorations */}
-      <div className="absolute top-20 left-6 w-px h-20 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
-      <div className="absolute top-20 right-6 w-px h-20 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
-      <div className="absolute bottom-20 left-6 w-px h-20 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
-      <div className="absolute bottom-20 right-6 w-px h-20 bg-gradient-to-b from-transparent via-white/10 to-transparent" />
+      <div className={`absolute top-20 left-6 w-px h-20 bg-gradient-to-b from-transparent to-transparent ${isDark ? 'via-white/10' : 'via-slate-900/10'}`} />
+      <div className={`absolute top-20 right-6 w-px h-20 bg-gradient-to-b from-transparent to-transparent ${isDark ? 'via-white/10' : 'via-slate-900/10'}`} />
+      <div className={`absolute bottom-20 left-6 w-px h-20 bg-gradient-to-b from-transparent to-transparent ${isDark ? 'via-white/10' : 'via-slate-900/10'}`} />
+      <div className={`absolute bottom-20 right-6 w-px h-20 bg-gradient-to-b from-transparent to-transparent ${isDark ? 'via-white/10' : 'via-slate-900/10'}`} />
     </div>
   );
 }
