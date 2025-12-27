@@ -455,14 +455,7 @@ function analyzeLongTerm(combinedAudio) {
       const hpcpResult = essentia.HPCP(
         spectrum.spectrum,
         essentia.arrayToVector(new Float32Array(spectrum.spectrum.length)),
-        true,   // harmonics
-        500,    // bandSplitFrequency
-        40,     // minFrequency (lower for bass content)
-        5000,   // maxFrequency (higher for upper harmonics)
-        false,  // maxShifted
-        0.5,    // minWeight
-        true,   // nonLinear
-        sampleRate
+        true, 500, 40, 5000, false, 0.5, true, sampleRate
       );
 
       const hpcpArray = essentia.vectorToArray(hpcpResult.hpcp);
