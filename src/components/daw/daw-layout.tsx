@@ -16,7 +16,6 @@ import { PanelDock } from './panel-dock';
 import { ResizeHandle } from './resize-handle';
 import { BottomDock } from './bottom-dock';
 import { KeyboardShortcuts } from './keyboard-shortcuts';
-import { AIGenerator } from '../tracks/ai-generator';
 import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
@@ -24,7 +23,6 @@ import { OutputSettingsModal } from '../settings/output-settings-modal';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
-import type { SunoGenerationConfig, SunoGenerationProgress } from '@/lib/ai/suno';
 
 interface DAWLayoutProps {
   roomId: string;
@@ -63,14 +61,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, []);
 
   // Modal state
-  const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
 
-  // Generation state
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState<SunoGenerationProgress | null>(null);
+  // Separation state
   const [isSeparating, setIsSeparating] = useState(false);
   const [separationProgress, setSeparationProgress] = useState(0);
   const [loopEnabled, setLoopEnabled] = useState(false);
@@ -393,56 +388,10 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     }
   }, [loopEnabled, currentTrack, setCurrentTime]);
 
-  const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
-    setIsGenerating(true);
-    setGenerationProgress({ stage: 'queued', progress: 0, message: 'Starting generation...' });
-
-    try {
-      const response = await fetch('/api/suno/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ ...config, roomId }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Generation failed');
-      }
-
-      const { generationId } = await response.json();
-      let complete = false;
-
-      while (!complete) {
-        await new Promise((r) => setTimeout(r, 2000));
-
-        const statusRes = await fetch(`/api/suno/status/${generationId}`);
-        const status = await statusRes.json();
-
-        setGenerationProgress({
-          stage: status.stage,
-          progress: status.progress,
-          message: status.message,
-          estimatedTimeRemaining: status.estimatedTimeRemaining,
-        });
-
-        if (status.stage === 'complete') {
-          complete = true;
-          await addTrack(status.track);
-        } else if (status.stage === 'error') {
-          throw new Error(status.message);
-        }
-      }
-
-      setIsAIModalOpen(false);
-    } catch (error) {
-      setGenerationProgress({
-        stage: 'error',
-        progress: 0,
-        message: (error as Error).message,
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  }, [roomId, addTrack]);
+  // Navigate to AI panel for AI generation
+  const handleOpenAIPanel = useCallback(() => {
+    setActivePanel('ai');
+  }, []);
 
   const handleSeparateTrack = useCallback(async () => {
     if (!currentTrack) return;
@@ -541,7 +490,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           else seek(duration);
         }}
         onToggleLoop={() => setLoopEnabled(!loopEnabled)}
-        onGenerateTrack={() => setIsAIModalOpen(true)}
+        onGenerateTrack={handleOpenAIPanel}
         onSeparateStems={handleSeparateTrack}
         onRoomSettings={() => setIsSettingsModalOpen(true)}
         onLeaveRoom={leave}
@@ -610,7 +559,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             onTrackSelect={handleTrackSelect}
             onTrackRemove={removeTrack}
             onUpload={() => setIsUploadModalOpen(true)}
-            onAIGenerate={() => setIsAIModalOpen(true)}
             onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
             youtubePlayer={
               isYouTubeTrack && currentTrack?.youtubeId ? (
@@ -666,14 +614,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       )}
 
       {/* Modals */}
-      <AIGenerator
-        isOpen={isAIModalOpen}
-        onClose={() => setIsAIModalOpen(false)}
-        onGenerate={handleAIGenerate}
-        isGenerating={isGenerating}
-        progress={generationProgress}
-      />
-
       <UploadModal
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}

@@ -26,7 +26,6 @@ interface PanelDockProps {
   onTrackSelect: (track: BackingTrack) => void;
   onTrackRemove: (trackId: string) => void;
   onUpload: () => void;
-  onAIGenerate: () => void;
   onYouTubeSearch: () => void;
   youtubePlayer?: React.ReactNode;
   // Mixer props
@@ -57,7 +56,6 @@ export function PanelDock({
   onTrackSelect,
   onTrackRemove,
   onUpload,
-  onAIGenerate,
   onYouTubeSearch,
   youtubePlayer,
   onToggleStem,
@@ -69,6 +67,8 @@ export function PanelDock({
   onSendMessage,
   width,
 }: PanelDockProps) {
+  // Navigate to AI panel when AI button is clicked
+  const handleOpenAIPanel = () => onPanelChange('ai');
   return (
     <div
       className="bg-gray-50 dark:bg-[#0d0d14] border-l border-gray-200 dark:border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
@@ -125,7 +125,7 @@ export function PanelDock({
             onTrackSelect={onTrackSelect}
             onTrackRemove={onTrackRemove}
             onUpload={onUpload}
-            onAIGenerate={onAIGenerate}
+            onAIGenerate={handleOpenAIPanel}
             onYouTubeSearch={onYouTubeSearch}
             youtubePlayer={youtubePlayer}
           />
@@ -141,10 +141,10 @@ export function PanelDock({
 
         {activePanel === 'ai' && (
           <AIPanel
-            onOpenGenerator={onAIGenerate}
             onSeparateTrack={onSeparateTrack}
             isSeparating={isSeparating}
             separationProgress={separationProgress}
+            roomId={roomId}
           />
         )}
       </div>
