@@ -20,7 +20,7 @@ import {
   ListChecks,
   Clock,
 } from 'lucide-react';
-import { formatDistanceToNow } from 'date-fns';
+import { formatRelativeTime } from '@/lib/utils';
 import type { RoomListItem, RoomRules } from '@/types';
 
 interface RoomInfoPanelProps {
@@ -54,7 +54,7 @@ export function RoomInfoPanel({ room, variant = 'compact', className = '' }: Roo
     }
   };
 
-  const timeAgo = formatDistanceToNow(new Date(room.createdAt), { addSuffix: true });
+  const timeAgo = formatRelativeTime(room.createdAt);
 
   if (variant === 'compact') {
     return (

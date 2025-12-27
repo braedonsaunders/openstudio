@@ -3,7 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { formatDistanceToNow } from 'date-fns';
+import { formatRelativeTime } from '@/lib/utils';
 import {
   Users,
   Lock,
@@ -64,7 +64,7 @@ export function RoomCard({ room, isOwner, onDelete, variant = 'default' }: RoomC
     setShowMenu(false);
   };
 
-  const timeAgo = formatDistanceToNow(new Date(room.createdAt), { addSuffix: true });
+  const timeAgo = formatRelativeTime(room.createdAt);
   const isLive = room.activeUsers && room.activeUsers > 0;
 
   if (variant === 'compact') {
