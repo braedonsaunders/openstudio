@@ -54,7 +54,7 @@ export function TransportBar({
 }: TransportBarProps) {
   const [copied, setCopied] = useState(false);
 
-  const { isPlaying, currentTime, duration, isMuted, jitterStats, webrtcStats, connectionQuality, currentBufferSize } = useAudioStore();
+  const { isPlaying, currentTime, duration, isMuted, jitterStats, webrtcStats, connectionQuality, currentBufferSize, performanceMetrics, settings } = useAudioStore();
   const { currentTrack, isMaster } = useRoomStore();
   const { syncedAnalysis, localAnalysis } = useAnalysisStore();
 
@@ -129,7 +129,7 @@ export function TransportBar({
         <Tooltip
           position="bottom"
           delay={0}
-          className="w-56 whitespace-normal p-0"
+          className="w-64 whitespace-normal p-0"
           content={
             <div className="p-3 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -145,11 +145,50 @@ export function TransportBar({
                 </span>
               </div>
               <div className="h-px bg-white/10" />
+
+              {/* Audio Processing Performance */}
               <div className="space-y-1.5">
+                <div className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Audio Processing</div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Latency</span>
+                  <span className="text-xs text-zinc-400">Context Latency</span>
                   <span className="text-xs font-medium text-white">
-                    {formatLatency(webrtcStats?.roundTripTime ?? 0)}
+                    {performanceMetrics.audioContextLatency.toFixed(1)}ms
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Effects Processing</span>
+                  <span className="text-xs font-medium text-white">
+                    {performanceMetrics.effectsProcessingTime.toFixed(2)}ms
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Buffer Size</span>
+                  <span className="text-xs font-medium text-white">
+                    {settings.bufferSize} samples ({((settings.bufferSize / settings.sampleRate) * 1000).toFixed(1)}ms)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Total Latency</span>
+                  <span className={cn(
+                    'text-xs font-medium',
+                    performanceMetrics.totalLatency < 10 && 'text-emerald-400',
+                    performanceMetrics.totalLatency >= 10 && performanceMetrics.totalLatency < 20 && 'text-yellow-400',
+                    performanceMetrics.totalLatency >= 20 && 'text-orange-400'
+                  )}>
+                    {performanceMetrics.totalLatency.toFixed(1)}ms
+                  </span>
+                </div>
+              </div>
+
+              <div className="h-px bg-white/10" />
+
+              {/* Network Stats */}
+              <div className="space-y-1.5">
+                <div className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Network</div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">RTT</span>
+                  <span className="text-xs font-medium text-white">
+                    {formatLatency(webrtcStats?.roundTripTime ?? jitterStats.roundTripTime)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
@@ -160,14 +199,13 @@ export function TransportBar({
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-zinc-400">Packet Loss</span>
-                  <span className="text-xs font-medium text-white">
+                  <span className={cn(
+                    'text-xs font-medium',
+                    jitterStats.packetLoss < 0.01 && 'text-emerald-400',
+                    jitterStats.packetLoss >= 0.01 && jitterStats.packetLoss < 0.05 && 'text-yellow-400',
+                    jitterStats.packetLoss >= 0.05 && 'text-red-400'
+                  )}>
                     {(jitterStats.packetLoss * 100).toFixed(1)}%
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Buffer</span>
-                  <span className="text-xs font-medium text-white">
-                    {currentBufferSize} samples
                   </span>
                 </div>
               </div>
@@ -195,7 +233,9 @@ export function TransportBar({
               connectionQuality === 'fair' && 'text-yellow-600 dark:text-yellow-400',
               connectionQuality === 'poor' && 'text-red-600 dark:text-red-400'
             )}>
-              {formatLatency(webrtcStats?.roundTripTime ?? 0)}
+              {performanceMetrics.totalLatency > 0
+                ? `${performanceMetrics.totalLatency.toFixed(1)}ms`
+                : formatLatency(webrtcStats?.roundTripTime ?? jitterStats.roundTripTime)}
             </span>
           </div>
         </Tooltip>

@@ -2,7 +2,8 @@
 // Manages all audio processing, routing, and playback
 
 import { AdaptiveJitterBuffer } from './jitter-buffer';
-import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig } from '@/types';
+import { TrackEffectsProcessor } from './effects/track-effects-processor';
+import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, TrackEffectsChain } from '@/types';
 
 export interface CaptureAudioOptions {
   deviceId?: string;
@@ -40,7 +41,12 @@ export class AudioEngine {
   private localChannelSplitter: ChannelSplitterNode | null = null;
   private localSourceNode: MediaStreamAudioSourceNode | null = null;
   private localMonitorGain: GainNode | null = null;
+  private localInputGain: GainNode | null = null;
+  private localMuteGain: GainNode | null = null;
+  private localEffectsProcessor: TrackEffectsProcessor | null = null;
   private monitoringEnabled: boolean = true;
+  private localTrackMuted: boolean = false;
+  private localTrackVolume: number = 1;
   private remoteStreams: Map<string, AudioStream> = new Map();
   private backingTrackSource: AudioBufferSourceNode | null = null;
   private backingTrackBuffer: AudioBuffer | null = null;
@@ -173,15 +179,28 @@ export class AudioEngine {
       this.localChannelSplitter?.disconnect();
       this.localAnalyser?.disconnect();
       this.localMonitorGain?.disconnect();
+      this.localInputGain?.disconnect();
+      this.localMuteGain?.disconnect();
+      this.localEffectsProcessor?.dispose();
 
       this.localSourceNode = this.audioContext.createMediaStreamSource(this.localStream);
       this.localAnalyser = this.audioContext.createAnalyser();
       this.localAnalyser.fftSize = 256;
 
+      // Create input gain for track level control
+      this.localInputGain = this.audioContext.createGain();
+      this.localInputGain.gain.value = this.localTrackVolume;
+
+      // Create mute gain for track mute/solo control
+      this.localMuteGain = this.audioContext.createGain();
+      this.localMuteGain.gain.value = this.localTrackMuted ? 0 : 1;
+
       // Create monitoring gain node for local audio output
       this.localMonitorGain = this.audioContext.createGain();
       this.localMonitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
-      this.localMonitorGain.connect(this.masterGain);
+
+      // Audio signal flow:
+      // source -> channelMerger (if mono) -> inputGain -> effects -> muteGain -> monitorGain -> masterGain
 
       // For mono mode with a specific channel selection, use ChannelSplitter
       // to extract only the desired channel
@@ -197,23 +216,31 @@ export class AudioEngine {
           // Create a channel merger to convert back to mono for the analyser
           const merger = this.audioContext.createChannelMerger(1);
 
-          // Connect: source -> splitter -> specific channel -> merger -> analyser + monitor
+          // Connect: source -> splitter -> specific channel -> merger -> inputGain
           this.localSourceNode.connect(this.localChannelSplitter);
           this.localChannelSplitter.connect(merger, channelConfig.leftChannel, 0);
-          merger.connect(this.localAnalyser);
-          merger.connect(this.localMonitorGain);
+          merger.connect(this.localInputGain);
         } else {
           // Requested channel not available, fall back to default
           console.warn('[AudioEngine] Requested channel', channelConfig.leftChannel,
             'not available (device has', actualChannelCount, 'channels). Using default.');
-          this.localSourceNode.connect(this.localAnalyser);
-          this.localSourceNode.connect(this.localMonitorGain);
+          this.localSourceNode.connect(this.localInputGain);
         }
       } else {
-        // Stereo or default: connect directly to both analyser and monitor
-        this.localSourceNode.connect(this.localAnalyser);
-        this.localSourceNode.connect(this.localMonitorGain);
+        // Stereo or default: connect directly to inputGain
+        this.localSourceNode.connect(this.localInputGain);
       }
+
+      // Connect input gain to analyser (for input level metering)
+      this.localInputGain.connect(this.localAnalyser);
+
+      // Create effects processor if we have effects settings
+      // Connect: inputGain -> effectsProcessor -> muteGain -> monitorGain -> masterGain
+      this.localEffectsProcessor = new TrackEffectsProcessor(this.audioContext);
+      this.localInputGain.connect(this.localEffectsProcessor.getInputNode());
+      this.localEffectsProcessor.connect(this.localMuteGain);
+      this.localMuteGain.connect(this.localMonitorGain);
+      this.localMonitorGain.connect(this.masterGain);
     }
 
     return this.localStream;
@@ -306,6 +333,56 @@ export class AudioEngine {
     return this.monitoringEnabled;
   }
 
+  /**
+   * Set the local track muted state (for mute/solo functionality)
+   */
+  setLocalTrackMuted(muted: boolean): void {
+    this.localTrackMuted = muted;
+    if (this.localMuteGain) {
+      this.localMuteGain.gain.setTargetAtTime(muted ? 0 : 1, this.audioContext!.currentTime, 0.01);
+    }
+  }
+
+  /**
+   * Set the local track volume
+   */
+  setLocalTrackVolume(volume: number): void {
+    this.localTrackVolume = volume;
+    if (this.localInputGain) {
+      this.localInputGain.gain.setTargetAtTime(volume, this.audioContext!.currentTime, 0.01);
+    }
+  }
+
+  /**
+   * Update the local track effects
+   */
+  updateLocalTrackEffects(effects: Partial<TrackEffectsChain>): void {
+    if (this.localEffectsProcessor) {
+      this.localEffectsProcessor.updateSettings(effects);
+    }
+  }
+
+  /**
+   * Get the local effects processor (for direct manipulation)
+   */
+  getLocalEffectsProcessor(): TrackEffectsProcessor | null {
+    return this.localEffectsProcessor;
+  }
+
+  /**
+   * Get metering data from the local track effects
+   */
+  getLocalEffectsMetering(): {
+    noiseGateOpen: boolean;
+    compressorReduction: number;
+    limiterReduction: number;
+  } | null {
+    if (this.localEffectsProcessor) {
+      return this.localEffectsProcessor.getMeteringData();
+    }
+    return null;
+  }
+
   async loadBackingTrack(url: string): Promise<void> {
     if (!this.audioContext) {
       console.error('Audio context not initialized');
@@ -348,6 +425,35 @@ export class AudioEngine {
 
   getAudioContext(): AudioContext | null {
     return this.audioContext;
+  }
+
+  getMasterGain(): GainNode | null {
+    return this.masterGain;
+  }
+
+  /**
+   * Get audio context latency in milliseconds
+   * Includes both base latency and output latency
+   */
+  getContextLatency(): number {
+    if (!this.audioContext) return 0;
+    const baseLatency = this.audioContext.baseLatency ?? 0;
+    const outputLatency = (this.audioContext as AudioContext & { outputLatency?: number }).outputLatency ?? 0;
+    return (baseLatency + outputLatency) * 1000;
+  }
+
+  /**
+   * Get buffer latency in milliseconds based on current buffer size
+   */
+  getBufferLatency(): number {
+    return (this.config.bufferSize / this.config.sampleRate) * 1000;
+  }
+
+  /**
+   * Get total estimated latency
+   */
+  getTotalLatency(): number {
+    return this.getContextLatency() + this.getBufferLatency();
   }
 
   /**
@@ -663,6 +769,12 @@ export class AudioEngine {
     this.localAnalyser = null;
     this.localMonitorGain?.disconnect();
     this.localMonitorGain = null;
+    this.localInputGain?.disconnect();
+    this.localInputGain = null;
+    this.localMuteGain?.disconnect();
+    this.localMuteGain = null;
+    this.localEffectsProcessor?.dispose();
+    this.localEffectsProcessor = null;
 
     this.workletNode?.disconnect();
     this.masterGain?.disconnect();

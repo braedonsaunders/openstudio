@@ -14,6 +14,7 @@ let globalEngineInitPromise: Promise<AudioEngine> | null = null;
 
 export function useAudioEngine() {
   const animationFrameRef = useRef<number | null>(null);
+  const performanceIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Get analyser nodes from the global store (shared across all hook instances)
   const {
@@ -30,6 +31,7 @@ export function useAudioEngine() {
     setJitterStats,
     setConnectionQuality,
     setCurrentBufferSize,
+    setPerformanceMetrics,
     setPlaying,
     setCurrentTime,
     setDuration,
@@ -94,6 +96,22 @@ export function useAudioEngine() {
 
       globalEngine = engine;
       setInitialized(true);
+
+      // Start performance monitoring
+      if (!performanceIntervalRef.current) {
+        performanceIntervalRef.current = setInterval(() => {
+          if (globalEngine) {
+            const audioContextLatency = globalEngine.getContextLatency();
+            const bufferLatency = globalEngine.getBufferLatency();
+
+            setPerformanceMetrics({
+              audioContextLatency,
+              totalLatency: audioContextLatency + bufferLatency,
+              currentBufferSize: settings.bufferSize,
+            });
+          }
+        }, 200); // Update every 200ms
+      }
 
       // Get available devices
       try {
@@ -224,6 +242,21 @@ export function useAudioEngine() {
   // Set monitoring volume
   const setMonitoringVolume = useCallback((volume: number) => {
     globalEngine?.setMonitoringVolume(volume);
+  }, []);
+
+  // Set local track muted state (for mute/solo)
+  const setLocalTrackMuted = useCallback((muted: boolean) => {
+    globalEngine?.setLocalTrackMuted(muted);
+  }, []);
+
+  // Set local track volume
+  const setLocalTrackVolume = useCallback((volume: number) => {
+    globalEngine?.setLocalTrackVolume(volume);
+  }, []);
+
+  // Update local track effects
+  const updateLocalTrackEffects = useCallback((effects: Partial<import('@/types').TrackEffectsChain>) => {
+    globalEngine?.updateLocalTrackEffects(effects);
   }, []);
 
   // Check if backing track audio is available for analysis
@@ -417,6 +450,12 @@ export function useAudioEngine() {
 
   // Destroy the global engine (call when leaving room)
   const destroyEngine = useCallback(() => {
+    // Stop performance monitoring
+    if (performanceIntervalRef.current) {
+      clearInterval(performanceIntervalRef.current);
+      performanceIntervalRef.current = null;
+    }
+
     if (globalEngine) {
       globalEngine.dispose();
       globalEngine = null;
@@ -428,6 +467,11 @@ export function useAudioEngine() {
       setMasterAnalyser(null);
     }
   }, [setInitialized, setAudioContext, setBackingTrackAnalyser, setMasterAnalyser]);
+
+  // Get the master gain node for external connections (like track processors)
+  const getMasterGain = useCallback((): GainNode | null => {
+    return globalEngine?.getMasterGain() || null;
+  }, []);
 
   return {
     isInitialized,
@@ -445,6 +489,9 @@ export function useAudioEngine() {
     setOutputDevice,
     setMonitoringEnabled,
     setMonitoringVolume,
+    setLocalTrackMuted,
+    setLocalTrackVolume,
+    updateLocalTrackEffects,
     // Analyser nodes as state (triggers re-render when available)
     audioContext,
     backingTrackAnalyser,
@@ -460,5 +507,6 @@ export function useAudioEngine() {
     updateFromStats,
     setOnTrackEnded,
     destroyEngine,
+    getMasterGain,
   };
 }
