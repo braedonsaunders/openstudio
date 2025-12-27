@@ -5,7 +5,6 @@ import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
 import { FullHeightMeter } from './full-height-meter';
 import { Fader } from './fader';
-import { TrackAudioSettingsPopover } from './track-audio-settings';
 import { AdvancedAudioSettingsPopover } from './advanced-audio-settings';
 import { EffectsRack } from './effects-rack';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
@@ -13,11 +12,8 @@ import {
   Mic,
   Monitor,
   Volume2,
-  MoreHorizontal,
   ChevronDown,
   ChevronRight,
-  Settings2,
-  Trash2,
   Circle,
   Pencil,
   Check,
@@ -148,16 +144,12 @@ export function UserTrackHeader({
   onRemove,
 }: UserTrackHeaderProps) {
   const [isExpanded, setIsExpanded] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showEffects, setShowEffects] = useState(false);
-  const [showMenu, setShowMenu] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(track.name);
-  const settingsButtonRef = useRef<HTMLButtonElement>(null);
   const advancedSettingsButtonRef = useRef<HTMLButtonElement>(null);
   const effectsButtonRef = useRef<HTMLButtonElement>(null);
-  const menuButtonRef = useRef<HTMLButtonElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -188,7 +180,6 @@ export function UserTrackHeader({
   const handleStartRename = () => {
     setNewName(track.name);
     setIsRenaming(true);
-    setShowMenu(false);
   };
 
   const handleConfirmRename = () => {
@@ -322,18 +313,13 @@ export function UserTrackHeader({
               </div>
             </div>
 
-            {/* More Options */}
+            {/* Rename Track */}
             <button
-              ref={menuButtonRef}
-              onClick={() => {
-                setShowMenu(!showMenu);
-                setShowSettings(false);
-                setShowAdvancedSettings(false);
-                setShowEffects(false);
-              }}
+              onClick={handleStartRename}
               className="p-1 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors shrink-0"
+              title="Rename Track"
             >
-              <MoreHorizontal className="w-3.5 h-3.5" />
+              <Pencil className="w-3.5 h-3.5" />
             </button>
           </div>
 
@@ -387,9 +373,7 @@ export function UserTrackHeader({
               ref={effectsButtonRef}
               onClick={() => {
                 setShowEffects(!showEffects);
-                setShowSettings(false);
                 setShowAdvancedSettings(false);
-                setShowMenu(false);
               }}
               className={cn(
                 'p-1 rounded transition-colors relative',
@@ -414,9 +398,7 @@ export function UserTrackHeader({
               ref={advancedSettingsButtonRef}
               onClick={() => {
                 setShowAdvancedSettings(!showAdvancedSettings);
-                setShowSettings(false);
                 setShowEffects(false);
-                setShowMenu(false);
               }}
               className={cn(
                 'p-1 rounded transition-colors',
@@ -427,26 +409,6 @@ export function UserTrackHeader({
               title="Advanced Audio Settings"
             >
               <Sliders className="w-3 h-3" />
-            </button>
-
-            {/* Quick Settings Button */}
-            <button
-              ref={settingsButtonRef}
-              onClick={() => {
-                setShowSettings(!showSettings);
-                setShowAdvancedSettings(false);
-                setShowEffects(false);
-                setShowMenu(false);
-              }}
-              className={cn(
-                'p-1 rounded transition-colors',
-                showSettings
-                  ? 'bg-indigo-500/20 text-indigo-400'
-                  : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300'
-              )}
-              title="Quick Settings"
-            >
-              <Settings2 className="w-3 h-3" />
             </button>
           </div>
         </div>
@@ -500,84 +462,6 @@ export function UserTrackHeader({
           track={track}
           onClose={() => setShowAdvancedSettings(false)}
         />
-      </PopoverPortal>
-
-      <PopoverPortal
-        anchorRef={settingsButtonRef}
-        isOpen={showSettings}
-        onClose={() => setShowSettings(false)}
-      >
-        <TrackAudioSettingsPopover
-          track={track}
-          onClose={() => setShowSettings(false)}
-        />
-      </PopoverPortal>
-
-      <PopoverPortal
-        anchorRef={menuButtonRef}
-        isOpen={showMenu}
-        onClose={() => setShowMenu(false)}
-      >
-        <div className="w-48 bg-white dark:bg-[#16161f] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden">
-          <button
-            onClick={handleStartRename}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-          >
-            <Pencil className="w-3.5 h-3.5" />
-            Rename Track
-          </button>
-          <div className="border-t border-gray-200 dark:border-white/5" />
-          <button
-            onClick={() => {
-              setShowMenu(false);
-              setShowEffects(true);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-purple-400" />
-            Effects Rack
-            {activeEffectsCount > 0 && (
-              <span className="ml-auto text-[10px] text-purple-400">
-                {activeEffectsCount} active
-              </span>
-            )}
-          </button>
-          <button
-            onClick={() => {
-              setShowMenu(false);
-              setShowAdvancedSettings(true);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-          >
-            <Sliders className="w-3.5 h-3.5" />
-            Advanced Audio Settings
-          </button>
-          <button
-            onClick={() => {
-              setShowMenu(false);
-              setShowSettings(true);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
-          >
-            <Settings2 className="w-3.5 h-3.5" />
-            Quick Settings
-          </button>
-          {onRemove && (
-            <>
-              <div className="border-t border-gray-200 dark:border-white/5" />
-              <button
-                onClick={() => {
-                  onRemove();
-                  setShowMenu(false);
-                }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-500 dark:text-red-400 hover:bg-red-500/10 transition-colors"
-              >
-                <Trash2 className="w-3.5 h-3.5" />
-                Remove Track
-              </button>
-            </>
-          )}
-        </div>
       </PopoverPortal>
     </div>
   );
