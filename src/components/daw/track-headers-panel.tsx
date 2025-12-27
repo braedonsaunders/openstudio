@@ -68,7 +68,6 @@ export function TrackHeadersPanel({
     addTrack: addLoopTrack,
     getTracksByRoom,
     removeTrack: removeLoopTrack,
-    setTrackPlaying,
   } = useLoopTracksStore();
 
   // Get loop tracks for this room
@@ -129,44 +128,7 @@ export function TrackHeadersPanel({
   // Count total tracks for display
   const totalTracks = localTracks.length + remoteUsers.length + inactiveTracks.length + loopTracks.length;
 
-  // Loop track handlers
-  const handlePlayLoopTrack = useCallback(
-    async (trackId: string) => {
-      setTrackPlaying(trackId, true, Date.now());
-      // TODO: Actually trigger audio playback via sound engine
-      if (roomId) {
-        try {
-          await fetch(`/api/rooms/${roomId}/loop-tracks`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: trackId, isPlaying: true }),
-          });
-        } catch (err) {
-          console.error('Failed to update loop track:', err);
-        }
-      }
-    },
-    [roomId, setTrackPlaying]
-  );
-
-  const handleStopLoopTrack = useCallback(
-    async (trackId: string) => {
-      setTrackPlaying(trackId, false);
-      if (roomId) {
-        try {
-          await fetch(`/api/rooms/${roomId}/loop-tracks`, {
-            method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ id: trackId, isPlaying: false }),
-          });
-        } catch (err) {
-          console.error('Failed to update loop track:', err);
-        }
-      }
-    },
-    [roomId, setTrackPlaying]
-  );
-
+  // Loop track removal handler (master only)
   const handleRemoveLoopTrack = useCallback(
     async (trackId: string) => {
       removeLoopTrack(trackId);
@@ -275,9 +237,8 @@ export function TrackHeadersPanel({
               <LoopTrackHeader
                 key={track.id}
                 track={track}
-                onPlay={() => handlePlayLoopTrack(track.id)}
-                onStop={() => handleStopLoopTrack(track.id)}
                 onRemove={() => handleRemoveLoopTrack(track.id)}
+                isMaster={isMaster}
               />
             ))}
           </div>
@@ -361,6 +322,7 @@ export function TrackHeadersPanel({
         userName={currentUser?.name}
         roomId={roomId}
         onOpenLoopBrowser={() => setShowLoopBrowser(true)}
+        isMaster={isMaster}
       />
 
       {/* Loop Browser Modal */}

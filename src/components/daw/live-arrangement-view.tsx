@@ -5,8 +5,10 @@ import { cn } from '@/lib/utils';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { LiveTrackLane } from './live-track-lane';
 import { UserTrackLane } from './user-track-lane';
+import { LoopTrackLane } from '../loops/loop-track-lane';
 import { SeekableBackingTrack } from './seekable-backing-track';
 import { NowLine } from './now-line';
 import type { User } from '@/types';
@@ -18,6 +20,7 @@ interface LiveArrangementViewProps {
   isMaster: boolean;
   onSeek: (time: number) => void;
   sessionStartTime?: number;
+  roomId?: string;
 }
 
 // Track color palette for remote users
@@ -36,6 +39,7 @@ export function LiveArrangementView({
   isMaster,
   onSeek,
   sessionStartTime = Date.now(),
+  roomId,
 }: LiveArrangementViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -43,6 +47,10 @@ export function LiveArrangementView({
   const { isPlaying, currentTime, duration } = useAudioStore();
   const { currentTrack, stemsAvailable, stemMixState, waveformData, queue } = useRoomStore();
   const { getTracksByUser, trackLevels } = useUserTracksStore();
+  const { getTracksByRoom } = useLoopTracksStore();
+
+  // Get loop tracks for this room
+  const loopTracks = roomId ? getTracksByRoom(roomId) : [];
 
   // Fallback: if no currentTrack but queue has tracks, use the first one
   // This ensures waveform is always visible when tracks exist
@@ -75,7 +83,7 @@ export function LiveArrangementView({
   }, []);
 
   // Total track count
-  const totalTracks = localTracks.length + remoteUsers.length;
+  const totalTracks = localTracks.length + remoteUsers.length + loopTracks.length;
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#0a0a0f]">
@@ -140,6 +148,25 @@ export function LiveArrangementView({
                   />
                 );
               })}
+            </div>
+          )}
+
+          {/* Loop Tracks Section */}
+          {loopTracks.length > 0 && (
+            <div>
+              {loopTracks.map((track) => (
+                <div
+                  key={track.id}
+                  className="h-24 border-b border-slate-700"
+                  style={{ borderLeftColor: track.color, borderLeftWidth: '3px' }}
+                >
+                  <LoopTrackLane
+                    track={track}
+                    width={HISTORY_SECONDS * 100 * zoom}
+                    pixelsPerSecond={100 * zoom}
+                  />
+                </div>
+              ))}
             </div>
           )}
 

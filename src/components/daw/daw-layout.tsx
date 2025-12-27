@@ -546,6 +546,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           isMaster={isMaster}
           onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
           sessionStartTime={sessionStartTime}
+          roomId={roomId}
         />
 
         {/* Right Resize Handle */}

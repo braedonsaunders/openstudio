@@ -30,6 +30,7 @@ interface AddTrackModalProps {
   userName?: string;
   roomId?: string;
   onOpenLoopBrowser?: () => void;
+  isMaster?: boolean;
 }
 
 const DEFAULT_SETTINGS: TrackAudioSettings = {
@@ -59,7 +60,7 @@ const DEFAULT_MIDI_SETTINGS: MidiInputSettings = {
   velocityCurve: 'linear',
 };
 
-export function AddTrackModal({ isOpen, onClose, userId, userName, roomId, onOpenLoopBrowser }: AddTrackModalProps) {
+export function AddTrackModal({ isOpen, onClose, userId, userName, roomId, onOpenLoopBrowser, isMaster = false }: AddTrackModalProps) {
   const { inputDevices, devicesLoaded, loadDevices, addTrack, getTracksByUser } = useUserTracksStore();
 
   const [trackType, setTrackType] = useState<TrackTypeOption | null>(null);
@@ -259,24 +260,26 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId, onOpe
                 </div>
               </button>
 
-              {/* Loop Track */}
-              <button
-                onClick={() => {
-                  onClose();
-                  onOpenLoopBrowser?.();
-                }}
-                className="flex items-center gap-4 p-4 rounded-xl border-2 border-slate-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left"
-              >
-                <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
-                  <Repeat className="w-6 h-6 text-amber-600" />
-                </div>
-                <div className="flex-1">
-                  <div className="font-semibold text-slate-900">Loop Track</div>
-                  <div className="text-sm text-slate-500">
-                    Add drum beats, bass lines, and melodic loops
+              {/* Loop Track - Master only */}
+              {isMaster && (
+                <button
+                  onClick={() => {
+                    onClose();
+                    onOpenLoopBrowser?.();
+                  }}
+                  className="flex items-center gap-4 p-4 rounded-xl border-2 border-slate-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left"
+                >
+                  <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                    <Repeat className="w-6 h-6 text-amber-600" />
                   </div>
-                </div>
-              </button>
+                  <div className="flex-1">
+                    <div className="font-semibold text-slate-900">Loop Track</div>
+                    <div className="text-sm text-slate-500">
+                      Add drum beats, bass lines, and melodic loops
+                    </div>
+                  </div>
+                </button>
+              )}
             </div>
           </div>
         )}

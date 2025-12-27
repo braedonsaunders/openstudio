@@ -9,8 +9,6 @@ import { getLoopById } from '@/lib/audio/loop-library';
 import { AVAILABLE_SOUND_PRESETS } from '@/lib/audio/sound-engine';
 import type { LoopTrackState } from '@/types/loops';
 import {
-  Play,
-  Square,
   Volume2,
   VolumeX,
   Headphones,
@@ -24,16 +22,14 @@ import {
 
 interface LoopTrackHeaderProps {
   track: LoopTrackState;
-  onPlay: () => void;
-  onStop: () => void;
   onRemove: () => void;
+  isMaster?: boolean;
 }
 
 export function LoopTrackHeader({
   track,
-  onPlay,
-  onStop,
   onRemove,
+  isMaster = false,
 }: LoopTrackHeaderProps) {
   const {
     setTrackVolume,
@@ -80,25 +76,15 @@ export function LoopTrackHeader({
     >
       {/* Top Row - Name and Controls */}
       <div className="flex items-center gap-2 px-2 py-1.5 min-w-0">
-        {/* Play/Stop Button */}
-        <button
-          onClick={track.isPlaying ? onStop : onPlay}
+        {/* Loop Icon */}
+        <div
           className={cn(
-            'w-7 h-7 flex items-center justify-center rounded-full transition-colors',
-            track.isPlaying
-              ? 'bg-green-500 text-white hover:bg-green-600'
-              : 'bg-slate-700 text-slate-300 hover:bg-slate-600'
+            'w-7 h-7 flex items-center justify-center rounded-full',
+            'bg-indigo-500/20 text-indigo-400'
           )}
         >
-          {track.isPlaying ? (
-            <Square className="w-3 h-3" />
-          ) : (
-            <Play className="w-3 h-3 ml-0.5" />
-          )}
-        </button>
-
-        {/* Loop Icon */}
-        <Repeat className="w-3.5 h-3.5 text-indigo-400" />
+          <Repeat className="w-3.5 h-3.5" />
+        </div>
 
         {/* Track Name */}
         <div className="flex-1 min-w-0">
@@ -126,13 +112,15 @@ export function LoopTrackHeader({
           <Settings className="w-3.5 h-3.5" />
         </button>
 
-        {/* Delete Button */}
-        <button
-          onClick={onRemove}
-          className="p-1 text-slate-500 hover:text-red-400 transition-colors"
-        >
-          <Trash2 className="w-3.5 h-3.5" />
-        </button>
+        {/* Delete Button - only for master */}
+        {isMaster && (
+          <button
+            onClick={onRemove}
+            className="p-1 text-slate-500 hover:text-red-400 transition-colors"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
 
       {/* Bottom Row - Volume and Mute/Solo */}
