@@ -16,6 +16,16 @@ function getSupabase(): SupabaseClient | null {
   return supabaseClient;
 }
 
+// Get admin client with service role key (required for operations that bypass RLS)
+function getAdminSupabase(): SupabaseClient | null {
+  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
+  if (url && key) {
+    return createClient(url, key);
+  }
+  return null;
+}
+
 // Transform database row to API response
 function transformRoom(room: Record<string, unknown>) {
   return {
@@ -253,7 +263,6 @@ export async function GET(request: NextRequest) {
 
 // DELETE /api/rooms?id=xxx - Delete a room and all its tracks
 export async function DELETE(request: NextRequest) {
-  const supabase = getSupabase();
   const { searchParams } = new URL(request.url);
   const roomId = searchParams.get('id');
 
@@ -264,14 +273,25 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  // If Supabase is not configured, return success (nothing to delete)
-  if (!supabase) {
-    return NextResponse.json({ success: true });
+  // Use admin client to bypass RLS - required for admin operations
+  const adminSupabase = getAdminSupabase();
+
+  if (!adminSupabase) {
+    // Fall back to regular client for checking, but warn about RLS
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ success: true });
+    }
+
+    return NextResponse.json(
+      { error: 'Admin operations require SUPABASE_SERVICE_ROLE_KEY to be configured. Room deletion is blocked by database security policies.' },
+      { status: 500 }
+    );
   }
 
   try {
     // First, verify the room exists
-    const { data: existingRoom, error: fetchError } = await supabase
+    const { data: existingRoom, error: fetchError } = await adminSupabase
       .from('rooms')
       .select('id')
       .eq('id', roomId)
@@ -284,8 +304,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Delete user_tracks for this room first (explicit deletion to bypass potential RLS issues)
-    const { error: userTracksError } = await supabase
+    // Delete user_tracks for this room first
+    const { error: userTracksError } = await adminSupabase
       .from('user_tracks')
       .delete()
       .eq('room_id', roomId);
@@ -296,7 +316,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete room_tracks for this room (in case CASCADE isn't set up)
-    const { error: roomTracksError } = await supabase
+    const { error: roomTracksError } = await adminSupabase
       .from('room_tracks')
       .delete()
       .eq('room_id', roomId);
@@ -307,11 +327,10 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Delete the room itself
-    const { error: deleteError, count } = await supabase
+    const { error: deleteError } = await adminSupabase
       .from('rooms')
       .delete()
-      .eq('id', roomId)
-      .select();
+      .eq('id', roomId);
 
     if (deleteError) {
       console.error('Error deleting room:', deleteError);
@@ -322,7 +341,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     // Verify the room was actually deleted
-    const { data: checkRoom } = await supabase
+    const { data: checkRoom } = await adminSupabase
       .from('rooms')
       .select('id')
       .eq('id', roomId)
