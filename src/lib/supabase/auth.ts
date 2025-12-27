@@ -237,7 +237,7 @@ export async function checkUsernameAvailable(username: string): Promise<boolean>
     .from('user_profiles')
     .select('username')
     .eq('username', username)
-    .single();
+    .maybeSingle();
 
   return !data;
 }
