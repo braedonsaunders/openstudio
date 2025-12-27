@@ -29,7 +29,10 @@ import {
   Trash2,
   Crown,
   Activity,
+  Sun,
+  Moon,
 } from 'lucide-react';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics';
 
@@ -37,6 +40,7 @@ export default function AdminPage() {
   const router = useRouter();
   const { profile, user } = useAuthStore();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
+  const { resolvedTheme, toggleTheme } = useTheme();
 
   // Redirect non-admins
   useEffect(() => {
@@ -47,39 +51,52 @@ export default function AdminPage() {
 
   if (!profile || profile.accountType !== 'admin') {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500" />
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-gray-950/80 backdrop-blur-lg border-b border-gray-800">
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
             <button
               onClick={() => router.push('/')}
-              className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+              className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
             >
               <ArrowLeft className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-2">
               <Shield className="w-6 h-6 text-red-500" />
-              <span className="text-xl font-bold text-white">Admin Panel</span>
+              <span className="text-xl font-bold text-gray-900 dark:text-white">Admin Panel</span>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-sm text-gray-400">
-            <span>Logged in as</span>
-            <span className="text-white font-medium">{profile.username}</span>
+          <div className="flex items-center gap-4">
+            <button
+              onClick={toggleTheme}
+              className="p-2 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white transition-colors"
+              aria-label={resolvedTheme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+            >
+              {resolvedTheme === 'dark' ? (
+                <Sun className="w-5 h-5" />
+              ) : (
+                <Moon className="w-5 h-5" />
+              )}
+            </button>
+            <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
+              <span>Logged in as</span>
+              <span className="text-gray-900 dark:text-white font-medium">{profile.username}</span>
+            </div>
           </div>
         </div>
       </header>
 
       <div className="flex">
         {/* Sidebar */}
-        <nav className="w-64 border-r border-gray-800 min-h-[calc(100vh-4rem)] p-4">
+        <nav className="w-64 border-r border-gray-200 dark:border-gray-800 min-h-[calc(100vh-4rem)] p-4 bg-white dark:bg-transparent">
           <div className="space-y-2">
             <NavItem
               icon={BarChart3}
@@ -144,7 +161,7 @@ function NavItem({
     <button
       onClick={onClick}
       className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-        active ? 'bg-red-500/20 text-red-500' : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+        active ? 'bg-red-500/20 text-red-500' : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
       }`}
     >
       <Icon className="w-5 h-5" />
@@ -189,7 +206,7 @@ function DashboardTab({ adminId }: { adminId: string }) {
 
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">Dashboard</h2>
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Dashboard</h2>
 
       {/* Stats Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
@@ -221,7 +238,7 @@ function DashboardTab({ adminId }: { adminId: string }) {
 
       {/* Quick Actions */}
       <Card className="p-6 mb-8">
-        <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
+        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
         <div className="flex flex-wrap gap-3">
           <Button variant="outline" size="sm">
             <RefreshCw className="w-4 h-4 mr-2" />
@@ -264,8 +281,8 @@ function StatCard({
           <Icon className="w-6 h-6" />
         </div>
         <div>
-          <p className="text-2xl font-bold text-white">{value}</p>
-          <p className="text-sm text-gray-400">{label}</p>
+          <p className="text-2xl font-bold text-gray-900 dark:text-white">{value}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
         </div>
       </div>
     </Card>
@@ -345,7 +362,7 @@ function UsersTab({ adminId }: { adminId: string }) {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h2 className="text-2xl font-bold text-white">Users ({totalUsers})</h2>
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Users ({totalUsers})</h2>
         <div className="flex items-center gap-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
@@ -366,30 +383,30 @@ function UsersTab({ adminId }: { adminId: string }) {
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
-            <thead className="bg-gray-800">
+            <thead className="bg-gray-100 dark:bg-gray-800">
               <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">User</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Level</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Type</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wider">Joined</th>
-                <th className="px-4 py-3 text-right text-xs font-medium text-gray-400 uppercase tracking-wider">Actions</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">User</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Level</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Status</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Joined</th>
+                <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-800">
+            <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
               {users.map((user) => (
-                <tr key={user.id} className="hover:bg-gray-800/50">
+                <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
                       <AvatarDisplay avatar={null} size="sm" username={user.username} />
                       <div>
-                        <p className="text-white font-medium">{user.displayName}</p>
-                        <p className="text-sm text-gray-400">@{user.username}</p>
+                        <p className="text-gray-900 dark:text-white font-medium">{user.displayName}</p>
+                        <p className="text-sm text-gray-500 dark:text-gray-400">@{user.username}</p>
                       </div>
                     </div>
                   </td>
                   <td className="px-4 py-4">
-                    <span className="text-indigo-400">Level {user.level}</span>
+                    <span className="text-indigo-600 dark:text-indigo-400">Level {user.level}</span>
                   </td>
                   <td className="px-4 py-4">
                     <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
@@ -397,7 +414,7 @@ function UsersTab({ adminId }: { adminId: string }) {
                         ? 'bg-red-500/20 text-red-500'
                         : user.accountType === 'pro'
                         ? 'bg-yellow-500/20 text-yellow-500'
-                        : 'bg-gray-500/20 text-gray-400'
+                        : 'bg-gray-500/20 text-gray-500 dark:text-gray-400'
                     }`}>
                       {user.accountType === 'admin' && <Shield className="w-3 h-3" />}
                       {user.accountType === 'pro' && <Crown className="w-3 h-3" />}
@@ -417,7 +434,7 @@ function UsersTab({ adminId }: { adminId: string }) {
                       </span>
                     )}
                   </td>
-                  <td className="px-4 py-4 text-gray-400 text-sm">
+                  <td className="px-4 py-4 text-gray-500 dark:text-gray-400 text-sm">
                     {new Date(user.createdAt).toLocaleDateString()}
                   </td>
                   <td className="px-4 py-4 text-right">
@@ -473,8 +490,8 @@ function UsersTab({ adminId }: { adminId: string }) {
 
         {/* Pagination */}
         {!search && totalPages > 1 && (
-          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-800">
-            <p className="text-sm text-gray-400">
+          <div className="flex items-center justify-between px-4 py-3 border-t border-gray-200 dark:border-gray-800">
+            <p className="text-sm text-gray-500 dark:text-gray-400">
               Showing {page * pageSize + 1} to {Math.min((page + 1) * pageSize, totalUsers)} of {totalUsers}
             </p>
             <div className="flex items-center gap-2">
@@ -486,7 +503,7 @@ function UsersTab({ adminId }: { adminId: string }) {
               >
                 <ChevronLeft className="w-4 h-4" />
               </Button>
-              <span className="text-sm text-gray-400">
+              <span className="text-sm text-gray-500 dark:text-gray-400">
                 Page {page + 1} of {totalPages}
               </span>
               <Button
@@ -505,8 +522,8 @@ function UsersTab({ adminId }: { adminId: string }) {
       {/* Ban Modal */}
       <Modal isOpen={showBanModal} onClose={() => setShowBanModal(false)} title="Ban User">
         <div className="space-y-4">
-          <p className="text-gray-400">
-            Are you sure you want to ban <span className="text-white font-medium">@{selectedUser?.username}</span>?
+          <p className="text-gray-500 dark:text-gray-400">
+            Are you sure you want to ban <span className="text-gray-900 dark:text-white font-medium">@{selectedUser?.username}</span>?
           </p>
           <Input
             label="Ban Reason"
@@ -536,8 +553,8 @@ function UsersTab({ adminId }: { adminId: string }) {
 function RoomsTab() {
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">Rooms</h2>
-      <Card className="p-8 text-center text-gray-400">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Rooms</h2>
+      <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
         <Home className="w-12 h-12 mx-auto mb-4 opacity-50" />
         <p>Room management coming soon</p>
       </Card>
@@ -548,8 +565,8 @@ function RoomsTab() {
 function ReportsTab() {
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">Reports</h2>
-      <Card className="p-8 text-center text-gray-400">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Reports</h2>
+      <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
         <AlertTriangle className="w-12 h-12 mx-auto mb-4 opacity-50" />
         <p>No pending reports</p>
       </Card>
@@ -560,8 +577,8 @@ function ReportsTab() {
 function AnalyticsTab() {
   return (
     <div>
-      <h2 className="text-2xl font-bold text-white mb-6">Analytics</h2>
-      <Card className="p-8 text-center text-gray-400">
+      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Analytics</h2>
+      <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
         <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
         <p>Analytics dashboard coming soon</p>
       </Card>
