@@ -160,22 +160,28 @@ function EffectHeader({
     <div className="flex items-center gap-2 py-2">
       <button
         onClick={onExpandToggle}
-        className="p-1 text-zinc-500 hover:text-white transition-colors"
+        className="flex items-center gap-2 flex-1 text-left hover:bg-white/[0.02] rounded transition-colors -ml-1 pl-1"
       >
-        {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        <div className="p-0.5 text-zinc-500">
+          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        </div>
+        <div className={cn('p-1.5 rounded', enabled ? colorClasses[color] : 'text-zinc-600 bg-white/5')}>
+          <Icon className="w-3.5 h-3.5" />
+        </div>
+        <span className={cn('text-xs font-medium', enabled ? 'text-white' : 'text-zinc-500')}>
+          {name}
+        </span>
+        {!expanded && enabled && (
+          <span className="text-[9px] text-zinc-600 ml-1">click to edit</span>
+        )}
       </button>
-      <div className={cn('p-1.5 rounded', enabled ? colorClasses[color] : 'text-zinc-600 bg-white/5')}>
-        <Icon className="w-3.5 h-3.5" />
-      </div>
-      <span className={cn('text-xs font-medium flex-1', enabled ? 'text-white' : 'text-zinc-500')}>
-        {name}
-      </span>
       <button
         onClick={onToggle}
         className={cn(
           'p-1 rounded transition-colors',
           enabled ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-600 hover:text-zinc-400'
         )}
+        title={enabled ? 'Disable effect' : 'Enable effect'}
       >
         <Power className="w-3.5 h-3.5" />
       </button>
@@ -185,9 +191,9 @@ function EffectHeader({
 
 // Noise Gate Effect UI
 function NoiseGateUI({ track }: { track: UserTrack }) {
-  const [expanded, setExpanded] = useState(false);
-  const { updateTrackEffects } = useUserTracksStore();
   const settings = track.audioSettings.effects?.noiseGate;
+  const [expanded, setExpanded] = useState(settings?.enabled ?? false);
+  const { updateTrackEffects } = useUserTracksStore();
 
   if (!settings) return null;
 
@@ -259,9 +265,9 @@ function NoiseGateUI({ track }: { track: UserTrack }) {
 
 // EQ Effect UI
 function EQUI({ track }: { track: UserTrack }) {
-  const [expanded, setExpanded] = useState(false);
-  const { updateTrackEffects } = useUserTracksStore();
   const settings = track.audioSettings.effects?.eq;
+  const [expanded, setExpanded] = useState(settings?.enabled ?? false);
+  const { updateTrackEffects } = useUserTracksStore();
 
   if (!settings) return null;
 
@@ -335,9 +341,9 @@ function EQUI({ track }: { track: UserTrack }) {
 
 // Compressor Effect UI
 function CompressorUI({ track }: { track: UserTrack }) {
-  const [expanded, setExpanded] = useState(false);
-  const { updateTrackEffects } = useUserTracksStore();
   const settings = track.audioSettings.effects?.compressor;
+  const [expanded, setExpanded] = useState(settings?.enabled ?? false);
+  const { updateTrackEffects } = useUserTracksStore();
 
   if (!settings) return null;
 
@@ -418,9 +424,9 @@ function CompressorUI({ track }: { track: UserTrack }) {
 
 // Reverb Effect UI
 function ReverbUI({ track }: { track: UserTrack }) {
-  const [expanded, setExpanded] = useState(false);
-  const { updateTrackEffects } = useUserTracksStore();
   const settings = track.audioSettings.effects?.reverb;
+  const [expanded, setExpanded] = useState(settings?.enabled ?? false);
+  const { updateTrackEffects } = useUserTracksStore();
 
   if (!settings) return null;
 
@@ -520,9 +526,9 @@ function ReverbUI({ track }: { track: UserTrack }) {
 
 // Limiter Effect UI
 function LimiterUI({ track }: { track: UserTrack }) {
-  const [expanded, setExpanded] = useState(false);
-  const { updateTrackEffects } = useUserTracksStore();
   const settings = track.audioSettings.effects?.limiter;
+  const [expanded, setExpanded] = useState(settings?.enabled ?? false);
+  const { updateTrackEffects } = useUserTracksStore();
 
   if (!settings) return null;
 
