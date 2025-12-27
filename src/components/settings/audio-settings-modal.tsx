@@ -192,7 +192,7 @@ export function AudioSettingsModal({
     >
       <div className="space-y-6">
         {error && (
-          <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+          <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-sm text-red-700 dark:text-red-400">
             <AlertCircle className="w-5 h-5 shrink-0" />
             <p>{error}</p>
           </div>
@@ -200,26 +200,26 @@ export function AudioSettingsModal({
 
         {/* Input Mode Selection */}
         <div className="space-y-3">
-          <label className="text-sm font-medium text-slate-700">Audio Source</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Audio Source</label>
           <div className="grid grid-cols-2 gap-3">
             <button
               onClick={() => setSettings({ ...settings, inputMode: 'microphone' })}
               className={cn(
                 'flex items-center gap-3 p-4 rounded-xl border-2 transition-all',
                 settings.inputMode === 'microphone'
-                  ? 'border-indigo-500 bg-indigo-50'
-                  : 'border-slate-200 hover:border-slate-300'
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
               )}
             >
               <div className={cn(
                 'w-10 h-10 rounded-full flex items-center justify-center',
-                settings.inputMode === 'microphone' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500'
+                settings.inputMode === 'microphone' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
               )}>
                 <Mic className="w-5 h-5" />
               </div>
               <div className="text-left">
-                <div className="font-medium text-slate-900">Microphone</div>
-                <div className="text-xs text-slate-500">Direct audio input</div>
+                <div className="font-medium text-gray-900 dark:text-white">Microphone</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">Direct audio input</div>
               </div>
             </button>
 
@@ -229,27 +229,27 @@ export function AudioSettingsModal({
               className={cn(
                 'flex items-center gap-3 p-4 rounded-xl border-2 transition-all',
                 settings.inputMode === 'application'
-                  ? 'border-indigo-500 bg-indigo-50'
-                  : 'border-slate-200 hover:border-slate-300',
+                  ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                  : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600',
                 !appCaptureSupported && 'opacity-50 cursor-not-allowed'
               )}
             >
               <div className={cn(
                 'w-10 h-10 rounded-full flex items-center justify-center',
-                settings.inputMode === 'application' ? 'bg-indigo-500 text-white' : 'bg-slate-100 text-slate-500'
+                settings.inputMode === 'application' ? 'bg-indigo-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
               )}>
                 <Monitor className="w-5 h-5" />
               </div>
               <div className="text-left">
-                <div className="font-medium text-slate-900">Application</div>
-                <div className="text-xs text-slate-500">
+                <div className="font-medium text-gray-900 dark:text-white">Application</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
                   {appCaptureSupported ? 'Capture app audio' : 'Not supported'}
                 </div>
               </div>
             </button>
           </div>
           {settings.inputMode === 'application' && (
-            <p className="text-xs text-slate-500 bg-amber-50 border border-amber-200 p-3 rounded-lg">
+            <p className="text-xs text-gray-600 dark:text-gray-400 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 p-3 rounded-lg">
               Tip: Select a window or tab with audio (e.g., Guitar Rig, Amp sims, DAW output).
               The browser will ask you to choose which app to capture.
             </p>
@@ -260,7 +260,7 @@ export function AudioSettingsModal({
         {settings.inputMode === 'microphone' && (
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-slate-700">Input Device</label>
+              <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Input Device</label>
               <Button variant="ghost" size="sm" onClick={loadDevices} className="h-7 px-2">
                 <RefreshCw className="w-3 h-3" />
               </Button>
@@ -268,7 +268,7 @@ export function AudioSettingsModal({
             <select
               value={settings.inputDeviceId}
               onChange={(e) => setSettings({ ...settings, inputDeviceId: e.target.value })}
-              className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full h-10 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             >
               <option value="default">System Default</option>
               {inputDevices.map((device) => (
@@ -282,11 +282,11 @@ export function AudioSettingsModal({
 
         {/* Output Device */}
         <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">Output Device</label>
+          <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Output Device</label>
           <select
             value={settings.outputDeviceId}
             onChange={(e) => setSettings({ ...settings, outputDeviceId: e.target.value })}
-            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full h-10 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
           >
             <option value="default">System Default</option>
             {outputDevices.map((device) => (
@@ -300,7 +300,7 @@ export function AudioSettingsModal({
         {/* Input Level Test */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-slate-700">Input Level</label>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Input Level</label>
             <Button
               variant="outline"
               size="sm"
@@ -311,7 +311,7 @@ export function AudioSettingsModal({
               {testingInput ? 'Testing...' : 'Test Input'}
             </Button>
           </div>
-          <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+          <div className="h-3 bg-gray-100 dark:bg-gray-700 rounded-full overflow-hidden">
             <div
               className={cn(
                 'h-full transition-all duration-75',
@@ -323,16 +323,16 @@ export function AudioSettingsModal({
         </div>
 
         {/* Advanced Settings */}
-        <div className="space-y-3 pt-2 border-t border-slate-200">
-          <h4 className="text-sm font-medium text-slate-700">Advanced</h4>
+        <div className="space-y-3 pt-2 border-t border-gray-200 dark:border-gray-700">
+          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300">Advanced</h4>
 
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-1">
-              <label className="text-xs text-slate-500">Sample Rate</label>
+              <label className="text-xs text-gray-500 dark:text-gray-400">Sample Rate</label>
               <select
                 value={settings.sampleRate}
                 onChange={(e) => setSettings({ ...settings, sampleRate: parseInt(e.target.value) as 48000 | 44100 })}
-                className="w-full h-9 px-2 bg-white border border-slate-200 rounded-lg text-sm"
+                className="w-full h-9 px-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white"
               >
                 <option value={48000}>48 kHz</option>
                 <option value={44100}>44.1 kHz</option>
@@ -340,11 +340,11 @@ export function AudioSettingsModal({
             </div>
 
             <div className="space-y-1">
-              <label className="text-xs text-slate-500">Buffer Size</label>
+              <label className="text-xs text-gray-500 dark:text-gray-400">Buffer Size</label>
               <select
                 value={settings.bufferSize}
                 onChange={(e) => setSettings({ ...settings, bufferSize: parseInt(e.target.value) as 128 | 256 | 512 | 1024 })}
-                className="w-full h-9 px-2 bg-white border border-slate-200 rounded-lg text-sm"
+                className="w-full h-9 px-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white"
               >
                 <option value={128}>128 (lowest latency)</option>
                 <option value={256}>256</option>
@@ -356,15 +356,15 @@ export function AudioSettingsModal({
 
           {settings.inputMode === 'microphone' && (
             <div className="space-y-2">
-              <label className="text-xs text-slate-500">Audio Processing</label>
+              <label className="text-xs text-gray-500 dark:text-gray-400">Audio Processing</label>
               <div className="flex flex-wrap gap-2">
                 <button
                   onClick={() => setSettings({ ...settings, echoCancellation: !settings.echoCancellation })}
                   className={cn(
                     'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                     settings.echoCancellation
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
                   )}
                 >
                   Echo Cancellation
@@ -374,8 +374,8 @@ export function AudioSettingsModal({
                   className={cn(
                     'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                     settings.noiseSuppression
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
                   )}
                 >
                   Noise Suppression
@@ -385,14 +385,14 @@ export function AudioSettingsModal({
                   className={cn(
                     'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
                     settings.autoGainControl
-                      ? 'bg-indigo-100 text-indigo-700'
-                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400'
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
                   )}
                 >
                   Auto Gain
                 </button>
               </div>
-              <p className="text-xs text-slate-400">
+              <p className="text-xs text-gray-400">
                 Disable all for best quality with a dedicated audio interface
               </p>
             </div>

@@ -81,7 +81,7 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
     >
       <div className="space-y-6">
         {error && (
-          <div className="flex items-center gap-3 p-3 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+          <div className="flex items-center gap-3 p-3 bg-red-50 dark:bg-red-500/10 border border-red-200 dark:border-red-500/20 rounded-xl text-sm text-red-700 dark:text-red-400">
             <AlertCircle className="w-5 h-5 shrink-0" />
             <p>{error}</p>
           </div>
@@ -90,8 +90,8 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
         {/* Output Device */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-              <Speaker className="w-4 h-4 text-slate-500" />
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Speaker className="w-4 h-4 text-gray-500 dark:text-gray-400" />
               Output Device
             </label>
             <Button variant="ghost" size="sm" onClick={loadDevices} className="h-7 px-2">
@@ -103,7 +103,7 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
               value={selectedOutput}
               onChange={(e) => setSelectedOutput(e.target.value)}
               disabled={isLoading}
-              className="w-full h-10 px-3 pr-10 bg-white border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full h-10 px-3 pr-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
             >
               <option value="default">System Default</option>
               {outputDevices.map((device) => (
@@ -112,18 +112,18 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
                 </option>
               ))}
             </select>
-            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+            <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
           </div>
         </div>
 
         {/* Master Volume */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-slate-700 flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-slate-500" />
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-gray-500 dark:text-gray-400" />
               Master Volume
             </label>
-            <span className="text-sm text-slate-500">{Math.round(masterVolume * 100)}%</span>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{Math.round(masterVolume * 100)}%</span>
           </div>
           <input
             type="range"
@@ -132,15 +132,15 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
             step="0.01"
             value={masterVolume}
             onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
-            className="w-full h-2 bg-slate-100 rounded-full appearance-none cursor-pointer accent-indigo-500"
+            className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-indigo-500"
           />
         </div>
 
         {/* Backing Track Volume */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-slate-700">Backing Track Volume</label>
-            <span className="text-sm text-slate-500">{Math.round(backingTrackVolume * 100)}%</span>
+            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Backing Track Volume</label>
+            <span className="text-sm text-gray-500 dark:text-gray-400">{Math.round(backingTrackVolume * 100)}%</span>
           </div>
           <input
             type="range"
@@ -149,13 +149,13 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
             step="0.01"
             value={backingTrackVolume}
             onChange={(e) => setBackingTrackVolume(parseFloat(e.target.value))}
-            className="w-full h-2 bg-slate-100 rounded-full appearance-none cursor-pointer accent-indigo-500"
+            className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-indigo-500"
           />
         </div>
 
         {/* Info about per-track settings */}
-        <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg">
-          <p className="text-xs text-slate-600">
+        <div className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
+          <p className="text-xs text-gray-600 dark:text-gray-400">
             Audio input settings are now configured per-track. Click the settings icon on any track to adjust input device, sample rate, and processing options.
           </p>
         </div>
