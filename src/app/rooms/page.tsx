@@ -927,7 +927,7 @@ export default function RoomsPage() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const { user, profile, isLoading: authLoading, isInitialized, initialize } = useAuthStore();
+  const { user, profile, isLoading: authLoading, isInitialized } = useAuthStore();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCode, setRoomCode] = useState('');
@@ -938,11 +938,7 @@ export default function RoomsPage() {
   const [showFilters, setShowFilters] = useState(false);
   const [mounted, setMounted] = useState(false);
 
-  useEffect(() => {
-    if (!isInitialized) {
-      initialize();
-    }
-  }, [isInitialized, initialize]);
+  // Auth initialization is handled by AuthProvider at the app level
 
   useEffect(() => {
     setMounted(true);

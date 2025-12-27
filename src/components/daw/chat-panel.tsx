@@ -72,7 +72,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
       if (!roomId) return;
       try {
         const persistedMessages = await getRoomChatMessages(roomId);
-        // Add persisted messages to store (avoiding duplicates)
+        // Add persisted messages to store
         persistedMessages.forEach((msg) => {
           addMessage({
             type: msg.messageType === 'text' ? 'chat' : msg.messageType as 'chat' | 'system' | 'sync' | 'control',
@@ -87,7 +87,8 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
       }
     }
     loadMessages();
-  }, [roomId, addMessage]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [roomId]); // Only run when roomId changes, not on addMessage reference changes
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {

@@ -60,6 +60,7 @@ interface RoomState {
   setQueueTime: (time: number) => void;
   nextTrack: () => void;
   previousTrack: () => void;
+  jumpToTrack: (index: number) => void;
 
   // Stem actions
   setStemMixState: (state: StemMixState) => void;
@@ -216,6 +217,17 @@ export const useRoomStore = create<RoomState>()(
         };
       }),
 
+    jumpToTrack: (index: number) =>
+      set((state) => {
+        if (index < 0 || index >= state.queue.tracks.length) {
+          return state;
+        }
+        return {
+          queue: { ...state.queue, currentIndex: index, currentTime: 0, isPlaying: false },
+          currentTrack: state.queue.tracks[index],
+        };
+      }),
+
     setStemMixState: (stemMixState) => set({ stemMixState }),
 
     toggleStem: (stem) =>
@@ -243,9 +255,21 @@ export const useRoomStore = create<RoomState>()(
     setStemsAvailable: (available) => set({ stemsAvailable: available }),
 
     addMessage: (message) =>
-      set((state) => ({
-        messages: [...state.messages, message].slice(-100), // Keep last 100 messages
-      })),
+      set((state) => {
+        // Prevent duplicate messages based on timestamp, userId, and content
+        const isDuplicate = state.messages.some(
+          (m) =>
+            m.timestamp === message.timestamp &&
+            m.userId === message.userId &&
+            m.content === message.content
+        );
+        if (isDuplicate) {
+          return state; // Don't add duplicate
+        }
+        return {
+          messages: [...state.messages, message].slice(-100), // Keep last 100 messages
+        };
+      }),
 
     clearMessages: () => set({ messages: [] }),
 

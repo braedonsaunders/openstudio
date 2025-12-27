@@ -88,6 +88,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     removeTrack,
     skipToNext,
     skipToPrevious,
+    skipToTrack,
     sendMessage,
     muteUser,
     setUserVolume,
@@ -107,7 +108,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   // - "Mic": Analyzes local microphone
   // - "Mix": Analyzes all audio (backing + all users' instruments)
   // Results are synced to all other room members
-  useAudioAnalysis({
+  const { resetAnalysis } = useAudioAnalysis({
     audioContext,
     backingTrackAnalyser,
     masterAnalyser,
@@ -116,6 +117,21 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     userId: currentUser?.id,
     isMaster,
   });
+
+  // Track previous track ID to detect track changes
+  const previousTrackIdRef = useRef<string | null>(null);
+
+  // Reset analysis when track changes (clears old key/BPM data)
+  useEffect(() => {
+    if (currentTrack?.id !== previousTrackIdRef.current) {
+      if (previousTrackIdRef.current !== null) {
+        // Track changed - reset analysis buffers
+        resetAnalysis();
+        console.log('Track changed - analysis reset for new track');
+      }
+      previousTrackIdRef.current = currentTrack?.id || null;
+    }
+  }, [currentTrack?.id, resetAnalysis]);
 
   // Check if current track is a YouTube track
   const isYouTubeTrack = !!currentTrack?.youtubeId;
@@ -195,19 +211,28 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           break;
         case 'm':
         case 'M':
-          setMuted(!isMuted);
+          if (!e.ctrlKey && !e.metaKey) {
+            setMuted(!isMuted);
+          }
           break;
         case 'q':
         case 'Q':
-          setActivePanel('queue');
+          if (!e.ctrlKey && !e.metaKey) {
+            setActivePanel('queue');
+          }
           break;
         case 'a':
         case 'A':
-          setActivePanel('analysis');
+          if (!e.ctrlKey && !e.metaKey) {
+            setActivePanel('analysis');
+          }
           break;
         case 'c':
         case 'C':
-          setActivePanel('chat');
+          // Don't trigger shortcut when Ctrl+C (copy) is pressed
+          if (!e.ctrlKey && !e.metaKey) {
+            setActivePanel('chat');
+          }
           break;
         case '?':
           setShowShortcuts(true);
@@ -231,9 +256,13 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek]);
 
   // Handler functions
-  const handleTrackSelect = useCallback(async (track: BackingTrack) => {
-    useRoomStore.getState().setCurrentTrack(track);
-  }, []);
+  const handleTrackSelect = useCallback((track: BackingTrack) => {
+    const { queue } = useRoomStore.getState();
+    const trackIndex = queue.tracks.findIndex(t => t.id === track.id);
+    if (trackIndex !== -1) {
+      skipToTrack(trackIndex);
+    }
+  }, [skipToTrack]);
 
   const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {
     // UploadModal handles the actual upload to R2, we just add the track

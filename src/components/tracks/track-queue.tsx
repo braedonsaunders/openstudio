@@ -133,7 +133,8 @@ export function TrackQueue({
                 {/* Track info */}
                 <div
                   className="flex-1 min-w-0 cursor-pointer"
-                  onClick={() => onTrackSelect(track)}
+                  onDoubleClick={() => isMaster && onTrackSelect(track)}
+                  title={isMaster ? 'Double-click to play' : undefined}
                 >
                   <h5 className="font-medium text-slate-900 truncate text-sm">
                     {track.name}
@@ -175,12 +176,13 @@ export function TrackQueue({
 
                 {/* Actions */}
                 <div className="flex items-center gap-1">
-                  {!isActive && (
+                  {!isActive && isMaster && (
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => onTrackSelect(track)}
                       className="w-8 h-8"
+                      title="Play this track"
                     >
                       <Play className="w-4 h-4" />
                     </Button>

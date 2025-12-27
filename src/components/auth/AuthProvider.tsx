@@ -46,7 +46,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     initialize();
-  }, [initialize]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <AuthContext.Provider
