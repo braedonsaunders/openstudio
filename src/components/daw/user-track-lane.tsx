@@ -18,6 +18,10 @@ export function UserTrackLane({
   zoom,
   historySeconds,
 }: UserTrackLaneProps) {
+  // Only render audio tracks (type undefined means audio for backward compatibility)
+  const trackType = track.type || 'audio';
+  if (trackType !== 'audio') return null;
+
   const isActive = audioLevel > 0.05;
   const isMuted = track.isMuted;
 

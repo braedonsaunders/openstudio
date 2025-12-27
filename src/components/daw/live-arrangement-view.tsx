@@ -8,6 +8,7 @@ import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { LiveTrackLane } from './live-track-lane';
 import { UserTrackLane } from './user-track-lane';
+import { MidiTrackLane } from './midi-track-lane';
 import { LoopTrackLane } from '../loops/loop-track-lane';
 import { SeekableBackingTrack } from './seekable-backing-track';
 import { NowLine } from './now-line';
@@ -137,6 +138,19 @@ export function LiveArrangementView({
           {localTracks.length > 0 && (
             <div>
               {localTracks.map((track) => {
+                // Render MIDI tracks with the MidiTrackLane component
+                if (track.type === 'midi') {
+                  return (
+                    <MidiTrackLane
+                      key={track.id}
+                      track={track}
+                      zoom={zoom}
+                      historySeconds={HISTORY_SECONDS}
+                    />
+                  );
+                }
+
+                // Render audio tracks with the UserTrackLane component
                 const level = trackLevels.get(track.id) || audioLevels.get('local') || 0;
                 return (
                   <UserTrackLane
