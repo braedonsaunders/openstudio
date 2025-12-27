@@ -617,13 +617,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             {mainView === 'mixer' && (
               <MixerView
                 isMaster={isMaster}
-                onToggleStem={handleToggleStem}
-                onStemVolumeChange={handleStemVolume}
-                onSeparateTrack={handleSeparateTrack}
-                isSeparating={isSeparating}
-                separationProgress={separationProgress}
                 users={users}
+                currentUser={currentUser}
                 audioLevels={audioLevels}
+                onUserVolumeChange={setUserVolume}
+                onUserMuteChange={muteUser}
               />
             )}
 
