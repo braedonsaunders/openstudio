@@ -154,23 +154,112 @@ export const useRoomStore = create<RoomState>()(
 
     setIsMaster: (isMaster) => set({ isMaster }),
 
-    setQueue: (queue) => set({ queue }),
+    setQueue: (queue) =>
+      set((state) => {
+        // Ensure currentTrack is always synced with queue
+        let newCurrentTrack = state.currentTrack;
+
+        if (queue.tracks.length > 0) {
+          // If currentIndex is valid, use that track
+          if (queue.currentIndex >= 0 && queue.currentIndex < queue.tracks.length) {
+            newCurrentTrack = queue.tracks[queue.currentIndex];
+          } else if (state.currentTrack === null) {
+            // No current track but queue has tracks - select first one
+            newCurrentTrack = queue.tracks[0];
+            queue = { ...queue, currentIndex: 0 };
+          }
+        } else {
+          // Empty queue
+          newCurrentTrack = null;
+        }
+
+        return {
+          queue,
+          currentTrack: newCurrentTrack,
+          stemsAvailable: !!newCurrentTrack?.stems,
+        };
+      }),
 
     addToQueue: (track) =>
-      set((state) => ({
-        queue: {
-          ...state.queue,
-          tracks: [...state.queue.tracks, track],
-        },
-      })),
+      set((state) => {
+        const newTracks = [...state.queue.tracks, track];
+        const isFirstTrack = state.queue.tracks.length === 0;
+
+        // Auto-select first track if no track is currently selected
+        if (isFirstTrack || state.currentTrack === null) {
+          return {
+            queue: {
+              ...state.queue,
+              tracks: newTracks,
+              currentIndex: 0,
+            },
+            currentTrack: newTracks[0],
+            stemsAvailable: !!newTracks[0]?.stems,
+          };
+        }
+
+        return {
+          queue: {
+            ...state.queue,
+            tracks: newTracks,
+          },
+        };
+      }),
 
     removeFromQueue: (trackId) =>
-      set((state) => ({
-        queue: {
-          ...state.queue,
-          tracks: state.queue.tracks.filter((t) => t.id !== trackId),
-        },
-      })),
+      set((state) => {
+        const removedIndex = state.queue.tracks.findIndex((t) => t.id === trackId);
+        const newTracks = state.queue.tracks.filter((t) => t.id !== trackId);
+        const isRemovingCurrentTrack = state.currentTrack?.id === trackId;
+
+        if (newTracks.length === 0) {
+          // No tracks left, reset everything
+          return {
+            queue: {
+              ...state.queue,
+              tracks: [],
+              currentIndex: -1,
+              isPlaying: false,
+              currentTime: 0,
+            },
+            currentTrack: null,
+            stemsAvailable: false,
+            waveformData: null,
+          };
+        }
+
+        if (isRemovingCurrentTrack) {
+          // Current track was removed, select the next available track
+          // If we were at the end, select the new last track
+          const newIndex = Math.min(removedIndex, newTracks.length - 1);
+          return {
+            queue: {
+              ...state.queue,
+              tracks: newTracks,
+              currentIndex: newIndex,
+              isPlaying: false,
+              currentTime: 0,
+            },
+            currentTrack: newTracks[newIndex],
+            stemsAvailable: !!newTracks[newIndex]?.stems,
+            waveformData: null,
+          };
+        }
+
+        // Track removed was not the current track
+        // Adjust currentIndex if needed
+        const adjustedIndex = removedIndex < state.queue.currentIndex
+          ? state.queue.currentIndex - 1
+          : state.queue.currentIndex;
+
+        return {
+          queue: {
+            ...state.queue,
+            tracks: newTracks,
+            currentIndex: adjustedIndex,
+          },
+        };
+      }),
 
     setCurrentTrack: (track) =>
       set({
@@ -192,14 +281,18 @@ export const useRoomStore = create<RoomState>()(
       set((state) => {
         const nextIndex = state.queue.currentIndex + 1;
         if (nextIndex >= state.queue.tracks.length) {
+          // At the last track - stop playing but keep current track visible
           return {
-            queue: { ...state.queue, currentIndex: -1, isPlaying: false },
-            currentTrack: null,
+            queue: { ...state.queue, isPlaying: false, currentTime: 0 },
+            // Keep currentTrack - don't set to null so waveform stays visible
           };
         }
+        const nextTrack = state.queue.tracks[nextIndex];
         return {
           queue: { ...state.queue, currentIndex: nextIndex, currentTime: 0 },
-          currentTrack: state.queue.tracks[nextIndex],
+          currentTrack: nextTrack,
+          stemsAvailable: !!nextTrack?.stems,
+          waveformData: null, // Reset waveform for new track
         };
       }),
 
@@ -207,24 +300,33 @@ export const useRoomStore = create<RoomState>()(
       set((state) => {
         const prevIndex = state.queue.currentIndex - 1;
         if (prevIndex < 0) {
+          // At the first track - just reset to beginning
           return {
             queue: { ...state.queue, currentTime: 0 },
           };
         }
+        const prevTrack = state.queue.tracks[prevIndex];
         return {
           queue: { ...state.queue, currentIndex: prevIndex, currentTime: 0 },
-          currentTrack: state.queue.tracks[prevIndex],
+          currentTrack: prevTrack,
+          stemsAvailable: !!prevTrack?.stems,
+          waveformData: null, // Reset waveform for new track
         };
       }),
 
     jumpToTrack: (index: number) =>
       set((state) => {
         if (index < 0 || index >= state.queue.tracks.length) {
+          console.warn('jumpToTrack: Invalid index', index, 'queue length:', state.queue.tracks.length);
           return state;
         }
+        const track = state.queue.tracks[index];
+        console.log('jumpToTrack: Jumping to', track.name, 'at index', index);
         return {
           queue: { ...state.queue, currentIndex: index, currentTime: 0, isPlaying: false },
-          currentTrack: state.queue.tracks[index],
+          currentTrack: track,
+          stemsAvailable: !!track?.stems,
+          waveformData: null, // Reset waveform for new track
         };
       }),
 
