@@ -23,8 +23,8 @@ const COBALT_API_KEY = process.env.COBALT_API_KEY;
 
 // Fallback public instances (may require auth or be unavailable)
 const COBALT_INSTANCES = [
+  'https://downloadapi.stuff.solutions',  // eu-gb instance
   'https://cobalt-backend.canine.tools',
-  'https://api.cobalt.tools',
 ];
 
 interface CobaltResponse {
