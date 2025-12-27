@@ -37,7 +37,9 @@ const KEY_COLORS: Record<string, string> = {
 
 export function AnalysisPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [showSpectrum, setShowSpectrum] = useState(true);
+  const [containerWidth, setContainerWidth] = useState(0);
 
   const {
     localAnalysis,
@@ -67,6 +69,20 @@ export function AnalysisPanel() {
   const displayChord = localAnalysis?.currentChord;
 
   const keyColor = displayKey ? KEY_COLORS[displayKey] || '#71717a' : '#3f3f46';
+
+  // Track container width for proper canvas sizing
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const resizeObserver = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        setContainerWidth(entry.contentRect.width);
+      }
+    });
+
+    resizeObserver.observe(containerRef.current);
+    return () => resizeObserver.disconnect();
+  }, []);
 
   // Draw spectrum
   useEffect(() => {
@@ -108,7 +124,7 @@ export function AnalysisPanel() {
       ctx.fillRect(i * barWidth + 1, height - barHeight, barWidth - 2, barHeight);
     }
     ctx.shadowBlur = 0;
-  }, [spectrumData, showSpectrum]);
+  }, [spectrumData, showSpectrum, containerWidth]);
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
@@ -210,8 +226,8 @@ export function AnalysisPanel() {
         </button>
 
         {showSpectrum && (
-          <div className="mt-2 rounded-xl overflow-hidden bg-gray-900 dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5">
-            <canvas ref={canvasRef} className="w-full h-20" />
+          <div ref={containerRef} className="mt-2 rounded-xl overflow-hidden bg-gray-900 dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5">
+            <canvas ref={canvasRef} className="w-full h-20" style={{ display: 'block' }} />
             <div className="flex justify-between px-2 py-1 text-[9px] text-gray-400 dark:text-zinc-600">
               <span>20Hz</span>
               <span>1kHz</span>

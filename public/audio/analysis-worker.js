@@ -126,10 +126,17 @@ function analyzeFrame(audioData, frameSize) {
     } catch (e) {}
 
     // Energy estimation (spectral energy distribution)
+    // Normalized to 0-1 using logarithmic scale
     let energy = 0;
     try {
       const energyResult = essentia.Energy(essentiaFrame);
-      energy = energyResult.energy || 0;
+      const rawEnergy = energyResult.energy || 0;
+      // Convert to dB-like scale and normalize (typical range -60 to 0 dB)
+      if (rawEnergy > 0) {
+        const energyDb = 10 * Math.log10(rawEnergy + 1e-10);
+        // Map from typical range [-60, 0] to [0, 1]
+        energy = Math.max(0, Math.min(1, (energyDb + 60) / 60));
+      }
     } catch (e) {}
 
     return {
