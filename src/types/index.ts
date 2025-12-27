@@ -116,13 +116,14 @@ export interface WebRTCStats {
 // Real-time audio performance metrics
 export interface AudioPerformanceMetrics {
   // Timing metrics (all in ms)
-  audioContextLatency: number; // BaseLatency + OutputLatency
+  audioContextLatency: number; // Audio context baseLatency (processing/buffer latency)
+  outputLatency: number; // Hardware output latency
   jsProcessingTime: number; // Time spent in JS audio processing
   effectsProcessingTime: number; // Time spent in effects chain
-  totalLatency: number; // Sum of all latency sources
+  totalLatency: number; // Sum of processing + output latency
 
   // Buffer metrics
-  currentBufferSize: number;
+  currentBufferSize: number; // Actual buffer size in samples (derived from baseLatency)
   underruns: number; // Audio buffer underruns count
 
   // Per-track metrics
