@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import ytdl from '@distube/ytdl-core';
+import play from 'play-dl';
 
 const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
 const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
@@ -18,24 +18,6 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
-// Request options to help avoid YouTube bot detection
-const ytdlOptions = {
-  requestOptions: {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-      'Accept-Language': 'en-US,en;q=0.9',
-      'Accept-Encoding': 'gzip, deflate, br',
-      'Connection': 'keep-alive',
-      'Upgrade-Insecure-Requests': '1',
-      'Sec-Fetch-Dest': 'document',
-      'Sec-Fetch-Mode': 'navigate',
-      'Sec-Fetch-Site': 'none',
-      'Sec-Fetch-User': '?1',
-    },
-  },
-};
-
 export async function POST(request: NextRequest) {
   try {
     const { videoId, title, artist } = await request.json();
@@ -49,32 +31,31 @@ export async function POST(request: NextRequest) {
 
     console.log(`Extracting audio from YouTube video: ${videoId}`);
 
-    // Get video info
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
+    // Get video info using play-dl
     let info;
     try {
-      info = await ytdl.getInfo(videoUrl, ytdlOptions);
+      info = await play.video_info(videoUrl);
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('Failed to get video info:', errorMessage);
 
-      // Check for specific error types
-      if (errorMessage.includes('Sign in to confirm')) {
+      if (errorMessage.includes('Sign in') || errorMessage.includes('confirm your age')) {
         return NextResponse.json(
-          { error: 'This video requires sign-in. Please try a different video.' },
+          { error: 'This video requires sign-in or age verification. Please try a different video.' },
           { status: 400 }
         );
       }
-      if (errorMessage.includes('age-restricted') || errorMessage.includes('age verification')) {
-        return NextResponse.json(
-          { error: 'This video is age-restricted. Please try a different video.' },
-          { status: 400 }
-        );
-      }
-      if (errorMessage.includes('private video')) {
+      if (errorMessage.includes('private')) {
         return NextResponse.json(
           { error: 'This video is private. Please try a different video.' },
+          { status: 400 }
+        );
+      }
+      if (errorMessage.includes('unavailable') || errorMessage.includes('not available')) {
+        return NextResponse.json(
+          { error: 'This video is unavailable. Please try a different video.' },
           { status: 400 }
         );
       }
@@ -85,46 +66,43 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Get the best audio format
-    const audioFormats = ytdl.filterFormats(info.formats, 'audioonly');
-    if (audioFormats.length === 0) {
+    // Get audio stream
+    let audioStream;
+    try {
+      audioStream = await play.stream(videoUrl, { quality: 2 }); // quality 2 = highest audio
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Failed to get audio stream:', errorMessage);
       return NextResponse.json(
-        { error: 'No audio formats available for this video' },
+        { error: `Failed to get audio stream: ${errorMessage}` },
         { status: 400 }
       );
     }
 
-    // Prefer high quality audio
-    const audioFormat = audioFormats.reduce((best, format) => {
-      const bestBitrate = best.audioBitrate || 0;
-      const formatBitrate = format.audioBitrate || 0;
-      return formatBitrate > bestBitrate ? format : best;
-    }, audioFormats[0]);
-
-    console.log(`Selected audio format: ${audioFormat.mimeType}, bitrate: ${audioFormat.audioBitrate}`);
-
-    // Download the audio stream
-    const audioStream = ytdl(videoUrl, { format: audioFormat, ...ytdlOptions });
+    console.log(`Audio stream type: ${audioStream.type}`);
 
     // Collect the audio data
     const chunks: Buffer[] = [];
-    for await (const chunk of audioStream) {
+    for await (const chunk of audioStream.stream) {
       chunks.push(Buffer.from(chunk));
     }
     const audioBuffer = Buffer.concat(chunks);
 
     console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
 
+    if (audioBuffer.length === 0) {
+      return NextResponse.json(
+        { error: 'Failed to download audio - empty response' },
+        { status: 400 }
+      );
+    }
+
     // Generate track ID and key
     const trackId = uuidv4();
-    const extension = audioFormat.container || 'webm';
+    // play-dl streams as opus in webm container
+    const extension = 'webm';
     const key = `tracks/${trackId}.${extension}`;
-
-    // Determine content type
-    let contentType = 'audio/webm';
-    if (audioFormat.mimeType) {
-      contentType = audioFormat.mimeType.split(';')[0];
-    }
+    const contentType = 'audio/webm';
 
     // Upload to R2
     const command = new PutObjectCommand({
@@ -142,14 +120,14 @@ export async function POST(request: NextRequest) {
     const publicUrl = `/api/audio/${trackId}`;
 
     // Get duration from video info
-    const duration = parseInt(info.videoDetails.lengthSeconds, 10) || 0;
+    const duration = info.video_details.durationInSec || 0;
 
     return NextResponse.json({
       success: true,
       track: {
         id: trackId,
-        name: title || info.videoDetails.title,
-        artist: artist || info.videoDetails.author.name,
+        name: title || info.video_details.title,
+        artist: artist || info.video_details.channel?.name || 'Unknown Artist',
         duration,
         url: publicUrl,
         key,
