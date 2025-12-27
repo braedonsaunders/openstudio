@@ -67,8 +67,8 @@ export function LoopTrackHeader({
   };
 
   const handleVolumeChange = useCallback(
-    (value: number[]) => {
-      setTrackVolume(track.id, value[0]);
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      setTrackVolume(track.id, parseFloat(e.target.value));
     },
     [track.id, setTrackVolume]
   );
@@ -169,11 +169,11 @@ export function LoopTrackHeader({
         <div className="flex-1 flex items-center gap-2">
           <Volume2 className="w-3.5 h-3.5 text-slate-500" />
           <Slider
-            value={[track.volume]}
+            value={track.volume}
             min={0}
             max={1.5}
             step={0.01}
-            onValueChange={handleVolumeChange}
+            onChange={handleVolumeChange}
             className="flex-1"
           />
           <span className="text-xs text-slate-500 w-8 text-right">
@@ -284,24 +284,24 @@ function LoopTrackSettings({ track, loopDef, onClose }: LoopTrackSettingsProps) 
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Timing</label>
               <Slider
-                value={[track.humanizeTiming * 100]}
+                value={track.humanizeTiming * 100}
                 min={0}
                 max={20}
                 step={1}
-                onValueChange={(v) =>
-                  setTrackHumanize(track.id, true, v[0] / 100, undefined)
+                onChange={(e) =>
+                  setTrackHumanize(track.id, true, parseFloat(e.target.value) / 100, undefined)
                 }
               />
             </div>
             <div>
               <label className="text-xs text-slate-500 mb-1 block">Velocity</label>
               <Slider
-                value={[track.humanizeVelocity * 100]}
+                value={track.humanizeVelocity * 100}
                 min={0}
                 max={50}
                 step={1}
-                onValueChange={(v) =>
-                  setTrackHumanize(track.id, true, undefined, v[0] / 100)
+                onChange={(e) =>
+                  setTrackHumanize(track.id, true, undefined, parseFloat(e.target.value) / 100)
                 }
               />
             </div>
