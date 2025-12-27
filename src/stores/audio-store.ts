@@ -26,6 +26,11 @@ interface AudioState {
   currentTime: number;
   duration: number;
 
+  // Audio context and analyser nodes (shared globally for analysis)
+  audioContext: AudioContext | null;
+  backingTrackAnalyser: AnalyserNode | null;
+  masterAnalyser: AnalyserNode | null;
+
   // Available devices
   inputDevices: MediaDeviceInfo[];
   outputDevices: MediaDeviceInfo[];
@@ -47,6 +52,9 @@ interface AudioState {
   setPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
+  setAudioContext: (context: AudioContext | null) => void;
+  setBackingTrackAnalyser: (analyser: AnalyserNode | null) => void;
+  setMasterAnalyser: (analyser: AnalyserNode | null) => void;
   setInputDevices: (devices: MediaDeviceInfo[]) => void;
   setOutputDevices: (devices: MediaDeviceInfo[]) => void;
   reset: () => void;
@@ -86,6 +94,9 @@ export const useAudioStore = create<AudioState>((set) => ({
   isPlaying: false,
   currentTime: 0,
   duration: 0,
+  audioContext: null,
+  backingTrackAnalyser: null,
+  masterAnalyser: null,
   inputDevices: [],
   outputDevices: [],
 
@@ -109,6 +120,9 @@ export const useAudioStore = create<AudioState>((set) => ({
   setPlaying: (playing) => set({ isPlaying: playing }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration: duration }),
+  setAudioContext: (context) => set({ audioContext: context }),
+  setBackingTrackAnalyser: (analyser) => set({ backingTrackAnalyser: analyser }),
+  setMasterAnalyser: (analyser) => set({ masterAnalyser: analyser }),
   setInputDevices: (devices) => set({ inputDevices: devices }),
   setOutputDevices: (devices) => set({ outputDevices: devices }),
 
@@ -130,5 +144,8 @@ export const useAudioStore = create<AudioState>((set) => ({
       isPlaying: false,
       currentTime: 0,
       duration: 0,
+      audioContext: null,
+      backingTrackAnalyser: null,
+      masterAnalyser: null,
     }),
 }));
