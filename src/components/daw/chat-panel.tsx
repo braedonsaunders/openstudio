@@ -7,7 +7,9 @@ import { useAuthStore } from '@/stores/auth-store';
 import { saveChatMessage, getRoomChatMessages } from '@/lib/supabase/auth';
 import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
 import { REACTION_TYPES, type ReactionType } from '@/types/user';
-import { Send, MessageSquare, Link2, Video, VideoOff, X, ExternalLink, Mic, MicOff, Phone, PhoneOff, ChevronLeft } from 'lucide-react';
+import { Send, MessageSquare, Link2, Video, VideoOff, X, ExternalLink, Mic, MicOff, Phone, PhoneOff, ChevronLeft, Headphones } from 'lucide-react';
+import { AudioChatPanel } from './audio-chat-panel';
+import { useAudioChatStore } from '@/stores/audio-chat-store';
 
 interface ChatPanelProps {
   roomId: string;
@@ -53,6 +55,9 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
 
   // Video chat state
   const [showVideoChat, setShowVideoChat] = useState(false);
+  // Audio chat state
+  const [showAudioChat, setShowAudioChat] = useState(false);
+  const { isConnected: isAudioChatConnected } = useAudioChatStore();
   const [localStream, setLocalStream] = useState<MediaStream | null>(null);
   const [isVideoEnabled, setIsVideoEnabled] = useState(true);
   const [isAudioEnabled, setIsAudioEnabled] = useState(true);
@@ -246,6 +251,18 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
     }
   }, [localStream]);
 
+  // Audio Chat View
+  if (showAudioChat) {
+    return (
+      <AudioChatPanel
+        roomId={roomId}
+        userId={user?.id || ''}
+        userName={profile?.displayName || user?.email}
+        onBack={() => setShowAudioChat(false)}
+      />
+    );
+  }
+
   // Video Chat View
   if (showVideoChat) {
     return (
@@ -399,17 +416,37 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
   // Regular Chat View
   return (
     <div className="h-full flex flex-col">
-      {/* Header with Video Chat Button */}
+      {/* Header with Voice/Video Chat Buttons */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-white/5">
         <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Chat</span>
-        <button
-          onClick={() => setShowVideoChat(true)}
-          className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-indigo-500 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
-          title="Start video chat"
-        >
-          <Video className="w-3.5 h-3.5" />
-          <span>Video</span>
-        </button>
+        <div className="flex items-center gap-1">
+          {/* Voice Chat Button */}
+          <button
+            onClick={() => setShowAudioChat(true)}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-lg transition-colors',
+              isAudioChatConnected
+                ? 'bg-emerald-500/20 text-emerald-500'
+                : 'text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10'
+            )}
+            title="Voice chat"
+          >
+            <Headphones className="w-3.5 h-3.5" />
+            <span>Voice</span>
+            {isAudioChatConnected && (
+              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+            )}
+          </button>
+          {/* Video Chat Button */}
+          <button
+            onClick={() => setShowVideoChat(true)}
+            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-indigo-500 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
+            title="Start video chat"
+          >
+            <Video className="w-3.5 h-3.5" />
+            <span>Video</span>
+          </button>
+        </div>
       </div>
 
       {/* Messages List */}
