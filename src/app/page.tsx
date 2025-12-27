@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { generateRoomId } from '@/lib/utils';
 import { Input } from '@/components/ui/input';
@@ -694,7 +694,7 @@ function MusicianCharacter({
   isVisible: boolean;
   delay: number;
 }) {
-  const characters: Record<string, JSX.Element> = {
+  const characters: Record<string, ReactNode> = {
     guitarist: (
       <motion.svg width="80" height="110" viewBox="0 0 100 140" animate={{ y: [0, -3, 0] }} transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}>
         <ellipse cx="50" cy="135" rx="25" ry="4" fill="rgba(0,0,0,0.15)" />
