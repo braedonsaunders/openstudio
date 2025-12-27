@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
-import play from 'play-dl';
 
 const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
 const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
@@ -18,6 +17,16 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
+// Cobalt API instance from instances.cobalt.best
+const COBALT_API = 'https://cobalt-backend.canine.tools';
+
+interface CobaltResponse {
+  status: 'tunnel' | 'redirect' | 'picker' | 'error';
+  url?: string;
+  filename?: string;
+  error?: { code: string };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { videoId, title, artist } = await request.json();
@@ -33,64 +42,83 @@ export async function POST(request: NextRequest) {
 
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Get video info using play-dl
-    let info;
+    // Use Cobalt API to get audio URL
+    let cobaltResponse: CobaltResponse;
     try {
-      info = await play.video_info(videoUrl);
+      const response = await fetch(COBALT_API, {
+        method: 'POST',
+        headers: {
+          'Accept': 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          url: videoUrl,
+          downloadMode: 'audio',
+          audioFormat: 'mp3',
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Cobalt API error:', response.status, errorText);
+        throw new Error(`Cobalt API returned ${response.status}: ${errorText}`);
+      }
+
+      cobaltResponse = await response.json();
+      console.log('Cobalt response:', JSON.stringify(cobaltResponse));
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Failed to get video info:', errorMessage);
-
-      // YouTube is blocking automated access - provide helpful error
+      console.error('Failed to call Cobalt API:', errorMessage);
       return NextResponse.json(
-        {
-          error: 'YouTube is blocking automated access. This is a known issue affecting all YouTube download tools. Please upload an audio file directly instead.',
-          details: errorMessage
-        },
+        { error: `Failed to extract audio: ${errorMessage}` },
         { status: 400 }
       );
     }
 
-    // Get audio stream
-    let audioStream;
-    try {
-      audioStream = await play.stream(videoUrl, { quality: 2 }); // quality 2 = highest audio
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Failed to get audio stream:', errorMessage);
+    // Handle response
+    if (cobaltResponse.status === 'error') {
+      const errorMsg = cobaltResponse.error?.code || 'Unknown error';
+      console.error('Cobalt returned error:', errorMsg);
       return NextResponse.json(
-        {
-          error: 'Failed to get audio stream from YouTube. Please upload an audio file directly.',
-          details: errorMessage
-        },
+        { error: `Cobalt error: ${errorMsg}` },
         { status: 400 }
       );
     }
 
-    console.log(`Audio stream type: ${audioStream.type}`);
-
-    // Collect the audio data
-    const chunks: Buffer[] = [];
-    for await (const chunk of audioStream.stream) {
-      chunks.push(Buffer.from(chunk));
+    const audioUrl = cobaltResponse.url;
+    if (!audioUrl) {
+      return NextResponse.json(
+        { error: 'No audio URL returned from Cobalt' },
+        { status: 400 }
+      );
     }
-    const audioBuffer = Buffer.concat(chunks);
 
+    console.log(`Downloading audio from: ${audioUrl}`);
+
+    // Download the audio
+    const audioResponse = await fetch(audioUrl);
+    if (!audioResponse.ok) {
+      return NextResponse.json(
+        { error: `Failed to download audio: ${audioResponse.status}` },
+        { status: 400 }
+      );
+    }
+
+    const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
     console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
 
     if (audioBuffer.length === 0) {
       return NextResponse.json(
-        { error: 'Failed to download audio - empty response. Please upload an audio file directly.' },
+        { error: 'Failed to download audio - empty response' },
         { status: 400 }
       );
     }
 
     // Generate track ID and key
     const trackId = uuidv4();
-    // play-dl streams as opus in webm container
-    const extension = 'webm';
+    const extension = 'mp3';
     const key = `tracks/${trackId}.${extension}`;
-    const contentType = 'audio/webm';
+    const contentType = 'audio/mpeg';
 
     // Upload to R2
     const command = new PutObjectCommand({
@@ -107,16 +135,13 @@ export async function POST(request: NextRequest) {
     // Build public URL
     const publicUrl = `/api/audio/${trackId}`;
 
-    // Get duration from video info
-    const duration = info.video_details.durationInSec || 0;
-
     return NextResponse.json({
       success: true,
       track: {
         id: trackId,
-        name: title || info.video_details.title,
-        artist: artist || info.video_details.channel?.name || 'Unknown Artist',
-        duration,
+        name: title || cobaltResponse.filename || `YouTube Video ${videoId}`,
+        artist: artist || 'Unknown Artist',
+        duration: 0, // Will be detected on playback
         url: publicUrl,
         key,
         youtubeId: videoId,
@@ -126,7 +151,7 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     console.error('YouTube extraction error:', error);
     return NextResponse.json(
-      { error: 'Failed to extract audio from YouTube. Please upload an audio file directly.' },
+      { error: 'Failed to extract audio from YouTube' },
       { status: 500 }
     );
   }
