@@ -2,19 +2,18 @@
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { useUserTracksStore, ExtendedDeviceInfo } from '@/stores/user-tracks-store';
+import { useUserTracksStore } from '@/stores/user-tracks-store';
 import type { UserTrack, TrackAudioSettings, InputChannelConfig } from '@/types';
 import {
   Mic,
   Monitor,
-  Settings2,
   X,
   ChevronDown,
   AlertCircle,
   Headphones,
   Volume2,
-  Gauge,
   Sliders,
+  Share2,
 } from 'lucide-react';
 
 interface AdvancedAudioSettingsProps {
@@ -48,6 +47,11 @@ function formatStereoPair(left: number, right: number): string {
   return `Ch ${left + 1}/${right + 1}`;
 }
 
+// Custom select styles to fix dark mode dropdown options
+const selectClassName = "w-full h-9 px-3 pr-8 bg-[#1a1a24] border border-white/10 rounded-lg text-sm text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50 [&>option]:bg-[#1a1a24] [&>option]:text-white";
+const selectSmallClassName = "w-full h-8 px-3 pr-8 bg-[#1a1a24] border border-white/10 rounded text-xs text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50 [&>option]:bg-[#1a1a24] [&>option]:text-white";
+const selectTinyClassName = "w-full h-7 px-2 bg-[#1a1a24] border border-white/10 rounded text-[10px] text-white [&>option]:bg-[#1a1a24] [&>option]:text-white";
+
 export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSettingsProps) {
   const {
     inputDevices,
@@ -66,6 +70,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
   const [appCaptureSupported, setAppCaptureSupported] = useState(false);
   const testStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+  const appStreamRef = useRef<MediaStream | null>(null);
 
   const currentDevice = inputDevices.find((d) => d.deviceId === track.audioSettings.inputDeviceId);
   const channelCount = currentDevice?.channelCount || getDeviceChannelCount(track.audioSettings.inputDeviceId) || 2;
@@ -83,6 +88,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     return () => {
       testStreamRef.current?.getTracks().forEach((t) => t.stop());
       audioContextRef.current?.close();
+      appStreamRef.current?.getTracks().forEach((t) => t.stop());
     };
   }, []);
 
@@ -101,6 +107,40 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     [track.id, updateTrackChannelConfig]
   );
 
+  // Select application source (for app capture mode)
+  const selectSource = useCallback(async () => {
+    setError(null);
+    try {
+      // Stop any existing app stream
+      appStreamRef.current?.getTracks().forEach((t) => t.stop());
+
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        audio: {
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+        video: true,
+      });
+
+      // Stop video track immediately - we only need audio
+      stream.getVideoTracks().forEach((t) => t.stop());
+
+      // Get the audio track label
+      const audioTrack = stream.getAudioTracks()[0];
+      if (audioTrack) {
+        handleSettingChange({ applicationName: audioTrack.label || 'Screen Audio' });
+        appStreamRef.current = stream;
+      } else {
+        setError('No audio in selected source');
+        stream.getTracks().forEach((t) => t.stop());
+      }
+    } catch {
+      setError('Source selection cancelled');
+    }
+  }, [handleSettingChange]);
+
+  // Test input levels (works for both modes)
   const testInput = useCallback(async () => {
     setTestingInput(true);
     setError(null);
@@ -109,20 +149,13 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
       let stream: MediaStream;
 
       if (track.audioSettings.inputMode === 'application') {
-        stream = await navigator.mediaDevices.getDisplayMedia({
-          audio: {
-            echoCancellation: false,
-            noiseSuppression: false,
-            autoGainControl: false,
-          },
-          video: true,
-        });
-        stream.getVideoTracks().forEach((t) => t.stop());
-
-        const videoTrack = stream.getVideoTracks()[0];
-        if (videoTrack) {
-          handleSettingChange({ applicationName: videoTrack.label || 'Screen Audio' });
+        // Use existing app stream if available, otherwise prompt to select
+        if (!appStreamRef.current || appStreamRef.current.getAudioTracks().length === 0) {
+          setError('Select a source first');
+          setTestingInput(false);
+          return;
         }
+        stream = appStreamRef.current;
       } else {
         stream = await navigator.mediaDevices.getUserMedia({
           audio: {
@@ -136,9 +169,9 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
             autoGainControl: track.audioSettings.autoGainControl,
           },
         });
+        testStreamRef.current = stream;
       }
 
-      testStreamRef.current = stream;
       const audioContext = new AudioContext({ sampleRate: track.audioSettings.sampleRate });
       audioContextRef.current = audioContext;
 
@@ -150,7 +183,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
       const dataArray = new Uint8Array(analyser.frequencyBinCount);
 
       const updateLevel = () => {
-        if (!testStreamRef.current) return;
+        if (!testingInput) return;
         analyser.getByteFrequencyData(dataArray);
         const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
         setInputLevel(average / 255);
@@ -164,21 +197,24 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     } catch {
       setError(
         track.audioSettings.inputMode === 'application'
-          ? 'Select a tab or window with audio playing'
-          : 'Could not access microphone'
+          ? 'Could not access audio source'
+          : 'Could not access input device'
       );
       setTestingInput(false);
     }
-  }, [track.audioSettings, handleSettingChange]);
+  }, [track.audioSettings, testingInput]);
 
   const stopTesting = useCallback(() => {
-    testStreamRef.current?.getTracks().forEach((t) => t.stop());
-    testStreamRef.current = null;
+    // Only stop the test stream for direct input mode (keep app stream for reuse)
+    if (track.audioSettings.inputMode === 'microphone') {
+      testStreamRef.current?.getTracks().forEach((t) => t.stop());
+      testStreamRef.current = null;
+    }
     audioContextRef.current?.close();
     audioContextRef.current = null;
     setTestingInput(false);
     setInputLevel(0);
-  }, []);
+  }, [track.audioSettings.inputMode]);
 
   return (
     <div className="w-80 bg-[#16161f] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
@@ -224,8 +260,8 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
                 track.audioSettings.inputMode === 'microphone' ? 'text-indigo-400' : 'text-zinc-500'
               )} />
               <div>
-                <div className="text-xs font-medium text-white">Microphone</div>
-                <div className="text-[10px] text-zinc-500">Direct input</div>
+                <div className="text-xs font-medium text-white">Direct Input</div>
+                <div className="text-[10px] text-zinc-500">Mic / Interface</div>
               </div>
             </button>
 
@@ -254,16 +290,21 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
           </div>
         </div>
 
-        {/* Application Capture Info */}
+        {/* Application Source Selection */}
         {track.audioSettings.inputMode === 'application' && (
-          <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-            <p className="text-[10px] text-amber-300/90 leading-relaxed">
-              Click &quot;Test Input&quot; to select an app or browser tab. Great for amp sims, DAWs, or any audio source.
-            </p>
+          <div className="space-y-2">
+            <label className="text-xs font-medium text-zinc-400">Audio Source</label>
+            <button
+              onClick={selectSource}
+              className="w-full flex items-center justify-center gap-2 p-2.5 rounded-lg border border-white/10 bg-white/5 hover:bg-white/10 transition-colors"
+            >
+              <Share2 className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs font-medium text-white">Select Source</span>
+            </button>
             {track.audioSettings.applicationName && (
-              <div className="mt-2 flex items-center gap-1.5">
-                <Headphones className="w-3 h-3 text-amber-400" />
-                <span className="text-[10px] text-amber-400 font-medium truncate">
+              <div className="flex items-center gap-1.5 px-2 py-1.5 bg-emerald-500/10 border border-emerald-500/20 rounded">
+                <Headphones className="w-3 h-3 text-emerald-400" />
+                <span className="text-[10px] text-emerald-400 font-medium truncate">
                   {track.audioSettings.applicationName}
                 </span>
               </div>
@@ -271,7 +312,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
           </div>
         )}
 
-        {/* Device Selection (only for microphone) */}
+        {/* Device Selection (only for direct input) */}
         {track.audioSettings.inputMode === 'microphone' && (
           <>
             <div className="space-y-2">
@@ -280,12 +321,12 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
                 <select
                   value={track.audioSettings.inputDeviceId}
                   onChange={(e) => handleSettingChange({ inputDeviceId: e.target.value })}
-                  className="w-full h-9 px-3 pr-8 bg-white/5 border border-white/10 rounded-lg text-sm text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                  className={selectClassName}
                 >
                   <option value="default">System Default</option>
                   {inputDevices.map((device) => (
                     <option key={device.deviceId} value={device.deviceId}>
-                      {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+                      {device.label || `Input ${device.deviceId.slice(0, 8)}`}
                       {device.channelCount && device.channelCount > 2 ? ` (${device.channelCount}ch)` : ''}
                     </option>
                   ))}
@@ -343,7 +384,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
                       channelCount: 1,
                       leftChannel: parseInt(e.target.value),
                     })}
-                    className="w-full h-8 px-3 pr-8 bg-white/5 border border-white/10 rounded text-xs text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    className={selectSmallClassName}
                   >
                     {channelOptions.mono.map((ch) => (
                       <option key={ch} value={ch}>
@@ -368,7 +409,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
                         rightChannel: right,
                       });
                     }}
-                    className="w-full h-8 px-3 pr-8 bg-white/5 border border-white/10 rounded text-xs text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                    className={selectSmallClassName}
                   >
                     {channelOptions.stereo.map(([left, right]) => (
                       <option key={`${left}-${right}`} value={`${left}-${right}`}>
@@ -469,7 +510,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
           )}
         </div>
 
-        {/* Processing Options (only for microphone) */}
+        {/* Processing Options (only for direct input) */}
         {track.audioSettings.inputMode === 'microphone' && (
           <div className="space-y-2">
             <label className="text-xs font-medium text-zinc-400">Browser Processing</label>
@@ -525,7 +566,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
                 <select
                   value={track.audioSettings.sampleRate}
                   onChange={(e) => handleSettingChange({ sampleRate: parseInt(e.target.value) as 48000 | 44100 })}
-                  className="w-full h-7 px-2 bg-white/5 border border-white/10 rounded text-[10px] text-white"
+                  className={selectTinyClassName}
                 >
                   <option value={48000}>48 kHz</option>
                   <option value={44100}>44.1 kHz</option>
@@ -536,7 +577,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
                 <select
                   value={track.audioSettings.bufferSize}
                   onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 128 | 256 | 512 | 1024 })}
-                  className="w-full h-7 px-2 bg-white/5 border border-white/10 rounded text-[10px] text-white"
+                  className={selectTinyClassName}
                 >
                   <option value={128}>128 (lowest latency)</option>
                   <option value={256}>256</option>
