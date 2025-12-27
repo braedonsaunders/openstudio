@@ -318,6 +318,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastNextTrack(queue.currentIndex + 1);
   }, [isMaster, nextTrack, queue.currentIndex]);
 
+  const skipToPrevious = useCallback(() => {
+    if (!isMaster) return;
+
+    const { previousTrack } = useRoomStore.getState();
+    previousTrack();
+    realtimeRef.current?.broadcastNextTrack(Math.max(0, queue.currentIndex - 1));
+  }, [isMaster, queue.currentIndex]);
+
   // Chat
   const sendMessage = useCallback((message: string) => {
     realtimeRef.current?.broadcastChat(message);
@@ -366,6 +374,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     addTrack,
     removeTrack,
     skipToNext,
+    skipToPrevious,
     sendMessage,
     muteUser,
     setUserVolume,
