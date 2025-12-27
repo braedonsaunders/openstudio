@@ -27,7 +27,7 @@ export function UserMenu() {
   const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { user, profile, avatar, signOut, isLoading } = useAuthStore();
+  const { user, profile, avatar, signOut, isLoading, isInitialized } = useAuthStore();
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -57,7 +57,8 @@ export function UserMenu() {
     setShowAuthModal(true);
   };
 
-  if (isLoading) {
+  // Show skeleton until auth state is initialized
+  if (isLoading || !isInitialized) {
     return (
       <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-800 animate-pulse" />
     );

@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { persist, subscribeWithSelector } from 'zustand/middleware';
+import { subscribeWithSelector } from 'zustand/middleware';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import type { UserProfile, Avatar, UserStats, UserInstrument, Achievement, UserAchievement, Friendship, Notification } from '@/types/user';
 import * as authApi from '@/lib/supabase/auth';
@@ -76,9 +76,8 @@ const initialState = {
 
 export const useAuthStore = create<AuthState>()(
   subscribeWithSelector(
-    persist(
-      (set, get) => ({
-        ...initialState,
+    (set, get) => ({
+      ...initialState,
 
         initialize: async () => {
           // Prevent concurrent calls - check both isInitialized and isLoading
@@ -416,15 +415,7 @@ export const useAuthStore = create<AuthState>()(
         reset: () => {
           set(initialState);
         },
-      }),
-      {
-        name: 'openstudio-auth',
-        partialize: () => ({
-          // Don't persist anything - always fetch fresh session on load
-          // This ensures the auth state is always in sync with Supabase
-        }),
-      }
-    )
+      })
   )
 );
 
