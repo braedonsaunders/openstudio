@@ -456,83 +456,57 @@ function analyzeLongTerm(combinedAudio) {
       const profiles = ['bgate', 'edma', 'krumhansl', 'temperley'];
       const keyVotes = {};
 
-      // First check if KeyExtractor exists
-      if (!essentia.KeyExtractor) {
-        console.log('[Worker] KeyExtractor not available, trying Key algorithm');
-        // Try alternative: compute HPCP manually then use Key
+      // Try KeyExtractor with just the audio (use defaults)
+      if (essentia.KeyExtractor) {
         try {
-          const frameSize = 4096;
-          const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
-          if (spectrum && spectrum.spectrum) {
-            const spectrumArray = essentia.vectorToArray(spectrum.spectrum);
-            const numBins = spectrumArray.length;
-            const frequencies = new Float32Array(numBins);
-            const fftSize = (numBins - 1) * 2;
-            for (let i = 0; i < numBins; i++) {
-              frequencies[i] = (i * sampleRate) / fftSize;
-            }
-            const freqVector = essentia.arrayToVector(frequencies);
-            const hpcpResult = essentia.HPCP(spectrum.spectrum, freqVector);
+          const keyResult = essentia.KeyExtractor(essentiaAudio);
+          console.log('[Worker] KeyExtractor raw result:', keyResult ? Object.keys(keyResult) : 'null');
 
-            if (hpcpResult && hpcpResult.hpcp) {
-              // Try Key algorithm with HPCP
-              for (const profile of profiles) {
+          if (keyResult && keyResult.key && keyResult.scale) {
+            const keyId = `${keyResult.key}_${keyResult.scale}`;
+            keyVotes[keyId] = { count: 1, totalStrength: keyResult.strength || 0.5, strengths: [keyResult.strength || 0.5] };
+            console.log(`[Worker] KeyExtractor: ${keyResult.key} ${keyResult.scale} (strength: ${(keyResult.strength || 0).toFixed(2)})`);
+          }
+        } catch (extractorError) {
+          console.log('[Worker] KeyExtractor with defaults failed:', extractorError.message);
+
+          // Try HPCP + Key as fallback
+          try {
+            const frameSize = 4096;
+            const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
+            if (spectrum && spectrum.spectrum) {
+              const spectrumArray = essentia.vectorToArray(spectrum.spectrum);
+              const numBins = spectrumArray.length;
+              const frequencies = new Float32Array(numBins);
+              const fftSize = (numBins - 1) * 2;
+              for (let i = 0; i < numBins; i++) {
+                frequencies[i] = (i * sampleRate) / fftSize;
+              }
+              const freqVector = essentia.arrayToVector(frequencies);
+              const hpcpResult = essentia.HPCP(spectrum.spectrum, freqVector);
+
+              if (hpcpResult && hpcpResult.hpcp) {
+                // Try Key algorithm with HPCP - use defaults
                 try {
-                  const keyResult = essentia.Key(hpcpResult.hpcp, true, 4, 12, 0.2, profile, 0.6, false, true, true);
-                  if (keyResult && keyResult.key && keyResult.scale && keyResult.strength > 0.1) {
+                  const keyResult = essentia.Key(hpcpResult.hpcp);
+                  console.log('[Worker] Key raw result:', keyResult ? Object.keys(keyResult) : 'null');
+
+                  if (keyResult && keyResult.key && keyResult.scale) {
                     const keyId = `${keyResult.key}_${keyResult.scale}`;
-                    if (!keyVotes[keyId]) {
-                      keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
-                    }
-                    keyVotes[keyId].count++;
-                    keyVotes[keyId].totalStrength += keyResult.strength;
-                    keyVotes[keyId].strengths.push(keyResult.strength);
-                    console.log(`[Worker] Key profile ${profile}: ${keyResult.key} ${keyResult.scale} (${keyResult.strength.toFixed(2)})`);
+                    keyVotes[keyId] = { count: 1, totalStrength: keyResult.strength || 0.5, strengths: [keyResult.strength || 0.5] };
+                    console.log(`[Worker] Key: ${keyResult.key} ${keyResult.scale} (strength: ${(keyResult.strength || 0).toFixed(2)})`);
                   }
-                } catch (e) {
-                  console.log(`[Worker] Key profile ${profile} failed:`, e.message);
+                } catch (keyError) {
+                  console.log('[Worker] Key algorithm failed:', keyError.message);
                 }
               }
             }
+          } catch (hpcpError) {
+            console.log('[Worker] HPCP fallback failed:', hpcpError.message);
           }
-        } catch (hpcpError) {
-          console.log('[Worker] HPCP/Key fallback failed:', hpcpError.message);
         }
       } else {
-        for (const profile of profiles) {
-          try {
-            // KeyExtractor takes audio directly and computes everything
-            const keyResult = essentia.KeyExtractor(
-              essentiaAudio,
-              true,     // averageDetuningCorrection
-              4096,     // frameSize
-              4096,     // hopSize
-              12,       // hpcpSize
-              5000,     // maxFrequency
-              25,       // minFrequency
-              0.2,      // pcpThreshold
-              profile,  // profileType
-              sampleRate,
-              0.0001,   // spectralPeaksThreshold
-              440,      // tuningFrequency
-              'cosine', // weightType
-              'hann'    // windowType
-            );
-
-            if (keyResult && keyResult.key && keyResult.scale && keyResult.strength > 0.1) {
-              const keyId = `${keyResult.key}_${keyResult.scale}`;
-              if (!keyVotes[keyId]) {
-                keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
-              }
-              keyVotes[keyId].count++;
-              keyVotes[keyId].totalStrength += keyResult.strength;
-              keyVotes[keyId].strengths.push(keyResult.strength);
-              console.log(`[Worker] KeyExtractor profile ${profile}: ${keyResult.key} ${keyResult.scale} (${keyResult.strength.toFixed(2)})`);
-            }
-          } catch (profileError) {
-            console.log(`[Worker] KeyExtractor profile ${profile} failed:`, profileError.message);
-          }
-        }
+        console.log('[Worker] KeyExtractor not available in essentia');
       }
 
       // Find best consensus key
