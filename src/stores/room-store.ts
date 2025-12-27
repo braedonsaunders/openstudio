@@ -40,6 +40,9 @@ interface RoomState {
   // Synced audio analysis
   syncedAnalysis: SyncedAnalysisData | null;
 
+  // Waveform data for current track
+  waveformData: number[] | null;
+
   // Actions
   setRoom: (room: Room) => void;
   setCurrentUser: (user: User) => void;
@@ -81,6 +84,9 @@ interface RoomState {
   setSyncedAnalysis: (data: SyncedAnalysisData | null) => void;
   broadcastAnalysis: (key: string | null, keyScale: 'major' | 'minor' | null, bpm: number | null) => void;
 
+  // Waveform actions
+  setWaveformData: (data: number[] | null) => void;
+
   // Reset
   reset: () => void;
 }
@@ -116,6 +122,7 @@ export const useRoomStore = create<RoomState>()(
     error: null,
     audioLevels: new Map(),
     syncedAnalysis: null,
+    waveformData: null,
 
     setRoom: (room) => set({ room }),
     setCurrentUser: (user) => set({ currentUser: user }),
@@ -284,6 +291,8 @@ export const useRoomStore = create<RoomState>()(
       });
     },
 
+    setWaveformData: (data) => set({ waveformData: data }),
+
     reset: () =>
       set({
         room: null,
@@ -300,6 +309,7 @@ export const useRoomStore = create<RoomState>()(
         error: null,
         audioLevels: new Map(),
         syncedAnalysis: null,
+        waveformData: null,
       }),
   }))
 );

@@ -24,6 +24,7 @@ interface SeekableBackingTrackProps {
   onSeek: (time: number) => void;
   stemsAvailable: boolean;
   stemMixState: StemMixState;
+  waveformData?: number[] | null;
 }
 
 const STEM_COLORS = {
@@ -42,17 +43,36 @@ export function SeekableBackingTrack({
   onSeek,
   stemsAvailable,
   stemMixState,
+  waveformData: realWaveformData,
 }: SeekableBackingTrackProps) {
   const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
-  const waveformData = useRef<number[]>([]);
+  const placeholderWaveform = useRef<number[]>([]);
   const [isExpanded, setIsExpanded] = useState(true);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
 
-  // Generate placeholder waveform data
+  // Detect if this is a YouTube track
+  const isYouTube = !!track.youtubeId;
+
+  // Generate placeholder waveform data only when needed
   useEffect(() => {
-    const samples = Math.floor(duration * 100);
-    waveformData.current = Array.from({ length: samples }, () => 0.2 + Math.random() * 0.8);
-  }, [duration]);
+    if (!realWaveformData && duration > 0) {
+      const samples = 300;
+      if (isYouTube) {
+        // YouTube: create a smooth, ghostly sine-wave pattern
+        placeholderWaveform.current = Array.from({ length: samples }, (_, i) => {
+          const x = i / samples;
+          // Layered sine waves for a flowing, ghostly look
+          return 0.3 + 0.2 * Math.sin(x * Math.PI * 8) + 0.15 * Math.sin(x * Math.PI * 16) + 0.1 * Math.sin(x * Math.PI * 4);
+        });
+      } else {
+        // Regular placeholder: random bars
+        placeholderWaveform.current = Array.from({ length: samples }, () => 0.2 + Math.random() * 0.8);
+      }
+    }
+  }, [duration, realWaveformData, isYouTube]);
+
+  // Get the waveform data to use
+  const waveformToRender = realWaveformData || placeholderWaveform.current;
 
   // Draw waveform
   useEffect(() => {
@@ -71,7 +91,7 @@ export function SeekableBackingTrack({
 
     const width = rect.width;
     const height = rect.height;
-    const data = waveformData.current;
+    const data = waveformToRender;
     const progress = duration > 0 ? currentTime / duration : 0;
 
     ctx.clearRect(0, 0, width, height);
@@ -91,15 +111,30 @@ export function SeekableBackingTrack({
 
       const isPlayed = i / barsCount < progress;
 
-      // Gradient effect for played/unplayed
-      if (isPlayed) {
-        ctx.fillStyle = '#818cf8'; // Bright indigo
-        ctx.shadowBlur = 2;
-        ctx.shadowColor = '#818cf8';
+      if (isYouTube) {
+        // YouTube skeleton style: red/pink gradient with dashed/ghostly appearance
+        if (isPlayed) {
+          ctx.fillStyle = '#f87171'; // Red-400
+          ctx.shadowBlur = 3;
+          ctx.shadowColor = '#ef4444';
+          ctx.globalAlpha = 0.9;
+        } else {
+          ctx.fillStyle = '#7f1d1d'; // Red-900 (very dark)
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.35;
+        }
       } else {
-        ctx.fillStyle = '#3730a3'; // Darker indigo
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 0.6;
+        // Normal waveform style (indigo for real/uploaded tracks)
+        if (isPlayed) {
+          ctx.fillStyle = '#818cf8'; // Bright indigo
+          ctx.shadowBlur = 2;
+          ctx.shadowColor = '#818cf8';
+          ctx.globalAlpha = 1;
+        } else {
+          ctx.fillStyle = '#3730a3'; // Darker indigo
+          ctx.shadowBlur = 0;
+          ctx.globalAlpha = 0.6;
+        }
       }
 
       // Draw mirrored bar
@@ -109,7 +144,7 @@ export function SeekableBackingTrack({
     }
 
     ctx.shadowBlur = 0;
-  }, [duration, currentTime]);
+  }, [duration, currentTime, waveformToRender, isYouTube]);
 
   // Handle scrubber interaction - uses currentTarget for position
   const handleScrubberClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
@@ -149,7 +184,12 @@ export function SeekableBackingTrack({
       {/* Header */}
       <div className="h-10 px-4 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
-          <div className="w-7 h-7 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <div className={cn(
+            "w-7 h-7 rounded-lg flex items-center justify-center shadow-lg",
+            isYouTube
+              ? "bg-gradient-to-br from-red-500 to-red-700 shadow-red-500/20"
+              : "bg-gradient-to-br from-indigo-500 to-purple-600 shadow-indigo-500/20"
+          )}>
             <Music className="w-4 h-4 text-white" />
           </div>
           <div className="flex flex-col">
@@ -158,9 +198,16 @@ export function SeekableBackingTrack({
               <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">{track.artist}</span>
             )}
           </div>
-          <div className="flex items-center gap-1.5 px-2 py-0.5 rounded bg-indigo-500/10 border border-indigo-500/20">
-            <Waves className="w-3 h-3 text-indigo-400" />
-            <span className="text-[10px] font-medium text-indigo-400">BACKING TRACK</span>
+          <div className={cn(
+            "flex items-center gap-1.5 px-2 py-0.5 rounded border",
+            isYouTube
+              ? "bg-red-500/10 border-red-500/20"
+              : "bg-indigo-500/10 border-indigo-500/20"
+          )}>
+            <Waves className={cn("w-3 h-3", isYouTube ? "text-red-400" : "text-indigo-400")} />
+            <span className={cn("text-[10px] font-medium", isYouTube ? "text-red-400" : "text-indigo-400")}>
+              {isYouTube ? "YOUTUBE" : "BACKING TRACK"}
+            </span>
           </div>
         </div>
 
@@ -197,13 +244,21 @@ export function SeekableBackingTrack({
 
             {/* Progress overlay */}
             <div
-              className="absolute top-0 bottom-0 left-0 bg-indigo-500/10 pointer-events-none"
+              className={cn(
+                "absolute top-0 bottom-0 left-0 pointer-events-none",
+                isYouTube ? "bg-red-500/10" : "bg-indigo-500/10"
+              )}
               style={{ width: `${progress}%` }}
             />
 
             {/* Playhead */}
             <div
-              className="absolute top-0 bottom-0 w-0.5 bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.6)] pointer-events-none"
+              className={cn(
+                "absolute top-0 bottom-0 w-0.5 pointer-events-none",
+                isYouTube
+                  ? "bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.6)]"
+                  : "bg-indigo-400 shadow-[0_0_8px_rgba(129,140,248,0.6)]"
+              )}
               style={{ left: `${progress}%` }}
             />
 

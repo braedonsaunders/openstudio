@@ -41,7 +41,7 @@ export function LiveArrangementView({
   const [zoom, setZoom] = useState(1);
 
   const { isPlaying, currentTime, duration } = useAudioStore();
-  const { currentTrack, stemsAvailable, stemMixState } = useRoomStore();
+  const { currentTrack, stemsAvailable, stemMixState, waveformData } = useRoomStore();
   const { getTracksByUser, trackLevels } = useUserTracksStore();
 
   // Calculate session elapsed time
@@ -86,6 +86,7 @@ export function LiveArrangementView({
           onSeek={onSeek}
           stemsAvailable={stemsAvailable}
           stemMixState={stemMixState}
+          waveformData={waveformData}
         />
       )}
 
