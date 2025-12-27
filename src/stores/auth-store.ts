@@ -423,10 +423,19 @@ export const useAuthStore = create<AuthState>()(
 if (typeof window !== 'undefined') {
   import('@/lib/supabase/auth').then(({ supabaseAuth }) => {
     supabaseAuth.auth.onAuthStateChange(async (event, session) => {
+      const store = useAuthStore.getState();
+
       if (event === 'SIGNED_IN' && session?.user) {
+        // Force re-initialization by resetting the initialized flag
+        useAuthStore.setState({ isInitialized: false, isLoading: false });
         await useAuthStore.getState().initialize();
       } else if (event === 'SIGNED_OUT') {
-        useAuthStore.getState().reset();
+        store.reset();
+      } else if (event === 'INITIAL_SESSION' && session?.user) {
+        // Handle initial session on page load (e.g., after OAuth redirect)
+        if (!store.isInitialized && !store.isLoading) {
+          await store.initialize();
+        }
       }
     });
   });
