@@ -91,7 +91,10 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true, isProfileLoading: true, profileError: null });
 
           try {
-            const user = await authApi.getUser();
+            // Use getSession() first - it reads from localStorage immediately without network call
+            // This is faster and more reliable than getUser() which makes a network request
+            const session = await authApi.getSession();
+            const user = session?.user ?? null;
 
             if (user) {
               // Fetch user data with individual error handling to prevent one failure from blocking all
@@ -488,19 +491,20 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
-// Subscribe to auth state changes - this runs synchronously when the module loads
-// to ensure the listener is registered before INITIAL_SESSION fires
+// Initialize auth when the module loads on the client
+// We call initialize() immediately - it uses getSession() which reads from localStorage
+// This is fast and reliable, unlike waiting for onAuthStateChange events
 if (typeof window !== 'undefined') {
-  // Safety timeout: If INITIAL_SESSION doesn't fire within 5 seconds, initialize anyway
-  // This prevents the UI from being stuck in loading state forever
-  const initTimeout = setTimeout(() => {
+  // Initialize immediately when the module loads
+  // Using setTimeout(0) to ensure this runs after the store is fully created
+  setTimeout(() => {
     const state = useAuthStore.getState();
     if (!state.isInitialized && !state.isLoading) {
-      console.warn('[auth-store] INITIAL_SESSION timeout - initializing manually');
       useAuthStore.getState().initialize();
     }
-  }, 5000);
+  }, 0);
 
+  // Also listen for auth state changes as a backup and for handling sign in/out
   authApi.supabaseAuth.auth.onAuthStateChange(async (event, session) => {
     const store = useAuthStore.getState();
 
@@ -510,21 +514,16 @@ if (typeof window !== 'undefined') {
       // This handler is mainly for OAuth flows where signIn() wasn't called directly
       const currentState = useAuthStore.getState();
       if (!currentState.isInitialized && !currentState.isLoading) {
-        clearTimeout(initTimeout);
         await useAuthStore.getState().initialize();
       }
     } else if (event === 'SIGNED_OUT') {
       store.reset();
     } else if (event === 'INITIAL_SESSION') {
-      // Handle initial session on page load - this fires when Supabase has
-      // finished restoring the session from localStorage
-      clearTimeout(initTimeout);
+      // Handle initial session on page load - fires when Supabase finishes restoring session
       if (!store.isInitialized && !store.isLoading) {
         if (session?.user) {
-          // User is logged in - load their data
           await store.initialize();
         } else {
-          // No user session - mark as initialized (not loading, just no user)
           useAuthStore.setState({ isInitialized: true });
         }
       }

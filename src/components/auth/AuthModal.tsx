@@ -39,7 +39,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { user, signIn, signUp, signInWithGoogle, signInWithDiscord } = useAuthStore();
+  const { user, profile, signIn, signUp, signInWithGoogle, signInWithDiscord } = useAuthStore();
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -50,13 +50,15 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     }
   }, [isOpen, defaultTab]);
 
-  // Auto-close modal when user becomes authenticated
+  // Auto-close modal when user becomes fully authenticated (user AND profile loaded)
+  // Wait for profile to ensure the UI shows correctly after modal closes
   useEffect(() => {
-    if (isOpen && user) {
+    if (isOpen && user && profile) {
       setIsSubmitting(false);
       onClose();
+      router.push('/rooms');
     }
-  }, [isOpen, user, onClose]);
+  }, [isOpen, user, profile, onClose, router]);
 
   const handleUsernameChange = useCallback((value: string) => {
     // Only allow valid username characters
@@ -96,8 +98,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     try {
       if (tab === 'login') {
         await signIn(email, password);
-        onClose();
-        router.push('/rooms');
+        // Modal closes and redirects via useEffect when profile is loaded
       } else {
         if (!usernameAvailable) {
           setError('Please choose an available username');
@@ -105,8 +106,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
           return;
         }
         await signUp(email, password, username, displayName || username);
-        onClose();
-        router.push('/rooms');
+        // Modal closes and redirects via useEffect when profile is loaded
       }
     } catch (err) {
       const message = (err as Error).message;
