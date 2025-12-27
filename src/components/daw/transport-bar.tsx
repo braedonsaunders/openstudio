@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { cn, formatLatency } from '@/lib/utils';
 import { useAudioStore } from '@/stores/audio-store';
+import { Tooltip } from '@/components/ui/tooltip';
 import { useRoomStore } from '@/stores/room-store';
 import { useAnalysisStore } from '@/stores/analysis-store';
 import {
@@ -53,7 +54,7 @@ export function TransportBar({
 }: TransportBarProps) {
   const [copied, setCopied] = useState(false);
 
-  const { isPlaying, currentTime, duration, isMuted, jitterStats } = useAudioStore();
+  const { isPlaying, currentTime, duration, isMuted, jitterStats, webrtcStats, connectionQuality, currentBufferSize } = useAudioStore();
   const { currentTrack, isMaster } = useRoomStore();
   const { syncedAnalysis, localAnalysis } = useAnalysisStore();
 
@@ -124,13 +125,80 @@ export function TransportBar({
           )}
         </button>
 
-        {/* Connection Status */}
-        <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10">
-          <Zap className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
-          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
-            {formatLatency(jitterStats.roundTripTime)}
-          </span>
-        </div>
+        {/* Connection Status with Performance Tooltip */}
+        <Tooltip
+          position="bottom"
+          delay={0}
+          className="w-56 whitespace-normal p-0"
+          content={
+            <div className="p-3 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-zinc-400">Connection</span>
+                <span className={cn(
+                  'text-xs font-medium capitalize',
+                  connectionQuality === 'excellent' && 'text-emerald-400',
+                  connectionQuality === 'good' && 'text-emerald-400',
+                  connectionQuality === 'fair' && 'text-yellow-400',
+                  connectionQuality === 'poor' && 'text-red-400'
+                )}>
+                  {connectionQuality}
+                </span>
+              </div>
+              <div className="h-px bg-white/10" />
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Latency</span>
+                  <span className="text-xs font-medium text-white">
+                    {formatLatency(webrtcStats?.roundTripTime ?? 0)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Jitter</span>
+                  <span className="text-xs font-medium text-white">
+                    {formatLatency(jitterStats.averageJitter)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Packet Loss</span>
+                  <span className="text-xs font-medium text-white">
+                    {(jitterStats.packetLoss * 100).toFixed(1)}%
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Buffer</span>
+                  <span className="text-xs font-medium text-white">
+                    {currentBufferSize} samples
+                  </span>
+                </div>
+              </div>
+            </div>
+          }
+        >
+          <div className={cn(
+            'flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-default transition-colors',
+            connectionQuality === 'excellent' && 'bg-emerald-500/10',
+            connectionQuality === 'good' && 'bg-emerald-500/10',
+            connectionQuality === 'fair' && 'bg-yellow-500/10',
+            connectionQuality === 'poor' && 'bg-red-500/10'
+          )}>
+            <Zap className={cn(
+              'w-3.5 h-3.5',
+              connectionQuality === 'excellent' && 'text-emerald-500 dark:text-emerald-400',
+              connectionQuality === 'good' && 'text-emerald-500 dark:text-emerald-400',
+              connectionQuality === 'fair' && 'text-yellow-500 dark:text-yellow-400',
+              connectionQuality === 'poor' && 'text-red-500 dark:text-red-400'
+            )} />
+            <span className={cn(
+              'text-xs font-medium',
+              connectionQuality === 'excellent' && 'text-emerald-600 dark:text-emerald-400',
+              connectionQuality === 'good' && 'text-emerald-600 dark:text-emerald-400',
+              connectionQuality === 'fair' && 'text-yellow-600 dark:text-yellow-400',
+              connectionQuality === 'poor' && 'text-red-600 dark:text-red-400'
+            )}>
+              {formatLatency(webrtcStats?.roundTripTime ?? 0)}
+            </span>
+          </div>
+        </Tooltip>
       </div>
 
       {/* Transport Controls - Center */}
