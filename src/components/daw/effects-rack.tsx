@@ -651,7 +651,7 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
       )}
 
       {/* Effects Chain */}
-      <div className="max-h-[60vh] overflow-y-auto">
+      <div className="max-h-[50vh] overflow-y-auto scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
         <NoiseGateUI track={track} />
         <EQUI track={track} />
         <CompressorUI track={track} />
