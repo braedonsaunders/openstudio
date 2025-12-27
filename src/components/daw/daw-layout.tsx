@@ -36,7 +36,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const [showShortcuts, setShowShortcuts] = useState(false);
 
   // Resizable panel state
-  const [leftPanelWidth, setLeftPanelWidth] = useState(300); // Default width for track headers
+  const [leftPanelWidth, setLeftPanelWidth] = useState(340); // Default width for track headers
   const [rightPanelWidth, setRightPanelWidth] = useState(320); // Default w-80 = 320px
 
   // Panel resize constraints

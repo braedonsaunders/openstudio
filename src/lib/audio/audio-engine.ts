@@ -321,6 +321,36 @@ export class AudioEngine {
     return this.backingTrackBuffer?.duration || 0;
   }
 
+  /**
+   * Extract waveform data from the loaded backing track buffer
+   * @param numBars Number of bars/samples to generate for visualization
+   * @returns Normalized array of amplitude values (0-1)
+   */
+  extractWaveformData(numBars: number = 200): number[] {
+    if (!this.backingTrackBuffer) return [];
+
+    const channelData = this.backingTrackBuffer.getChannelData(0);
+    const samplesPerBar = Math.floor(channelData.length / numBars);
+    const waveform: number[] = [];
+
+    for (let i = 0; i < numBars; i++) {
+      let sum = 0;
+      const start = i * samplesPerBar;
+      const end = Math.min(start + samplesPerBar, channelData.length);
+
+      for (let j = start; j < end; j++) {
+        sum += Math.abs(channelData[j]);
+      }
+      waveform.push(sum / (end - start));
+    }
+
+    // Normalize to 0-1 range
+    const max = Math.max(...waveform);
+    if (max === 0) return waveform.map(() => 0.5);
+
+    return waveform.map((v) => Math.max(0.1, v / max));
+  }
+
   isCurrentlyPlaying(): boolean {
     return this.isPlaying;
   }

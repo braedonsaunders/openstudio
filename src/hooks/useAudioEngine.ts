@@ -33,6 +33,7 @@ export function useAudioEngine() {
     stemMixState,
     stemsAvailable,
     setAudioLevels,
+    setWaveformData,
   } = useRoomStore();
 
   // Initialize audio engine
@@ -132,6 +133,7 @@ export function useAudioEngine() {
     if (track.youtubeId) {
       console.log('YouTube track - skipping audio engine load');
       setDuration(track.duration);
+      setWaveformData(null); // No waveform for YouTube
       return true; // YouTube tracks don't need audio engine loading
     }
 
@@ -140,10 +142,15 @@ export function useAudioEngine() {
       // Use actual buffer duration if available, otherwise use track.duration
       const actualDuration = engineRef.current.getDuration() || track.duration;
       setDuration(actualDuration);
+
+      // Extract real waveform data from the audio buffer
+      const waveform = engineRef.current.extractWaveformData(300);
+      setWaveformData(waveform);
     } catch (error) {
       console.error('Failed to load backing track:', error);
       // Still set duration from metadata
       setDuration(track.duration);
+      setWaveformData(null);
       return false; // Loading failed
     }
 
@@ -166,7 +173,7 @@ export function useAudioEngine() {
     }
 
     return true; // Loading succeeded
-  }, [setDuration]);
+  }, [setDuration, setWaveformData]);
 
   // Play backing track with sync
   const playBackingTrack = useCallback((syncTimestamp: number, offset: number = 0) => {
