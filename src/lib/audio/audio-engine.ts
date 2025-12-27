@@ -168,11 +168,26 @@ export class AudioEngine {
     }
 
     try {
-      const response = await fetch(url, { mode: 'cors' });
+      console.log('Loading backing track from:', url);
+      const response = await fetch(url);
       if (!response.ok) {
+        const errorText = await response.text().catch(() => 'Unknown error');
+        console.error('Failed to fetch audio:', response.status, errorText);
         throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
       }
+
+      const contentType = response.headers.get('Content-Type') || '';
+      if (!contentType.startsWith('audio/')) {
+        console.error('Response is not audio:', contentType);
+        throw new Error(`Invalid content type: ${contentType}`);
+      }
+
       const arrayBuffer = await response.arrayBuffer();
+      if (arrayBuffer.byteLength === 0) {
+        throw new Error('Audio file is empty');
+      }
+
+      console.log('Decoding audio data, size:', arrayBuffer.byteLength);
       this.backingTrackBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
       console.log('Backing track loaded successfully, duration:', this.backingTrackBuffer.duration);
     } catch (error) {
@@ -195,13 +210,22 @@ export class AudioEngine {
   }
 
   playBackingTrack(syncTimestamp: number, offset: number = 0): void {
-    if (!this.audioContext || !this.backingTrackBuffer || !this.backingTrackGain) {
-      console.error('Cannot play: audio context, buffer, or gain not ready');
+    if (!this.audioContext) {
+      console.error('Cannot play: audio context not initialized');
+      return;
+    }
+    if (!this.backingTrackBuffer) {
+      console.error('Cannot play: no audio buffer loaded');
+      return;
+    }
+    if (!this.backingTrackGain) {
+      console.error('Cannot play: gain node not ready');
       return;
     }
 
     // Resume if suspended
     if (this.audioContext.state === 'suspended') {
+      console.log('Resuming suspended audio context');
       this.audioContext.resume();
     }
 
@@ -216,6 +240,7 @@ export class AudioEngine {
     this.backingTrackSource.connect(this.backingTrackGain);
 
     const startTime = this.audioContext.currentTime + delay;
+    console.log('Starting playback at offset:', offset, 'delay:', delay);
     this.backingTrackSource.start(startTime, offset);
 
     this.playbackStartTime = startTime;

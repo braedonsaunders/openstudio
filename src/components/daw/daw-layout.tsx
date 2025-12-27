@@ -210,6 +210,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {
     // UploadModal handles the actual upload to R2, we just add the track
+    console.log('handleUpload received:', uploadedTrack);
     const track: BackingTrack = {
       id: uploadedTrack.id,
       name: uploadedTrack.name,
@@ -219,6 +220,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       uploadedBy: currentUser?.id || 'user',
       uploadedAt: new Date().toISOString(),
     };
+    console.log('Adding track to queue:', track);
     await addTrack(track);
   }, [addTrack, currentUser]);
 

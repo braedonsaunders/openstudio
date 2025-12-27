@@ -63,9 +63,16 @@ export async function GET(
     }
 
     if (!audioStream || !audioStream.Body) {
-      return NextResponse.json(
-        { error: 'Audio file not found' },
-        { status: 404 }
+      console.error('Audio file not found in R2:', trackId);
+      return new NextResponse(
+        JSON.stringify({ error: 'Audio file not found' }),
+        {
+          status: 404,
+          headers: {
+            'Content-Type': 'application/json',
+            'Access-Control-Allow-Origin': '*',
+          },
+        }
       );
     }
 
@@ -79,13 +86,21 @@ export async function GET(
         'Content-Length': audioStream.ContentLength?.toString() || '',
         'Cache-Control': 'public, max-age=31536000, immutable',
         'Accept-Ranges': 'bytes',
+        'Access-Control-Allow-Origin': '*',
+        'Access-Control-Expose-Headers': 'Content-Length, Content-Type',
       },
     });
   } catch (error) {
     console.error('Error streaming audio:', error);
-    return NextResponse.json(
-      { error: 'Failed to stream audio' },
-      { status: 500 }
+    return new NextResponse(
+      JSON.stringify({ error: 'Failed to stream audio' }),
+      {
+        status: 500,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*',
+        },
+      }
     );
   }
 }
