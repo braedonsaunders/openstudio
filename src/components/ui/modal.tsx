@@ -58,20 +58,20 @@ export function Modal({
       {/* Modal */}
       <div
         className={cn(
-          'relative z-10 w-full max-w-lg mx-4 bg-gray-900 rounded-2xl shadow-2xl',
+          'relative z-10 w-full max-w-lg mx-4 bg-white rounded-2xl shadow-2xl',
           'animate-in fade-in-0 zoom-in-95 duration-200',
           className
         )}
       >
         {/* Header */}
         {(title || showCloseButton) && (
-          <div className="flex items-center justify-between p-6 border-b border-gray-800">
+          <div className="flex items-center justify-between p-6 border-b border-slate-200">
             <div>
               {title && (
-                <h2 className="text-xl font-semibold text-white">{title}</h2>
+                <h2 className="text-xl font-semibold text-slate-900">{title}</h2>
               )}
               {description && (
-                <p className="mt-1 text-sm text-gray-400">{description}</p>
+                <p className="mt-1 text-sm text-slate-500">{description}</p>
               )}
             </div>
             {showCloseButton && (
@@ -79,7 +79,7 @@ export function Modal({
                 variant="ghost"
                 size="icon"
                 onClick={onClose}
-                className="text-gray-400 hover:text-white"
+                className="text-slate-400 hover:text-slate-700"
               >
                 <X className="w-5 h-5" />
               </Button>
