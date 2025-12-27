@@ -207,17 +207,25 @@ export function RoomUsersPanel({
   onMuteUser,
   onVolumeChange,
 }: RoomUsersPanelProps) {
+  // Combine current user with other users
+  const allUsers = useMemo(() => {
+    const userList = [...users];
+    if (currentUser && !userList.some(u => u.id === currentUser.id)) {
+      userList.unshift(currentUser);
+    }
+    return userList;
+  }, [users, currentUser]);
+
   // Sort users: current user first, then master, then by name
   const sortedUsers = useMemo(() => {
-    const userList = users;
-    return userList.sort((a, b) => {
+    return [...allUsers].sort((a, b) => {
       if (a.id === currentUser?.id) return -1;
       if (b.id === currentUser?.id) return 1;
       if (a.isMaster && !b.isMaster) return -1;
       if (!a.isMaster && b.isMaster) return 1;
       return a.name.localeCompare(b.name);
     });
-  }, [users, currentUser]);
+  }, [allUsers, currentUser]);
 
   const activeUsers = useMemo(() => {
     return sortedUsers.filter((u) => (audioLevels.get(u.id) || 0) > 0.1);
@@ -236,7 +244,7 @@ export function RoomUsersPanel({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 dark:text-zinc-500">
-              {users.length} {users.length === 1 ? 'member' : 'members'}
+              {allUsers.length} {allUsers.length === 1 ? 'member' : 'members'}
             </span>
             {activeUsers.length > 0 && (
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20">
@@ -252,7 +260,7 @@ export function RoomUsersPanel({
 
       {/* Users list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {users.length === 0 ? (
+        {allUsers.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
               <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center">
@@ -282,12 +290,12 @@ export function RoomUsersPanel({
       </div>
 
       {/* Quick actions */}
-      {isMaster && users.length > 1 && (
+      {isMaster && allUsers.length > 1 && (
         <div className="p-3 border-t border-gray-200 dark:border-white/5">
           <div className="flex gap-2">
             <button
               onClick={() => {
-                users.forEach((u) => {
+                allUsers.forEach((u) => {
                   if (u.id !== currentUser?.id) {
                     onMuteUser?.(u.id, true);
                   }
@@ -299,7 +307,7 @@ export function RoomUsersPanel({
             </button>
             <button
               onClick={() => {
-                users.forEach((u) => {
+                allUsers.forEach((u) => {
                   onMuteUser?.(u.id, false);
                 });
               }}

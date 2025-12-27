@@ -448,6 +448,15 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
   const isDark = resolvedTheme === 'dark';
   const messages = useRoomStore((state) => state.messages);
 
+  // Combine current user with other users
+  const allUsers = useMemo(() => {
+    const userList = [...users];
+    if (currentUser && !userList.some(u => u.id === currentUser.id)) {
+      userList.unshift(currentUser);
+    }
+    return userList;
+  }, [users, currentUser]);
+
   // Get total audio level for ambient effects
   const totalAudioLevel = useMemo(() => {
     let total = 0;
@@ -464,18 +473,17 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
       .slice(-5)
       .map((m) => ({
         content: m.content,
-        userName: users.find(u => u.id === m.userId)?.name || 'User',
+        userName: allUsers.find(u => u.id === m.userId)?.name || 'User',
       }));
-  }, [messages, users]);
+  }, [messages, allUsers]);
 
   // Calculate positions for users in a semicircle around the campfire
   const userPositions = useMemo(() => {
-    const userList = users;
     const positions: { x: string; y: string; scale: number }[] = [];
-    const totalUsers = userList.length;
+    const totalUsers = allUsers.length;
 
     // Create a semicircle arrangement
-    userList.forEach((_, index) => {
+    allUsers.forEach((_, index) => {
       const angle = Math.PI * 0.15 + (Math.PI * 0.7 * index) / Math.max(totalUsers - 1, 1);
       const radius = 35; // % from center
       const x = 50 + Math.cos(angle) * radius;
@@ -490,7 +498,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
     });
 
     return positions;
-  }, [users]);
+  }, [allUsers]);
 
   return (
     <div className="relative w-full h-full overflow-hidden rounded-xl">
@@ -505,7 +513,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
 
       {/* User avatars arranged around the campfire */}
       <AnimatePresence>
-        {users.map((user, index) => (
+        {allUsers.map((user, index) => (
           <UserAvatar
             key={user.id}
             user={user}
@@ -537,7 +545,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
           transition={{ duration: 1, repeat: Infinity }}
         />
         <span className="text-xs font-medium text-white/90">
-          {users.length} {users.length === 1 ? 'musician' : 'musicians'} jamming
+          {allUsers.length} {allUsers.length === 1 ? 'musician' : 'musicians'} jamming
         </span>
         {totalAudioLevel > 0.3 && (
           <motion.span
