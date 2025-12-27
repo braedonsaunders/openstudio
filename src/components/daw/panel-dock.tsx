@@ -5,6 +5,7 @@ import { RoomUsersPanel } from './room-users-panel';
 import { AnalysisPanel } from './analysis-panel';
 import { ChatPanel } from './chat-panel';
 import { AIPanel } from './ai-panel';
+import { SetlistPanel } from './setlist-panel';
 import type { PanelType } from './daw-layout';
 import type { StemType, User } from '@/types';
 import {
@@ -13,6 +14,7 @@ import {
   MessageSquare,
   Sparkles,
   ChevronLeft,
+  Music2,
 } from 'lucide-react';
 
 interface PanelDockProps {
@@ -43,6 +45,7 @@ interface PanelDockProps {
 
 const panels: { id: PanelType; icon: typeof Users; label: string }[] = [
   { id: 'users', icon: Users, label: 'Members' },
+  { id: 'setlist', icon: Music2, label: 'Setlist' },
   { id: 'analysis', icon: Activity, label: 'Analysis' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
   { id: 'ai', icon: Sparkles, label: 'AI' },
@@ -70,7 +73,7 @@ export function PanelDock({
   width,
 }: PanelDockProps) {
   // Redirect old panel types to new ones
-  const validPanel = activePanel === 'queue' || activePanel === 'mixer' ? 'users' : activePanel;
+  const validPanel = activePanel === 'queue' ? 'setlist' : activePanel === 'mixer' ? 'users' : activePanel;
   return (
     <div
       className="bg-gray-50 dark:bg-[#0d0d14] border-l border-gray-200 dark:border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
@@ -115,6 +118,14 @@ export function PanelDock({
             audioLevels={audioLevels}
             onMuteUser={onMuteUser}
             onVolumeChange={onVolumeChange}
+          />
+        )}
+
+        {validPanel === 'setlist' && (
+          <SetlistPanel
+            roomId={roomId}
+            userId={userId}
+            userName={userName}
           />
         )}
 

@@ -18,7 +18,7 @@ function getSupabase(): SupabaseClient {
   return supabase;
 }
 
-// GET - Fetch all loop tracks for a room
+// GET - Fetch all songs for a room
 export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -27,27 +27,30 @@ export async function GET(
     const { roomId } = await params;
 
     const { data, error } = await getSupabase()
-      .from('room_loop_tracks')
+      .from('songs')
       .select('*')
       .eq('room_id', roomId)
       .order('position', { ascending: true });
 
     if (error) {
-      console.error('Error fetching loop tracks:', error);
+      console.error('Error fetching songs:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     // Transform snake_case to camelCase
-    const tracks = (data || []).map(transformFromDb);
+    const songs = (data || []).map(transformFromDb);
 
-    return NextResponse.json(tracks);
+    // Get current song from room settings or default to first
+    const currentSongId = songs[0]?.id || null;
+
+    return NextResponse.json({ songs, currentSongId });
   } catch (error) {
-    console.error('Error in GET /loop-tracks:', error);
+    console.error('Error in GET /songs:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// POST - Create a new loop track
+// POST - Create a new song
 export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -59,24 +62,24 @@ export async function POST(
     const dbRecord = transformToDb(body, roomId);
 
     const { data, error } = await getSupabase()
-      .from('room_loop_tracks')
+      .from('songs')
       .insert(dbRecord)
       .select()
       .single();
 
     if (error) {
-      console.error('Error creating loop track:', error);
+      console.error('Error creating song:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json(transformFromDb(data));
   } catch (error) {
-    console.error('Error in POST /loop-tracks:', error);
+    console.error('Error in POST /songs:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// PATCH - Update a loop track
+// PATCH - Update a song
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -84,38 +87,39 @@ export async function PATCH(
   try {
     const { roomId } = await params;
     const body = await request.json();
-    const { trackId, ...updates } = body;
+    const { songId, ...updates } = body;
 
-    if (!trackId) {
-      return NextResponse.json({ error: 'trackId is required' }, { status: 400 });
+    if (!songId) {
+      return NextResponse.json({ error: 'songId is required' }, { status: 400 });
     }
 
     const dbUpdates = transformToDb(updates, roomId);
     delete dbUpdates.id;
     delete dbUpdates.room_id;
     delete dbUpdates.created_at;
+    dbUpdates.updated_at = new Date().toISOString();
 
     const { data, error } = await getSupabase()
-      .from('room_loop_tracks')
+      .from('songs')
       .update(dbUpdates)
-      .eq('id', trackId)
+      .eq('id', songId)
       .eq('room_id', roomId)
       .select()
       .single();
 
     if (error) {
-      console.error('Error updating loop track:', error);
+      console.error('Error updating song:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json(transformFromDb(data));
   } catch (error) {
-    console.error('Error in PATCH /loop-tracks:', error);
+    console.error('Error in PATCH /songs:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
 
-// DELETE - Remove a loop track
+// DELETE - Remove a song
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -123,26 +127,26 @@ export async function DELETE(
   try {
     const { roomId } = await params;
     const { searchParams } = new URL(request.url);
-    const trackId = searchParams.get('trackId');
+    const songId = searchParams.get('songId');
 
-    if (!trackId) {
-      return NextResponse.json({ error: 'trackId is required' }, { status: 400 });
+    if (!songId) {
+      return NextResponse.json({ error: 'songId is required' }, { status: 400 });
     }
 
     const { error } = await getSupabase()
-      .from('room_loop_tracks')
+      .from('songs')
       .delete()
-      .eq('id', trackId)
+      .eq('id', songId)
       .eq('room_id', roomId);
 
     if (error) {
-      console.error('Error deleting loop track:', error);
+      console.error('Error deleting song:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
     return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Error in DELETE /loop-tracks:', error);
+    console.error('Error in DELETE /songs:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
   }
 }
@@ -152,31 +156,16 @@ function transformFromDb(record: Record<string, unknown>): Record<string, unknow
   return {
     id: record.id,
     roomId: record.room_id,
+    name: record.name,
+    tracks: record.tracks || [],
+    bpm: record.bpm,
+    key: record.key,
+    timeSignature: record.time_signature,
+    duration: record.duration,
+    color: record.color,
+    position: record.position,
     createdBy: record.created_by,
     createdByName: record.created_by_name,
-    loopId: record.loop_id,
-    customMidiData: record.custom_midi_data,
-    isPlaying: record.is_playing,
-    startTime: record.start_time,
-    loopStartBeat: record.loop_start_beat,
-    soundPreset: record.sound_preset,
-    soundSettings: record.sound_settings,
-    tempoLocked: record.tempo_locked,
-    targetBpm: record.target_bpm,
-    keyLocked: record.key_locked,
-    targetKey: record.target_key,
-    transposeAmount: record.transpose_amount,
-    volume: record.volume,
-    pan: record.pan,
-    muted: record.muted,
-    solo: record.solo,
-    effects: record.effects,
-    humanizeEnabled: record.humanize_enabled,
-    humanizeTiming: record.humanize_timing,
-    humanizeVelocity: record.humanize_velocity,
-    color: record.color,
-    name: record.name,
-    position: record.position,
     createdAt: record.created_at,
     updatedAt: record.updated_at,
   };
@@ -189,31 +178,16 @@ function transformToDb(data: Record<string, unknown>, roomId: string): Record<st
   };
 
   if (data.id !== undefined) record.id = data.id;
+  if (data.name !== undefined) record.name = data.name;
+  if (data.tracks !== undefined) record.tracks = data.tracks;
+  if (data.bpm !== undefined) record.bpm = data.bpm;
+  if (data.key !== undefined) record.key = data.key;
+  if (data.timeSignature !== undefined) record.time_signature = data.timeSignature;
+  if (data.duration !== undefined) record.duration = data.duration;
+  if (data.color !== undefined) record.color = data.color;
+  if (data.position !== undefined) record.position = data.position;
   if (data.createdBy !== undefined) record.created_by = data.createdBy;
   if (data.createdByName !== undefined) record.created_by_name = data.createdByName;
-  if (data.loopId !== undefined) record.loop_id = data.loopId;
-  if (data.customMidiData !== undefined) record.custom_midi_data = data.customMidiData;
-  if (data.isPlaying !== undefined) record.is_playing = data.isPlaying;
-  if (data.startTime !== undefined) record.start_time = data.startTime;
-  if (data.loopStartBeat !== undefined) record.loop_start_beat = data.loopStartBeat;
-  if (data.soundPreset !== undefined) record.sound_preset = data.soundPreset;
-  if (data.soundSettings !== undefined) record.sound_settings = data.soundSettings;
-  if (data.tempoLocked !== undefined) record.tempo_locked = data.tempoLocked;
-  if (data.targetBpm !== undefined) record.target_bpm = data.targetBpm;
-  if (data.keyLocked !== undefined) record.key_locked = data.keyLocked;
-  if (data.targetKey !== undefined) record.target_key = data.targetKey;
-  if (data.transposeAmount !== undefined) record.transpose_amount = data.transposeAmount;
-  if (data.volume !== undefined) record.volume = data.volume;
-  if (data.pan !== undefined) record.pan = data.pan;
-  if (data.muted !== undefined) record.muted = data.muted;
-  if (data.solo !== undefined) record.solo = data.solo;
-  if (data.effects !== undefined) record.effects = data.effects;
-  if (data.humanizeEnabled !== undefined) record.humanize_enabled = data.humanizeEnabled;
-  if (data.humanizeTiming !== undefined) record.humanize_timing = data.humanizeTiming;
-  if (data.humanizeVelocity !== undefined) record.humanize_velocity = data.humanizeVelocity;
-  if (data.color !== undefined) record.color = data.color;
-  if (data.name !== undefined) record.name = data.name;
-  if (data.position !== undefined) record.position = data.position;
 
   return record;
 }

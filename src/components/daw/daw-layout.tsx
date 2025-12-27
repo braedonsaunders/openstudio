@@ -12,7 +12,7 @@ import { useAudioStore } from '@/stores/audio-store';
 import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
 import { LeftPanel } from './left-panel';
-import { LiveArrangementView } from './live-arrangement-view';
+import { CenterSplitView } from './center-split-view';
 import { PanelDock } from './panel-dock';
 import { ResizeHandle } from './resize-handle';
 import { BottomDock } from './bottom-dock';
@@ -32,7 +32,7 @@ interface DAWLayoutProps {
   roomId: string;
 }
 
-export type PanelType = 'users' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' and 'mixer' kept for backwards compat but redirect to 'users'
+export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' kept for backwards compat
 
 export function DAWLayout({ roomId }: DAWLayoutProps) {
   // Theme
@@ -48,7 +48,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, []);
 
   // Panel state
-  const [activePanel, setActivePanel] = useState<PanelType>('users');
+  const [activePanel, setActivePanel] = useState<PanelType>('setlist');
   const [isPanelDockVisible, setIsPanelDockVisible] = useState(true);
   const [isBottomDockVisible, setIsBottomDockVisible] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -556,8 +556,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onUpload={() => setIsUploadModalOpen(true)}
           onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
           onAIGenerate={handleOpenAIPanel}
-          onLoopPlay={playLoopTrack}
-          onLoopStop={stopLoopTrack}
           youtubePlayer={
             isYouTubeTrack && currentTrack?.youtubeId ? (
               <YouTubePlayer
@@ -603,12 +601,15 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           {/* View Content */}
           <div className="flex-1 overflow-hidden">
             {mainView === 'timeline' && (
-              <LiveArrangementView
+              <CenterSplitView
+                roomId={roomId}
                 users={users}
                 currentUser={currentUser}
                 audioLevels={audioLevels}
                 isMaster={isMaster}
                 onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
+                onPlay={isYouTubeTrack ? handleYouTubePlay : play}
+                onStop={isYouTubeTrack ? handleYouTubePause : pause}
                 sessionStartTime={sessionStartTime}
               />
             )}
