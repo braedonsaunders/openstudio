@@ -1,15 +1,33 @@
-import { createClient, User as SupabaseUser, Session } from '@supabase/supabase-js';
+import { createClient, User as SupabaseUser, Session, SupabaseClient } from '@supabase/supabase-js';
 import type { UserProfile, Avatar, UserStats, UserInstrument, Achievement, UserAchievement } from '@/types/user';
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+// Lazy initialization to avoid issues during static page generation
+let supabaseAuthInstance: SupabaseClient | null = null;
 
-// Create a Supabase client for auth
-export const supabaseAuth = createClient(supabaseUrl, supabaseAnonKey, {
-  auth: {
-    autoRefreshToken: true,
-    persistSession: true,
-    detectSessionInUrl: true,
+function getSupabaseAuth(): SupabaseClient {
+  if (!supabaseAuthInstance) {
+    const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+    const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
+
+    if (!supabaseUrl || !supabaseAnonKey) {
+      throw new Error('Supabase environment variables not configured');
+    }
+
+    supabaseAuthInstance = createClient(supabaseUrl, supabaseAnonKey, {
+      auth: {
+        autoRefreshToken: true,
+        persistSession: true,
+        detectSessionInUrl: true,
+      },
+    });
+  }
+  return supabaseAuthInstance;
+}
+
+// Export getter for backward compatibility
+export const supabaseAuth = new Proxy({} as SupabaseClient, {
+  get(_target, prop) {
+    return (getSupabaseAuth() as unknown as Record<string | symbol, unknown>)[prop];
   },
 });
 
@@ -266,9 +284,10 @@ export async function incrementStat(userId: string, stat: string, amount: number
       .single();
 
     if (currentStats) {
+      const statsRecord = currentStats as unknown as Record<string, number>;
       await supabaseAuth
         .from('user_stats')
-        .update({ [stat]: (currentStats[stat] || 0) + amount })
+        .update({ [stat]: (statsRecord[stat] || 0) + amount })
         .eq('user_id', userId);
     }
   }
@@ -518,11 +537,11 @@ export async function getFriends(userId: string): Promise<{ friends: UserProfile
 
   const friends = (friendships || [])
     .filter((f) => f.friend)
-    .map((f) => transformProfile(f.friend as Record<string, unknown>));
+    .map((f) => transformProfile(f.friend as unknown as Record<string, unknown>));
 
   const pending = (pendingRequests || [])
     .filter((r) => r.requester)
-    .map((r) => transformProfile(r.requester as Record<string, unknown>));
+    .map((r) => transformProfile(r.requester as unknown as Record<string, unknown>));
 
   return { friends, pending };
 }

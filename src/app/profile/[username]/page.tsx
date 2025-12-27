@@ -3,11 +3,11 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { getUserProfile, getUserStats, getUserInstruments, getUserAchievements, getUserAvatar } from '@/lib/supabase/auth';
+import { getUserProfile, getUserStats, getUserInstruments, getUserAchievements, getUserAvatar, searchUsers } from '@/lib/supabase/auth';
 import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
-import { getLevelTitle, xpProgress, INSTRUMENTS, REACTION_TYPES } from '@/types/user';
+import { getLevelTitle, xpProgress, INSTRUMENTS } from '@/types/user';
 import type { UserProfile, UserStats, UserInstrument, UserAchievement, Avatar } from '@/types/user';
 import {
   ArrowLeft,
@@ -51,18 +51,15 @@ export default function ProfilePage() {
       setIsLoading(true);
       try {
         // Search for user by username
-        const { data } = await import('@/lib/supabase/auth').then(m => m.supabaseAuth)
-          .from('user_profiles')
-          .select('*')
-          .eq('username', username)
-          .single();
+        const users = await searchUsers(username, 1);
+        const foundUser = users.find(u => u.username === username);
 
-        if (data) {
-          const userProfile = await getUserProfile(data.id);
-          const userAvatar = await getUserAvatar(data.id);
-          const userStats = await getUserStats(data.id);
-          const userInstruments = await getUserInstruments(data.id);
-          const userAchievements = await getUserAchievements(data.id);
+        if (foundUser) {
+          const userProfile = await getUserProfile(foundUser.id);
+          const userAvatar = await getUserAvatar(foundUser.id);
+          const userStats = await getUserStats(foundUser.id);
+          const userInstruments = await getUserInstruments(foundUser.id);
+          const userAchievements = await getUserAchievements(foundUser.id);
 
           setProfile(userProfile);
           setAvatar(userAvatar);
@@ -71,7 +68,7 @@ export default function ProfilePage() {
           setAchievements(userAchievements);
 
           // Check friendship status
-          if (friends.find(f => f.id === data.id)) {
+          if (friends.find(f => f.id === foundUser.id)) {
             setIsFriend(true);
           }
         }
@@ -169,10 +166,14 @@ export default function ProfilePage() {
             <div className="flex items-center gap-3 mb-2">
               <h1 className="text-3xl font-bold text-white">{profile.displayName}</h1>
               {profile.isVerified && (
-                <Crown className="w-6 h-6 text-yellow-500" title="Verified Musician" />
+                <span title="Verified Musician">
+                  <Crown className="w-6 h-6 text-yellow-500" />
+                </span>
               )}
               {profile.accountType === 'admin' && (
-                <Shield className="w-6 h-6 text-red-500" title="Admin" />
+                <span title="Admin">
+                  <Shield className="w-6 h-6 text-red-500" />
+                </span>
               )}
             </div>
             <p className="text-gray-400 mb-3">@{profile.username}</p>

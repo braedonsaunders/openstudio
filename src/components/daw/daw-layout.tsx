@@ -143,27 +143,19 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     useRoomStore.getState().setCurrentTrack(track);
   }, []);
 
-  const handleUpload = useCallback(async (file: File, metadata: { name: string; artist?: string }) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('name', metadata.name);
-    if (metadata.artist) {
-      formData.append('artist', metadata.artist);
-    }
-    formData.append('roomId', roomId);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
+  const handleUpload = useCallback(async (track: { id: string; name: string; artist?: string; url: string; duration: number }) => {
+    // UploadModal already handled the file upload to R2
+    // Just add the track to the room queue
+    await addTrack({
+      id: track.id,
+      name: track.name,
+      artist: track.artist,
+      duration: track.duration,
+      url: track.url,
+      uploadedBy: currentUser?.id || 'unknown',
+      uploadedAt: new Date().toISOString(),
     });
-
-    if (!response.ok) {
-      throw new Error('Upload failed');
-    }
-
-    const track = await response.json();
-    await addTrack(track);
-  }, [roomId, addTrack]);
+  }, [addTrack, currentUser]);
 
   const handleYouTubeSelect = useCallback(async (video: { id: string; title: string; channelTitle: string; duration?: string }) => {
     const response = await fetch(`/api/youtube/audio?videoId=${video.id}`);
@@ -365,6 +357,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             isSeparating={isSeparating}
             separationProgress={separationProgress}
             // Chat props
+            roomId={roomId}
             onSendMessage={sendMessage}
           />
         )}

@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, createContext, useContext, type ReactNode } from 'react';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useAuthStore } from '@/stores/auth-store';
 import type { UserProfile, Avatar, UserStats, UserInstrument, Achievement, UserAchievement } from '@/types/user';
 
@@ -8,7 +9,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   isInitialized: boolean;
-  user: ReturnType<typeof useAuthStore>['user'];
+  user: SupabaseUser | null;
   profile: UserProfile | null;
   avatar: Avatar | null;
   stats: UserStats | null;
