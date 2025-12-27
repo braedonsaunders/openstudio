@@ -4,6 +4,7 @@ import { useRef, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAnalysisStore } from '@/stores/analysis-store';
 import { useRoomStore } from '@/stores/room-store';
+import { useTheme } from '@/components/theme/ThemeProvider';
 import {
   Music,
   Radio,
@@ -38,6 +39,7 @@ export function AnalysisPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState(0);
+  const { resolvedTheme } = useTheme();
 
   const {
     localAnalysis,
@@ -101,8 +103,8 @@ export function AnalysisPanel() {
     canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
 
-    // Clear
-    ctx.fillStyle = '#0a0a0f';
+    // Clear with theme-aware background
+    ctx.fillStyle = resolvedTheme === 'dark' ? '#0a0a0f' : '#f3f4f6';
     ctx.fillRect(0, 0, width, height);
 
     // Use logarithmic frequency scaling for better musical representation
@@ -144,7 +146,7 @@ export function AnalysisPanel() {
       ctx.fillRect(i * barWidth + 0.5, height - barHeight, barWidth - 1, barHeight);
     }
     ctx.shadowBlur = 0;
-  }, [spectrumData, containerWidth]);
+  }, [spectrumData, containerWidth, resolvedTheme]);
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
