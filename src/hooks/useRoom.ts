@@ -223,6 +223,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             return;
           }
 
+          // Ensure audio engine is initialized
+          try {
+            await initialize();
+          } catch (err) {
+            console.error('Failed to initialize audio engine for sync:', err);
+            return;
+          }
+
           const loadSuccess = await loadBackingTrack(track);
           if (loadSuccess) {
             playBackingTrack(payload.syncTime, payload.timestamp);
@@ -343,6 +351,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       return;
     }
 
+    // Ensure audio engine is initialized before attempting playback
+    try {
+      await initialize();
+    } catch (err) {
+      console.error('Failed to initialize audio engine:', err);
+      return;
+    }
+
     const syncTime = Date.now() + 100; // 100ms in future for sync
     const loadSuccess = await loadBackingTrack(currentTrack);
 
@@ -355,7 +371,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, syncTime);
     setQueuePlaying(true);
-  }, [isMaster, currentTrack, loadBackingTrack, playBackingTrack, queue.currentTime, setQueuePlaying]);
+  }, [isMaster, currentTrack, initialize, loadBackingTrack, playBackingTrack, queue.currentTime, setQueuePlaying]);
 
   const pause = useCallback(async () => {
     if (!isMaster || !currentTrack) return;
