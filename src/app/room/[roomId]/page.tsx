@@ -9,6 +9,8 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Modal } from '@/components/ui/modal';
 import { useRoom } from '@/hooks/useRoom';
 import { useAuthStore } from '@/stores/auth-store';
+import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { INSTRUMENTS } from '@/types/user';
 import {
   Music,
   User,
@@ -29,12 +31,31 @@ const instruments = [
   { id: 'other', label: 'Other', icon: '🎵' },
 ];
 
+// Map user instrument IDs to room instrument categories
+function mapInstrumentToCategory(instrumentId: string): string {
+  const inst = INSTRUMENTS[instrumentId];
+  if (!inst) return '';
+
+  switch (inst.category) {
+    case 'guitar':
+      return instrumentId.includes('bass') ? 'bass' : 'guitar';
+    case 'keyboard':
+      return 'keyboard';
+    case 'drums':
+      return 'drums';
+    case 'vocals':
+      return 'vocals';
+    default:
+      return 'other';
+  }
+}
+
 export default function RoomPage() {
   const params = useParams();
   const router = useRouter();
   const roomId = params.roomId as string;
 
-  const { user, profile, isInitialized, initialize } = useAuthStore();
+  const { user, profile, avatar, instruments: userInstruments, isInitialized, initialize } = useAuthStore();
 
   const [hasJoined, setHasJoined] = useState(false);
   const [userName, setUserName] = useState('');
@@ -50,12 +71,25 @@ export default function RoomPage() {
     }
   }, [isInitialized, initialize]);
 
-  // Pre-populate name from profile when auth is ready
+  // Pre-populate name and instrument from profile when auth is ready
   useEffect(() => {
     if (profile && !userName) {
       setUserName(profile.displayName);
     }
   }, [profile, userName]);
+
+  // Pre-populate instrument from user's primary instrument
+  useEffect(() => {
+    if (userInstruments && userInstruments.length > 0 && !instrument) {
+      const primaryInstrument = userInstruments.find(i => i.isPrimary) || userInstruments[0];
+      if (primaryInstrument) {
+        const mappedCategory = mapInstrumentToCategory(primaryInstrument.instrumentId);
+        if (mappedCategory) {
+          setInstrument(mappedCategory);
+        }
+      }
+    }
+  }, [userInstruments, instrument]);
 
   const { join, isJoining, error, isConnected } = useRoom(roomId, {
     onUserJoined: (user) => {
@@ -125,9 +159,25 @@ export default function RoomPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
       <Card variant="elevated" className="w-full max-w-md">
         <CardHeader className="text-center">
-          <div className="w-16 h-16 mx-auto bg-indigo-500/20 rounded-2xl flex items-center justify-center mb-4">
-            <Music className="w-8 h-8 text-indigo-500" />
-          </div>
+          {/* Show user avatar if logged in, otherwise show music icon */}
+          {user && profile ? (
+            <div className="flex flex-col items-center mb-4">
+              <AvatarDisplay
+                avatar={avatar}
+                size="xl"
+                username={profile.username}
+                showFrame={true}
+                showEffects={true}
+              />
+              <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+                Joining as <span className="font-medium text-gray-900 dark:text-white">{profile.displayName}</span>
+              </p>
+            </div>
+          ) : (
+            <div className="w-16 h-16 mx-auto bg-indigo-500/20 rounded-2xl flex items-center justify-center mb-4">
+              <Music className="w-8 h-8 text-indigo-500" />
+            </div>
+          )}
           <CardTitle className="text-2xl">Join Room</CardTitle>
           <CardDescription>
             Room code: <span className="text-gray-900 dark:text-white font-mono">{roomId}</span>
