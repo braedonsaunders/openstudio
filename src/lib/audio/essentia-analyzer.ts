@@ -66,8 +66,15 @@ export class EssentiaAnalyzer {
     this.sampleRate = sampleRate;
 
     try {
-      // Dynamically import essentia.js
-      const { Essentia, EssentiaWASM } = await import('essentia.js');
+      // Dynamically import essentia.js - only in browser environment
+      if (typeof window === 'undefined') {
+        console.warn('Essentia.js can only run in browser');
+        return;
+      }
+
+      // Use dynamic import with webpackIgnore to avoid bundler issues
+      const essentiaModule = await import(/* webpackIgnore: true */ 'essentia.js');
+      const { Essentia, EssentiaWASM } = essentiaModule;
 
       // Initialize WASM module
       this.essentiaWASM = await EssentiaWASM();
@@ -76,8 +83,9 @@ export class EssentiaAnalyzer {
       this.isInitialized = true;
       console.log('Essentia.js initialized successfully');
     } catch (error) {
-      console.error('Failed to initialize Essentia.js:', error);
-      throw error;
+      console.warn('Essentia.js initialization failed (analysis will be disabled):', error);
+      // Don't throw - allow app to continue without analysis
+      this.isInitialized = false;
     }
   }
 
@@ -96,8 +104,13 @@ export class EssentiaAnalyzer {
   }
 
   async analyzeStream(stream: MediaStream): Promise<void> {
-    if (!this.audioContext || !this.isInitialized) {
-      throw new Error('Analyzer not initialized');
+    if (!this.audioContext) {
+      console.warn('Cannot analyze stream: no audio context');
+      return;
+    }
+    if (!this.isInitialized) {
+      console.warn('Cannot analyze stream: essentia.js not initialized');
+      return;
     }
 
     this.stopAnalysis();
@@ -108,8 +121,13 @@ export class EssentiaAnalyzer {
   }
 
   async analyzeElement(element: HTMLAudioElement | HTMLVideoElement): Promise<void> {
-    if (!this.audioContext || !this.isInitialized) {
-      throw new Error('Analyzer not initialized');
+    if (!this.audioContext) {
+      console.warn('Cannot analyze element: no audio context');
+      return;
+    }
+    if (!this.isInitialized) {
+      console.warn('Cannot analyze element: essentia.js not initialized');
+      return;
     }
 
     this.stopAnalysis();

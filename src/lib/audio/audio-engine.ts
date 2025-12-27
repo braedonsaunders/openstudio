@@ -157,11 +157,32 @@ export class AudioEngine {
   }
 
   async loadBackingTrack(url: string): Promise<void> {
-    if (!this.audioContext) return;
+    if (!this.audioContext) {
+      console.error('Audio context not initialized');
+      throw new Error('Audio context not initialized');
+    }
 
-    const response = await fetch(url);
-    const arrayBuffer = await response.arrayBuffer();
-    this.backingTrackBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+    // Resume audio context if suspended (browser requires user interaction)
+    if (this.audioContext.state === 'suspended') {
+      await this.audioContext.resume();
+    }
+
+    try {
+      const response = await fetch(url, { mode: 'cors' });
+      if (!response.ok) {
+        throw new Error(`Failed to fetch audio: ${response.status} ${response.statusText}`);
+      }
+      const arrayBuffer = await response.arrayBuffer();
+      this.backingTrackBuffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      console.log('Backing track loaded successfully, duration:', this.backingTrackBuffer.duration);
+    } catch (error) {
+      console.error('Failed to load backing track:', error);
+      throw error;
+    }
+  }
+
+  getAudioContext(): AudioContext | null {
+    return this.audioContext;
   }
 
   async loadStem(stemType: string, url: string): Promise<void> {
@@ -174,7 +195,15 @@ export class AudioEngine {
   }
 
   playBackingTrack(syncTimestamp: number, offset: number = 0): void {
-    if (!this.audioContext || !this.backingTrackBuffer || !this.backingTrackGain) return;
+    if (!this.audioContext || !this.backingTrackBuffer || !this.backingTrackGain) {
+      console.error('Cannot play: audio context, buffer, or gain not ready');
+      return;
+    }
+
+    // Resume if suspended
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
 
     this.stopBackingTrack();
 

@@ -4,6 +4,7 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
+import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { TransportBar } from './transport-bar';
@@ -65,9 +66,17 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     leave,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume } = useAudioEngine();
+  const { toggleStem, setStemVolume, getAudioContext } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
+
+  // Audio analysis - initialize with audio context
+  useAudioAnalysis({
+    audioContext: getAudioContext(),
+    roomId,
+    userId: currentUser?.id,
+    isMaster,
+  });
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
@@ -386,7 +395,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           currentUser={currentUser}
           audioLevels={audioLevels}
           isMaster={isMaster}
-          onSeek={seek}
+          onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
         />
 
         {/* Panel Dock - Right */}
@@ -401,6 +410,19 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             onUpload={() => setIsUploadModalOpen(true)}
             onAIGenerate={() => setIsAIModalOpen(true)}
             onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
+            youtubePlayer={
+              isYouTubeTrack && currentTrack?.youtubeId ? (
+                <YouTubePlayer
+                  ref={youtubePlayerRef}
+                  videoId={currentTrack.youtubeId}
+                  onReady={handleYouTubeReady}
+                  onStateChange={handleYouTubeStateChange}
+                  onTimeUpdate={handleYouTubeTimeUpdate}
+                  onDurationChange={handleYouTubeDurationChange}
+                  volume={backingTrackVolume * 100}
+                />
+              ) : undefined
+            }
             // Mixer props
             onToggleStem={handleToggleStem}
             onStemVolumeChange={handleStemVolume}
@@ -467,20 +489,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         currentSettings={audioSettings}
       />
 
-      {/* Hidden YouTube Player - renders when YouTube track is selected */}
-      {isYouTubeTrack && currentTrack?.youtubeId && (
-        <div className="fixed bottom-4 left-4 z-50 w-80 glass-panel rounded-xl overflow-hidden shadow-2xl">
-          <YouTubePlayer
-            ref={youtubePlayerRef}
-            videoId={currentTrack.youtubeId}
-            onReady={handleYouTubeReady}
-            onStateChange={handleYouTubeStateChange}
-            onTimeUpdate={handleYouTubeTimeUpdate}
-            onDurationChange={handleYouTubeDurationChange}
-            volume={backingTrackVolume * 100}
-          />
-        </div>
-      )}
     </div>
   );
 }

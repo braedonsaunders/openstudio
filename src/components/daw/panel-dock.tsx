@@ -28,6 +28,7 @@ interface PanelDockProps {
   onUpload: () => void;
   onAIGenerate: () => void;
   onYouTubeSearch: () => void;
+  youtubePlayer?: React.ReactNode;
   // Mixer props
   onToggleStem: (stem: StemType, enabled: boolean) => void;
   onStemVolumeChange: (stem: StemType, volume: number) => void;
@@ -55,6 +56,7 @@ export function PanelDock({
   onUpload,
   onAIGenerate,
   onYouTubeSearch,
+  youtubePlayer,
   onToggleStem,
   onStemVolumeChange,
   onSeparateTrack,
@@ -113,6 +115,7 @@ export function PanelDock({
             onUpload={onUpload}
             onAIGenerate={onAIGenerate}
             onYouTubeSearch={onYouTubeSearch}
+            youtubePlayer={youtubePlayer}
           />
         )}
 
