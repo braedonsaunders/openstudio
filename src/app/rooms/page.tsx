@@ -475,12 +475,14 @@ function RoomCommunityCard({
   ];
 
   const getMusicians = useCallback(() => {
-    const count = Math.min(room.activeUsers || 1, 4);
+    const count = Math.min(room.activeUsers || 0, 4);
+    if (count === 0) return [];
     const seed = room.id.charCodeAt(0) + room.id.charCodeAt(1);
     return Array.from({ length: count }, (_, i) => musicianTypes[(seed + i) % musicianTypes.length]);
   }, [room.id, room.activeUsers]);
 
   const musicians = getMusicians();
+  const hasUsers = musicians.length > 0;
 
   return (
     <motion.div
@@ -535,12 +537,32 @@ function RoomCommunityCard({
           }`}
         />
 
-        {/* Musicians standing together */}
-        <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-end justify-center gap-0">
-          {musicians.map((type, i) => (
-            <RoomMusician key={i} type={type} xOffset={(i - musicians.length / 2) * 8} delay={i * 0.2} />
-          ))}
-        </div>
+        {/* Musicians standing together OR empty room indicator */}
+        {hasUsers ? (
+          <div className="absolute bottom-2 left-1/2 -translate-x-1/2 flex items-end justify-center gap-0">
+            {musicians.map((type, i) => (
+              <RoomMusician key={i} type={type} xOffset={(i - musicians.length / 2) * 8} delay={i * 0.2} />
+            ))}
+          </div>
+        ) : (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex flex-col items-center">
+            {/* Empty room - show music stand or waiting indicator */}
+            <motion.div
+              animate={{ opacity: [0.5, 0.8, 0.5] }}
+              transition={{ duration: 2, repeat: Infinity, ease: 'easeInOut' }}
+              className={`text-center ${isDark ? 'text-gray-400' : 'text-gray-500'}`}
+            >
+              <svg width="40" height="50" viewBox="0 0 60 70" className="mx-auto mb-1 opacity-60">
+                {/* Music stand icon */}
+                <rect x="28" y="20" width="4" height="45" fill="currentColor" />
+                <rect x="15" y="60" width="30" height="4" rx="2" fill="currentColor" />
+                <rect x="10" y="10" width="40" height="25" rx="3" fill="currentColor" fillOpacity="0.3" />
+                <path d="M20 18 L25 22 M30 16 L30 24 M35 18 L40 22" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+              </svg>
+              <span className="text-xs font-medium">Empty</span>
+            </motion.div>
+          </div>
+        )}
 
         {/* Room name sign/banner */}
         <motion.div
