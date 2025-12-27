@@ -342,22 +342,22 @@ export function AnalysisPanel() {
           ))}
         </div>
 
-        {/* Info message when YouTube audio element is available */}
-        {isYouTubeTrack && backingTrackAvailable && analysisSource === 'backing' && (
-          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-            <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-            <span className="text-[11px] text-emerald-300">
-              YouTube audio stream available for analysis.
+        {/* Info message for YouTube tracks (can't be analyzed - uses iframe) */}
+        {isYouTubeTrack && (
+          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
+            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-amber-300">
+              YouTube tracks use iframe playback and cannot be analyzed. Select &quot;Mic&quot; to analyze your microphone.
             </span>
           </div>
         )}
 
-        {/* Info message when YouTube audio is NOT available */}
-        {isYouTubeTrack && !backingTrackAvailable && (
-          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
-            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-            <span className="text-[11px] text-amber-300">
-              YouTube audio stream unavailable. Using IFrame fallback - select &quot;Mic&quot; to analyze instead.
+        {/* Info message for uploaded tracks */}
+        {!isYouTubeTrack && backingTrackAvailable && analysisSource === 'backing' && (
+          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+            <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-emerald-300">
+              Analysis runs automatically when playing. Results sync to all room members.
             </span>
           </div>
         )}

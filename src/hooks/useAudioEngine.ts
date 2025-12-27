@@ -130,6 +130,16 @@ export function useAudioEngine() {
     return engineRef.current?.getAudioContext() || null;
   }, []);
 
+  // Get the backing track analyser node for audio analysis
+  const getBackingTrackAnalyser = useCallback((): AnalyserNode | null => {
+    return engineRef.current?.getBackingTrackAnalyser() || null;
+  }, []);
+
+  // Check if backing track audio is available for analysis
+  const hasBackingTrackAudio = useCallback((): boolean => {
+    return engineRef.current?.hasBackingTrackAudio() || false;
+  }, []);
+
   // Load and play backing track
   // Returns true if loading was successful, false otherwise
   const loadBackingTrack = useCallback(async (track: BackingTrack): Promise<boolean> => {
@@ -315,6 +325,8 @@ export function useAudioEngine() {
     setMasterVolume,
     setBackingTrackVolume,
     getAudioContext,
+    getBackingTrackAnalyser,
+    hasBackingTrackAudio,
     loadBackingTrack,
     playBackingTrack,
     pauseBackingTrack,

@@ -88,20 +88,21 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     leave,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, getAudioContext } = useAudioEngine();
+  const { toggleStem, setStemVolume, getAudioContext, getBackingTrackAnalyser } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
 
-  // YouTube audio element for analysis (when using Piped audio extraction)
-  const [youtubeAudioElement, setYoutubeAudioElement] = useState<HTMLAudioElement | null>(null);
-
-  // Audio analysis - initialize with audio context and backing track element
+  // Audio analysis - initialize with audio context and backing track analyser from audio engine
+  // Analysis automatically runs when:
+  // - Master user is playing audio
+  // - Results are synced to all other room members
   useAudioAnalysis({
     audioContext: getAudioContext(),
-    backingTrackElement: youtubeAudioElement,
+    backingTrackAnalyser: getBackingTrackAnalyser(),
+    isPlaying,
     roomId,
     userId: currentUser?.id,
     isMaster,
@@ -275,19 +276,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const handleYouTubeDurationChange = useCallback((duration: number) => {
     if (duration > 0) setDuration(duration);
   }, [setDuration]);
-
-  // Handle YouTube audio element ready (for Web Audio API analysis)
-  const handleYouTubeAudioElementReady = useCallback((audioElement: HTMLAudioElement) => {
-    console.log('YouTube audio element ready for analysis');
-    setYoutubeAudioElement(audioElement);
-  }, []);
-
-  // Clear YouTube audio element when track changes
-  useEffect(() => {
-    if (!isYouTubeTrack) {
-      setYoutubeAudioElement(null);
-    }
-  }, [currentTrack?.id, isYouTubeTrack]);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
     setIsGenerating(true);
@@ -510,7 +498,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                   onStateChange={handleYouTubeStateChange}
                   onTimeUpdate={handleYouTubeTimeUpdate}
                   onDurationChange={handleYouTubeDurationChange}
-                  onAudioElementReady={handleYouTubeAudioElementReady}
                   volume={backingTrackVolume * 100}
                 />
               ) : undefined

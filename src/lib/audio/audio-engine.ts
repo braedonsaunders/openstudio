@@ -24,6 +24,7 @@ export class AudioEngine {
   private jitterBuffer: AdaptiveJitterBuffer;
   private masterGain: GainNode | null = null;
   private backingTrackGain: GainNode | null = null;
+  private backingTrackAnalyser: AnalyserNode | null = null;
   private localStream: MediaStream | null = null;
   private localAnalyser: AnalyserNode | null = null;
   private remoteStreams: Map<string, AudioStream> = new Map();
@@ -66,6 +67,12 @@ export class AudioEngine {
     // Create backing track gain node
     this.backingTrackGain = this.audioContext.createGain();
     this.backingTrackGain.connect(this.masterGain);
+
+    // Create backing track analyser for audio analysis (key/BPM detection)
+    this.backingTrackAnalyser = this.audioContext.createAnalyser();
+    this.backingTrackAnalyser.fftSize = 2048; // Higher resolution for pitch detection
+    this.backingTrackAnalyser.smoothingTimeConstant = 0.3;
+    this.backingTrackGain.connect(this.backingTrackAnalyser);
 
     // Load audio worklet processor
     try {
@@ -198,6 +205,22 @@ export class AudioEngine {
 
   getAudioContext(): AudioContext | null {
     return this.audioContext;
+  }
+
+  /**
+   * Get the analyser node connected to the backing track audio.
+   * This can be used for real-time audio analysis (key/BPM detection).
+   */
+  getBackingTrackAnalyser(): AnalyserNode | null {
+    return this.backingTrackAnalyser;
+  }
+
+  /**
+   * Check if backing track audio is currently available for analysis.
+   * Returns true if we have a loaded backing track or stems.
+   */
+  hasBackingTrackAudio(): boolean {
+    return this.backingTrackBuffer !== null || this.stemBuffers.size > 0;
   }
 
   async loadStem(stemType: string, url: string): Promise<void> {
@@ -454,6 +477,7 @@ export class AudioEngine {
     this.workletNode?.disconnect();
     this.masterGain?.disconnect();
     this.backingTrackGain?.disconnect();
+    this.backingTrackAnalyser?.disconnect();
 
     this.audioContext?.close();
     this.audioContext = null;
