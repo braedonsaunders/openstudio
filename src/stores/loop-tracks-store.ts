@@ -175,7 +175,7 @@ export const useLoopTracksStore = create<LoopTracksState>()(
     setTrackPlaying: (trackId, isPlaying, startTime) => {
       get().updateTrack(trackId, {
         isPlaying,
-        startTime: startTime ? new Date(startTime).toISOString() : undefined,
+        startTime: startTime,
       });
     },
 
