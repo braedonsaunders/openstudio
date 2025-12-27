@@ -42,7 +42,7 @@ async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKe
     };
 
     if (apiKey) {
-      headers['Authorization'] = `Api-Key ${apiKey}`;
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     const response = await fetch(instanceUrl, {
@@ -50,8 +50,8 @@ async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKe
       headers,
       body: JSON.stringify({
         url: videoUrl,
-        downloadMode: 'audio',
         audioFormat: 'mp3',
+        downloadMode: 'audio',
       }),
       signal: AbortSignal.timeout(30000),
     });
@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           error: 'Cobalt instance not configured.',
-          hint: 'Set COBALT_API_URL environment variable to your self-hosted Cobalt instance.',
+          hint: 'Set COBALT_API_URL environment variable to your Railway Cobalt instance.',
         },
         { status: 503 }
       );
