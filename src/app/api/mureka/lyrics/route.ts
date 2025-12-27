@@ -11,20 +11,29 @@ export async function POST(request: NextRequest) {
 
     if (murekaApiKey && murekaApiUrl) {
       try {
-        const response = await fetch(`${murekaApiUrl}/v1/lyrics`, {
+        // Build prompt from theme and mood
+        const prompt = `Write ${style} lyrics about ${theme || 'life'}. Mood: ${mood || 'uplifting'}. Language: ${language || 'English'}.`;
+
+        const response = await fetch(`${murekaApiUrl}/v1/lyrics/generate`, {
           method: 'POST',
           headers: {
             'Authorization': `Bearer ${murekaApiKey}`,
             'Content-Type': 'application/json',
           },
-          body: JSON.stringify({ theme, style, language, mood }),
+          body: JSON.stringify({ prompt }),
         });
 
         if (response.ok) {
           const data = await response.json();
-          return NextResponse.json({ lyrics: data.lyrics });
+          return NextResponse.json({
+            lyrics: data.lyrics,
+            title: data.title,
+          });
         }
-      } catch {
+
+        console.error('Mureka lyrics API failed:', response.status, await response.text());
+      } catch (error) {
+        console.error('Mureka lyrics API error:', error);
         // Fall through to mock
       }
     }
