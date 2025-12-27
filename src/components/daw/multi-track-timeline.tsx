@@ -209,8 +209,8 @@ export function MultiTrackTimeline({
   const dragOffsetRef = useRef<number | null>(null);
   const isProgrammaticScroll = useRef(false);
 
-  const { getCurrentSong, removeTrackFromSong, updateTrackInSong } = useSongsStore();
-  const { queue, currentTrack, setCurrentTrack } = useRoomStore();
+  const { getCurrentSong } = useSongsStore();
+  const { queue, setCurrentTrack } = useRoomStore();
   const { getTracksByRoom, removeTrack: removeLoopTrack } = useLoopTracksStore();
   const { isPlaying, currentTime, duration, setPlaying } = useAudioStore();
 
@@ -349,11 +349,17 @@ export function MultiTrackTimeline({
 
   // Delete track handler - stops playback if needed
   const handleDeleteTrack = useCallback(() => {
-    if (!contextMenu.trackRef || !currentSong) return;
+    if (!contextMenu.trackRef) return;
+
+    // Get current song from store state to avoid stale closures
+    const { getCurrentSong, removeTrackFromSong } = useSongsStore.getState();
+    const song = getCurrentSong();
+    if (!song) return;
 
     const trackRef = contextMenu.trackRef;
 
     // If this is an audio track and it's currently playing, stop playback
+    const { currentTrack } = useRoomStore.getState();
     if (trackRef.type === 'audio' && currentTrack?.id === trackRef.trackId) {
       // Stop playback
       if (onStop) onStop();
@@ -363,7 +369,7 @@ export function MultiTrackTimeline({
     }
 
     // Remove from song
-    removeTrackFromSong(currentSong.id, trackRef.id);
+    removeTrackFromSong(song.id, trackRef.id);
 
     // If it's a loop track, also remove from loop tracks store
     if (trackRef.type === 'loop') {
@@ -371,27 +377,36 @@ export function MultiTrackTimeline({
     }
 
     closeContextMenu();
-  }, [contextMenu.trackRef, currentSong, currentTrack, onStop, setPlaying, setCurrentTrack, removeTrackFromSong, removeLoopTrack, closeContextMenu]);
+  }, [contextMenu.trackRef, onStop, setPlaying, setCurrentTrack, removeLoopTrack, closeContextMenu]);
 
   // Toggle mute handler
   const handleToggleMute = useCallback(() => {
-    if (!contextMenu.trackRef || !currentSong) return;
+    if (!contextMenu.trackRef) return;
 
-    updateTrackInSong(currentSong.id, contextMenu.trackRef.id, {
+    // Get current song from store state to avoid stale closures
+    const { getCurrentSong, updateTrackInSong } = useSongsStore.getState();
+    const song = getCurrentSong();
+    if (!song) return;
+
+    updateTrackInSong(song.id, contextMenu.trackRef.id, {
       muted: !contextMenu.trackRef.muted,
     });
 
     closeContextMenu();
-  }, [contextMenu.trackRef, currentSong, updateTrackInSong, closeContextMenu]);
+  }, [contextMenu.trackRef, closeContextMenu]);
 
   // Duplicate track handler
   const handleDuplicateTrack = useCallback(() => {
-    if (!contextMenu.trackRef || !currentSong) return;
+    if (!contextMenu.trackRef) return;
 
-    const { addTrackToSong } = useSongsStore.getState();
+    // Get current song from store state to avoid stale closures
+    const { getCurrentSong, addTrackToSong } = useSongsStore.getState();
+    const song = getCurrentSong();
+    if (!song) return;
+
     const trackRef = contextMenu.trackRef;
 
-    addTrackToSong(currentSong.id, {
+    addTrackToSong(song.id, {
       type: trackRef.type,
       trackId: trackRef.trackId,
       startOffset: trackRef.startOffset + 1, // Offset slightly
@@ -400,7 +415,7 @@ export function MultiTrackTimeline({
     });
 
     closeContextMenu();
-  }, [contextMenu.trackRef, currentSong, closeContextMenu]);
+  }, [contextMenu.trackRef, closeContextMenu]);
 
   // Drag handlers for moving clips along timeline
   const handleDragStart = useCallback(
@@ -419,7 +434,7 @@ export function MultiTrackTimeline({
     []
   );
 
-  // Handle drag move
+  // Handle drag move - use refs and getState() to avoid dependency loops
   useEffect(() => {
     if (!dragState.isDragging) return;
 
@@ -433,9 +448,13 @@ export function MultiTrackTimeline({
 
     const handleMouseUp = () => {
       const finalOffset = dragOffsetRef.current;
-      if (dragState.trackRefId && currentSong && finalOffset !== null) {
+      // Get current song from store state to avoid stale closure
+      const { getCurrentSong, updateTrackInSong: updateTrack } = useSongsStore.getState();
+      const song = getCurrentSong();
+
+      if (dragState.trackRefId && song && finalOffset !== null) {
         // Update the track's start offset
-        updateTrackInSong(currentSong.id, dragState.trackRefId, {
+        updateTrack(song.id, dragState.trackRefId, {
           startOffset: Math.round(finalOffset * 10) / 10, // Round to 0.1s
         });
       }
@@ -456,7 +475,7 @@ export function MultiTrackTimeline({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, zoom, currentSong, updateTrackInSong]);
+  }, [dragState, zoom]);
 
   // Generate time markers
   const timeMarkers = useMemo(() => {
