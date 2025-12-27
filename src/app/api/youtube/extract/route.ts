@@ -17,75 +17,57 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
-// Cobalt instance URL (self-hosted) - required
-const COBALT_API_URL = process.env.COBALT_API_URL;
-const COBALT_API_KEY = process.env.COBALT_API_KEY;
+// RapidAPI YouTube MP3 configuration
+const RAPIDAPI_KEY = process.env.RAPIDAPI_KEY;
+const RAPIDAPI_HOST = 'youtube-mp36.p.rapidapi.com';
 
-interface CobaltResponse {
-  status: 'tunnel' | 'redirect' | 'picker' | 'stream' | 'error';
-  url?: string;
-  filename?: string;
-  error?: { code: string };
+interface RapidAPIResponse {
+  status: string;
+  title?: string;
+  link?: string;
+  msg?: string;
+  progress?: number;
 }
 
-interface ExtractResult {
-  success: boolean;
-  data?: CobaltResponse;
-  error?: string;
-}
+async function extractWithRapidAPI(videoId: string): Promise<{ success: boolean; data?: RapidAPIResponse; error?: string }> {
+  if (!RAPIDAPI_KEY) {
+    return { success: false, error: 'RapidAPI key not configured' };
+  }
 
-async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKey?: string): Promise<ExtractResult> {
   try {
-    const headers: Record<string, string> = {
-      'Accept': 'application/json',
-      'Content-Type': 'application/json',
+    const response = await fetch(
+      `https://${RAPIDAPI_HOST}/dl?id=${videoId}`,
+      {
+        method: 'GET',
+        headers: {
+          'x-rapidapi-host': RAPIDAPI_HOST,
+          'x-rapidapi-key': RAPIDAPI_KEY,
+        },
+        signal: AbortSignal.timeout(60000), // 60s timeout for conversion
+      }
+    );
+
+    const data: RapidAPIResponse = await response.json();
+    console.log('RapidAPI response:', JSON.stringify(data));
+
+    if (data.status === 'ok' && data.link) {
+      return { success: true, data };
+    }
+
+    // Handle processing state - poll until ready
+    if (data.status === 'processing') {
+      console.log('Video is processing, waiting...');
+      // Wait 3 seconds and retry
+      await new Promise(resolve => setTimeout(resolve, 3000));
+      return extractWithRapidAPI(videoId);
+    }
+
+    return {
+      success: false,
+      error: data.msg || `RapidAPI returned status: ${data.status}`,
     };
-
-    if (apiKey) {
-      headers['Authorization'] = `Bearer ${apiKey}`;
-    }
-
-    const response = await fetch(instanceUrl, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        url: videoUrl,
-        audioFormat: 'mp3',
-        downloadMode: 'audio',
-      }),
-      signal: AbortSignal.timeout(30000),
-    });
-
-    const responseText = await response.text();
-    console.log(`Cobalt response (${response.status}):`, responseText);
-
-    if (!response.ok) {
-      return {
-        success: false,
-        error: `Cobalt returned ${response.status}: ${responseText}`,
-      };
-    }
-
-    let data: CobaltResponse;
-    try {
-      data = JSON.parse(responseText);
-    } catch {
-      return {
-        success: false,
-        error: `Invalid JSON response: ${responseText.slice(0, 200)}`,
-      };
-    }
-
-    if (data.status === 'error') {
-      return {
-        success: false,
-        error: `Cobalt error: ${data.error?.code || 'unknown'}`,
-      };
-    }
-
-    return { success: true, data };
   } catch (error) {
-    console.error(`Cobalt ${instanceUrl} failed:`, error);
+    console.error('RapidAPI error:', error);
     return {
       success: false,
       error: error instanceof Error ? error.message : 'Unknown error',
@@ -106,67 +88,50 @@ export async function POST(request: NextRequest) {
 
     console.log(`Extracting audio from YouTube video: ${videoId}`);
 
-    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
-
-    // Check for Cobalt configuration
-    if (!COBALT_API_URL) {
+    // Check for RapidAPI configuration
+    if (!RAPIDAPI_KEY) {
       return NextResponse.json(
         {
-          error: 'Cobalt instance not configured.',
-          hint: 'Set COBALT_API_URL environment variable to your Railway Cobalt instance.',
+          error: 'YouTube extraction not configured.',
+          hint: 'Set RAPIDAPI_KEY environment variable.',
         },
         { status: 503 }
       );
     }
 
-    // Extract audio using Cobalt
-    console.log(`Using Cobalt instance: ${COBALT_API_URL}`);
-    const cobaltResult = await tryExtractWithCobalt(videoUrl, COBALT_API_URL, COBALT_API_KEY);
+    // Extract audio using RapidAPI
+    const result = await extractWithRapidAPI(videoId);
 
-    if (!cobaltResult.success || !cobaltResult.data?.url) {
+    if (!result.success || !result.data?.link) {
       return NextResponse.json(
         {
-          error: 'Failed to extract audio from Cobalt.',
-          details: cobaltResult.error || 'No audio URL returned',
-          hint: 'Check Cobalt logs in Railway for more details.',
+          error: 'Failed to extract audio.',
+          details: result.error || 'No download link returned',
         },
         { status: 503 }
       );
     }
 
-    const audioUrl = cobaltResult.data.url;
-    const filename = cobaltResult.data.filename;
+    const audioUrl = result.data.link;
+    const videoTitle = result.data.title || title;
     console.log(`Downloading audio from: ${audioUrl}`);
 
-    // Download the audio - include auth header for tunnel access
-    const downloadHeaders: Record<string, string> = {
-      'Accept': '*/*',
-    };
-    if (COBALT_API_KEY) {
-      downloadHeaders['Authorization'] = `Bearer ${COBALT_API_KEY}`;
-    }
-
+    // Download the audio
     const audioResponse = await fetch(audioUrl, {
-      headers: downloadHeaders,
       signal: AbortSignal.timeout(120000), // 2 min timeout for large files
       redirect: 'follow',
     });
 
     console.log(`Audio response status: ${audioResponse.status}`);
-    console.log(`Audio response headers:`, Object.fromEntries(audioResponse.headers.entries()));
 
     if (!audioResponse.ok) {
       const errorBody = await audioResponse.text();
       console.error(`Audio download failed: ${errorBody}`);
       return NextResponse.json(
-        { error: `Failed to download audio: ${audioResponse.status}`, details: errorBody },
+        { error: `Failed to download audio: ${audioResponse.status}` },
         { status: 400 }
       );
     }
-
-    // Check content-length if available
-    const contentLength = audioResponse.headers.get('content-length');
-    console.log(`Content-Length header: ${contentLength}`);
 
     const audioBuffer = Buffer.from(await audioResponse.arrayBuffer());
     console.log(`Downloaded ${audioBuffer.length} bytes of audio`);
@@ -203,7 +168,7 @@ export async function POST(request: NextRequest) {
       success: true,
       track: {
         id: trackId,
-        name: title || filename || `YouTube Video ${videoId}`,
+        name: videoTitle || `YouTube Video ${videoId}`,
         artist: artist || 'Unknown Artist',
         duration: 0, // Will be detected on playback
         url: publicUrl,
