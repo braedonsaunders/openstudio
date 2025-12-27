@@ -183,6 +183,19 @@ export async function GET(request: NextRequest) {
       return NextResponse.json(transformRoom(room));
     }
 
+    // Clean up stale rooms first (rooms without description created more than 2 hours ago)
+    // These are likely abandoned quick-create rooms
+    const staleThreshold = new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString();
+    try {
+      await supabase
+        .from('rooms')
+        .delete()
+        .is('description', null)
+        .lt('created_at', staleThreshold);
+    } catch {
+      // Ignore cleanup errors - might fail if column doesn't exist
+    }
+
     // Build query for listing rooms
     let query = supabase.from('rooms').select('*');
 

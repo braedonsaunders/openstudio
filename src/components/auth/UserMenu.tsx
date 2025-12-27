@@ -18,6 +18,7 @@ import {
   ChevronDown,
   Shield,
   Flame,
+  FolderOpen,
 } from 'lucide-react';
 
 export function UserMenu() {
@@ -148,6 +149,14 @@ export function UserMenu() {
 
             {/* Menu Items */}
             <div className="py-2">
+              <MenuItem
+                icon={FolderOpen}
+                label="My Rooms"
+                onClick={() => {
+                  router.push('/rooms');
+                  setShowDropdown(false);
+                }}
+              />
               <MenuItem
                 icon={User}
                 label="Profile"
