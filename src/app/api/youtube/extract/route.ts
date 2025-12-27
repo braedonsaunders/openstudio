@@ -28,7 +28,13 @@ interface CobaltResponse {
   error?: { code: string };
 }
 
-async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKey?: string): Promise<CobaltResponse | null> {
+interface ExtractResult {
+  success: boolean;
+  data?: CobaltResponse;
+  error?: string;
+}
+
+async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKey?: string): Promise<ExtractResult> {
   try {
     const headers: Record<string, string> = {
       'Accept': 'application/json',
@@ -50,30 +56,40 @@ async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKe
       signal: AbortSignal.timeout(30000),
     });
 
+    const responseText = await response.text();
+    console.log(`Cobalt response (${response.status}):`, responseText);
+
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`Cobalt ${instanceUrl} error:`, response.status, errorText);
-
-      // Check for auth errors
-      if (response.status === 401 || response.status === 403) {
-        console.warn(`Cobalt ${instanceUrl} requires authentication`);
-        return null;
-      }
-
-      return null;
+      return {
+        success: false,
+        error: `Cobalt returned ${response.status}: ${responseText}`,
+      };
     }
 
-    const data: CobaltResponse = await response.json();
+    let data: CobaltResponse;
+    try {
+      data = JSON.parse(responseText);
+    } catch {
+      return {
+        success: false,
+        error: `Invalid JSON response: ${responseText.slice(0, 200)}`,
+      };
+    }
 
     if (data.status === 'error') {
-      console.error(`Cobalt ${instanceUrl} returned error:`, data.error?.code);
-      return null;
+      return {
+        success: false,
+        error: `Cobalt error: ${data.error?.code || 'unknown'}`,
+      };
     }
 
-    return data;
+    return { success: true, data };
   } catch (error) {
     console.error(`Cobalt ${instanceUrl} failed:`, error);
-    return null;
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : 'Unknown error',
+    };
   }
 }
 
@@ -105,18 +121,20 @@ export async function POST(request: NextRequest) {
 
     // Extract audio using Cobalt
     console.log(`Using Cobalt instance: ${COBALT_API_URL}`);
-    const cobaltResponse = await tryExtractWithCobalt(videoUrl, COBALT_API_URL, COBALT_API_KEY);
+    const cobaltResult = await tryExtractWithCobalt(videoUrl, COBALT_API_URL, COBALT_API_KEY);
 
-    if (!cobaltResponse || !cobaltResponse.url) {
+    if (!cobaltResult.success || !cobaltResult.data?.url) {
       return NextResponse.json(
         {
           error: 'Failed to extract audio from Cobalt.',
-          hint: 'Check your Cobalt instance is running and COBALT_API_KEY is correct.',
+          details: cobaltResult.error || 'No audio URL returned',
+          hint: 'Check Cobalt logs in Railway for more details.',
         },
         { status: 503 }
       );
     }
 
+    const cobaltResponse = cobaltResult.data;
     console.log(`Downloading audio from: ${cobaltResponse.url}`);
 
     // Download the audio
