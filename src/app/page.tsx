@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { generateRoomId } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { UserMenu } from '@/components/auth/UserMenu';
 import {
   Music,
   Zap,
@@ -52,9 +53,7 @@ export default function HomePage() {
               <Github className="w-4 h-4" />
               <span className="hidden sm:inline">GitHub</span>
             </Button>
-            <Button size="sm" onClick={handleCreateRoom}>
-              Get Started
-            </Button>
+            <UserMenu />
           </div>
         </div>
       </header>
