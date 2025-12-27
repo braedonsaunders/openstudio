@@ -35,6 +35,7 @@ export interface AnalysisData {
   tunerNote: string | null;
   tunerFrequency: number | null;
   tunerCents: number | null;
+  tunerIsStable: boolean;
 
   // Timestamp
   timestamp: number;
@@ -106,6 +107,7 @@ const initialAnalysis: AnalysisData = {
   tunerNote: null,
   tunerFrequency: null,
   tunerCents: null,
+  tunerIsStable: false,
   timestamp: 0,
 };
 

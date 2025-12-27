@@ -25,6 +25,24 @@ const MAX_BUFFER_FRAMES = 100; // Store more frames for better long-term analysi
 // Note names for tuner
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
+// Tuner state for temporal smoothing
+let tunerPitchBuffer = [];
+let lastStablePitch = null;
+let lastStableNote = null;
+let tunerMode = false;
+const TUNER_BUFFER_SIZE = 5;
+const TUNER_STABILITY_THRESHOLD = 3; // Hz variance for stable reading
+
+// Standard guitar tuning frequencies (for reference detection)
+const GUITAR_NOTES = {
+  'E2': 82.41,
+  'A2': 110.00,
+  'D3': 146.83,
+  'G3': 196.00,
+  'B3': 246.94,
+  'E4': 329.63,
+};
+
 function frequencyToNote(frequency) {
   if (frequency <= 0) return null;
   const A4 = 440;
@@ -33,7 +51,117 @@ function frequencyToNote(frequency) {
   const cents = Math.round((semitonesFromA4 - roundedSemitones) * 100);
   const noteIndex = ((roundedSemitones % 12) + 12 + 9) % 12;
   const octave = 4 + Math.floor((roundedSemitones + 9) / 12);
-  return { note: `${NOTE_NAMES[noteIndex]}${octave}`, cents };
+  return {
+    note: `${NOTE_NAMES[noteIndex]}${octave}`,
+    noteName: NOTE_NAMES[noteIndex],
+    octave,
+    cents,
+    frequency
+  };
+}
+
+// Autocorrelation-based pitch detection for more accurate guitar tuning
+function detectPitchAutocorrelation(audioData, sampleRate) {
+  const SIZE = audioData.length;
+  const MAX_SAMPLES = Math.floor(SIZE / 2);
+
+  // Find the RMS of the signal - skip if too quiet
+  let rms = 0;
+  for (let i = 0; i < SIZE; i++) {
+    rms += audioData[i] * audioData[i];
+  }
+  rms = Math.sqrt(rms / SIZE);
+
+  if (rms < 0.01) return null; // Too quiet
+
+  // Autocorrelation
+  const correlations = new Float32Array(MAX_SAMPLES);
+  for (let lag = 0; lag < MAX_SAMPLES; lag++) {
+    let sum = 0;
+    for (let i = 0; i < MAX_SAMPLES; i++) {
+      sum += audioData[i] * audioData[i + lag];
+    }
+    correlations[lag] = sum;
+  }
+
+  // Find the first peak after the initial correlation
+  // Skip the first few samples (corresponds to very high frequencies)
+  const minLag = Math.floor(sampleRate / 1000); // 1000 Hz max
+  const maxLag = Math.floor(sampleRate / 50);   // 50 Hz min
+
+  let bestLag = -1;
+  let bestCorr = 0;
+  let foundFirstDip = false;
+
+  for (let lag = minLag; lag < maxLag && lag < MAX_SAMPLES; lag++) {
+    // Look for first dip then first peak
+    if (!foundFirstDip && correlations[lag] < correlations[lag - 1]) {
+      foundFirstDip = true;
+    }
+
+    if (foundFirstDip && correlations[lag] > bestCorr) {
+      bestCorr = correlations[lag];
+      bestLag = lag;
+    }
+
+    // If we found a good peak and correlation starts dropping, stop
+    if (foundFirstDip && bestLag > 0 && correlations[lag] < bestCorr * 0.9) {
+      break;
+    }
+  }
+
+  if (bestLag <= 0) return null;
+
+  // Parabolic interpolation for sub-sample accuracy
+  const y0 = correlations[bestLag - 1];
+  const y1 = correlations[bestLag];
+  const y2 = correlations[bestLag + 1];
+
+  const interpolatedLag = bestLag + (y0 - y2) / (2 * (y0 - 2 * y1 + y2));
+
+  if (interpolatedLag <= 0 || !isFinite(interpolatedLag)) return null;
+
+  const frequency = sampleRate / interpolatedLag;
+
+  // Confidence based on correlation strength
+  const confidence = bestCorr / correlations[0];
+
+  return { frequency, confidence };
+}
+
+// Smooth tuner readings for stable display
+function smoothTunerReading(pitch, confidence) {
+  if (!pitch || confidence < 0.7) {
+    // Reset buffer if signal is weak
+    if (tunerPitchBuffer.length > 0) {
+      tunerPitchBuffer = [];
+    }
+    return lastStablePitch ? { pitch: lastStablePitch, note: lastStableNote, isStable: false } : null;
+  }
+
+  tunerPitchBuffer.push(pitch);
+  if (tunerPitchBuffer.length > TUNER_BUFFER_SIZE) {
+    tunerPitchBuffer.shift();
+  }
+
+  if (tunerPitchBuffer.length < 3) {
+    return null; // Need more samples
+  }
+
+  // Calculate median pitch (more robust than mean)
+  const sorted = [...tunerPitchBuffer].sort((a, b) => a - b);
+  const medianPitch = sorted[Math.floor(sorted.length / 2)];
+
+  // Check stability (variance)
+  const variance = tunerPitchBuffer.reduce((acc, p) => acc + Math.pow(p - medianPitch, 2), 0) / tunerPitchBuffer.length;
+  const isStable = Math.sqrt(variance) < TUNER_STABILITY_THRESHOLD;
+
+  if (isStable) {
+    lastStablePitch = medianPitch;
+    lastStableNote = frequencyToNote(medianPitch);
+  }
+
+  return { pitch: medianPitch, note: frequencyToNote(medianPitch), isStable };
 }
 
 // Initialize essentia.js
@@ -92,22 +220,45 @@ function analyzeFrame(audioData, frameSize) {
       spectralCentroid = essentia.SpectralCentroidTime(essentiaFrame).spectralCentroid || 0;
     } catch (e) {}
 
-    // Pitch detection for tuner (moderate cost)
+    // Pitch detection for tuner
+    // Use dual approach: autocorrelation for guitar tuning stability, Essentia as fallback
     let tunerNote = null;
     let tunerFrequency = null;
     let tunerCents = null;
+    let tunerIsStable = false;
 
     try {
-      const pitchResult = essentia.PitchYinFFT(essentiaFrame, frameSize, sampleRate);
-      if (pitchResult.pitch > 50 && pitchResult.pitch < 2000 && pitchResult.pitchConfidence > 0.7) {
-        tunerFrequency = pitchResult.pitch;
-        const noteInfo = frequencyToNote(pitchResult.pitch);
-        if (noteInfo) {
-          tunerNote = noteInfo.note;
-          tunerCents = noteInfo.cents;
+      // First try autocorrelation (better for monophonic guitar signals)
+      const autoResult = detectPitchAutocorrelation(audioData, sampleRate);
+
+      let detectedPitch = null;
+      let pitchConfidence = 0;
+
+      if (autoResult && autoResult.frequency > 50 && autoResult.frequency < 1200) {
+        detectedPitch = autoResult.frequency;
+        pitchConfidence = autoResult.confidence;
+      } else {
+        // Fallback to Essentia PitchYinFFT
+        const pitchResult = essentia.PitchYinFFT(essentiaFrame, frameSize, sampleRate);
+        if (pitchResult.pitch > 50 && pitchResult.pitch < 1200 && pitchResult.pitchConfidence > 0.6) {
+          detectedPitch = pitchResult.pitch;
+          pitchConfidence = pitchResult.pitchConfidence;
         }
       }
-    } catch (e) {}
+
+      // Apply smoothing for stable tuner display
+      if (detectedPitch) {
+        const smoothed = smoothTunerReading(detectedPitch, pitchConfidence);
+        if (smoothed && smoothed.note) {
+          tunerFrequency = smoothed.pitch;
+          tunerNote = smoothed.note.note;
+          tunerCents = smoothed.note.cents;
+          tunerIsStable = smoothed.isStable;
+        }
+      }
+    } catch (e) {
+      // Pitch detection failed, ignore
+    }
 
     // Chord detection from HPCP (moderate cost)
     let currentChord = null;
@@ -126,16 +277,19 @@ function analyzeFrame(audioData, frameSize) {
     } catch (e) {}
 
     // Energy estimation (spectral energy distribution)
-    // Normalized to 0-1 using logarithmic scale
+    // Normalized to 0-1 using logarithmic scale with dynamic range compression
     let energy = 0;
     try {
       const energyResult = essentia.Energy(essentiaFrame);
       const rawEnergy = energyResult.energy || 0;
-      // Convert to dB-like scale and normalize (typical range -60 to 0 dB)
+      // Convert to dB-like scale and normalize
+      // Audio frames typically have energy in range 0 to ~1 for normalized audio
+      // We use a more conservative normalization for musical content
       if (rawEnergy > 0) {
         const energyDb = 10 * Math.log10(rawEnergy + 1e-10);
-        // Map from typical range [-60, 0] to [0, 1]
-        energy = Math.max(0, Math.min(1, (energyDb + 60) / 60));
+        // Map from typical range [-50, -5] to [0, 1] for better visual response
+        // Most music content falls in this range
+        energy = Math.max(0, Math.min(1, (energyDb + 50) / 45));
       }
     } catch (e) {}
 
@@ -147,6 +301,7 @@ function analyzeFrame(audioData, frameSize) {
       tunerNote,
       tunerFrequency,
       tunerCents,
+      tunerIsStable,
       currentChord,
       chordConfidence,
       key: lastKey,
@@ -262,10 +417,13 @@ function analyzeLongTerm(combinedAudio) {
     }
 
     // Danceability estimation (based on rhythm regularity)
+    // Essentia's Danceability returns values typically in range [0, 3]
+    // We normalize to [0, 1] by dividing by 3 and clamping
     try {
       const danceResult = essentia.Danceability(essentiaAudio);
       if (danceResult && danceResult.danceability >= 0) {
-        lastDanceability = danceResult.danceability;
+        // Normalize: divide by typical max (~3) and clamp to [0, 1]
+        lastDanceability = Math.min(1, Math.max(0, danceResult.danceability / 3));
       }
     } catch (e) {
       // Danceability not critical, skip if fails
@@ -390,6 +548,10 @@ function reset() {
   lastEnergy = 0;
   lastDanceability = 0;
   lastTuningFrequency = 440;
+  // Reset tuner state
+  tunerPitchBuffer = [];
+  lastStablePitch = null;
+  lastStableNote = null;
 }
 
 // Handle messages from main thread
