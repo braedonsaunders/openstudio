@@ -255,10 +255,24 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek]);
 
-  // Handler functions
+  // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
-    // Get fresh state to avoid stale closure issues
-    const { queue, currentTrack: existingTrack } = useRoomStore.getState();
+    // Get ALL fresh state to avoid ANY stale closure issues
+    const { queue, currentTrack: existingTrack, isMaster: freshIsMaster } = useRoomStore.getState();
+
+    console.log('handleTrackSelect called:', {
+      trackId: track.id,
+      trackName: track.name,
+      isMaster: freshIsMaster,
+      currentTrackId: existingTrack?.id,
+      queueLength: queue.tracks.length,
+    });
+
+    // Check master status with FRESH state
+    if (!freshIsMaster) {
+      console.log('handleTrackSelect: Not master, ignoring');
+      return;
+    }
 
     // Find the track by ID
     const trackIndex = queue.tracks.findIndex(t => t.id === track.id);
@@ -268,13 +282,10 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       return;
     }
 
-    // Skip if already on this track (compare by ID to be safe)
-    if (existingTrack?.id === track.id) {
-      console.log('handleTrackSelect: Already on this track, skipping');
-      return;
-    }
-
-    console.log('handleTrackSelect: Selecting track', track.name, 'at index', trackIndex);
+    // Check if already on this track - NOTE: we still call skipToTrack even if same track
+    // because the user clicked, so they probably want to do something
+    // Let skipToTrack handle the "same track" case
+    console.log('handleTrackSelect: Calling skipToTrack for index', trackIndex);
     skipToTrack(trackIndex);
   }, [skipToTrack]);
 

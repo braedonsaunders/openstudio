@@ -146,8 +146,8 @@ export function QueuePanel({
                     'group flex items-center gap-3 px-4 py-2 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer',
                     isCurrentTrack && 'bg-indigo-500/10'
                   )}
-                  onClick={() => isMaster && onTrackSelect(track)}
-                  title={isMaster ? 'Click to play' : undefined}
+                  onClick={() => onTrackSelect(track)}
+                  title="Click to play"
                 >
                   {/* Drag Handle / Index */}
                   <div className="w-6 flex items-center justify-center shrink-0">
