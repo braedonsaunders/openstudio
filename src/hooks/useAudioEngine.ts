@@ -140,6 +140,11 @@ export function useAudioEngine() {
     return engineRef.current?.hasBackingTrackAudio() || false;
   }, []);
 
+  // Get the master analyser node (analyzes all audio - backing + all users)
+  const getMasterAnalyser = useCallback((): AnalyserNode | null => {
+    return engineRef.current?.getMasterAnalyser() || null;
+  }, []);
+
   // Load and play backing track
   // Returns true if loading was successful, false otherwise
   const loadBackingTrack = useCallback(async (track: BackingTrack): Promise<boolean> => {
@@ -326,6 +331,7 @@ export function useAudioEngine() {
     setBackingTrackVolume,
     getAudioContext,
     getBackingTrackAnalyser,
+    getMasterAnalyser,
     hasBackingTrackAudio,
     loadBackingTrack,
     playBackingTrack,
