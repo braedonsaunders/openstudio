@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { getLevelTitle, xpProgress, INSTRUMENTS } from '@/types/user';
 import type { UserProfile, UserStats, UserInstrument, UserAchievement, Avatar } from '@/types/user';
+import { ALL_ACHIEVEMENTS, ACHIEVEMENT_TIERS } from '@/data/achievements';
 import {
   ArrowLeft,
   Settings,
@@ -340,24 +341,30 @@ export default function ProfilePage() {
               <span className="text-sm text-gray-500 font-normal">({achievements.length})</span>
             </h3>
             <div className="space-y-3">
-              {achievements.slice(0, 5).map((ua) => (
-                <div
-                  key={ua.achievementId}
-                  className="flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-800/50 rounded-lg"
-                >
-                  <div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center">
-                    <Trophy className="w-5 h-5 text-yellow-500" />
+              {achievements.slice(0, 5).map((ua) => {
+                const achievement = ALL_ACHIEVEMENTS.find(a => a.id === ua.achievementId);
+                const tier = achievement?.tier || 'bronze';
+                const tierStyle = ACHIEVEMENT_TIERS[tier];
+
+                return (
+                  <div
+                    key={ua.achievementId}
+                    className={`flex items-center gap-3 p-3 rounded-lg ${tierStyle.bgColor} border ${tierStyle.borderColor}`}
+                  >
+                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center text-xl ${tierStyle.bgColor}`}>
+                      {achievement?.icon || '🏆'}
+                    </div>
+                    <div className="flex-1">
+                      <p className={`font-medium ${tierStyle.textColor}`}>
+                        {achievement?.name || ua.achievementId.replace(/_/g, ' ')}
+                      </p>
+                      <p className="text-xs text-gray-500 dark:text-gray-400">
+                        {new Date(ua.unlockedAt).toLocaleDateString()} • +{achievement?.xpReward || 0} XP
+                      </p>
+                    </div>
                   </div>
-                  <div className="flex-1">
-                    <p className="text-gray-900 dark:text-white font-medium capitalize">
-                      {ua.achievementId.replace(/_/g, ' ')}
-                    </p>
-                    <p className="text-xs text-gray-500 dark:text-gray-400">
-                      {new Date(ua.unlockedAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
               {achievements.length === 0 && (
                 <p className="text-gray-500">No achievements yet</p>
               )}

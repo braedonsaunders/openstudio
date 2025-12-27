@@ -893,5 +893,399 @@ function transformSavedRoom(data: Record<string, unknown>): SavedRoom {
   };
 }
 
+// ============================================
+// NOTIFICATIONS FUNCTIONS
+// ============================================
+
+export async function getNotifications(userId: string, limit: number = 50): Promise<Notification[]> {
+  const { data, error } = await supabaseAuth
+    .from('notifications')
+    .select('*')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+
+  return data.map((n) => ({
+    id: n.id,
+    type: n.type,
+    title: n.title,
+    message: n.message,
+    linkType: n.link_type,
+    linkId: n.link_id,
+    isRead: n.is_read,
+    readAt: n.read_at,
+    createdAt: n.created_at,
+  }));
+}
+
+export async function createNotification(
+  userId: string,
+  type: string,
+  title: string,
+  message?: string,
+  linkType?: string,
+  linkId?: string
+): Promise<void> {
+  const { error } = await supabaseAuth
+    .from('notifications')
+    .insert({
+      user_id: userId,
+      type,
+      title,
+      message,
+      link_type: linkType,
+      link_id: linkId,
+    });
+
+  if (error) throw error;
+}
+
+export async function markNotificationRead(notificationId: string): Promise<void> {
+  const { error } = await supabaseAuth
+    .from('notifications')
+    .update({
+      is_read: true,
+      read_at: new Date().toISOString(),
+    })
+    .eq('id', notificationId);
+
+  if (error) throw error;
+}
+
+export async function markAllNotificationsRead(userId: string): Promise<void> {
+  const { error } = await supabaseAuth
+    .from('notifications')
+    .update({
+      is_read: true,
+      read_at: new Date().toISOString(),
+    })
+    .eq('user_id', userId)
+    .eq('is_read', false);
+
+  if (error) throw error;
+}
+
+export async function getUnreadNotificationCount(userId: string): Promise<number> {
+  const { count, error } = await supabaseAuth
+    .from('notifications')
+    .select('*', { count: 'exact', head: true })
+    .eq('user_id', userId)
+    .eq('is_read', false);
+
+  if (error) return 0;
+  return count || 0;
+}
+
+// ============================================
+// ACTIVITY FEED FUNCTIONS
+// ============================================
+
+export interface ActivityItem {
+  id: string;
+  userId: string;
+  user?: UserProfile;
+  type: 'achievement' | 'level_up' | 'friend' | 'session' | 'room_created';
+  data: Record<string, unknown>;
+  createdAt: string;
+}
+
+export async function getActivityFeed(userId: string, limit: number = 50): Promise<ActivityItem[]> {
+  // Get friend IDs
+  const { data: friendships } = await supabaseAuth
+    .from('friendships')
+    .select('friend_id')
+    .eq('user_id', userId)
+    .eq('status', 'accepted');
+
+  const friendIds = friendships?.map(f => f.friend_id) || [];
+  const userIds = [userId, ...friendIds];
+
+  const { data, error } = await supabaseAuth
+    .from('activity_feed')
+    .select(`
+      *,
+      user:user_id(id, username, display_name)
+    `)
+    .in('user_id', userIds)
+    .order('created_at', { ascending: false })
+    .limit(limit);
+
+  if (error || !data) return [];
+
+  return data.map((item) => ({
+    id: item.id,
+    userId: item.user_id,
+    user: item.user ? transformProfile(item.user as Record<string, unknown>) : undefined,
+    type: item.type,
+    data: item.data || {},
+    createdAt: item.created_at,
+  }));
+}
+
+export async function createActivityItem(
+  userId: string,
+  type: ActivityItem['type'],
+  data: Record<string, unknown>
+): Promise<void> {
+  const { error } = await supabaseAuth
+    .from('activity_feed')
+    .insert({
+      user_id: userId,
+      type,
+      data,
+    });
+
+  if (error) throw error;
+}
+
+// ============================================
+// SESSION TRACKING FUNCTIONS
+// ============================================
+
+export interface SessionRecord {
+  id: string;
+  userId: string;
+  roomId: string;
+  joinedAt: string;
+  leftAt?: string;
+  durationSeconds?: number;
+  instrument?: string;
+  collaboratorIds: string[];
+}
+
+export async function startSession(
+  userId: string,
+  roomId: string,
+  instrument?: string
+): Promise<SessionRecord> {
+  const { data, error } = await supabaseAuth
+    .from('session_history')
+    .insert({
+      user_id: userId,
+      room_id: roomId,
+      instrument,
+      joined_at: new Date().toISOString(),
+      collaborator_ids: [],
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+
+  return {
+    id: data.id,
+    userId: data.user_id,
+    roomId: data.room_id,
+    joinedAt: data.joined_at,
+    leftAt: data.left_at,
+    durationSeconds: data.duration_seconds,
+    instrument: data.instrument,
+    collaboratorIds: data.collaborator_ids || [],
+  };
+}
+
+export async function endSession(
+  sessionId: string,
+  collaboratorIds: string[]
+): Promise<{ durationSeconds: number }> {
+  const now = new Date();
+
+  // Get the session to calculate duration
+  const { data: session } = await supabaseAuth
+    .from('session_history')
+    .select('joined_at')
+    .eq('id', sessionId)
+    .single();
+
+  if (!session) throw new Error('Session not found');
+
+  const joinedAt = new Date(session.joined_at);
+  const durationSeconds = Math.floor((now.getTime() - joinedAt.getTime()) / 1000);
+
+  const { error } = await supabaseAuth
+    .from('session_history')
+    .update({
+      left_at: now.toISOString(),
+      duration_seconds: durationSeconds,
+      collaborator_ids: collaboratorIds,
+    })
+    .eq('id', sessionId);
+
+  if (error) throw error;
+
+  return { durationSeconds };
+}
+
+export async function updateSessionCollaborators(
+  sessionId: string,
+  collaboratorIds: string[]
+): Promise<void> {
+  const { error } = await supabaseAuth
+    .from('session_history')
+    .update({ collaborator_ids: collaboratorIds })
+    .eq('id', sessionId);
+
+  if (error) throw error;
+}
+
+// ============================================
+// STATS UPDATE FUNCTIONS
+// ============================================
+
+export async function updateStats(
+  userId: string,
+  updates: Partial<{
+    totalJamSeconds: number;
+    totalSessions: number;
+    longestSessionSeconds: number;
+    uniqueCollaborators: number;
+    reactionsReceived: number;
+    reactionsGiven: number;
+    messagesSent: number;
+    roomsCreated: number;
+    roomsJoined: number;
+    tracksUploaded: number;
+    tracksGenerated: number;
+    stemsSeparated: number;
+    activityByHour: number[];
+    activityByDay: number[];
+  }>
+): Promise<void> {
+  const dbUpdates: Record<string, unknown> = {};
+
+  if (updates.totalJamSeconds !== undefined) dbUpdates.total_jam_seconds = updates.totalJamSeconds;
+  if (updates.totalSessions !== undefined) dbUpdates.total_sessions = updates.totalSessions;
+  if (updates.longestSessionSeconds !== undefined) dbUpdates.longest_session_seconds = updates.longestSessionSeconds;
+  if (updates.uniqueCollaborators !== undefined) dbUpdates.unique_collaborators = updates.uniqueCollaborators;
+  if (updates.reactionsReceived !== undefined) dbUpdates.reactions_received = updates.reactionsReceived;
+  if (updates.reactionsGiven !== undefined) dbUpdates.reactions_given = updates.reactionsGiven;
+  if (updates.messagesSent !== undefined) dbUpdates.messages_sent = updates.messagesSent;
+  if (updates.roomsCreated !== undefined) dbUpdates.rooms_created = updates.roomsCreated;
+  if (updates.roomsJoined !== undefined) dbUpdates.rooms_joined = updates.roomsJoined;
+  if (updates.tracksUploaded !== undefined) dbUpdates.tracks_uploaded = updates.tracksUploaded;
+  if (updates.tracksGenerated !== undefined) dbUpdates.tracks_generated = updates.tracksGenerated;
+  if (updates.stemsSeparated !== undefined) dbUpdates.stems_separated = updates.stemsSeparated;
+  if (updates.activityByHour !== undefined) dbUpdates.activity_by_hour = updates.activityByHour;
+  if (updates.activityByDay !== undefined) dbUpdates.activity_by_day = updates.activityByDay;
+
+  const { error } = await supabaseAuth
+    .from('user_stats')
+    .update(dbUpdates)
+    .eq('user_id', userId);
+
+  if (error) throw error;
+}
+
+export async function recordActivity(userId: string): Promise<void> {
+  const now = new Date();
+  const hour = now.getHours();
+  const day = now.getDay();
+
+  // Get current activity arrays
+  const { data: stats } = await supabaseAuth
+    .from('user_stats')
+    .select('activity_by_hour, activity_by_day')
+    .eq('user_id', userId)
+    .single();
+
+  if (!stats) return;
+
+  const activityByHour = stats.activity_by_hour || new Array(24).fill(0);
+  const activityByDay = stats.activity_by_day || new Array(7).fill(0);
+
+  activityByHour[hour] = (activityByHour[hour] || 0) + 1;
+  activityByDay[day] = (activityByDay[day] || 0) + 1;
+
+  await updateStats(userId, { activityByHour, activityByDay });
+}
+
+// ============================================
+// FOLLOWING FUNCTIONS
+// ============================================
+
+export async function followUser(userId: string, targetUserId: string): Promise<void> {
+  const { error } = await supabaseAuth
+    .from('follows')
+    .insert({
+      follower_id: userId,
+      following_id: targetUserId,
+    });
+
+  if (error) throw error;
+}
+
+export async function unfollowUser(userId: string, targetUserId: string): Promise<void> {
+  const { error } = await supabaseAuth
+    .from('follows')
+    .delete()
+    .eq('follower_id', userId)
+    .eq('following_id', targetUserId);
+
+  if (error) throw error;
+}
+
+export async function getFollowers(userId: string): Promise<UserProfile[]> {
+  const { data, error } = await supabaseAuth
+    .from('follows')
+    .select(`
+      follower:follower_id(*)
+    `)
+    .eq('following_id', userId);
+
+  if (error || !data) return [];
+
+  return data
+    .filter(f => f.follower)
+    .map(f => transformProfile(f.follower as unknown as Record<string, unknown>));
+}
+
+export async function getFollowing(userId: string): Promise<UserProfile[]> {
+  const { data, error } = await supabaseAuth
+    .from('follows')
+    .select(`
+      following:following_id(*)
+    `)
+    .eq('follower_id', userId);
+
+  if (error || !data) return [];
+
+  return data
+    .filter(f => f.following)
+    .map(f => transformProfile(f.following as unknown as Record<string, unknown>));
+}
+
+export async function isFollowing(userId: string, targetUserId: string): Promise<boolean> {
+  const { data } = await supabaseAuth
+    .from('follows')
+    .select('id')
+    .eq('follower_id', userId)
+    .eq('following_id', targetUserId)
+    .single();
+
+  return !!data;
+}
+
+// ============================================
+// REACTION FUNCTIONS
+// ============================================
+
+export async function sendReaction(
+  roomId: string,
+  fromUserId: string,
+  toUserId: string,
+  reactionType: string
+): Promise<void> {
+  // Save the reaction as a chat message
+  await saveChatMessage(roomId, fromUserId, reactionType, 'reaction', reactionType, toUserId);
+
+  // Increment receiver's reactions received
+  await incrementStat(toUserId, 'reactions_received', 1);
+
+  // Increment sender's reactions given
+  await incrementStat(fromUserId, 'reactions_given', 1);
+}
+
 // Import types that are needed
-import type { SavedRoom, RoomAudioSettings, UserPreferences, ChatMessage } from '@/types/user';
+import type { SavedRoom, RoomAudioSettings, UserPreferences, ChatMessage, Notification } from '@/types/user';
