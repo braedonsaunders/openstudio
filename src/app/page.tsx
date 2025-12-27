@@ -87,18 +87,18 @@ export default function HomePage() {
                 size="lg"
                 onClick={handleCreateRoom}
                 loading={isCreating}
-                className="w-full sm:w-auto"
+                className="w-full sm:w-auto min-w-[160px]"
               >
                 Create Room
                 <ArrowRight className="w-4 h-4 ml-2" />
               </Button>
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
+              <div className="flex items-center gap-3 w-full sm:w-auto">
                 <Input
                   value={roomCode}
                   onChange={(e) => setRoomCode(e.target.value)}
                   placeholder="Enter room code"
-                  className="w-48"
+                  className="w-full sm:w-56"
                   onKeyDown={(e) => e.key === 'Enter' && handleJoinRoom()}
                 />
                 <Button

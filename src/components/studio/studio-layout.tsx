@@ -244,9 +244,9 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
         <div className="grid grid-cols-12 gap-6">
           {/* Left sidebar - Users/Queue/Mixer tabs */}
           <div className="col-span-12 lg:col-span-4 xl:col-span-3">
-            <Card variant="elevated" className="sticky top-24">
+            <Card variant="elevated" className="sticky top-24 !p-0 overflow-hidden">
               {/* Tab buttons */}
-              <div className="flex border-b border-gray-700 mb-4">
+              <div className="flex border-b border-gray-700">
                 <button
                   onClick={() => setActiveTab('users')}
                   className={cn(
@@ -286,7 +286,7 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
               </div>
 
               {/* Tab content */}
-              <div className="max-h-[calc(100vh-16rem)] overflow-y-auto">
+              <div className="max-h-[calc(100vh-16rem)] overflow-y-auto p-4">
                 {activeTab === 'users' && (
                   <div className="space-y-3">
                     {/* Local user */}
