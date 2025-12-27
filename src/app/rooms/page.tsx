@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion } from 'framer-motion';
 import {
@@ -59,18 +59,13 @@ export default function RoomsPage() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const { user, profile, isLoading, isInitialized, initialize } = useAuthStore();
+  const { user, profile, isLoading, isInitialized } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('browse');
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCode, setRoomCode] = useState('');
 
-  // Initialize auth on mount
-  useEffect(() => {
-    if (!isInitialized) {
-      initialize();
-    }
-  }, [isInitialized, initialize]);
+  // Auth initialization is handled by AuthProvider at the app level
 
   const handleQuickJoin = () => {
     if (roomCode.trim()) {
