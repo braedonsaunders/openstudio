@@ -16,6 +16,9 @@ import {
   Settings2,
   Trash2,
   Circle,
+  Pencil,
+  Check,
+  X,
 } from 'lucide-react';
 import type { UserTrack } from '@/types';
 
@@ -39,14 +42,18 @@ export function UserTrackHeader({
   const [isExpanded, setIsExpanded] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
+  const [isRenaming, setIsRenaming] = useState(false);
+  const [newName, setNewName] = useState(track.name);
   const settingsRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const renameInputRef = useRef<HTMLInputElement>(null);
 
   const {
     setTrackMuted,
     setTrackSolo,
     setTrackVolume,
     setTrackArmed,
+    updateTrack,
   } = useUserTracksStore();
 
   // Close popover on outside click
@@ -62,6 +69,40 @@ export function UserTrackHeader({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
+
+  // Focus input when renaming starts
+  useEffect(() => {
+    if (isRenaming && renameInputRef.current) {
+      renameInputRef.current.focus();
+      renameInputRef.current.select();
+    }
+  }, [isRenaming]);
+
+  const handleStartRename = () => {
+    setNewName(track.name);
+    setIsRenaming(true);
+    setShowMenu(false);
+  };
+
+  const handleConfirmRename = () => {
+    if (newName.trim()) {
+      updateTrack(track.id, { name: newName.trim() });
+    }
+    setIsRenaming(false);
+  };
+
+  const handleCancelRename = () => {
+    setNewName(track.name);
+    setIsRenaming(false);
+  };
+
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleConfirmRename();
+    } else if (e.key === 'Escape') {
+      handleCancelRename();
+    }
+  };
 
   return (
     <div
@@ -165,32 +206,60 @@ export function UserTrackHeader({
               )}
             </div>
 
-            <div className="min-w-0">
-              <div className="flex items-center gap-1">
-                <span className="text-sm font-medium text-white truncate">
-                  {track.name}
-                </span>
-                {isFirst && (
-                  <span className="text-[10px] text-zinc-500">(You)</span>
-                )}
-              </div>
-              <div className="flex items-center gap-1 text-zinc-500">
-                {track.audioSettings.inputMode === 'application' ? (
-                  <>
-                    <Monitor className="w-3 h-3" />
-                    <span className="text-[10px] truncate">
-                      {track.audioSettings.applicationName || 'App Audio'}
+            <div className="min-w-0 flex-1">
+              {isRenaming ? (
+                <div className="flex items-center gap-1">
+                  <input
+                    ref={renameInputRef}
+                    type="text"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    onKeyDown={handleRenameKeyDown}
+                    onBlur={handleConfirmRename}
+                    className="w-full h-6 px-1.5 bg-white/10 border border-white/20 rounded text-sm text-white focus:outline-none focus:border-indigo-500"
+                  />
+                  <button
+                    onClick={handleConfirmRename}
+                    className="p-1 text-emerald-400 hover:text-emerald-300"
+                  >
+                    <Check className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={handleCancelRename}
+                    className="p-1 text-zinc-400 hover:text-zinc-300"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-medium text-white truncate">
+                      {track.name}
                     </span>
-                  </>
-                ) : (
-                  <>
-                    <Mic className="w-3 h-3" />
-                    <span className="text-[10px] truncate">
-                      {track.audioSettings.inputDeviceId === 'default' ? 'Default Mic' : 'Microphone'}
-                    </span>
-                  </>
-                )}
-              </div>
+                    {isFirst && (
+                      <span className="text-[10px] text-zinc-500">(You)</span>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-zinc-500">
+                    {track.audioSettings.inputMode === 'application' ? (
+                      <>
+                        <Monitor className="w-3 h-3" />
+                        <span className="text-[10px] truncate">
+                          {track.audioSettings.applicationName || 'App Audio'}
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <Mic className="w-3 h-3" />
+                        <span className="text-[10px] truncate">
+                          {track.audioSettings.inputDeviceId === 'default' ? 'Default Mic' : 'Microphone'}
+                        </span>
+                      </>
+                    )}
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -210,6 +279,7 @@ export function UserTrackHeader({
                 ? 'bg-indigo-500/20 text-indigo-400'
                 : 'text-zinc-500 hover:text-zinc-300'
             )}
+            title="Audio Input Settings"
           >
             <Settings2 className="w-4 h-4" />
           </button>
@@ -234,28 +304,47 @@ export function UserTrackHeader({
           </button>
 
           {showMenu && (
-            <div className="absolute right-0 top-full mt-1 w-36 bg-[#16161f] border border-white/10 rounded-lg shadow-xl overflow-hidden z-50">
+            <div className="absolute right-0 top-full mt-1 w-40 bg-[#16161f] border border-white/10 rounded-lg shadow-xl overflow-hidden z-50">
+              <button
+                onClick={handleStartRename}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+              >
+                <Pencil className="w-3.5 h-3.5" />
+                Rename Track
+              </button>
+              <button
+                onClick={() => {
+                  setShowSettings(true);
+                  setShowMenu(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                Audio Input Settings
+              </button>
               {onRemove && (
-                <button
-                  onClick={() => {
-                    onRemove();
-                    setShowMenu(false);
-                  }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Remove Track
-                </button>
+                <>
+                  <div className="border-t border-white/5" />
+                  <button
+                    onClick={() => {
+                      onRemove();
+                      setShowMenu(false);
+                    }}
+                    className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    Remove Track
+                  </button>
+                </>
               )}
             </div>
           )}
         </div>
       </div>
 
-      {/* Expanded Controls */}
+      {/* Expanded Controls - Volume only */}
       {isExpanded && (
-        <div className="px-3 pb-3 pt-1 space-y-2">
-          {/* Volume Fader */}
+        <div className="px-3 pb-3 pt-1">
           <div className="flex items-center gap-2">
             <Volume2 className="w-3.5 h-3.5 text-zinc-500 shrink-0" />
             <Fader
@@ -267,9 +356,6 @@ export function UserTrackHeader({
               {Math.round(track.volume * 100)}%
             </span>
           </div>
-
-          {/* Inline Audio Settings */}
-          <TrackAudioSettingsPopover track={track} compact />
         </div>
       )}
     </div>
