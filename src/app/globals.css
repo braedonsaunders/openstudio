@@ -1,5 +1,9 @@
 @import "tailwindcss";
 
+/* Enable class-based dark mode for Tailwind v4 */
+/* This makes dark: variants respond to .dark class on html element instead of prefers-color-scheme */
+@custom-variant dark (&:where(.dark, .dark *));
+
 :root {
   /* Light theme (default) */
   --background: #ffffff;
