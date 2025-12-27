@@ -116,14 +116,14 @@ export async function POST(request: NextRequest) {
     const videoTitle = result.data.title || title;
     console.log(`Downloading audio from: ${audioUrl}`);
 
-    // Download the audio - needs proper headers
+    // Download the audio - needs X-RUN header with MD5 of RapidAPI username
     const audioResponse = await fetch(audioUrl, {
       signal: AbortSignal.timeout(120000), // 2 min timeout for large files
       redirect: 'follow',
       headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Referer': 'https://yt1s.com/',
         'Accept': '*/*',
+        'X-RUN': '0f32721c9b4c023b730596b18eb71cef', // MD5 of RapidAPI username
       },
     });
 
