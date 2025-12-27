@@ -247,8 +247,10 @@ export function TransportBar({
 
         <div className="h-5 w-px bg-white/10" />
 
-        {/* User Menu */}
-        <UserMenu />
+        {/* User Menu - force dark mode styling in DAW */}
+        <div className="dark">
+          <UserMenu />
+        </div>
 
         {/* Leave */}
         <button
