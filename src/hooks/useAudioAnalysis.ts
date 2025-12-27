@@ -43,6 +43,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     setSpectrumData,
     setWaveformData,
     setTunerEnabled,
+    clearAnalysisData,
   } = useAnalysisStore();
 
   const { addMessage, currentUser } = useRoomStore();
@@ -283,6 +284,16 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     setIsAnalyzing(false);
   }, [setIsAnalyzing]);
 
+  // Reset analysis - clears all buffers and stored key/BPM data
+  // Call this when switching backing tracks
+  const resetAnalysis = useCallback(() => {
+    analyzerRef.current.stopAnalysis();
+    analyzerRef.current.resetAnalysis();
+    clearAnalysisData();
+    setIsAnalyzing(false);
+    console.log('Analysis reset - ready for new track');
+  }, [clearAnalysisData, setIsAnalyzing]);
+
   // Toggle tuner mode
   const toggleTuner = useCallback(() => {
     setTunerEnabled(!tunerEnabled);
@@ -318,6 +329,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     waveformData,
     tunerEnabled,
     stopAnalysis,
+    resetAnalysis,
     toggleTuner,
     switchSource,
   };

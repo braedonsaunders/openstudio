@@ -18,9 +18,9 @@ let lastEnergy = 0;
 let lastDanceability = 0;
 let lastTuningFrequency = 440;
 
-const FRAMES_FOR_KEY = 30; // ~3 seconds of audio for key detection
+const FRAMES_FOR_KEY = 50; // ~5 seconds of audio for key detection (more data = better accuracy)
 const FRAMES_FOR_BPM = 50; // ~5 seconds for BPM
-const MAX_BUFFER_FRAMES = 100; // Store more frames for better long-term analysis
+const MAX_BUFFER_FRAMES = 150; // Store more frames for better long-term analysis
 
 // Note names for tuner
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -335,58 +335,68 @@ function analyzeLongTerm(combinedAudio) {
     const essentiaAudio = essentia.arrayToVector(combinedAudio);
 
     // Key detection using KeyExtractor with multiple profile types for accuracy
+    // Uses consensus voting across all available profiles for best results
     try {
-      // Try multiple profile types and take consensus
-      const profileTypes = ['krumhansl', 'temperley', 'edma'];
+      // Use all available profile types for maximum accuracy
+      // Different profiles work better for different genres
+      const profileTypes = ['krumhansl', 'temperley', 'edma', 'bgate', 'braw', 'diatonic'];
       const keyVotes = {};
 
       for (const profileType of profileTypes) {
         try {
+          // Use larger FFT for better frequency resolution in key detection
           const keyResult = essentia.KeyExtractor(essentiaAudio, {
             profileType: profileType,
-            frameSize: 4096,
-            hopSize: 2048,
+            frameSize: 8192,  // Larger FFT for better bass/harmonic resolution
+            hopSize: 4096,
             sampleRate: sampleRate
           });
 
-          if (keyResult.key && keyResult.strength > 0.3) {
+          if (keyResult.key && keyResult.strength > 0.25) {
             const keyId = `${keyResult.key}_${keyResult.scale}`;
             if (!keyVotes[keyId]) {
-              keyVotes[keyId] = { count: 0, totalStrength: 0 };
+              keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
             }
             keyVotes[keyId].count++;
             keyVotes[keyId].totalStrength += keyResult.strength;
+            keyVotes[keyId].strengths.push(keyResult.strength);
           }
         } catch (e) {
           // Profile type not supported, skip
         }
       }
 
-      // Find best consensus key
+      // Find best consensus key with improved scoring
       let bestKeyId = null;
       let bestScore = 0;
-      for (const [keyId, data] of Object.entries(keyVotes)) {
-        // Score = count * average strength (rewards agreement between profiles)
-        const score = data.count * (data.totalStrength / data.count);
+      let detectedKeys = Object.entries(keyVotes);
+
+      for (const [keyId, data] of detectedKeys) {
+        // Improved scoring: count^1.5 * median strength
+        // This rewards agreement more than just raw strength
+        const sortedStrengths = [...data.strengths].sort((a, b) => a - b);
+        const medianStrength = sortedStrengths[Math.floor(sortedStrengths.length / 2)];
+        const score = Math.pow(data.count, 1.5) * medianStrength;
         if (score > bestScore) {
           bestScore = score;
           bestKeyId = keyId;
         }
       }
 
-      // Only accept if at least 2 profiles agree with decent strength
-      if (bestKeyId && keyVotes[bestKeyId].count >= 2 && bestScore > 0.8) {
+      // Accept if at least 2 profiles agree (relaxed from previous requirement)
+      if (bestKeyId && keyVotes[bestKeyId].count >= 2) {
         const [detectedKey, detectedScale] = bestKeyId.split('_');
         const avgStrength = keyVotes[bestKeyId].totalStrength / keyVotes[bestKeyId].count;
 
-        keyBuffer.push({ key: detectedKey, scale: detectedScale, strength: avgStrength });
-        // Keep larger buffer for stability
-        if (keyBuffer.length > 15) {
+        keyBuffer.push({ key: detectedKey, scale: detectedScale, strength: avgStrength, timestamp: Date.now() });
+
+        // Smaller buffer for faster adaptation to new tracks (was 15, now 8)
+        if (keyBuffer.length > 8) {
           keyBuffer.shift();
         }
 
-        // Only update key if we have enough samples (at least 5)
-        if (keyBuffer.length >= 5) {
+        // Only update key if we have enough samples (at least 3 for quick response)
+        if (keyBuffer.length >= 3) {
           // Find most common key in buffer (weighted by strength)
           const keyCounts = {};
           keyBuffer.forEach(k => {
@@ -407,32 +417,39 @@ function analyzeLongTerm(combinedAudio) {
             }
           }
 
-          // Require significant margin (1.5x) and minimum occurrences
+          // Relaxed margin requirement for faster key detection
           const keyOccurrences = keyBuffer.filter(k => `${k.key}_${k.scale}` === bestKey).length;
-          if (bestKey && bestKeyScore > secondBestScore * 1.5 && keyOccurrences >= 3) {
+          const marginRequired = secondBestScore > 0 ? 1.3 : 0; // Only need 1.3x margin (was 1.5x)
+
+          if (bestKey && (secondBestScore === 0 || bestKeyScore > secondBestScore * marginRequired) && keyOccurrences >= 2) {
             const [key, scale] = bestKey.split('_');
             const newKeyId = `${key}_${scale}`;
             const currentKeyId = `${lastKey}_${lastKeyScale}`;
 
-            // Apply hysteresis: require higher threshold to change existing key
-            const changeThreshold = lastKey ? 1.8 : 1.5;
+            // Reduced hysteresis for more responsive key changes
+            // Still require higher confidence to change an established key
+            const changeThreshold = lastKey ? 1.4 : 1.2;  // Was 1.8/1.5
 
             if (newKeyId !== currentKeyId || !lastKey) {
-              if (!lastKey || bestKeyScore > secondBestScore * changeThreshold) {
+              if (!lastKey || bestKeyScore > secondBestScore * changeThreshold || keyOccurrences >= 4) {
                 lastKey = key;
                 lastKeyScale = scale;
                 lastKeyStrength = Math.min(bestKeyScore / keyBuffer.length, 1);
-                console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)}, occurrences: ${keyOccurrences})`);
+                console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)}, occurrences: ${keyOccurrences}/${keyBuffer.length}, profiles: ${keyVotes[bestKeyId].count})`);
               }
             }
           }
         }
       }
     } catch (e) {
-      // Fallback to simple detection
+      // Fallback to simple detection with larger FFT
       try {
-        const keyResult = essentia.KeyExtractor(essentiaAudio);
-        if (keyResult && keyResult.key && keyResult.strength > 0.5 && !lastKey) {
+        const keyResult = essentia.KeyExtractor(essentiaAudio, {
+          frameSize: 8192,
+          hopSize: 4096,
+          sampleRate: sampleRate
+        });
+        if (keyResult && keyResult.key && keyResult.strength > 0.4 && !lastKey) {
           lastKey = keyResult.key;
           lastKeyScale = keyResult.scale;
           lastKeyStrength = keyResult.strength;
@@ -597,7 +614,7 @@ function reset() {
 // Handle messages from main thread
 let frameCount = 0;
 let lastLongTermAnalysis = 0;
-const LONG_TERM_INTERVAL = 3000; // Run long-term analysis every 3 seconds for more stability
+const LONG_TERM_INTERVAL = 2000; // Run long-term analysis every 2 seconds for faster key detection
 
 self.onmessage = async function(e) {
   const { type, data } = e.data;
