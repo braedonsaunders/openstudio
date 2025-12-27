@@ -1,8 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 
 // This endpoint provides audio stream URL for a YouTube video
-// In production, you would use a service like youtube-dl, yt-dlp, or a third-party API
-// For now, we'll use a proxy approach with a public extraction service
+// Uses Cobalt API for reliable extraction (handles bot detection)
+
+interface CobaltResponse {
+  status: 'tunnel' | 'redirect' | 'picker' | 'error';
+  url?: string;
+  audio?: string;
+  picker?: Array<{ url: string; type: string }>;
+  error?: { code: string };
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -16,45 +23,46 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Option 1: Use Invidious API (privacy-respecting YouTube frontend)
-    // These are public instances - in production you'd host your own or use a paid service
-    const invidiousInstances = [
-      'https://inv.nadeko.net',
-      'https://invidious.nerdvpn.de',
-      'https://yt.artemislena.eu',
+    const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
+
+    // Use Cobalt API for extraction - it handles YouTube's bot detection
+    // Cobalt is open source: https://github.com/imputnet/cobalt
+    const cobaltInstances = [
+      'https://api.cobalt.tools',
+      'https://cobalt-api.kwiatekmiki.com',
+      'https://cobalt.api.timelessnesses.me',
     ];
 
     let audioUrl: string | null = null;
-    let videoInfo: { title: string; author: string; lengthSeconds: number } | null = null;
+    let lastError: string | null = null;
 
-    for (const instance of invidiousInstances) {
+    for (const instance of cobaltInstances) {
       try {
-        const response = await fetch(`${instance}/api/v1/videos/${videoId}`, {
-          headers: { 'Accept': 'application/json' },
-          signal: AbortSignal.timeout(5000),
+        const response = await fetch(`${instance}/`, {
+          method: 'POST',
+          headers: {
+            'Accept': 'application/json',
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            url: videoUrl,
+            downloadMode: 'audio',
+            audioFormat: 'mp3',
+          }),
+          signal: AbortSignal.timeout(15000),
         });
 
         if (response.ok) {
-          const data = await response.json();
+          const data: CobaltResponse = await response.json();
 
-          // Find the best audio format
-          const audioFormats = data.adaptiveFormats?.filter(
-            (f: { type: string }) => f.type?.startsWith('audio/')
-          ) || [];
-
-          // Prefer higher quality audio
-          const bestAudio = audioFormats.sort(
-            (a: { bitrate: number }, b: { bitrate: number }) => (b.bitrate || 0) - (a.bitrate || 0)
-          )[0];
-
-          if (bestAudio?.url) {
-            audioUrl = bestAudio.url;
-            videoInfo = {
-              title: data.title,
-              author: data.author,
-              lengthSeconds: data.lengthSeconds,
-            };
+          if (data.status === 'tunnel' || data.status === 'redirect') {
+            audioUrl = data.url || null;
+            if (audioUrl) break;
+          } else if (data.status === 'picker' && data.picker?.[0]?.url) {
+            audioUrl = data.picker[0].url;
             break;
+          } else if (data.status === 'error') {
+            lastError = data.error?.code || 'Unknown error';
           }
         }
       } catch {
@@ -64,23 +72,60 @@ export async function GET(request: NextRequest) {
     }
 
     if (!audioUrl) {
+      // Provide more specific error if available
+      if (lastError === 'content.video.unavailable') {
+        return NextResponse.json(
+          { error: 'This video is unavailable or private' },
+          { status: 404 }
+        );
+      }
+      if (lastError === 'content.video.age') {
+        return NextResponse.json(
+          { error: 'This video is age-restricted' },
+          { status: 403 }
+        );
+      }
+      if (lastError === 'content.video.region') {
+        return NextResponse.json(
+          { error: 'This video is not available in your region' },
+          { status: 403 }
+        );
+      }
+
       return NextResponse.json(
         { error: 'Could not extract audio. Try a different video.' },
         { status: 404 }
       );
     }
 
+    // Get video metadata from YouTube oEmbed API (doesn't require authentication)
+    let title = 'Unknown Title';
+    let author = 'Unknown Artist';
+
+    try {
+      const oembedRes = await fetch(
+        `https://www.youtube.com/oembed?url=${encodeURIComponent(videoUrl)}&format=json`,
+        { signal: AbortSignal.timeout(5000) }
+      );
+      if (oembedRes.ok) {
+        const oembed = await oembedRes.json();
+        title = oembed.title || title;
+        author = oembed.author_name || author;
+      }
+    } catch {
+      // Metadata fetch failed, use defaults
+    }
+
     return NextResponse.json({
       audioUrl,
       videoId,
-      title: videoInfo?.title,
-      author: videoInfo?.author,
-      duration: videoInfo?.lengthSeconds,
+      title,
+      author,
     });
   } catch (error) {
     console.error('YouTube audio extraction error:', error);
     return NextResponse.json(
-      { error: 'Failed to extract audio' },
+      { error: 'Could not extract audio. Try a different video.' },
       { status: 500 }
     );
   }

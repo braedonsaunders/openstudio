@@ -80,27 +80,21 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
     useRoomStore.getState().setCurrentTrack(track);
   }, []);
 
-  const handleUpload = useCallback(async (file: File, metadata: { name: string; artist?: string }) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('name', metadata.name);
-    if (metadata.artist) {
-      formData.append('artist', metadata.artist);
-    }
-    formData.append('roomId', roomId);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error('Upload failed');
-    }
-
-    const track = await response.json();
+  const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {
+    // Track was already uploaded to R2 via presigned URL
+    // Just add it to the queue
+    const track: BackingTrack = {
+      id: uploadedTrack.id,
+      name: uploadedTrack.name,
+      artist: uploadedTrack.artist,
+      duration: uploadedTrack.duration,
+      url: uploadedTrack.url,
+      uploadedBy: 'user',
+      uploadedAt: new Date().toISOString(),
+      aiGenerated: false,
+    };
     await addTrack(track);
-  }, [roomId, addTrack]);
+  }, [addTrack]);
 
   const handleYouTubeSelect = useCallback(async (video: { id: string; title: string; channelTitle: string; duration?: string }) => {
     // Get audio URL for the YouTube video
