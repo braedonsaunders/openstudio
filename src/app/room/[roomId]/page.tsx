@@ -105,7 +105,7 @@ export default function RoomPage() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-950 flex items-center justify-center p-4">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
       <Card variant="elevated" className="w-full max-w-md">
         <CardHeader className="text-center">
           <div className="w-16 h-16 mx-auto bg-indigo-500/20 rounded-2xl flex items-center justify-center mb-4">
@@ -113,7 +113,7 @@ export default function RoomPage() {
           </div>
           <CardTitle className="text-2xl">Join Room</CardTitle>
           <CardDescription>
-            Room code: <span className="text-white font-mono">{roomId}</span>
+            Room code: <span className="text-gray-900 dark:text-white font-mono">{roomId}</span>
           </CardDescription>
         </CardHeader>
 
@@ -137,7 +137,7 @@ export default function RoomPage() {
 
           {/* Instrument selection */}
           <div className="space-y-2">
-            <label className="text-sm text-gray-400">Instrument (optional)</label>
+            <label className="text-sm text-gray-500 dark:text-gray-400">Instrument (optional)</label>
             <div className="grid grid-cols-3 gap-2">
               {instruments.map((inst) => (
                 <button
@@ -148,7 +148,7 @@ export default function RoomPage() {
                     flex flex-col items-center gap-1 p-3 rounded-lg transition-all
                     ${instrument === inst.id
                       ? 'bg-indigo-500 text-white'
-                      : 'bg-gray-800 text-gray-400 hover:bg-gray-700'}
+                      : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}
                     ${isJoining && 'opacity-50 cursor-not-allowed'}
                   `}
                 >
@@ -162,7 +162,7 @@ export default function RoomPage() {
           {/* Audio test */}
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <label className="text-sm text-gray-400">Audio Check</label>
+              <label className="text-sm text-gray-500 dark:text-gray-400">Audio Check</label>
               <Button
                 variant="ghost"
                 size="sm"
@@ -173,16 +173,16 @@ export default function RoomPage() {
             </div>
 
             {isTestingAudio && (
-              <div className="space-y-3 p-4 bg-gray-800/50 rounded-lg">
+              <div className="space-y-3 p-4 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
                 {audioPermission === 'pending' && (
-                  <div className="flex items-center gap-3 text-gray-400">
+                  <div className="flex items-center gap-3 text-gray-500 dark:text-gray-400">
                     <Loader2 className="w-4 h-4 animate-spin" />
                     <span className="text-sm">Requesting microphone access...</span>
                   </div>
                 )}
 
                 {audioPermission === 'denied' && (
-                  <div className="flex items-center gap-3 text-red-400">
+                  <div className="flex items-center gap-3 text-red-500 dark:text-red-400">
                     <AlertCircle className="w-4 h-4" />
                     <span className="text-sm">Microphone access denied. Please enable it in your browser settings.</span>
                   </div>
@@ -192,14 +192,14 @@ export default function RoomPage() {
                   <>
                     <div className="flex items-center gap-3">
                       <Mic className="w-4 h-4 text-green-500" />
-                      <span className="text-sm text-green-400">Microphone connected</span>
+                      <span className="text-sm text-green-600 dark:text-green-400">Microphone connected</span>
                     </div>
                     <div className="space-y-1">
                       <div className="flex items-center gap-2">
                         <Volume2 className="w-4 h-4 text-gray-400" />
-                        <span className="text-xs text-gray-400">Input Level</span>
+                        <span className="text-xs text-gray-500 dark:text-gray-400">Input Level</span>
                       </div>
-                      <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+                      <div className="h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-green-500 transition-all duration-75"
                           style={{ width: `${audioLevel * 100}%` }}
