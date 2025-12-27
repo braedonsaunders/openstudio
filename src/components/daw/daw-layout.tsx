@@ -11,7 +11,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
-import { TrackHeadersPanel } from './track-headers-panel';
+import { LeftPanel } from './left-panel';
 import { LiveArrangementView } from './live-arrangement-view';
 import { PanelDock } from './panel-dock';
 import { ResizeHandle } from './resize-handle';
@@ -29,7 +29,7 @@ interface DAWLayoutProps {
   roomId: string;
 }
 
-export type PanelType = 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai';
+export type PanelType = 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' kept for backwards compat but redirects to 'mixer'
 
 export function DAWLayout({ roomId }: DAWLayoutProps) {
   // Theme
@@ -218,12 +218,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             setMuted(!isMuted);
           }
           break;
-        case 'q':
-        case 'Q':
-          if (!e.ctrlKey && !e.metaKey) {
-            setActivePanel('queue');
-          }
-          break;
         case 'a':
         case 'A':
           if (!e.ctrlKey && !e.metaKey) {
@@ -246,7 +240,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         case 'Tab':
           if (!e.shiftKey) {
             e.preventDefault();
-            const panels: PanelType[] = ['mixer', 'queue', 'analysis', 'chat', 'ai'];
+            const panels: PanelType[] = ['mixer', 'analysis', 'chat', 'ai'];
             const currentIndex = panels.indexOf(activePanel);
             setActivePanel(panels[(currentIndex + 1) % panels.length]);
           }
@@ -522,8 +516,32 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
       {/* Main Content Area */}
       <div className="flex-1 flex min-h-0">
-        {/* Track Headers Panel - Left (Resizable) */}
-        <TrackHeadersPanel
+        {/* Left Panel - Tracks (upper 1/3) + Live Channels (lower 2/3) */}
+        <LeftPanel
+          // Tracks (Queue) props
+          onTrackSelect={handleTrackSelect}
+          onTrackRemove={removeTrack}
+          onUpload={() => setIsUploadModalOpen(true)}
+          onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
+          onAIGenerate={handleOpenAIPanel}
+          youtubePlayer={
+            isYouTubeTrack && currentTrack?.youtubeId ? (
+              <YouTubePlayer
+                ref={youtubePlayerRef}
+                videoId={currentTrack.youtubeId}
+                onReady={handleYouTubeReady}
+                onStateChange={handleYouTubeStateChange}
+                onTimeUpdate={handleYouTubeTimeUpdate}
+                onDurationChange={handleYouTubeDurationChange}
+                onEnded={handleYouTubeEnded}
+                volume={backingTrackVolume * 100}
+              />
+            ) : undefined
+          }
+          roomId={roomId}
+          userId={currentUser?.id || ''}
+          userName={currentUser?.name}
+          // Live Channels props
           users={users}
           currentUser={currentUser}
           audioLevels={audioLevels}
@@ -532,7 +550,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onVolumeChange={setUserVolume}
           onMuteSelf={() => setMuted(!isMuted)}
           width={leftPanelWidth}
-          roomId={roomId}
         />
 
         {/* Left Resize Handle */}
@@ -559,25 +576,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             activePanel={activePanel}
             onPanelChange={setActivePanel}
             onClose={() => setIsPanelDockVisible(false)}
-            // Queue props
-            onTrackSelect={handleTrackSelect}
-            onTrackRemove={removeTrack}
-            onUpload={() => setIsUploadModalOpen(true)}
-            onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
-            youtubePlayer={
-              isYouTubeTrack && currentTrack?.youtubeId ? (
-                <YouTubePlayer
-                  ref={youtubePlayerRef}
-                  videoId={currentTrack.youtubeId}
-                  onReady={handleYouTubeReady}
-                  onStateChange={handleYouTubeStateChange}
-                  onTimeUpdate={handleYouTubeTimeUpdate}
-                  onDurationChange={handleYouTubeDurationChange}
-                  onEnded={handleYouTubeEnded}
-                  volume={backingTrackVolume * 100}
-                />
-              ) : undefined
-            }
             // Mixer props
             onToggleStem={handleToggleStem}
             onStemVolumeChange={handleStemVolume}
