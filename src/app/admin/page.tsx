@@ -551,13 +551,228 @@ function UsersTab({ adminId }: { adminId: string }) {
 }
 
 function RoomsTab() {
+  const [rooms, setRooms] = useState<Array<{
+    id: string;
+    name: string;
+    createdBy: string;
+    createdAt: string;
+    isPublic: boolean;
+    maxUsers: number;
+    description?: string;
+    genre?: string;
+    activeUsers?: number;
+  }>>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [deleteInProgress, setDeleteInProgress] = useState(false);
+
+  const loadRooms = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      if (search) params.set('search', search);
+      const response = await fetch(`/api/rooms?${params.toString()}`);
+      if (response.ok) {
+        const data = await response.json();
+        setRooms(Array.isArray(data) ? data : []);
+      }
+    } catch (error) {
+      console.error('Failed to load rooms:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [search]);
+
+  useEffect(() => {
+    loadRooms();
+  }, [loadRooms]);
+
+  const handleDeleteRoom = async () => {
+    if (!selectedRoom) return;
+    setDeleteInProgress(true);
+    try {
+      const response = await fetch(`/api/rooms?id=${selectedRoom}`, {
+        method: 'DELETE',
+      });
+      if (response.ok) {
+        setRooms(rooms.filter(r => r.id !== selectedRoom));
+        setShowDeleteModal(false);
+        setSelectedRoom(null);
+      }
+    } catch (error) {
+      console.error('Failed to delete room:', error);
+    } finally {
+      setDeleteInProgress(false);
+    }
+  };
+
+  const handleDeleteAllStaleRooms = async () => {
+    if (!confirm('Are you sure you want to delete all stale rooms (rooms without description older than 2 hours)?')) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      // The GET endpoint already cleans up stale rooms, so just reload
+      await loadRooms();
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const roomToDelete = rooms.find(r => r.id === selectedRoom);
+
   return (
     <div>
-      <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-6">Rooms</h2>
-      <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
-        <Home className="w-12 h-12 mx-auto mb-4 opacity-50" />
-        <p>Room management coming soon</p>
-      </Card>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Rooms ({rooms.length})</h2>
+        <div className="flex items-center gap-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+            <Input
+              placeholder="Search rooms..."
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              className="pl-10 w-64"
+            />
+          </div>
+          <Button variant="ghost" size="sm" onClick={loadRooms}>
+            <RefreshCw className={`w-4 h-4 ${isLoading ? 'animate-spin' : ''}`} />
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDeleteAllStaleRooms}
+            className="text-red-500 hover:text-red-400 hover:border-red-500"
+          >
+            <Trash2 className="w-4 h-4 mr-2" />
+            Clean Stale Rooms
+          </Button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center h-64">
+          <RefreshCw className="w-8 h-8 text-gray-400 animate-spin" />
+        </div>
+      ) : rooms.length === 0 ? (
+        <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
+          <Home className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>No rooms found</p>
+        </Card>
+      ) : (
+        <Card className="overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-gray-100 dark:bg-gray-800">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Room</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Code</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Genre</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Capacity</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Created</th>
+                  <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-400 uppercase tracking-wider">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-200 dark:divide-gray-800">
+                {rooms.map((room) => (
+                  <tr key={room.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                    <td className="px-4 py-4">
+                      <div>
+                        <p className="text-gray-900 dark:text-white font-medium">{room.name}</p>
+                        {room.description && (
+                          <p className="text-sm text-gray-500 dark:text-gray-400 truncate max-w-xs">
+                            {room.description}
+                          </p>
+                        )}
+                      </div>
+                    </td>
+                    <td className="px-4 py-4">
+                      <code className="px-2 py-1 bg-gray-100 dark:bg-gray-800 rounded text-sm font-mono">
+                        {room.id}
+                      </code>
+                    </td>
+                    <td className="px-4 py-4">
+                      <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${
+                        room.isPublic
+                          ? 'bg-green-500/20 text-green-500'
+                          : 'bg-yellow-500/20 text-yellow-500'
+                      }`}>
+                        {room.isPublic ? 'Public' : 'Private'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-4 text-gray-500 dark:text-gray-400 text-sm capitalize">
+                      {room.genre || '-'}
+                    </td>
+                    <td className="px-4 py-4 text-gray-500 dark:text-gray-400 text-sm">
+                      {room.activeUsers || 0}/{room.maxUsers}
+                    </td>
+                    <td className="px-4 py-4 text-gray-500 dark:text-gray-400 text-sm">
+                      {new Date(room.createdAt).toLocaleDateString()}
+                    </td>
+                    <td className="px-4 py-4 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => window.open(`/room/${room.id}`, '_blank')}
+                        >
+                          <Eye className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => {
+                            setSelectedRoom(room.id);
+                            setShowDeleteModal(true);
+                          }}
+                          className="text-red-500 hover:text-red-400"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Delete Room">
+        <div className="space-y-4">
+          <p className="text-gray-500 dark:text-gray-400">
+            Are you sure you want to delete room{' '}
+            <span className="text-gray-900 dark:text-white font-medium">
+              {roomToDelete?.name || selectedRoom}
+            </span>?
+          </p>
+          <p className="text-sm text-red-500">
+            This will permanently delete the room and all associated tracks. This action cannot be undone.
+          </p>
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDeleteRoom}
+              disabled={deleteInProgress}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              {deleteInProgress ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              Delete Room
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
