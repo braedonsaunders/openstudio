@@ -46,6 +46,8 @@ export interface BackingTrack {
   stems?: AudioStems;
   isProcessing?: boolean;
   aiGenerated?: boolean;
+  youtubeId?: string;
+  thumbnail?: string;
 }
 
 export interface AudioStems {

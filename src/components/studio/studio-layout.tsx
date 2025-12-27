@@ -13,6 +13,8 @@ import { StemMixer } from './stem-mixer';
 import { TrackQueue } from '../tracks/track-queue';
 import { AIGenerator } from '../tracks/ai-generator';
 import { UploadModal } from '../tracks/upload-modal';
+import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
+import { AudioSettingsModal, type AudioSettings } from '../settings/audio-settings-modal';
 import { ConnectionStatus } from '../audio/connection-status';
 import { Button } from '../ui/button';
 import {
@@ -29,7 +31,6 @@ import {
 } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
 import type { SunoGenerationConfig, SunoGenerationProgress } from '@/lib/ai/suno';
-import type { SAMProgress } from '@/lib/ai/sam';
 
 interface StudioLayoutProps {
   roomId: string;
@@ -39,19 +40,20 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
   const [activeTab, setActiveTab] = useState<'users' | 'queue' | 'mixer'>('users');
   const [isAIModalOpen, setIsAIModalOpen] = useState(false);
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
+  const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generationProgress, setGenerationProgress] = useState<SunoGenerationProgress | null>(null);
   const [isSeparating, setIsSeparating] = useState(false);
   const [separationProgress, setSeparationProgress] = useState(0);
   const [copied, setCopied] = useState(false);
+  const [audioSettings, setAudioSettings] = useState<AudioSettings | undefined>();
 
   const {
     users,
     currentUser,
     isMaster,
-    queue,
     currentTrack,
-    isConnected,
     play,
     pause,
     seek,
@@ -75,12 +77,10 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
   }, [roomId]);
 
   const handleTrackSelect = useCallback(async (track: BackingTrack) => {
-    // Load and select track
     useRoomStore.getState().setCurrentTrack(track);
   }, []);
 
   const handleUpload = useCallback(async (file: File, metadata: { name: string; artist?: string }) => {
-    // Create form data
     const formData = new FormData();
     formData.append('file', file);
     formData.append('name', metadata.name);
@@ -89,7 +89,6 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
     }
     formData.append('roomId', roomId);
 
-    // Upload to API
     const response = await fetch('/api/upload', {
       method: 'POST',
       body: formData,
@@ -102,6 +101,38 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
     const track = await response.json();
     await addTrack(track);
   }, [roomId, addTrack]);
+
+  const handleYouTubeSelect = useCallback(async (video: { id: string; title: string; channelTitle: string; duration?: string }) => {
+    // Get audio URL for the YouTube video
+    const response = await fetch(`/api/youtube/audio?videoId=${video.id}`);
+    if (!response.ok) {
+      throw new Error('Could not load YouTube track');
+    }
+
+    const { audioUrl, duration } = await response.json();
+
+    // Parse duration string to seconds
+    const parseDuration = (d?: string): number => {
+      if (!d) return 0;
+      const parts = d.split(':').map(Number);
+      if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+      if (parts.length === 2) return parts[0] * 60 + parts[1];
+      return parts[0] || 0;
+    };
+
+    const track: BackingTrack = {
+      id: video.id,
+      name: video.title,
+      artist: video.channelTitle,
+      duration: duration || parseDuration(video.duration),
+      url: audioUrl,
+      uploadedBy: 'youtube',
+      uploadedAt: new Date().toISOString(),
+      youtubeId: video.id,
+    };
+
+    await addTrack(track);
+  }, [addTrack]);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
     setIsGenerating(true);
@@ -118,7 +149,6 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
         throw new Error('Generation failed');
       }
 
-      // Poll for progress
       const { generationId } = await response.json();
       let complete = false;
 
@@ -188,7 +218,6 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
 
         if (status.status === 'completed') {
           complete = true;
-          // Update track with stems
           useRoomStore.getState().setCurrentTrack({
             ...currentTrack,
             stems: status.stems,
@@ -214,6 +243,12 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
     setStemVolume(stem, volume);
     storeStemVolume(stem as 'vocals' | 'drums' | 'bass' | 'other', volume);
   }, [setStemVolume, storeStemVolume]);
+
+  const handleSettingsChange = useCallback((settings: AudioSettings) => {
+    setAudioSettings(settings);
+    // Apply settings to audio engine
+    // This would be implemented in the audio engine
+  }, []);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -256,7 +291,11 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
               {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </Button>
 
-            <Button variant="ghost" size="icon">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setIsSettingsModalOpen(true)}
+            >
               <Settings className="w-5 h-5" />
             </Button>
 
@@ -331,6 +370,7 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
                     onTrackRemove={removeTrack}
                     onUpload={() => setIsUploadModalOpen(true)}
                     onAIGenerate={() => setIsAIModalOpen(true)}
+                    onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
                   />
                 )}
 
@@ -385,6 +425,20 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
         isOpen={isUploadModalOpen}
         onClose={() => setIsUploadModalOpen(false)}
         onUpload={handleUpload}
+      />
+
+      <YouTubeSearchModal
+        isOpen={isYouTubeModalOpen}
+        onClose={() => setIsYouTubeModalOpen(false)}
+        onSelectTrack={handleYouTubeSelect}
+        currentTrackId={currentTrack?.youtubeId}
+      />
+
+      <AudioSettingsModal
+        isOpen={isSettingsModalOpen}
+        onClose={() => setIsSettingsModalOpen(false)}
+        onSettingsChange={handleSettingsChange}
+        currentSettings={audioSettings}
       />
     </div>
   );

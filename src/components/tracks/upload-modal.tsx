@@ -8,7 +8,6 @@ import { Progress } from '../ui/progress';
 import { Modal } from '../ui/modal';
 import {
   Upload,
-  Music,
   X,
   FileAudio,
   Check,
@@ -38,15 +37,15 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
     if (!selectedFile) return;
 
     // Validate file type
-    const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/x-wav'];
+    const validTypes = ['audio/mpeg', 'audio/wav', 'audio/mp3', 'audio/x-wav', 'audio/webm'];
     if (!validTypes.includes(selectedFile.type)) {
-      setError('Please select an MP3 or WAV file');
+      setError('Please select an MP3, WAV, or WebM file');
       return;
     }
 
-    // Validate file size (max 50MB)
-    if (selectedFile.size > 50 * 1024 * 1024) {
-      setError('File size must be under 50MB');
+    // Validate file size (max 100MB)
+    if (selectedFile.size > 100 * 1024 * 1024) {
+      setError('File size must be under 100MB');
       return;
     }
 
@@ -79,16 +78,56 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
 
     setUploadState('uploading');
     setUploadProgress(0);
+    setError(null);
 
     try {
-      // Simulate progress
-      const progressInterval = setInterval(() => {
-        setUploadProgress((prev) => Math.min(prev + 10, 90));
-      }, 200);
+      // Get presigned URL for direct upload
+      const presignResponse = await fetch('/api/upload/presign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileType: file.type,
+          fileSize: file.size,
+        }),
+      });
 
+      if (!presignResponse.ok) {
+        const data = await presignResponse.json();
+        throw new Error(data.error || 'Failed to get upload URL');
+      }
+
+      const { uploadUrl, publicUrl, trackId } = await presignResponse.json();
+
+      // Upload directly to R2 using presigned URL
+      const xhr = new XMLHttpRequest();
+
+      await new Promise<void>((resolve, reject) => {
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            setUploadProgress(Math.round((e.loaded / e.total) * 100));
+          }
+        });
+
+        xhr.addEventListener('load', () => {
+          if (xhr.status >= 200 && xhr.status < 300) {
+            resolve();
+          } else {
+            reject(new Error('Upload failed'));
+          }
+        });
+
+        xhr.addEventListener('error', () => reject(new Error('Upload failed')));
+        xhr.addEventListener('abort', () => reject(new Error('Upload cancelled')));
+
+        xhr.open('PUT', uploadUrl);
+        xhr.setRequestHeader('Content-Type', file.type);
+        xhr.send(file);
+      });
+
+      // Notify parent with track info
       await onUpload(file, { name: name.trim(), artist: artist.trim() || undefined });
 
-      clearInterval(progressInterval);
       setUploadProgress(100);
       setUploadState('success');
 
@@ -98,7 +137,8 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
         onClose();
       }, 1500);
     } catch (err) {
-      setError((err as Error).message);
+      console.error('Upload error:', err);
+      setError((err as Error).message || 'Upload failed. Please try again.');
       setUploadState('error');
     }
   }, [file, name, artist, onUpload, onClose]);
@@ -126,7 +166,7 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
       isOpen={isOpen}
       onClose={onClose}
       title="Upload Track"
-      description="Upload an MP3 or WAV file to add to the queue"
+      description="Upload an audio file to add to the queue"
     >
       <div className={cn('space-y-6', className)}>
         {/* File drop zone */}
@@ -134,25 +174,25 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
           <div
             onDrop={handleDrop}
             onDragOver={handleDragOver}
-            className="relative border-2 border-dashed border-gray-700 rounded-xl p-8 text-center hover:border-indigo-500 transition-colors cursor-pointer"
+            className="relative border-2 border-dashed border-slate-200 rounded-2xl p-8 text-center hover:border-indigo-400 hover:bg-indigo-50/50 transition-colors cursor-pointer"
             onClick={() => inputRef.current?.click()}
           >
             <input
               ref={inputRef}
               type="file"
-              accept="audio/mpeg,audio/wav,audio/mp3,.mp3,.wav"
+              accept="audio/mpeg,audio/wav,audio/mp3,audio/webm,.mp3,.wav,.webm"
               onChange={handleFileSelect}
               className="hidden"
             />
-            <Upload className="w-12 h-12 mx-auto text-gray-500 mb-4" />
-            <p className="text-gray-300 font-medium">
+            <Upload className="w-12 h-12 mx-auto text-slate-300 mb-4" />
+            <p className="text-slate-700 font-medium">
               Drop your audio file here
             </p>
-            <p className="text-sm text-gray-500 mt-1">
+            <p className="text-sm text-slate-500 mt-1">
               or click to browse
             </p>
-            <p className="text-xs text-gray-600 mt-4">
-              Supports MP3 and WAV (max 50MB)
+            <p className="text-xs text-slate-400 mt-4">
+              Supports MP3, WAV, WebM (max 100MB)
             </p>
           </div>
         )}
@@ -160,13 +200,13 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
         {/* Selected file */}
         {uploadState === 'selected' && file && (
           <div className="space-y-4">
-            <div className="flex items-center gap-4 p-4 bg-gray-800 rounded-lg">
-              <div className="w-12 h-12 bg-indigo-500/20 rounded-lg flex items-center justify-center">
-                <FileAudio className="w-6 h-6 text-indigo-500" />
+            <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-xl">
+              <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                <FileAudio className="w-6 h-6 text-indigo-600" />
               </div>
               <div className="flex-1 min-w-0">
-                <p className="font-medium text-white truncate">{file.name}</p>
-                <p className="text-sm text-gray-400">{formatFileSize(file.size)}</p>
+                <p className="font-medium text-slate-900 truncate">{file.name}</p>
+                <p className="text-sm text-slate-500">{formatFileSize(file.size)}</p>
               </div>
               <Button
                 variant="ghost"
@@ -198,12 +238,12 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
         {uploadState === 'uploading' && (
           <div className="space-y-4 py-4">
             <div className="flex items-center gap-4">
-              <div className="w-12 h-12 bg-indigo-500/20 rounded-lg flex items-center justify-center">
-                <Upload className="w-6 h-6 text-indigo-500 animate-pulse" />
+              <div className="w-12 h-12 bg-indigo-100 rounded-xl flex items-center justify-center">
+                <Upload className="w-6 h-6 text-indigo-600 animate-pulse" />
               </div>
               <div className="flex-1">
-                <p className="font-medium text-white">Uploading...</p>
-                <p className="text-sm text-gray-400">{name}</p>
+                <p className="font-medium text-slate-900">Uploading...</p>
+                <p className="text-sm text-slate-500">{name}</p>
               </div>
             </div>
             <Progress value={uploadProgress} showLabel />
@@ -213,11 +253,11 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
         {/* Success */}
         {uploadState === 'success' && (
           <div className="text-center py-8">
-            <div className="w-16 h-16 mx-auto bg-green-500/20 rounded-full flex items-center justify-center mb-4">
-              <Check className="w-8 h-8 text-green-500" />
+            <div className="w-16 h-16 mx-auto bg-emerald-100 rounded-full flex items-center justify-center mb-4">
+              <Check className="w-8 h-8 text-emerald-600" />
             </div>
-            <p className="font-medium text-white">Upload Complete!</p>
-            <p className="text-sm text-gray-400 mt-1">
+            <p className="font-medium text-slate-900">Upload Complete!</p>
+            <p className="text-sm text-slate-500 mt-1">
               Track has been added to the queue
             </p>
           </div>
@@ -225,9 +265,9 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
 
         {/* Error */}
         {error && (
-          <div className="flex items-center gap-3 p-4 bg-red-500/10 border border-red-500/20 rounded-lg">
+          <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl">
             <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-            <p className="text-sm text-red-400">{error}</p>
+            <p className="text-sm text-red-700">{error}</p>
           </div>
         )}
 
@@ -242,8 +282,16 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
               disabled={!name.trim()}
               className="flex-1"
             >
-              <Upload className="w-4 h-4 mr-2" />
+              <Upload className="w-4 h-4" />
               Upload
+            </Button>
+          </div>
+        )}
+
+        {uploadState === 'error' && (
+          <div className="flex gap-3">
+            <Button variant="outline" onClick={handleReset} className="flex-1">
+              Try Again
             </Button>
           </div>
         )}

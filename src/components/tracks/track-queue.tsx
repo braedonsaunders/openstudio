@@ -12,7 +12,7 @@ import {
   GripVertical,
   Upload,
   Sparkles,
-  MoreVertical,
+  Youtube,
 } from 'lucide-react';
 import type { BackingTrack } from '@/types';
 
@@ -21,6 +21,7 @@ interface TrackQueueProps {
   onTrackRemove: (trackId: string) => void;
   onUpload: () => void;
   onAIGenerate: () => void;
+  onYouTubeSearch: () => void;
   className?: string;
 }
 
@@ -29,6 +30,7 @@ export function TrackQueue({
   onTrackRemove,
   onUpload,
   onAIGenerate,
+  onYouTubeSearch,
   className,
 }: TrackQueueProps) {
   const { queue, currentTrack, isMaster } = useRoomStore();
@@ -46,32 +48,41 @@ export function TrackQueue({
   return (
     <div className={cn('space-y-4', className)}>
       <div className="flex items-center justify-between">
-        <h4 className="font-medium text-white">Track Queue</h4>
-        <span className="text-sm text-gray-500">
+        <h4 className="font-medium text-slate-900">Track Queue</h4>
+        <span className="text-sm text-slate-500">
           {queue.tracks.length} track{queue.tracks.length !== 1 ? 's' : ''}
         </span>
       </div>
 
       {/* Add track buttons */}
       {isMaster && (
-        <div className="flex gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <Button
             variant="outline"
             size="sm"
             onClick={onUpload}
-            className="flex-1"
+            className="flex-col h-auto py-3 gap-1"
           >
-            <Upload className="w-4 h-4 mr-2" />
-            Upload
+            <Upload className="w-4 h-4" />
+            <span className="text-xs">Upload</span>
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={onYouTubeSearch}
+            className="flex-col h-auto py-3 gap-1"
+          >
+            <Youtube className="w-4 h-4 text-red-500" />
+            <span className="text-xs">YouTube</span>
           </Button>
           <Button
             variant="outline"
             size="sm"
             onClick={onAIGenerate}
-            className="flex-1"
+            className="flex-col h-auto py-3 gap-1"
           >
-            <Sparkles className="w-4 h-4 mr-2" />
-            AI Generate
+            <Sparkles className="w-4 h-4 text-purple-500" />
+            <span className="text-xs">AI Gen</span>
           </Button>
         </div>
       )}
@@ -79,10 +90,10 @@ export function TrackQueue({
       {/* Track list */}
       {queue.tracks.length === 0 ? (
         <Card variant="bordered" className="py-8 text-center">
-          <Music className="w-8 h-8 mx-auto text-gray-600 mb-2" />
-          <p className="text-gray-500">No tracks in queue</p>
-          <p className="text-sm text-gray-600 mt-1">
-            Upload a track or generate one with AI
+          <Music className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+          <p className="text-slate-500">No tracks in queue</p>
+          <p className="text-sm text-slate-400 mt-1">
+            Upload, search YouTube, or generate with AI
           </p>
         </Card>
       ) : (
@@ -98,16 +109,16 @@ export function TrackQueue({
                 onDragStart={() => handleDragStart(index)}
                 onDragEnd={handleDragEnd}
                 className={cn(
-                  'flex items-center gap-3 p-3 rounded-lg transition-all',
-                  'bg-gray-800/50 border border-transparent',
-                  isActive && 'border-indigo-500 bg-indigo-500/10',
+                  'flex items-center gap-3 p-3 rounded-xl transition-all',
+                  'bg-slate-50 border border-transparent',
+                  isActive && 'border-indigo-300 bg-indigo-50',
                   isDragging && 'opacity-50',
                   isMaster && 'cursor-move'
                 )}
               >
                 {/* Drag handle */}
                 {isMaster && (
-                  <GripVertical className="w-4 h-4 text-gray-600 shrink-0" />
+                  <GripVertical className="w-4 h-4 text-slate-300 shrink-0" />
                 )}
 
                 {/* Track number / playing indicator */}
@@ -115,7 +126,7 @@ export function TrackQueue({
                   {isActive ? (
                     <div className="w-3 h-3 bg-indigo-500 rounded-full animate-pulse" />
                   ) : (
-                    <span className="text-gray-500">{index + 1}</span>
+                    <span className="text-slate-400 text-sm">{index + 1}</span>
                   )}
                 </div>
 
@@ -124,10 +135,10 @@ export function TrackQueue({
                   className="flex-1 min-w-0 cursor-pointer"
                   onClick={() => onTrackSelect(track)}
                 >
-                  <h5 className="font-medium text-white truncate">
+                  <h5 className="font-medium text-slate-900 truncate text-sm">
                     {track.name}
                   </h5>
-                  <div className="flex items-center gap-2 text-sm text-gray-400">
+                  <div className="flex items-center gap-2 text-xs text-slate-500">
                     {track.artist && (
                       <>
                         <span className="truncate">{track.artist}</span>
@@ -138,16 +149,25 @@ export function TrackQueue({
                     {track.aiGenerated && (
                       <>
                         <span>•</span>
-                        <span className="flex items-center gap-1">
+                        <span className="flex items-center gap-1 text-purple-500">
                           <Sparkles className="w-3 h-3" />
                           AI
+                        </span>
+                      </>
+                    )}
+                    {track.youtubeId && (
+                      <>
+                        <span>•</span>
+                        <span className="flex items-center gap-1 text-red-500">
+                          <Youtube className="w-3 h-3" />
+                          YT
                         </span>
                       </>
                     )}
                     {track.stems && (
                       <>
                         <span>•</span>
-                        <span className="text-green-500">Stems</span>
+                        <span className="text-emerald-500">Stems</span>
                       </>
                     )}
                   </div>
@@ -170,7 +190,7 @@ export function TrackQueue({
                       variant="ghost"
                       size="icon"
                       onClick={() => onTrackRemove(track.id)}
-                      className="w-8 h-8 text-gray-500 hover:text-red-500"
+                      className="w-8 h-8 text-slate-400 hover:text-red-500"
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
