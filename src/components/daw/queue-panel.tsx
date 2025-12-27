@@ -22,6 +22,7 @@ interface QueuePanelProps {
   onUpload: () => void;
   onAIGenerate: () => void;
   onYouTubeSearch: () => void;
+  youtubePlayer?: React.ReactNode;
 }
 
 export function QueuePanel({
@@ -30,6 +31,7 @@ export function QueuePanel({
   onUpload,
   onAIGenerate,
   onYouTubeSearch,
+  youtubePlayer,
 }: QueuePanelProps) {
   const { queue, currentTrack, isMaster } = useRoomStore();
   const { isPlaying, currentTime, duration } = useAudioStore();
@@ -86,7 +88,7 @@ export function QueuePanel({
         <div className="px-4 py-3 border-b border-white/5 bg-white/[0.02]">
           <div className="text-[10px] text-zinc-500 uppercase tracking-wider mb-2">Now Playing</div>
 
-          {/* Track info - YouTube player is rendered separately in PanelDock to prevent unmounting */}
+          {/* Track info */}
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
               <Music className="w-6 h-6 text-white" />
@@ -109,6 +111,13 @@ export function QueuePanel({
               </div>
             </div>
           </div>
+
+          {/* YouTube player - rendered inline below track info */}
+          {currentTrack.youtubeId && youtubePlayer && (
+            <div className="mt-3">
+              {youtubePlayer}
+            </div>
+          )}
         </div>
       )}
 
