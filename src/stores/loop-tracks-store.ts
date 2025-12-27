@@ -109,7 +109,7 @@ export const useLoopTracksStore = create<LoopTracksState>()(
 
     addTrack: (roomId, loopDef, userId, userName) => {
       const track: LoopTrackState = {
-        id: `loop-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+        id: crypto.randomUUID(),
         roomId,
         createdBy: userId,
         createdByName: userName,
