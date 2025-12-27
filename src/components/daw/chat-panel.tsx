@@ -1,29 +1,94 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
-import { Send, MessageSquare } from 'lucide-react';
+import { useAuthStore } from '@/stores/auth-store';
+import { saveChatMessage, getRoomChatMessages } from '@/lib/supabase/auth';
+import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { REACTION_TYPES, type ReactionType } from '@/types/user';
+import { Send, MessageSquare, Smile, Flame, Heart, Sparkles } from 'lucide-react';
 
 interface ChatPanelProps {
+  roomId: string;
   onSendMessage: (message: string) => void;
+  onSendReaction?: (userId: string, reactionType: ReactionType) => void;
 }
 
-export function ChatPanel({ onSendMessage }: ChatPanelProps) {
+export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelProps) {
   const [message, setMessage] = useState('');
+  const [showReactions, setShowReactions] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { messages, currentUser } = useRoomStore();
+  const { messages, currentUser, addMessage } = useRoomStore();
+  const { profile, avatar, user } = useAuthStore();
+
+  // Load persisted messages on mount
+  useEffect(() => {
+    async function loadMessages() {
+      if (!roomId) return;
+      try {
+        const persistedMessages = await getRoomChatMessages(roomId);
+        // Add persisted messages to store (avoiding duplicates)
+        persistedMessages.forEach((msg) => {
+          addMessage({
+            type: msg.messageType === 'text' ? 'chat' : msg.messageType as 'chat' | 'system' | 'sync' | 'control',
+            userId: msg.userId || '',
+            userName: msg.user?.displayName,
+            content: msg.content,
+            timestamp: msg.createdAt,
+          });
+        });
+      } catch (error) {
+        console.error('Failed to load chat messages:', error);
+      }
+    }
+    loadMessages();
+  }, [roomId, addMessage]);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!message.trim()) return;
-    onSendMessage(message.trim());
+
+    const trimmedMessage = message.trim();
     setMessage('');
+
+    // Send to realtime (other users)
+    onSendMessage(trimmedMessage);
+
+    // Persist to database if user is authenticated
+    if (user && roomId) {
+      try {
+        await saveChatMessage(roomId, user.id, trimmedMessage, 'text');
+      } catch (error) {
+        console.error('Failed to persist message:', error);
+      }
+    }
+  };
+
+  const handleReaction = async (targetUserId: string, reactionType: ReactionType) => {
+    setShowReactions(null);
+    onSendReaction?.(targetUserId, reactionType);
+
+    // Persist reaction
+    if (user && roomId) {
+      try {
+        await saveChatMessage(
+          roomId,
+          user.id,
+          REACTION_TYPES[reactionType].emoji,
+          'reaction',
+          reactionType,
+          targetUserId
+        );
+      } catch (error) {
+        console.error('Failed to persist reaction:', error);
+      }
+    }
   };
 
   const formatTime = (timestamp: string) => {

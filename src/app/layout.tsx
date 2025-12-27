@@ -1,4 +1,5 @@
 import type { Metadata, Viewport } from 'next';
+import { AuthProvider } from '@/components/auth/AuthProvider';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -35,7 +36,7 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   width: 'device-width',
   initialScale: 1,
-  themeColor: '#ffffff',
+  themeColor: '#0a0a0f',
 };
 
 export default function RootLayout({
@@ -51,7 +52,9 @@ export default function RootLayout({
         <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
       </head>
       <body>
-        {children}
+        <AuthProvider>
+          {children}
+        </AuthProvider>
       </body>
     </html>
   );

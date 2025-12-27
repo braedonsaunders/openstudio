@@ -36,6 +36,7 @@ interface PanelDockProps {
   isSeparating: boolean;
   separationProgress: number;
   // Chat props
+  roomId: string;
   onSendMessage: (message: string) => void;
 }
 
@@ -62,6 +63,7 @@ export function PanelDock({
   onSeparateTrack,
   isSeparating,
   separationProgress,
+  roomId,
   onSendMessage,
 }: PanelDockProps) {
   return (
@@ -124,7 +126,7 @@ export function PanelDock({
         )}
 
         {activePanel === 'chat' && (
-          <ChatPanel onSendMessage={onSendMessage} />
+          <ChatPanel roomId={roomId} onSendMessage={onSendMessage} />
         )}
 
         {activePanel === 'ai' && (

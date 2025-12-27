@@ -194,11 +194,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       artist: uploadedTrack.artist,
       duration: uploadedTrack.duration,
       url: uploadedTrack.url,
-      uploadedBy: 'user',
+      uploadedBy: currentUser?.id || 'user',
       uploadedAt: new Date().toISOString(),
     };
     await addTrack(track);
-  }, [addTrack]);
+  }, [addTrack, currentUser]);
 
   const handleYouTubeSelect = useCallback(async (video: { id: string; title: string; channelTitle: string; duration?: string }) => {
     // Parse duration string to seconds
@@ -430,6 +430,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             isSeparating={isSeparating}
             separationProgress={separationProgress}
             // Chat props
+            roomId={roomId}
             onSendMessage={sendMessage}
           />
         )}
