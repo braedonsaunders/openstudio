@@ -28,6 +28,8 @@ import { CreateRoomModal } from '@/components/rooms';
 import { generateRoomId } from '@/lib/utils';
 import { getPublicRooms, ROOM_GENRES } from '@/lib/rooms/service';
 import type { RoomListItem } from '@/types';
+import type { User as SupabaseUser } from '@supabase/supabase-js';
+import type { UserProfile } from '@/types/user';
 
 // Theme toggle button
 function ThemeToggle() {
@@ -677,8 +679,8 @@ function HeroSection({
   onQuickJoin,
 }: {
   isDark: boolean;
-  user: ReturnType<typeof useAuthStore>['user'];
-  profile: ReturnType<typeof useAuthStore>['profile'];
+  user: SupabaseUser | null;
+  profile: UserProfile | null;
   onCreateRoom: () => void;
   roomCode: string;
   setRoomCode: (code: string) => void;
