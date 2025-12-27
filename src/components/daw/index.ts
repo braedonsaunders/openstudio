@@ -2,6 +2,9 @@
 export { DAWLayout } from './daw-layout';
 export type { PanelType } from './daw-layout';
 
+// Menu
+export { MenuBar } from './menu-bar';
+
 // Transport
 export { TransportBar } from './transport-bar';
 
@@ -11,7 +14,13 @@ export { TrackHeader } from './track-header';
 export { TrackLane } from './track-lane';
 export { BackingTrackLane } from './backing-track-lane';
 
-// Arrangement
+// Live arrangement (River Flow design)
+export { LiveArrangementView } from './live-arrangement-view';
+export { LiveTrackLane } from './live-track-lane';
+export { SeekableBackingTrack } from './seekable-backing-track';
+export { NowLine } from './now-line';
+
+// Legacy arrangement (for reference)
 export { ArrangementView } from './arrangement-view';
 export { Timeline } from './timeline';
 export { Playhead } from './playhead';

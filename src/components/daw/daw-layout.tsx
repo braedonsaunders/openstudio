@@ -7,9 +7,10 @@ import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
+import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
 import { TrackHeadersPanel } from './track-headers-panel';
-import { ArrangementView } from './arrangement-view';
+import { LiveArrangementView } from './live-arrangement-view';
 import { PanelDock } from './panel-dock';
 import { BottomDock } from './bottom-dock';
 import { KeyboardShortcuts } from './keyboard-shortcuts';
@@ -46,6 +47,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const [isSeparating, setIsSeparating] = useState(false);
   const [separationProgress, setSeparationProgress] = useState(0);
   const [audioSettings, setAudioSettings] = useState<AudioSettings | undefined>();
+  const [loopEnabled, setLoopEnabled] = useState(false);
+  const [sessionStartTime] = useState(() => Date.now());
 
   // Room hooks
   const {
@@ -363,6 +366,49 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   return (
     <div className="daw-theme h-screen flex flex-col bg-[#0a0a0f] text-white overflow-hidden">
+      {/* Desktop Menu Bar */}
+      <MenuBar
+        onNewSession={() => {}}
+        onExportSession={() => {}}
+        onSaveToCloud={() => {}}
+        onImportProject={() => {}}
+        onPreferences={() => setIsSettingsModalOpen(true)}
+        onTogglePanel={(panel) => setActivePanel(panel as PanelType)}
+        onAddBackingTrack={() => setIsUploadModalOpen(true)}
+        onUploadAudio={() => setIsUploadModalOpen(true)}
+        onYouTubeImport={() => setIsYouTubeModalOpen(true)}
+        onPlay={isYouTubeTrack ? handleYouTubePlay : play}
+        onPause={isYouTubeTrack ? handleYouTubePause : pause}
+        onStop={() => {
+          if (isYouTubeTrack) {
+            handleYouTubePause();
+            handleYouTubeSeek(0);
+          } else {
+            pause();
+            seek(0);
+          }
+        }}
+        onSeekStart={() => {
+          if (isYouTubeTrack) handleYouTubeSeek(0);
+          else seek(0);
+        }}
+        onSeekEnd={() => {
+          const { duration } = useAudioStore.getState();
+          if (isYouTubeTrack) handleYouTubeSeek(duration);
+          else seek(duration);
+        }}
+        onToggleLoop={() => setLoopEnabled(!loopEnabled)}
+        onGenerateTrack={() => setIsAIModalOpen(true)}
+        onSeparateStems={handleSeparateTrack}
+        onRoomSettings={() => setIsSettingsModalOpen(true)}
+        onLeaveRoom={leave}
+        onShowShortcuts={() => setShowShortcuts(true)}
+        isPlaying={isPlaying}
+        isMaster={isMaster}
+        loopEnabled={loopEnabled}
+        activePanel={activePanel}
+      />
+
       {/* Transport Bar - Fixed Top */}
       <TransportBar
         roomId={roomId}
@@ -389,13 +435,14 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onMuteSelf={() => setMuted(!isMuted)}
         />
 
-        {/* Arrangement View - Center */}
-        <ArrangementView
+        {/* Live Arrangement View - Center (River Flow Design) */}
+        <LiveArrangementView
           users={users}
           currentUser={currentUser}
           audioLevels={audioLevels}
           isMaster={isMaster}
           onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
+          sessionStartTime={sessionStartTime}
         />
 
         {/* Panel Dock - Right */}
