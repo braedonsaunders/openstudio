@@ -17,16 +17,14 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
-// Cobalt API for YouTube extraction (open-source, reliable)
-const COBALT_API = 'https://api.cobalt.tools';
+// Cobalt API instance from instances.cobalt.best
+const COBALT_API = 'https://cobalt-backend.canine.tools';
 
 interface CobaltResponse {
-  status: 'tunnel' | 'redirect' | 'picker' | 'error' | 'local-processing';
+  status: 'tunnel' | 'redirect' | 'picker' | 'error';
   url?: string;
-  audio?: string;
-  picker?: Array<{ type: string; url: string }>;
+  filename?: string;
   error?: { code: string };
-  text?: string;
 }
 
 export async function POST(request: NextRequest) {
@@ -63,11 +61,11 @@ export async function POST(request: NextRequest) {
       if (!response.ok) {
         const errorText = await response.text();
         console.error('Cobalt API error:', response.status, errorText);
-        throw new Error(`Cobalt API returned ${response.status}`);
+        throw new Error(`Cobalt API returned ${response.status}: ${errorText}`);
       }
 
       cobaltResponse = await response.json();
-      console.log('Cobalt response:', cobaltResponse);
+      console.log('Cobalt response:', JSON.stringify(cobaltResponse));
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
       console.error('Failed to call Cobalt API:', errorMessage);
@@ -77,11 +75,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Handle different response types
-    let audioUrl: string | null = null;
-
+    // Handle response
     if (cobaltResponse.status === 'error') {
-      const errorMsg = cobaltResponse.error?.code || cobaltResponse.text || 'Cobalt API error';
+      const errorMsg = cobaltResponse.error?.code || 'Unknown error';
       console.error('Cobalt returned error:', errorMsg);
       return NextResponse.json(
         { error: `Cobalt error: ${errorMsg}` },
@@ -89,14 +85,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (cobaltResponse.status === 'tunnel' || cobaltResponse.status === 'redirect') {
-      audioUrl = cobaltResponse.url || cobaltResponse.audio || null;
-    } else if (cobaltResponse.status === 'picker' && cobaltResponse.picker) {
-      // Find audio in picker results
-      const audioItem = cobaltResponse.picker.find(item => item.type === 'audio');
-      audioUrl = audioItem?.url || cobaltResponse.picker[0]?.url || null;
-    }
-
+    const audioUrl = cobaltResponse.url;
     if (!audioUrl) {
       return NextResponse.json(
         { error: 'No audio URL returned from Cobalt' },
@@ -150,9 +139,9 @@ export async function POST(request: NextRequest) {
       success: true,
       track: {
         id: trackId,
-        name: title || `YouTube Video ${videoId}`,
+        name: title || cobaltResponse.filename || `YouTube Video ${videoId}`,
         artist: artist || 'Unknown Artist',
-        duration: 0, // Cobalt doesn't provide duration, will be detected on playback
+        duration: 0, // Will be detected on playback
         url: publicUrl,
         key,
         youtubeId: videoId,

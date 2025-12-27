@@ -14,8 +14,8 @@ export default function AuthCallbackPage() {
         const { error } = await supabaseAuth.auth.getSession();
         if (error) throw error;
 
-        // Redirect to home after successful auth
-        router.push('/');
+        // Redirect to rooms after successful auth
+        router.push('/rooms');
       } catch (error) {
         console.error('Auth callback error:', error);
         router.push('/?error=auth_failed');

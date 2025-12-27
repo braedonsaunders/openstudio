@@ -250,3 +250,61 @@ export interface UserTrack {
   stream?: MediaStream;
   createdAt: number;
 }
+
+// Extended Room types for room management
+export interface RoomListItem {
+  id: string;
+  name: string;
+  createdBy: string;
+  createdAt: string;
+  popLocation: string;
+  maxUsers: number;
+  isPublic: boolean;
+  settings: Partial<RoomSettings>;
+  // Extended fields for room browser
+  activeUsers?: number;
+  creatorName?: string;
+  creatorUsername?: string;
+  genre?: string;
+  description?: string;
+  tags?: string[];
+  rules?: Partial<RoomRules>;
+  lastActivity?: string;
+}
+
+export interface RoomRules {
+  allowBackingTracks: boolean;
+  allowAIGeneration: boolean;
+  allowStemSeparation: boolean;
+  allowRecording: boolean;
+  requireMicCheck: boolean;
+  customRules?: string[];
+}
+
+export interface CreateRoomInput {
+  name: string;
+  description?: string;
+  isPublic: boolean;
+  maxUsers: number;
+  genre?: string;
+  tags?: string[];
+  rules?: Partial<RoomRules>;
+  settings?: Partial<RoomSettings>;
+}
+
+export interface RoomActivity {
+  roomId: string;
+  activeUsers: number;
+  lastActivity: string;
+  isLive: boolean;
+}
+
+export type RoomFilter = 'all' | 'public' | 'my-rooms' | 'recent' | 'friends';
+
+export interface RoomSearchParams {
+  filter?: RoomFilter;
+  genre?: string;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}

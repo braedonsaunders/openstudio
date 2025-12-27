@@ -23,6 +23,10 @@ export interface AnalysisData {
   // Energy/loudness
   rms: number;
   loudness: number;
+  energy: number;
+
+  // Danceability (rhythm regularity)
+  danceability: number;
 
   // Tuner
   tunerNote: string | null;
@@ -93,6 +97,8 @@ const initialAnalysis: AnalysisData = {
   spectralFlux: 0,
   rms: 0,
   loudness: 0,
+  energy: 0,
+  danceability: 0,
   tunerNote: null,
   tunerFrequency: null,
   tunerCents: null,

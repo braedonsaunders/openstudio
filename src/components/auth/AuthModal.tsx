@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -26,6 +27,7 @@ interface AuthModalProps {
 }
 
 export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalProps) {
+  const router = useRouter();
   const [tab, setTab] = useState<'login' | 'signup'>(defaultTab);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -78,6 +80,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
       if (tab === 'login') {
         await signIn(email, password);
         onClose();
+        router.push('/rooms');
       } else {
         if (!usernameAvailable) {
           setError('Please choose an available username');
@@ -85,6 +88,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
         }
         await signUp(email, password, username, displayName || username);
         onClose();
+        router.push('/rooms');
       }
     } catch (err) {
       const message = (err as Error).message;

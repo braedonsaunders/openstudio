@@ -47,6 +47,7 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
   const [isExpanded, setIsExpanded] = useState(!compact);
   const [showSpectrum, setShowSpectrum] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const canvasContainerRef = useRef<HTMLDivElement>(null);
 
   const {
     localAnalysis,
@@ -67,21 +68,31 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
 
   // Draw spectrum visualization
   useEffect(() => {
-    if (!showSpectrum || !canvasRef.current || !spectrumData) return;
+    if (!showSpectrum || !canvasRef.current || !spectrumData || !canvasContainerRef.current) return;
 
     const canvas = canvasRef.current;
+    const container = canvasContainerRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    const width = canvas.width;
-    const height = canvas.height;
+    // Resize canvas to match container width
+    const containerWidth = container.clientWidth;
+    const dpr = window.devicePixelRatio || 1;
+    canvas.width = containerWidth * dpr;
+    canvas.height = 80 * dpr;
+    canvas.style.width = `${containerWidth}px`;
+    canvas.style.height = '80px';
+    ctx.scale(dpr, dpr);
+
+    const width = containerWidth;
+    const height = 80;
 
     // Clear canvas
-    ctx.fillStyle = '#f8fafc';
+    ctx.fillStyle = '#1e293b';
     ctx.fillRect(0, 0, width, height);
 
     // Draw spectrum bars
-    const barCount = 64;
+    const barCount = Math.min(128, Math.floor(width / 4));
     const barWidth = width / barCount;
     const step = Math.floor(spectrumData.length / barCount);
 
@@ -91,9 +102,9 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
       const normalized = Math.max(0, (value + 100) / 100);
       const barHeight = normalized * height;
 
-      // Color gradient based on frequency
-      const hue = (i / barCount) * 240; // Blue to red
-      ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+      // Color gradient based on frequency (purple to cyan)
+      const hue = 280 - (i / barCount) * 100;
+      ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
       ctx.fillRect(i * barWidth, height - barHeight, barWidth - 1, barHeight);
     }
   }, [spectrumData, showSpectrum]);
@@ -299,8 +310,8 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
         </button>
 
         {showSpectrum && (
-          <div className="rounded-lg overflow-hidden bg-slate-50">
-            <canvas ref={canvasRef} width={300} height={80} className="w-full" />
+          <div ref={canvasContainerRef} className="rounded-lg overflow-hidden bg-slate-900">
+            <canvas ref={canvasRef} className="block" />
           </div>
         )}
 
