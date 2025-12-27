@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { cn } from '@/lib/utils';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
@@ -19,7 +18,7 @@ import { AIGenerator } from '../tracks/ai-generator';
 import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
-import { AudioSettingsModal, type AudioSettings } from '../settings/audio-settings-modal';
+import { OutputSettingsModal } from '../settings/output-settings-modal';
 import type { BackingTrack, StemType } from '@/types';
 import type { SunoGenerationConfig, SunoGenerationProgress } from '@/lib/ai/suno';
 
@@ -66,7 +65,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const [generationProgress, setGenerationProgress] = useState<SunoGenerationProgress | null>(null);
   const [isSeparating, setIsSeparating] = useState(false);
   const [separationProgress, setSeparationProgress] = useState(0);
-  const [audioSettings, setAudioSettings] = useState<AudioSettings | undefined>();
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [sessionStartTime] = useState(() => Date.now());
 
@@ -380,10 +378,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     storeStemVolume(stem as 'vocals' | 'drums' | 'bass' | 'other', volume);
   }, [setStemVolume, storeStemVolume]);
 
-  const handleSettingsChange = useCallback((settings: AudioSettings) => {
-    setAudioSettings(settings);
-  }, []);
-
   return (
     <div className="daw-theme h-screen flex flex-col bg-[#0a0a0f] text-white overflow-hidden">
       {/* Desktop Menu Bar */}
@@ -560,11 +554,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         currentTrackId={currentTrack?.youtubeId}
       />
 
-      <AudioSettingsModal
+      <OutputSettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
-        onSettingsChange={handleSettingsChange}
-        currentSettings={audioSettings}
       />
 
     </div>

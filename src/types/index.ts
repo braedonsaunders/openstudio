@@ -135,3 +135,32 @@ export interface StemMixState {
   bass: { enabled: boolean; volume: number };
   other: { enabled: boolean; volume: number };
 }
+
+// Per-track audio settings
+export interface TrackAudioSettings {
+  inputMode: 'microphone' | 'application';
+  inputDeviceId: string;
+  sampleRate: 48000 | 44100;
+  bufferSize: 128 | 256 | 512 | 1024;
+  noiseSuppression: boolean;
+  echoCancellation: boolean;
+  autoGainControl: boolean;
+  // For application capture
+  applicationName?: string;
+}
+
+// User track - represents a single audio input track from a user
+export interface UserTrack {
+  id: string;
+  userId: string;
+  name: string;
+  color: string;
+  audioSettings: TrackAudioSettings;
+  isMuted: boolean;
+  isSolo: boolean;
+  volume: number;
+  isArmed: boolean; // Ready to record
+  isRecording: boolean;
+  stream?: MediaStream;
+  createdAt: number;
+}
