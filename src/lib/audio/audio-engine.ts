@@ -2,7 +2,16 @@
 // Manages all audio processing, routing, and playback
 
 import { AdaptiveJitterBuffer } from './jitter-buffer';
-import type { AudioStream, JitterStats, StemMixState, BackingTrack } from '@/types';
+import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig } from '@/types';
+
+export interface CaptureAudioOptions {
+  deviceId?: string;
+  channelConfig?: InputChannelConfig;
+  sampleRate?: number;
+  echoCancellation?: boolean;
+  noiseSuppression?: boolean;
+  autoGainControl?: boolean;
+}
 
 export interface AudioEngineConfig {
   sampleRate: 48000 | 44100;
@@ -28,6 +37,8 @@ export class AudioEngine {
   private masterAnalyser: AnalyserNode | null = null;
   private localStream: MediaStream | null = null;
   private localAnalyser: AnalyserNode | null = null;
+  private localChannelSplitter: ChannelSplitterNode | null = null;
+  private localSourceNode: MediaStreamAudioSourceNode | null = null;
   private remoteStreams: Map<string, AudioStream> = new Map();
   private backingTrackSource: AudioBufferSourceNode | null = null;
   private backingTrackBuffer: AudioBuffer | null = null;
@@ -102,22 +113,96 @@ export class AudioEngine {
     this.startLevelMonitoring();
   }
 
-  async captureLocalAudio(): Promise<MediaStream> {
-    this.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: false, // Disable for instruments
-        noiseSuppression: false,
-        autoGainControl: false,
-        sampleRate: this.config.sampleRate,
-        channelCount: 2,
-      },
+  async captureLocalAudio(options: CaptureAudioOptions = {}): Promise<MediaStream> {
+    const {
+      deviceId,
+      channelConfig,
+      sampleRate = this.config.sampleRate,
+      echoCancellation = false,
+      noiseSuppression = false,
+      autoGainControl = false,
+    } = options;
+
+    // Determine the channel count to request from the device
+    // For mono mode with a specific channel (e.g., input 2), we still need to request
+    // enough channels from the device to access that input
+    const requestedChannelCount = channelConfig?.channelCount === 1
+      ? Math.max(2, (channelConfig.leftChannel || 0) + 1) // Need at least leftChannel+1 channels
+      : channelConfig?.channelCount || 2;
+
+    const audioConstraints: MediaTrackConstraints = {
+      echoCancellation,
+      noiseSuppression,
+      autoGainControl,
+      sampleRate,
+      channelCount: requestedChannelCount,
+    };
+
+    // Add device constraint if specified
+    if (deviceId && deviceId !== 'default') {
+      audioConstraints.deviceId = { exact: deviceId };
+    }
+
+    console.log('[AudioEngine] Capturing audio with constraints:', {
+      deviceId: deviceId || 'default',
+      requestedChannelCount,
+      channelConfig,
+      sampleRate,
     });
 
+    this.localStream = await navigator.mediaDevices.getUserMedia({
+      audio: audioConstraints,
+    });
+
+    // Log actual stream settings
+    const audioTrack = this.localStream.getAudioTracks()[0];
+    if (audioTrack) {
+      const settings = audioTrack.getSettings();
+      console.log('[AudioEngine] Actual stream settings:', {
+        channelCount: settings.channelCount,
+        sampleRate: settings.sampleRate,
+        deviceId: settings.deviceId,
+      });
+    }
+
     if (this.audioContext) {
-      const source = this.audioContext.createMediaStreamSource(this.localStream);
+      // Clean up existing nodes
+      this.localSourceNode?.disconnect();
+      this.localChannelSplitter?.disconnect();
+      this.localAnalyser?.disconnect();
+
+      this.localSourceNode = this.audioContext.createMediaStreamSource(this.localStream);
       this.localAnalyser = this.audioContext.createAnalyser();
       this.localAnalyser.fftSize = 256;
-      source.connect(this.localAnalyser);
+
+      // For mono mode with a specific channel selection, use ChannelSplitter
+      // to extract only the desired channel
+      if (channelConfig?.channelCount === 1 && channelConfig.leftChannel !== undefined) {
+        const actualChannelCount = audioTrack?.getSettings().channelCount || requestedChannelCount;
+
+        if (channelConfig.leftChannel < actualChannelCount) {
+          console.log('[AudioEngine] Using ChannelSplitter to extract channel:', channelConfig.leftChannel);
+
+          // Create a channel splitter to access individual channels
+          this.localChannelSplitter = this.audioContext.createChannelSplitter(actualChannelCount);
+
+          // Create a channel merger to convert back to mono for the analyser
+          const merger = this.audioContext.createChannelMerger(1);
+
+          // Connect: source -> splitter -> specific channel -> merger -> analyser
+          this.localSourceNode.connect(this.localChannelSplitter);
+          this.localChannelSplitter.connect(merger, channelConfig.leftChannel, 0);
+          merger.connect(this.localAnalyser);
+        } else {
+          // Requested channel not available, fall back to default
+          console.warn('[AudioEngine] Requested channel', channelConfig.leftChannel,
+            'not available (device has', actualChannelCount, 'channels). Using default.');
+          this.localSourceNode.connect(this.localAnalyser);
+        }
+      } else {
+        // Stereo or default: connect directly
+        this.localSourceNode.connect(this.localAnalyser);
+      }
     }
 
     return this.localStream;
@@ -520,6 +605,13 @@ export class AudioEngine {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
     }
+
+    this.localSourceNode?.disconnect();
+    this.localSourceNode = null;
+    this.localChannelSplitter?.disconnect();
+    this.localChannelSplitter = null;
+    this.localAnalyser?.disconnect();
+    this.localAnalyser = null;
 
     this.workletNode?.disconnect();
     this.masterGain?.disconnect();

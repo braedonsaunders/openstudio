@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useAudioEngine } from '@/hooks/useAudioEngine';
 import type { UserTrack, TrackAudioSettings, InputChannelConfig } from '@/types';
 import {
   Mic,
@@ -64,6 +65,8 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     getDeviceChannelCount,
   } = useUserTracksStore();
 
+  const { recaptureWithSettings, isInitialized } = useAudioEngine();
+
   const [testingInput, setTestingInput] = useState(false);
   const [inputLevel, setInputLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -93,18 +96,42 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
   }, []);
 
   const handleSettingChange = useCallback(
-    (updates: Partial<TrackAudioSettings>) => {
+    async (updates: Partial<TrackAudioSettings>) => {
       updateTrackSettings(track.id, updates);
       setError(null);
+
+      // If input device changed and engine is initialized, recapture with new settings
+      if (updates.inputDeviceId !== undefined && isInitialized) {
+        try {
+          const newSettings = { ...track.audioSettings, ...updates };
+          await recaptureWithSettings(newSettings);
+          console.log('[AdvancedAudioSettings] Recaptured audio with new device');
+        } catch (err) {
+          console.error('[AdvancedAudioSettings] Failed to recapture:', err);
+          setError('Failed to switch device');
+        }
+      }
     },
-    [track.id, updateTrackSettings]
+    [track.id, track.audioSettings, updateTrackSettings, isInitialized, recaptureWithSettings]
   );
 
   const handleChannelConfigChange = useCallback(
-    (config: InputChannelConfig) => {
+    async (config: InputChannelConfig) => {
       updateTrackChannelConfig(track.id, config);
+
+      // Recapture audio with new channel config if engine is initialized
+      if (isInitialized) {
+        try {
+          const newSettings = { ...track.audioSettings, channelConfig: config };
+          await recaptureWithSettings(newSettings);
+          console.log('[AdvancedAudioSettings] Recaptured audio with new channel config:', config);
+        } catch (err) {
+          console.error('[AdvancedAudioSettings] Failed to recapture with new channel config:', err);
+          setError('Failed to apply channel configuration');
+        }
+      }
     },
-    [track.id, updateTrackChannelConfig]
+    [track.id, track.audioSettings, updateTrackChannelConfig, isInitialized, recaptureWithSettings]
   );
 
   // Select application source (for app capture mode)

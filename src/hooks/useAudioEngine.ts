@@ -1,10 +1,10 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { AudioEngine } from '@/lib/audio/audio-engine';
+import { AudioEngine, type CaptureAudioOptions } from '@/lib/audio/audio-engine';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
-import type { BackingTrack } from '@/types';
+import type { BackingTrack, TrackAudioSettings } from '@/types';
 
 // Singleton audio engine instance - shared across all components
 // This prevents issues when multiple components call useAudioEngine()
@@ -127,12 +127,22 @@ export function useAudioEngine() {
   }, [settings, setInitialized, setAudioLevels, setLocalLevel, setInputDevices, setOutputDevices, setAudioContext, setBackingTrackAnalyser, setMasterAnalyser]);
 
   // Capture local audio
-  const startCapture = useCallback(async () => {
+  const startCapture = useCallback(async (trackSettings?: TrackAudioSettings) => {
     if (!globalEngine) {
       await initialize();
     }
 
-    const stream = await globalEngine!.captureLocalAudio();
+    // Build capture options from track settings
+    const captureOptions: CaptureAudioOptions = trackSettings ? {
+      deviceId: trackSettings.inputDeviceId,
+      channelConfig: trackSettings.channelConfig,
+      sampleRate: trackSettings.sampleRate,
+      echoCancellation: trackSettings.echoCancellation,
+      noiseSuppression: trackSettings.noiseSuppression,
+      autoGainControl: trackSettings.autoGainControl,
+    } : {};
+
+    const stream = await globalEngine!.captureLocalAudio(captureOptions);
     setCapturing(true);
     return stream;
   }, [initialize, setCapturing]);
@@ -142,6 +152,31 @@ export function useAudioEngine() {
     setCapturing(false);
     setMuted(true);
   }, [setCapturing, setMuted]);
+
+  // Recapture audio with new settings (e.g., when user changes device or channel config)
+  const recaptureWithSettings = useCallback(async (trackSettings: TrackAudioSettings) => {
+    if (!globalEngine) {
+      console.warn('[useAudioEngine] Cannot recapture: engine not initialized');
+      return null;
+    }
+
+    console.log('[useAudioEngine] Recapturing audio with new settings:', {
+      deviceId: trackSettings.inputDeviceId,
+      channelConfig: trackSettings.channelConfig,
+    });
+
+    const captureOptions: CaptureAudioOptions = {
+      deviceId: trackSettings.inputDeviceId,
+      channelConfig: trackSettings.channelConfig,
+      sampleRate: trackSettings.sampleRate,
+      echoCancellation: trackSettings.echoCancellation,
+      noiseSuppression: trackSettings.noiseSuppression,
+      autoGainControl: trackSettings.autoGainControl,
+    };
+
+    const stream = await globalEngine.captureLocalAudio(captureOptions);
+    return stream;
+  }, []);
 
   // Mute/unmute local audio
   const toggleMute = useCallback((muted: boolean) => {
@@ -384,6 +419,7 @@ export function useAudioEngine() {
     initialize,
     startCapture,
     stopCapture,
+    recaptureWithSettings,
     toggleMute,
     addRemoteStream,
     removeRemoteStream,

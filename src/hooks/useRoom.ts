@@ -6,6 +6,7 @@ import { RealtimeRoomManager } from '@/lib/supabase/realtime';
 import { CloudflareCalls } from '@/lib/cloudflare/calls';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
+import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useAudioEngine } from './useAudioEngine';
 import type { User, Room, BackingTrack, TrackQueue } from '@/types';
 
@@ -114,8 +115,21 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Initialize audio engine
       await initialize();
 
-      // Start audio capture
-      const stream = await startCapture();
+      // Get or create user's first track to get audio settings
+      const userTracksState = useUserTracksStore.getState();
+      let userTracks = userTracksState.getTracksByUser(user.id);
+      if (userTracks.length === 0) {
+        // Create a default track for the user
+        userTracksState.addTrack(user.id, 'Track 1');
+        userTracks = userTracksState.getTracksByUser(user.id);
+      }
+
+      // Use the first track's audio settings for capture
+      const firstTrack = userTracks[0];
+      const trackSettings = firstTrack?.audioSettings;
+
+      // Start audio capture with track settings (device, channel config, etc.)
+      const stream = await startCapture(trackSettings);
 
       // Initialize Cloudflare Calls
       const cloudflare = new CloudflareCalls(roomId, user.id);
