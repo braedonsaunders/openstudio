@@ -40,7 +40,7 @@ export function Chat({ onSendMessage, className }: ChatProps) {
     return users.get(userId)?.name || 'Unknown';
   };
 
-  const formatTime = (timestamp: number) => {
+  const formatTime = (timestamp: string | number) => {
     return new Date(timestamp).toLocaleTimeString([], {
       hour: '2-digit',
       minute: '2-digit',

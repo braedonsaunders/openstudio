@@ -106,7 +106,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
               type: 'sync',
               userId,
               content: '',
-              timestamp: Date.now(),
+              timestamp: new Date().toISOString(),
               data: {
                 type: 'analysis',
                 ...syncData,

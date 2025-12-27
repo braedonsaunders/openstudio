@@ -120,8 +120,10 @@ export interface WebRTCStats {
 export interface RoomMessage {
   type: 'chat' | 'system' | 'sync' | 'control';
   userId: string;
+  userName?: string;
+  userColor?: string;
   content: string;
-  timestamp: number;
+  timestamp: string;
   data?: Record<string, unknown>;
 }
 
