@@ -48,7 +48,10 @@ import {
   HelpCircle,
   Info,
   ChevronRight,
+  Sun,
+  Moon,
 } from 'lucide-react';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 interface MenuItem {
   label: string;
@@ -143,6 +146,8 @@ export function MenuBar({
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
 
   // Close menu when clicking outside
   useEffect(() => {
@@ -343,8 +348,15 @@ export function MenuBar({
         </div>
       ))}
 
-      {/* Right side - keyboard shortcut hint */}
+      {/* Right side - theme toggle and keyboard shortcut hint */}
       <div className="flex-1" />
+      <button
+        onClick={toggleTheme}
+        className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
+        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      >
+        {isDark ? <Sun className="w-3 h-3" /> : <Moon className="w-3 h-3" />}
+      </button>
       <button
         onClick={onShowShortcuts}
         className="flex items-center gap-1 px-2 py-0.5 text-[10px] text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 transition-colors"
