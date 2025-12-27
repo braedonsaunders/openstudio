@@ -5,6 +5,7 @@ import { StemMixerPanel } from './stem-mixer-panel';
 import { AnalysisPanel } from './analysis-panel';
 import { ChatPanel } from './chat-panel';
 import { AIPanel } from './ai-panel';
+import { SetlistPanel } from './setlist-panel';
 import type { PanelType } from './daw-layout';
 import type { StemType } from '@/types';
 import {
@@ -13,6 +14,7 @@ import {
   MessageSquare,
   Sparkles,
   ChevronLeft,
+  Music2,
 } from 'lucide-react';
 
 interface PanelDockProps {
@@ -35,6 +37,7 @@ interface PanelDockProps {
 }
 
 const panels: { id: PanelType; icon: typeof Sliders; label: string }[] = [
+  { id: 'setlist', icon: Music2, label: 'Setlist' },
   { id: 'mixer', icon: Sliders, label: 'Mixer' },
   { id: 'analysis', icon: Activity, label: 'Analysis' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
@@ -56,8 +59,8 @@ export function PanelDock({
   onSendMessage,
   width,
 }: PanelDockProps) {
-  // Ensure we have a valid panel (queue is no longer available)
-  const validPanel = activePanel === 'queue' ? 'mixer' : activePanel;
+  // Ensure we have a valid panel (queue is no longer available, redirect to setlist)
+  const validPanel = activePanel === 'queue' ? 'setlist' : activePanel;
   return (
     <div
       className="bg-gray-50 dark:bg-[#0d0d14] border-l border-gray-200 dark:border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
@@ -94,6 +97,14 @@ export function PanelDock({
 
       {/* Panel Content */}
       <div className="flex-1 overflow-hidden relative">
+        {validPanel === 'setlist' && (
+          <SetlistPanel
+            roomId={roomId}
+            userId={userId}
+            userName={userName}
+          />
+        )}
+
         {validPanel === 'mixer' && (
           <StemMixerPanel
             onToggleStem={onToggleStem}

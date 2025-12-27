@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
-import { useAudioStore } from '@/stores/audio-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { useSongsStore } from '@/stores/songs-store';
 import { LoopBrowserModal } from '../loops/loop-browser-modal';
 import { getLoopById } from '@/lib/audio/loop-library';
 import {
@@ -16,12 +16,14 @@ import {
   Repeat,
   Volume2,
   VolumeX,
-  Play,
-  Square,
   Plus,
+  ChevronDown,
+  Layers,
+  GripVertical,
 } from 'lucide-react';
 import type { BackingTrack } from '@/types';
 import type { LoopDefinition } from '@/types/loops';
+import type { Song, SongTrackReference } from '@/types/songs';
 
 interface TracksPanelProps {
   onTrackSelect: (track: BackingTrack) => void;
@@ -29,8 +31,6 @@ interface TracksPanelProps {
   onUpload: () => void;
   onAIGenerate: () => void;
   onYouTubeSearch: () => void;
-  onLoopPlay: (trackId: string) => void;
-  onLoopStop: (trackId: string) => void;
   youtubePlayer?: React.ReactNode;
   roomId: string;
   userId: string;
@@ -43,63 +43,127 @@ export function TracksPanel({
   onUpload,
   onAIGenerate,
   onYouTubeSearch,
-  onLoopPlay,
-  onLoopStop,
   youtubePlayer,
   roomId,
   userId,
   userName,
 }: TracksPanelProps) {
-  const { queue, currentTrack, isMaster } = useRoomStore();
-  const { isPlaying, currentTime, duration } = useAudioStore();
+  const { queue, isMaster } = useRoomStore();
+  const { getTracksByRoom, addTrack: addLoopTrack, removeTrack: removeLoopTrack, setTrackMuted } = useLoopTracksStore();
   const {
-    getTracksByRoom,
-    addTrack: addLoopTrack,
-    removeTrack: removeLoopTrack,
-    setTrackMuted,
-  } = useLoopTracksStore();
+    getSongsByRoom,
+    getCurrentSong,
+    selectSong,
+    createSong,
+    deleteSong,
+    addTrackToSong,
+    removeTrackFromSong,
+    loadSongs,
+  } = useSongsStore();
 
   const [showLoopBrowser, setShowLoopBrowser] = useState(false);
+  const [showSongDropdown, setShowSongDropdown] = useState(false);
+  const [isCreatingSong, setIsCreatingSong] = useState(false);
+  const [newSongName, setNewSongName] = useState('');
 
-  // Get loop tracks for this room
+  // Get data
+  const songs = getSongsByRoom(roomId);
+  const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
 
-  // Handler for adding a loop track from the browser
+  // Load songs on mount
+  useEffect(() => {
+    if (roomId) {
+      loadSongs(roomId);
+    }
+  }, [roomId, loadSongs]);
+
+  // Create default song if none exist
+  useEffect(() => {
+    if (songs.length === 0 && userId && !isCreatingSong) {
+      const defaultSong = createSong(roomId, 'Song 1', userId, userName);
+      // Persist to database
+      fetch(`/api/rooms/${roomId}/songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(defaultSong),
+      }).catch(console.error);
+    }
+  }, [songs.length, roomId, userId, userName, createSong, isCreatingSong]);
+
+  // Handler for creating a new song
+  const handleCreateSong = useCallback(async () => {
+    if (!newSongName.trim()) return;
+    setIsCreatingSong(true);
+    const song = createSong(roomId, newSongName.trim(), userId, userName);
+    try {
+      await fetch(`/api/rooms/${roomId}/songs`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(song),
+      });
+    } catch (err) {
+      console.error('Failed to create song:', err);
+    }
+    setNewSongName('');
+    setShowSongDropdown(false);
+    setIsCreatingSong(false);
+  }, [newSongName, roomId, userId, userName, createSong]);
+
+  // Handler for adding a loop to current song
   const handleAddLoop = useCallback(
     async (loop: LoopDefinition) => {
-      if (!userId || !roomId) return;
+      if (!userId || !roomId || !currentSong) return;
 
-      const track = addLoopTrack(roomId, loop, userId, userName);
+      // Create the loop track in the loop store
+      const loopTrack = addLoopTrack(roomId, loop, userId, userName);
 
-      // Persist to database
+      // Persist loop track
       try {
         await fetch(`/api/rooms/${roomId}/loop-tracks`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(track),
+          body: JSON.stringify(loopTrack),
         });
       } catch (err) {
         console.error('Failed to persist loop track:', err);
       }
 
+      // Add reference to current song
+      addTrackToSong(currentSong.id, {
+        type: 'loop',
+        trackId: loopTrack.id,
+        startOffset: 0,
+      });
+
       setShowLoopBrowser(false);
     },
-    [userId, userName, roomId, addLoopTrack]
+    [userId, userName, roomId, currentSong, addLoopTrack, addTrackToSong]
   );
 
-  // Handler for removing a loop track
-  const handleRemoveLoopTrack = useCallback(
-    async (trackId: string) => {
-      removeLoopTrack(trackId);
-      try {
-        await fetch(`/api/rooms/${roomId}/loop-tracks?id=${trackId}`, {
-          method: 'DELETE',
-        });
-      } catch (err) {
-        console.error('Failed to delete loop track:', err);
+  // Handler for removing a track from current song
+  const handleRemoveTrack = useCallback(
+    async (trackRef: SongTrackReference) => {
+      if (!currentSong) return;
+
+      removeTrackFromSong(currentSong.id, trackRef.id);
+
+      // If it's a loop, also remove from loop tracks store
+      if (trackRef.type === 'loop') {
+        removeLoopTrack(trackRef.trackId);
+        try {
+          await fetch(`/api/rooms/${roomId}/loop-tracks?trackId=${trackRef.trackId}`, {
+            method: 'DELETE',
+          });
+        } catch (err) {
+          console.error('Failed to delete loop track:', err);
+        }
+      } else {
+        // It's an audio track
+        onTrackRemove(trackRef.trackId);
       }
     },
-    [roomId, removeLoopTrack]
+    [currentSong, roomId, removeTrackFromSong, removeLoopTrack, onTrackRemove]
   );
 
   const formatTime = (seconds: number): string => {
@@ -116,241 +180,335 @@ export function TracksPanel({
     return (totalBeats / loopDef.bpm) * 60;
   };
 
-  const getSourceIcon = (track: BackingTrack) => {
-    if (track.youtubeId) return <Youtube className="w-3 h-3" />;
-    if (track.aiGenerated) return <Sparkles className="w-3 h-3" />;
-    return <Upload className="w-3 h-3" />;
+  // Get track icon based on type
+  const getTrackIcon = (trackRef: SongTrackReference) => {
+    if (trackRef.type === 'loop') {
+      return <Repeat className="w-3 h-3" />;
+    }
+    const track = queue.tracks.find((t) => t.id === trackRef.trackId);
+    if (track?.youtubeId) return <Youtube className="w-3 h-3" />;
+    if (track?.aiGenerated) return <Sparkles className="w-3 h-3" />;
+    return <Music className="w-3 h-3" />;
   };
+
+  // Resolve track data
+  const resolveTrack = (trackRef: SongTrackReference) => {
+    if (trackRef.type === 'loop') {
+      const loopTrack = loopTracks.find((t) => t.id === trackRef.trackId);
+      const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+      return {
+        name: loopTrack?.name || loopDef?.name || 'Loop',
+        duration: getLoopDuration(loopDef),
+        color: loopTrack?.color || '#f59e0b',
+        muted: loopTrack?.muted || false,
+        loopTrack,
+        loopDef,
+      };
+    } else {
+      const audioTrack = queue.tracks.find((t) => t.id === trackRef.trackId);
+      return {
+        name: audioTrack?.name || 'Unknown Track',
+        duration: audioTrack?.duration || 0,
+        color: '#6366f1',
+        muted: false,
+        audioTrack,
+      };
+    }
+  };
+
+  // Build unified track list for current song
+  const unifiedTracks = currentSong?.tracks.map((trackRef) => ({
+    ...trackRef,
+    ...resolveTrack(trackRef),
+  })) || [];
+
+  // Also include tracks not yet in a song (backwards compat)
+  const orphanAudioTracks = queue.tracks.filter(
+    (t) => !currentSong?.tracks.some((ref) => ref.type === 'audio' && ref.trackId === t.id)
+  );
+  const orphanLoopTracks = loopTracks.filter(
+    (t) => !currentSong?.tracks.some((ref) => ref.type === 'loop' && ref.trackId === t.id)
+  );
 
   return (
     <div className="h-full flex flex-col">
-      {/* Header */}
-      <div className="h-8 px-3 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
-        <span className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">
-          Tracks
-        </span>
-        <div className="flex items-center gap-1">
+      {/* Header with Song Selector */}
+      <div className="px-3 py-2 border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
+        {/* Song Dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => setShowSongDropdown(!showSongDropdown)}
+            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div
+                className="w-3 h-3 rounded-sm shrink-0"
+                style={{ backgroundColor: currentSong?.color || '#6366f1' }}
+              />
+              <span className="text-xs font-medium text-gray-900 dark:text-white truncate">
+                {currentSong?.name || 'No Song'}
+              </span>
+            </div>
+            <ChevronDown className={cn(
+              'w-3.5 h-3.5 text-gray-500 dark:text-zinc-400 transition-transform',
+              showSongDropdown && 'rotate-180'
+            )} />
+          </button>
+
+          {/* Dropdown Menu */}
+          {showSongDropdown && (
+            <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg z-50 overflow-hidden">
+              {songs.map((song) => (
+                <button
+                  key={song.id}
+                  onClick={() => {
+                    selectSong(song.id);
+                    setShowSongDropdown(false);
+                  }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-gray-100 dark:hover:bg-white/5 transition-colors',
+                    currentSong?.id === song.id && 'bg-indigo-500/10'
+                  )}
+                >
+                  <div
+                    className="w-3 h-3 rounded-sm shrink-0"
+                    style={{ backgroundColor: song.color }}
+                  />
+                  <span className="text-xs text-gray-700 dark:text-zinc-300 truncate">
+                    {song.name}
+                  </span>
+                  <span className="ml-auto text-[10px] text-gray-400 dark:text-zinc-600">
+                    {song.tracks.length} tracks
+                  </span>
+                </button>
+              ))}
+
+              {/* New Song Input */}
+              <div className="border-t border-gray-100 dark:border-white/5 p-2">
+                <div className="flex items-center gap-2">
+                  <input
+                    type="text"
+                    value={newSongName}
+                    onChange={(e) => setNewSongName(e.target.value)}
+                    onKeyDown={(e) => e.key === 'Enter' && handleCreateSong()}
+                    placeholder="New song name..."
+                    className="flex-1 px-2 py-1 text-xs bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+                  />
+                  <button
+                    onClick={handleCreateSong}
+                    disabled={!newSongName.trim()}
+                    className="p-1 rounded bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Add Track Buttons */}
+        <div className="flex items-center gap-1 mt-2">
           <button
             onClick={onUpload}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400 transition-colors"
-            title="Upload track"
+            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[10px] font-medium transition-colors"
+            title="Upload audio"
           >
-            <Upload className="w-3.5 h-3.5" />
+            <Upload className="w-3 h-3" />
+            Upload
           </button>
           <button
             onClick={onYouTubeSearch}
-            className="p-1 rounded hover:bg-gray-200 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400 transition-colors"
+            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[10px] font-medium transition-colors"
             title="Add from YouTube"
           >
-            <Youtube className="w-3.5 h-3.5" />
+            <Youtube className="w-3 h-3" />
+            YouTube
+          </button>
+          <button
+            onClick={() => setShowLoopBrowser(true)}
+            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] font-medium transition-colors"
+            title="Add loop"
+          >
+            <Repeat className="w-3 h-3" />
+            Loop
           </button>
           <button
             onClick={onAIGenerate}
-            className="p-1 rounded hover:bg-indigo-500/20 text-indigo-500 dark:text-indigo-400 transition-colors"
+            className="p-1.5 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-colors"
             title="AI Generate"
           >
             <Sparkles className="w-3.5 h-3.5" />
           </button>
-          {isMaster && (
-            <button
-              onClick={() => setShowLoopBrowser(true)}
-              className="p-1 rounded hover:bg-amber-500/20 text-amber-500 dark:text-amber-400 transition-colors"
-              title="Add Loop"
-            >
-              <Repeat className="w-3.5 h-3.5" />
-            </button>
-          )}
         </div>
       </div>
 
-      {/* Now Playing - Compact */}
-      {currentTrack && (
-        <div className="px-3 py-2 border-b border-gray-200 dark:border-white/5 bg-indigo-500/5 shrink-0">
-          <div className="flex items-center gap-2">
-            <div className="w-8 h-8 rounded bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shrink-0">
-              {isPlaying ? (
-                <Play className="w-3.5 h-3.5 text-white fill-white" />
-              ) : (
-                <Music className="w-3.5 h-3.5 text-white" />
-              )}
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="text-xs font-medium text-gray-900 dark:text-white truncate">
-                {currentTrack.name}
-              </div>
-              <div className="flex items-center gap-1.5 mt-0.5">
-                <div className="flex-1 h-0.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
-                  <div
-                    className="h-full bg-indigo-500 rounded-full transition-all duration-300"
-                    style={{ width: `${duration > 0 ? (currentTime / duration) * 100 : 0}%` }}
-                  />
-                </div>
-                <span className="text-[9px] text-gray-500 dark:text-zinc-500 tabular-nums shrink-0">
-                  {formatTime(currentTime)}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Track List */}
       <div className="flex-1 overflow-y-auto">
-        {queue.tracks.length === 0 && loopTracks.length === 0 ? (
+        {unifiedTracks.length === 0 && orphanAudioTracks.length === 0 && orphanLoopTracks.length === 0 ? (
           <div className="h-full flex items-center justify-center p-4">
             <div className="text-center">
               <div className="w-10 h-10 mx-auto mb-2 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-                <Music className="w-5 h-5 text-gray-400 dark:text-zinc-600" />
+                <Layers className="w-5 h-5 text-gray-400 dark:text-zinc-600" />
               </div>
-              <p className="text-xs text-gray-500 dark:text-zinc-500">No tracks yet</p>
-              <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-0.5">Add backing tracks</p>
+              <p className="text-xs text-gray-500 dark:text-zinc-500">No tracks in song</p>
+              <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-0.5">Add audio or loops above</p>
             </div>
           </div>
         ) : (
           <div className="py-1">
-            {/* Backing Tracks */}
-            {queue.tracks.map((track, index) => {
-              const isCurrentTrack = currentTrack?.id === track.id;
+            {/* Song Tracks */}
+            {unifiedTracks.map((track, index) => (
+              <div
+                key={track.id}
+                className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+              >
+                {/* Drag Handle */}
+                <GripVertical className="w-3 h-3 text-gray-300 dark:text-zinc-700 opacity-0 group-hover:opacity-100 shrink-0" />
 
-              return (
+                {/* Track Icon */}
                 <div
-                  key={track.id}
-                  className={cn(
-                    'group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer',
-                    isCurrentTrack && 'bg-indigo-500/10'
-                  )}
-                  onClick={() => onTrackSelect(track)}
-                  title="Click to play"
+                  className="w-5 h-5 rounded flex items-center justify-center shrink-0"
+                  style={{ backgroundColor: `${track.color}20`, color: track.color }}
                 >
-                  {/* Index */}
-                  <span
-                    className={cn(
-                      'w-4 text-[10px] tabular-nums text-center shrink-0',
-                      isCurrentTrack ? 'text-indigo-500 dark:text-indigo-400 font-medium' : 'text-gray-400 dark:text-zinc-600'
-                    )}
-                  >
-                    {index + 1}
-                  </span>
+                  {getTrackIcon(track)}
+                </div>
 
-                  {/* Track Info */}
-                  <div className="flex-1 min-w-0">
-                    <div
-                      className={cn(
-                        'text-xs truncate',
-                        isCurrentTrack ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-700 dark:text-zinc-300'
-                      )}
-                    >
-                      {track.name}
-                    </div>
+                {/* Track Info */}
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs text-gray-700 dark:text-zinc-300 truncate">
+                    {track.name}
                   </div>
+                </div>
 
-                  {/* Duration & Source */}
-                  <div className="flex items-center gap-1.5 shrink-0">
+                {/* Duration */}
+                <span className="text-[10px] text-gray-500 dark:text-zinc-500 tabular-nums shrink-0">
+                  {formatTime(track.duration)}
+                </span>
+
+                {/* Mute Button (for loops) */}
+                {track.type === 'loop' && track.loopTrack && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setTrackMuted(track.trackId, !track.muted);
+                    }}
+                    className={cn(
+                      'p-0.5 rounded transition-colors',
+                      track.muted ? 'text-red-400' : 'text-gray-400 dark:text-zinc-600'
+                    )}
+                    title={track.muted ? 'Unmute' : 'Mute'}
+                  >
+                    {track.muted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
+                  </button>
+                )}
+
+                {/* Remove Button */}
+                {isMaster && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      handleRemoveTrack(track);
+                    }}
+                    className="p-0.5 text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                    title="Remove from song"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                )}
+              </div>
+            ))}
+
+            {/* Orphan Audio Tracks (not in current song) */}
+            {orphanAudioTracks.length > 0 && (
+              <>
+                <div className="px-3 py-1 mt-1 border-t border-gray-100 dark:border-white/5">
+                  <span className="text-[9px] text-gray-400 dark:text-zinc-600 uppercase tracking-wider">
+                    Unassigned Audio
+                  </span>
+                </div>
+                {orphanAudioTracks.map((track) => (
+                  <div
+                    key={track.id}
+                    className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer opacity-60"
+                    onClick={() => onTrackSelect(track)}
+                  >
+                    <div className="w-5 h-5 rounded bg-indigo-500/20 flex items-center justify-center shrink-0">
+                      <Music className="w-3 h-3 text-indigo-500" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs text-gray-700 dark:text-zinc-300 truncate">{track.name}</div>
+                    </div>
                     <span className="text-[10px] text-gray-500 dark:text-zinc-500 tabular-nums">
                       {formatTime(track.duration)}
                     </span>
-                    <div
-                      className={cn(
-                        'p-0.5 rounded',
-                        track.youtubeId && 'text-red-500 dark:text-red-400',
-                        track.aiGenerated && 'text-purple-500 dark:text-purple-400',
-                        !track.youtubeId && !track.aiGenerated && 'text-gray-400 dark:text-zinc-500'
-                      )}
-                    >
-                      {getSourceIcon(track)}
-                    </div>
+                    {isMaster && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          // Add to current song
+                          if (currentSong) {
+                            addTrackToSong(currentSong.id, {
+                              type: 'audio',
+                              trackId: track.id,
+                              startOffset: 0,
+                            });
+                          }
+                        }}
+                        className="p-0.5 text-indigo-500 opacity-0 group-hover:opacity-100"
+                        title="Add to current song"
+                      >
+                        <Plus className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
+                ))}
+              </>
+            )}
 
-                  {/* Remove Button */}
-                  {isMaster && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        onTrackRemove(track.id);
-                      }}
-                      className="p-0.5 text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                    >
-                      <X className="w-3 h-3" />
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-
-            {/* Loop Tracks */}
-            {loopTracks.length > 0 && (
+            {/* Orphan Loop Tracks (not in current song) */}
+            {orphanLoopTracks.length > 0 && (
               <>
                 <div className="px-3 py-1 mt-1 border-t border-gray-100 dark:border-white/5">
-                  <span className="text-[9px] text-gray-400 dark:text-zinc-600 uppercase tracking-wider">Loops</span>
+                  <span className="text-[9px] text-gray-400 dark:text-zinc-600 uppercase tracking-wider">
+                    Unassigned Loops
+                  </span>
                 </div>
-                {loopTracks.map((track) => {
+                {orphanLoopTracks.map((track) => {
                   const loopDef = getLoopById(track.loopId);
-                  const loopDuration = getLoopDuration(loopDef);
                   return (
                     <div
                       key={track.id}
-                      className={cn(
-                        'group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors',
-                        track.isPlaying && 'bg-amber-500/10'
-                      )}
+                      className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer opacity-60"
                     >
-                      {/* Play/Stop Button */}
-                      <button
-                        onClick={() => track.isPlaying ? onLoopStop(track.id) : onLoopPlay(track.id)}
-                        className={cn(
-                          'w-5 h-5 rounded flex items-center justify-center shrink-0 transition-colors',
-                          track.isPlaying
-                            ? 'bg-amber-500/20 text-amber-500 hover:bg-amber-500/30'
-                            : 'hover:bg-gray-200 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400'
-                        )}
-                        style={!track.isPlaying ? { backgroundColor: `${track.color}20` } : undefined}
-                        title={track.isPlaying ? 'Stop loop' : 'Play loop'}
+                      <div
+                        className="w-5 h-5 rounded flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${track.color}20` }}
                       >
-                        {track.isPlaying ? (
-                          <Square className="w-2.5 h-2.5 fill-current" />
-                        ) : (
-                          <Play className="w-3 h-3 fill-current" style={{ color: track.color }} />
-                        )}
-                      </button>
-
-                      {/* Track Info */}
+                        <Repeat className="w-3 h-3" style={{ color: track.color }} />
+                      </div>
                       <div className="flex-1 min-w-0">
-                        <div className={cn(
-                          'text-xs truncate',
-                          track.isPlaying ? 'text-gray-900 dark:text-white font-medium' : 'text-gray-700 dark:text-zinc-300'
-                        )}>
+                        <div className="text-xs text-gray-700 dark:text-zinc-300 truncate">
                           {track.name || loopDef?.name || 'Loop'}
                         </div>
-                        <div className="text-[9px] text-gray-400 dark:text-zinc-600">
-                          {loopDef?.bpm} BPM • {loopDef?.bars} bars
-                        </div>
                       </div>
-
-                      {/* Duration */}
-                      <span className="text-[10px] text-gray-500 dark:text-zinc-500 tabular-nums shrink-0">
-                        {formatTime(loopDuration)}
+                      <span className="text-[10px] text-gray-500 dark:text-zinc-500 tabular-nums">
+                        {formatTime(getLoopDuration(loopDef))}
                       </span>
-
-                      {/* Mute Button */}
-                      <button
-                        onClick={() => setTrackMuted(track.id, !track.muted)}
-                        className={cn(
-                          'p-0.5 rounded transition-colors',
-                          track.muted ? 'text-red-400' : 'text-gray-400 dark:text-zinc-600 hover:text-gray-600 dark:hover:text-zinc-400'
-                        )}
-                        title={track.muted ? 'Unmute' : 'Mute'}
-                      >
-                        {track.muted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
-                      </button>
-
-                      {/* Remove Button */}
-                      {isMaster && (
+                      {isMaster && currentSong && (
                         <button
-                          onClick={() => handleRemoveLoopTrack(track.id)}
-                          className="p-0.5 text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
-                          title="Remove loop"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            addTrackToSong(currentSong.id, {
+                              type: 'loop',
+                              trackId: track.id,
+                              startOffset: 0,
+                            });
+                          }}
+                          className="p-0.5 text-amber-500 opacity-0 group-hover:opacity-100"
+                          title="Add to current song"
                         >
-                          <X className="w-3 h-3" />
+                          <Plus className="w-3 h-3" />
                         </button>
                       )}
                     </div>
@@ -362,21 +520,16 @@ export function TracksPanel({
         )}
       </div>
 
-      {/* Queue Summary */}
-      {(queue.tracks.length > 0 || loopTracks.length > 0) && (
+      {/* Song Summary */}
+      {currentSong && (
         <div className="px-3 py-1.5 border-t border-gray-200 dark:border-white/5 flex items-center justify-between text-[10px] text-gray-500 dark:text-zinc-500 shrink-0">
-          <span>
-            {queue.tracks.length} track{queue.tracks.length !== 1 ? 's' : ''}
-            {loopTracks.length > 0 && ` + ${loopTracks.length} loop${loopTracks.length !== 1 ? 's' : ''}`}
-          </span>
-          <span>{formatTime(queue.tracks.reduce((acc, t) => acc + t.duration, 0))}</span>
+          <span>{unifiedTracks.length} track{unifiedTracks.length !== 1 ? 's' : ''}</span>
+          <span>{currentSong.bpm} BPM</span>
         </div>
       )}
 
       {/* YouTube Player - Hidden but mounted */}
-      {currentTrack?.youtubeId && youtubePlayer && (
-        <div className="hidden">{youtubePlayer}</div>
-      )}
+      {youtubePlayer && <div className="hidden">{youtubePlayer}</div>}
 
       {/* Loop Browser Modal */}
       <LoopBrowserModal

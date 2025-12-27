@@ -12,7 +12,7 @@ import { useAudioStore } from '@/stores/audio-store';
 import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
 import { LeftPanel } from './left-panel';
-import { LiveArrangementView } from './live-arrangement-view';
+import { CenterSplitView } from './center-split-view';
 import { PanelDock } from './panel-dock';
 import { ResizeHandle } from './resize-handle';
 import { BottomDock } from './bottom-dock';
@@ -29,7 +29,7 @@ interface DAWLayoutProps {
   roomId: string;
 }
 
-export type PanelType = 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' kept for backwards compat but redirects to 'mixer'
+export type PanelType = 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai' | 'setlist'; // Note: 'queue' kept for backwards compat but redirects to 'mixer'
 
 export function DAWLayout({ roomId }: DAWLayoutProps) {
   // Theme
@@ -37,7 +37,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const isDark = resolvedTheme === 'dark';
 
   // Panel state
-  const [activePanel, setActivePanel] = useState<PanelType>('mixer');
+  const [activePanel, setActivePanel] = useState<PanelType>('setlist');
   const [isPanelDockVisible, setIsPanelDockVisible] = useState(true);
   const [isBottomDockVisible, setIsBottomDockVisible] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
@@ -527,8 +527,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onUpload={() => setIsUploadModalOpen(true)}
           onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
           onAIGenerate={handleOpenAIPanel}
-          onLoopPlay={playLoopTrack}
-          onLoopStop={stopLoopTrack}
           youtubePlayer={
             isYouTubeTrack && currentTrack?.youtubeId ? (
               <YouTubePlayer
@@ -560,13 +558,16 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         {/* Left Resize Handle */}
         <ResizeHandle position="left" onResize={handleLeftResize} />
 
-        {/* Live Arrangement View - Center (River Flow Design) */}
-        <LiveArrangementView
+        {/* Center Split View - Multi-track Timeline (top 1/3) + Live Session (bottom 2/3) */}
+        <CenterSplitView
+          roomId={roomId}
           users={users}
           currentUser={currentUser}
           audioLevels={audioLevels}
           isMaster={isMaster}
           onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
+          onPlay={isYouTubeTrack ? handleYouTubePlay : play}
+          onStop={isYouTubeTrack ? handleYouTubePause : pause}
           sessionStartTime={sessionStartTime}
         />
 
