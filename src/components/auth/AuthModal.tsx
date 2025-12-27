@@ -101,8 +101,17 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     : email && password && username.length >= 3 && usernameAvailable;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="" variant="dark">
-      <div className="w-full max-w-md mx-auto">
+    <Modal isOpen={isOpen} onClose={onClose} showCloseButton={false} variant="dark">
+      <div className="w-full max-w-md mx-auto relative">
+        {/* Close Button */}
+        <button
+          onClick={onClose}
+          className="absolute -top-2 -right-2 p-2 text-gray-400 hover:text-white transition-colors rounded-lg hover:bg-gray-800"
+          aria-label="Close"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         {/* Header */}
         <div className="text-center mb-8">
           <div className="w-16 h-16 mx-auto bg-gradient-to-br from-indigo-500 to-purple-600 rounded-2xl flex items-center justify-center mb-4">

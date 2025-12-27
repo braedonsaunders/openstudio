@@ -127,9 +127,16 @@ export const useAuthStore = create<AuthState>()(
           set({ isLoading: true });
 
           try {
-            await authApi.signUp(email, password, username, displayName);
+            const result = await authApi.signUp(email, password, username, displayName);
+
+            // Check if email confirmation is required
+            if (result.user && !result.session) {
+              // Email confirmation required - don't initialize yet
+              throw new Error('Please check your email to confirm your account before signing in.');
+            }
 
             // After signup, initialize to load profile
+            set({ isInitialized: false }); // Reset to allow re-initialization
             await get().initialize();
           } finally {
             set({ isLoading: false });
