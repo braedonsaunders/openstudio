@@ -71,11 +71,11 @@ export function PanelDock({
 }: PanelDockProps) {
   return (
     <div
-      className="bg-[#0d0d14] border-l border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
+      className="bg-gray-50 dark:bg-[#0d0d14] border-l border-gray-200 dark:border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
       style={{ width: width ? `${width}px` : '320px' }}
     >
       {/* Tab Header */}
-      <div className="h-12 flex items-center border-b border-white/5 bg-[#12121a]">
+      <div className="h-12 flex items-center border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a]">
         <div className="flex-1 flex items-center gap-1 px-2">
           {panels.map(({ id, icon: Icon, label }) => (
             <button
@@ -84,8 +84,8 @@ export function PanelDock({
               className={cn(
                 'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all',
                 activePanel === id
-                  ? 'bg-indigo-500/20 text-indigo-400'
-                  : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
+                  ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+                  : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/5'
               )}
               title={label}
             >
@@ -97,7 +97,7 @@ export function PanelDock({
 
         <button
           onClick={onClose}
-          className="p-2 mr-2 text-zinc-500 hover:text-zinc-300 hover:bg-white/5 rounded-lg transition-colors"
+          className="p-2 mr-2 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/5 rounded-lg transition-colors"
           title="Close panel"
         >
           <ChevronLeft className="w-4 h-4" />
