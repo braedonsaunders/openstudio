@@ -59,10 +59,9 @@ export async function POST(request: NextRequest) {
 
     const presignedUrl = await getSignedUrl(s3Client, command, { expiresIn: 3600 });
 
-    // Public URL for accessing the file after upload
-    const publicUrl = process.env.R2_PUBLIC_URL
-      ? `${process.env.R2_PUBLIC_URL}/${key}`
-      : `https://${BUCKET_NAME}.${R2_ACCOUNT_ID}.r2.cloudflarestorage.com/${key}`;
+    // Use proxy URL for accessing the file after upload (avoids CORS issues)
+    // The proxy route at /api/audio/[trackId] will fetch from R2
+    const publicUrl = `/api/audio/${trackId}`;
 
     return NextResponse.json({
       trackId,

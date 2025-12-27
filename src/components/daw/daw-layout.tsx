@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
@@ -231,16 +232,17 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       return parts[0] || 0;
     };
 
-    // Create track with YouTube ID - playback will use YouTube IFrame API
+    // Create track with UUID for database compatibility
+    // YouTube video ID is stored in youtubeId field for playback
     const track: BackingTrack = {
-      id: video.id,
+      id: uuidv4(), // Use UUID for database compatibility
       name: video.title,
       artist: video.channelTitle,
       duration: parseDuration(video.duration),
       url: '', // No URL needed - YouTube player handles playback
       uploadedBy: 'youtube',
       uploadedAt: new Date().toISOString(),
-      youtubeId: video.id,
+      youtubeId: video.id, // YouTube video ID for playback
     };
 
     await addTrack(track);
