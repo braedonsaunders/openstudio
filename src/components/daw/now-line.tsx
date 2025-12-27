@@ -11,7 +11,7 @@ export function NowLine({ isRecording = false, className }: NowLineProps) {
   return (
     <div
       className={cn(
-        'absolute top-0 bottom-0 w-px z-30 pointer-events-none',
+        'absolute top-0 bottom-0 w-px z-20 pointer-events-none',
         className
       )}
       style={{ right: 0 }}
