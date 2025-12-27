@@ -1,13 +1,16 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { TrackHeader } from './track-header';
 import { UserTrackHeader } from './user-track-header';
 import { InactiveTrackHeader } from './inactive-track-header';
 import { AddTrackModal } from './add-track-modal';
+import { LoopBrowserModal } from '../loops/loop-browser-modal';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { Plus } from 'lucide-react';
 import type { User } from '@/types';
+import type { LoopDefinition } from '@/types/loops';
 
 interface TrackHeadersPanelProps {
   users: User[];
@@ -47,6 +50,7 @@ export function TrackHeadersPanel({
   roomId,
 }: TrackHeadersPanelProps) {
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
+  const [showLoopBrowser, setShowLoopBrowser] = useState(false);
 
   const {
     getTracksByUser,
@@ -58,6 +62,31 @@ export function TrackHeadersPanel({
     loadDevices,
     devicesLoaded,
   } = useUserTracksStore();
+
+  const { addTrack: addLoopTrack } = useLoopTracksStore();
+
+  // Handler for adding a loop track from the browser
+  const handleAddLoop = useCallback(
+    async (loop: LoopDefinition) => {
+      if (!currentUser || !roomId) return;
+
+      const track = addLoopTrack(roomId, loop, currentUser.id, currentUser.name);
+
+      // Persist to database
+      try {
+        await fetch(`/api/rooms/${roomId}/loop-tracks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(track),
+        });
+      } catch (err) {
+        console.error('Failed to persist loop track:', err);
+      }
+
+      setShowLoopBrowser(false);
+    },
+    [currentUser, roomId, addLoopTrack]
+  );
 
   // Load devices on mount
   useEffect(() => {
@@ -248,6 +277,17 @@ export function TrackHeadersPanel({
         userId={currentUser?.id || ''}
         userName={currentUser?.name}
         roomId={roomId}
+        onOpenLoopBrowser={() => setShowLoopBrowser(true)}
+      />
+
+      {/* Loop Browser Modal */}
+      <LoopBrowserModal
+        isOpen={showLoopBrowser}
+        onClose={() => setShowLoopBrowser(false)}
+        roomId={roomId || ''}
+        userId={currentUser?.id || ''}
+        userName={currentUser?.name}
+        onAddLoop={handleAddLoop}
       />
     </div>
   );
