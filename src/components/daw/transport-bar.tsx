@@ -22,6 +22,7 @@ import {
   WifiOff,
   Zap,
 } from 'lucide-react';
+import { UserMenu } from '@/components/auth/UserMenu';
 
 interface TransportBarProps {
   roomId: string;
@@ -243,6 +244,11 @@ export function TransportBar({
         >
           <Settings className="w-5 h-5" />
         </button>
+
+        <div className="h-5 w-px bg-white/10" />
+
+        {/* User Menu */}
+        <UserMenu />
 
         {/* Leave */}
         <button
