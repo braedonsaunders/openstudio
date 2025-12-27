@@ -168,6 +168,7 @@ export class EssentiaAnalyzer {
   }
 
   async connectToAudioContext(audioContext: AudioContext): Promise<void> {
+    console.log('EssentiaAnalyzer.connectToAudioContext called');
     this.audioContext = audioContext;
     this.sampleRate = audioContext.sampleRate;
 
@@ -175,6 +176,7 @@ export class EssentiaAnalyzer {
     this.analyserNode = audioContext.createAnalyser();
     this.analyserNode.fftSize = this.frameSize;
     this.analyserNode.smoothingTimeConstant = 0.8;
+    console.log('EssentiaAnalyzer connected to audio context');
   }
 
   async analyzeStream(stream: MediaStream): Promise<void> {
@@ -218,6 +220,12 @@ export class EssentiaAnalyzer {
    * without creating new connections.
    */
   analyzeFromAnalyserNode(analyserNode: AnalyserNode): void {
+    console.log('analyzeFromAnalyserNode called:', {
+      hasAudioContext: !!this.audioContext,
+      isInitialized: this.isInitialized,
+      hasEssentia: !!this.essentia,
+    });
+
     if (!this.audioContext) {
       console.warn('Cannot analyze from node: no audio context');
       return;
