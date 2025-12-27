@@ -121,17 +121,18 @@ export function useAudioEngine() {
   }, []);
 
   // Load and play backing track
-  const loadBackingTrack = useCallback(async (track: BackingTrack) => {
+  // Returns true if loading was successful, false otherwise
+  const loadBackingTrack = useCallback(async (track: BackingTrack): Promise<boolean> => {
     if (!engineRef.current) {
       console.error('Audio engine not initialized');
-      return;
+      return false;
     }
 
     // Skip loading for YouTube tracks (handled by iframe)
     if (track.youtubeId) {
       console.log('YouTube track - skipping audio engine load');
       setDuration(track.duration);
-      return;
+      return true; // YouTube tracks don't need audio engine loading
     }
 
     try {
@@ -143,6 +144,7 @@ export function useAudioEngine() {
       console.error('Failed to load backing track:', error);
       // Still set duration from metadata
       setDuration(track.duration);
+      return false; // Loading failed
     }
 
     // Load stems if available
@@ -162,6 +164,8 @@ export function useAudioEngine() {
       }
       await Promise.all(stemPromises);
     }
+
+    return true; // Loading succeeded
   }, [setDuration]);
 
   // Play backing track with sync
