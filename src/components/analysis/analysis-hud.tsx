@@ -89,7 +89,7 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
     return () => resizeObserver.disconnect();
   }, []);
 
-  // Draw spectrum visualization
+  // Draw spectrum visualization with logarithmic frequency scaling
   useEffect(() => {
     if (!canvasRef.current || !spectrumData || containerWidth === 0) return;
 
@@ -112,19 +112,37 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
     ctx.fillStyle = '#1e293b';
     ctx.fillRect(0, 0, width, height);
 
-    // Draw spectrum bars
-    const barCount = Math.min(128, Math.floor(width / 3));
+    // Use logarithmic frequency scaling for better musical representation
+    const nyquist = 22050;
+    const minFreq = 20;
+    const maxFreq = 20000;
+    const barCount = Math.min(64, Math.floor(width / 4));
     const barWidth = width / barCount;
-    const step = Math.floor(spectrumData.length / barCount);
 
     for (let i = 0; i < barCount; i++) {
-      const value = spectrumData[i * step] || -100;
-      // Normalize from dB (-100 to 0) to 0-1
-      const normalized = Math.max(0, (value + 100) / 100);
+      // Logarithmic mapping: bar position -> frequency
+      const freqRatio = i / barCount;
+      const freq = minFreq * Math.pow(maxFreq / minFreq, freqRatio);
+
+      // Convert frequency to bin index
+      const binIndex = Math.round((freq / nyquist) * spectrumData.length);
+
+      // Average neighboring bins for smoother display
+      let sum = 0;
+      let count = 0;
+      const binRadius = Math.max(1, Math.floor(binIndex * 0.1));
+      for (let j = Math.max(0, binIndex - binRadius); j <= Math.min(spectrumData.length - 1, binIndex + binRadius); j++) {
+        sum += spectrumData[j];
+        count++;
+      }
+      const value = count > 0 ? sum / count : -100;
+
+      // Normalize from dB (-100 to -20 typical range) to 0-1
+      const normalized = Math.max(0, Math.min(1, (value + 90) / 70));
       const barHeight = normalized * height;
 
       // Color gradient based on frequency (purple to cyan)
-      const hue = 280 - (i / barCount) * 100;
+      const hue = 280 - freqRatio * 100;
       ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
       ctx.fillRect(i * barWidth, height - barHeight, barWidth - 1, barHeight);
     }
