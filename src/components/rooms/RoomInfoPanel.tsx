@@ -58,31 +58,31 @@ export function RoomInfoPanel({ room, variant = 'compact', className = '' }: Roo
 
   if (variant === 'compact') {
     return (
-      <div className={`rounded-xl bg-gray-800/50 border border-gray-700 ${className}`}>
+      <div className={`rounded-xl bg-slate-100 dark:bg-gray-800/50 border border-slate-200 dark:border-gray-700 ${className}`}>
         {/* Compact header */}
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="w-full flex items-center justify-between px-4 py-3 hover:bg-gray-800/50 transition-colors"
+          className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-200 dark:hover:bg-gray-800/50 transition-colors"
         >
           <div className="flex items-center gap-3 min-w-0">
             <div className="p-2 rounded-lg bg-gradient-to-br from-indigo-500 to-purple-600">
               <Info className="w-4 h-4 text-white" />
             </div>
             <div className="text-left min-w-0">
-              <h3 className="font-medium text-white truncate">{room.name}</h3>
-              <div className="flex items-center gap-2 text-xs text-gray-400">
+              <h3 className="font-medium text-slate-900 dark:text-white truncate">{room.name}</h3>
+              <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-gray-400">
                 <span className="flex items-center gap-1">
                   {room.isPublic ? <Globe className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
                   {room.isPublic ? 'Public' : 'Private'}
                 </span>
-                <span className="font-mono text-gray-500">{room.id}</span>
+                <span className="font-mono text-slate-400 dark:text-gray-500">{room.id}</span>
               </div>
             </div>
           </div>
           {isExpanded ? (
-            <ChevronUp className="w-5 h-5 text-gray-400 shrink-0" />
+            <ChevronUp className="w-5 h-5 text-slate-400 dark:text-gray-400 shrink-0" />
           ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400 shrink-0" />
+            <ChevronDown className="w-5 h-5 text-slate-400 dark:text-gray-400 shrink-0" />
           )}
         </button>
 
@@ -113,7 +113,7 @@ export function RoomInfoPanel({ room, variant = 'compact', className = '' }: Roo
 
   // Full variant
   return (
-    <div className={`rounded-xl bg-gray-800/50 border border-gray-700 p-5 ${className}`}>
+    <div className={`rounded-xl bg-slate-100 dark:bg-gray-800/50 border border-slate-200 dark:border-gray-700 p-5 ${className}`}>
       {/* Header */}
       <div className="flex items-start justify-between gap-4 mb-4">
         <div className="flex items-center gap-3 min-w-0">
@@ -121,9 +121,9 @@ export function RoomInfoPanel({ room, variant = 'compact', className = '' }: Roo
             <Music className="w-6 h-6 text-white" />
           </div>
           <div className="min-w-0">
-            <h2 className="text-xl font-bold text-white truncate">{room.name}</h2>
+            <h2 className="text-xl font-bold text-slate-900 dark:text-white truncate">{room.name}</h2>
             {room.creatorName && (
-              <p className="text-sm text-gray-400">Created by {room.creatorName}</p>
+              <p className="text-sm text-slate-500 dark:text-gray-400">Created by {room.creatorName}</p>
             )}
           </div>
         </div>
@@ -166,24 +166,24 @@ function RoomInfoContent({
     <>
       {/* Description */}
       {room.description && (
-        <div className="p-3 rounded-lg bg-gray-900/50">
-          <p className="text-sm text-gray-300 leading-relaxed">{room.description}</p>
+        <div className="p-3 rounded-lg bg-white dark:bg-gray-900/50 border border-slate-200 dark:border-transparent">
+          <p className="text-sm text-slate-700 dark:text-gray-300 leading-relaxed">{room.description}</p>
         </div>
       )}
 
       {/* Meta info */}
       <div className="flex flex-wrap gap-3 text-sm">
         {room.genre && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-900/50 text-gray-300">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-gray-900/50 border border-slate-200 dark:border-transparent text-slate-700 dark:text-gray-300">
             <Music className="w-3.5 h-3.5 text-indigo-400" />
             <span className="capitalize">{room.genre}</span>
           </div>
         )}
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-900/50 text-gray-300">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-gray-900/50 border border-slate-200 dark:border-transparent text-slate-700 dark:text-gray-300">
           <Users className="w-3.5 h-3.5 text-indigo-400" />
           <span>{room.activeUsers || 0}/{room.maxUsers} musicians</span>
         </div>
-        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-900/50 text-gray-300">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white dark:bg-gray-900/50 border border-slate-200 dark:border-transparent text-slate-700 dark:text-gray-300">
           <Clock className="w-3.5 h-3.5 text-indigo-400" />
           <span>{timeAgo}</span>
         </div>
@@ -205,27 +205,27 @@ function RoomInfoContent({
 
       {/* Room code and sharing */}
       <div className="flex items-center gap-2">
-        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-900/50 font-mono text-sm">
-          <span className="text-gray-500">Room Code:</span>
-          <span className="text-white font-medium">{room.id}</span>
+        <div className="flex-1 flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-gray-900/50 border border-slate-200 dark:border-transparent font-mono text-sm">
+          <span className="text-slate-500 dark:text-gray-500">Room Code:</span>
+          <span className="text-slate-900 dark:text-white font-medium">{room.id}</span>
         </div>
         <button
           onClick={onCopyCode}
-          className="p-2 rounded-lg bg-gray-900/50 hover:bg-gray-800 transition-colors"
+          className="p-2 rounded-lg bg-white dark:bg-gray-900/50 border border-slate-200 dark:border-transparent hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
           title="Copy room code"
         >
           {copied ? (
             <Check className="w-4 h-4 text-green-400" />
           ) : (
-            <Copy className="w-4 h-4 text-gray-400" />
+            <Copy className="w-4 h-4 text-slate-400 dark:text-gray-400" />
           )}
         </button>
         <button
           onClick={onShare}
-          className="p-2 rounded-lg bg-gray-900/50 hover:bg-gray-800 transition-colors"
+          className="p-2 rounded-lg bg-white dark:bg-gray-900/50 border border-slate-200 dark:border-transparent hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
           title="Share room"
         >
-          <Share2 className="w-4 h-4 text-gray-400" />
+          <Share2 className="w-4 h-4 text-slate-400 dark:text-gray-400" />
         </button>
       </div>
 
@@ -252,7 +252,7 @@ function RoomRulesDisplay({ rules }: { rules: Partial<RoomRules> }) {
     <div className="space-y-3">
       <div className="flex items-center gap-2">
         <ListChecks className="w-4 h-4 text-indigo-400" />
-        <h4 className="text-sm font-medium text-white">Room Rules</h4>
+        <h4 className="text-sm font-medium text-slate-900 dark:text-white">Room Rules</h4>
       </div>
 
       {/* Feature rules */}
@@ -286,7 +286,7 @@ function RoomRulesDisplay({ rules }: { rules: Partial<RoomRules> }) {
           {rules.customRules.map((rule, index) => (
             <div
               key={index}
-              className="flex items-start gap-2 text-sm text-gray-300"
+              className="flex items-start gap-2 text-sm text-slate-700 dark:text-gray-300"
             >
               <span className="text-indigo-400 mt-0.5">•</span>
               <span>{rule}</span>

@@ -151,17 +151,17 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
   }
 
   return (
-    <div className="w-72 bg-[#16161f] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+    <div className="w-72 bg-white dark:bg-[#16161f] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-white/5">
         <div className="flex items-center gap-2">
-          <Settings2 className="w-4 h-4 text-zinc-400" />
-          <span className="text-sm font-medium text-white">Audio Input</span>
+          <Settings2 className="w-4 h-4 text-gray-500 dark:text-zinc-400" />
+          <span className="text-sm font-medium text-gray-900 dark:text-white">Audio Input</span>
         </div>
         {onClose && (
           <button
             onClick={onClose}
-            className="p-1 text-zinc-500 hover:text-white transition-colors"
+            className="p-1 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-white transition-colors"
           >
             <X className="w-4 h-4" />
           </button>
@@ -178,7 +178,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
 
         {/* Input Mode Selection */}
         <div className="space-y-2">
-          <label className="text-xs font-medium text-zinc-400">Source Type</label>
+          <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Source Type</label>
           <div className="grid grid-cols-2 gap-2">
             <button
               onClick={() => handleSettingChange({ inputMode: 'microphone' })}
@@ -186,16 +186,16 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                 'flex items-center gap-2 p-2.5 rounded-lg border transition-all text-left',
                 track.audioSettings.inputMode === 'microphone'
                   ? 'border-indigo-500 bg-indigo-500/10'
-                  : 'border-white/10 hover:border-white/20'
+                  : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
               )}
             >
               <Mic className={cn(
                 'w-4 h-4',
-                track.audioSettings.inputMode === 'microphone' ? 'text-indigo-400' : 'text-zinc-500'
+                track.audioSettings.inputMode === 'microphone' ? 'text-indigo-400' : 'text-gray-500 dark:text-zinc-500'
               )} />
               <div>
-                <div className="text-xs font-medium text-white">Microphone</div>
-                <div className="text-[10px] text-zinc-500">Direct input</div>
+                <div className="text-xs font-medium text-gray-900 dark:text-white">Microphone</div>
+                <div className="text-[10px] text-gray-500 dark:text-zinc-500">Direct input</div>
               </div>
             </button>
 
@@ -206,17 +206,17 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                 'flex items-center gap-2 p-2.5 rounded-lg border transition-all text-left',
                 track.audioSettings.inputMode === 'application'
                   ? 'border-indigo-500 bg-indigo-500/10'
-                  : 'border-white/10 hover:border-white/20',
+                  : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20',
                 !appCaptureSupported && 'opacity-50 cursor-not-allowed'
               )}
             >
               <Monitor className={cn(
                 'w-4 h-4',
-                track.audioSettings.inputMode === 'application' ? 'text-indigo-400' : 'text-zinc-500'
+                track.audioSettings.inputMode === 'application' ? 'text-indigo-400' : 'text-gray-500 dark:text-zinc-500'
               )} />
               <div>
-                <div className="text-xs font-medium text-white">Application</div>
-                <div className="text-[10px] text-zinc-500">
+                <div className="text-xs font-medium text-gray-900 dark:text-white">Application</div>
+                <div className="text-[10px] text-gray-500 dark:text-zinc-500">
                   {appCaptureSupported ? 'Capture audio' : 'Not supported'}
                 </div>
               </div>
@@ -244,12 +244,12 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
         {/* Device Selection (only for microphone) */}
         {track.audioSettings.inputMode === 'microphone' && (
           <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400">Input Device</label>
+            <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Device</label>
             <div className="relative">
               <select
                 value={track.audioSettings.inputDeviceId}
                 onChange={(e) => handleSettingChange({ inputDeviceId: e.target.value })}
-                className="w-full h-9 px-3 pr-8 bg-white/5 border border-white/10 rounded-lg text-sm text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="w-full h-9 px-3 pr-8 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
               >
                 <option value="default">System Default</option>
                 {inputDevices.map((device) => (
@@ -258,7 +258,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                   </option>
                 ))}
               </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-500 pointer-events-none" />
+              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
             </div>
           </div>
         )}
@@ -266,7 +266,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
         {/* Input Level Test */}
         <div className="space-y-2">
           <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-zinc-400">Input Level</label>
+            <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Level</label>
             <button
               onClick={testingInput ? stopTesting : testInput}
               className={cn(
@@ -279,7 +279,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
               {testingInput ? 'Stop' : 'Test Input'}
             </button>
           </div>
-          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+          <div className="h-2 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
             <div
               className={cn(
                 'h-full transition-all duration-75',
@@ -293,7 +293,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
         {/* Processing Options (only for microphone) */}
         {track.audioSettings.inputMode === 'microphone' && (
           <div className="space-y-2">
-            <label className="text-xs font-medium text-zinc-400">Processing</label>
+            <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Processing</label>
             <div className="flex flex-wrap gap-1.5">
               <button
                 onClick={() => handleSettingChange({ echoCancellation: !track.audioSettings.echoCancellation })}
@@ -301,7 +301,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                   'px-2 py-1 rounded text-[10px] font-medium transition-colors',
                   track.audioSettings.echoCancellation
                     ? 'bg-indigo-500/20 text-indigo-400'
-                    : 'bg-white/5 text-zinc-500 hover:bg-white/10'
+                    : 'bg-gray-200 dark:bg-white/5 text-gray-600 dark:text-zinc-500 hover:bg-gray-300 dark:hover:bg-white/10'
                 )}
               >
                 Echo Cancel
@@ -312,7 +312,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                   'px-2 py-1 rounded text-[10px] font-medium transition-colors',
                   track.audioSettings.noiseSuppression
                     ? 'bg-indigo-500/20 text-indigo-400'
-                    : 'bg-white/5 text-zinc-500 hover:bg-white/10'
+                    : 'bg-gray-200 dark:bg-white/5 text-gray-600 dark:text-zinc-500 hover:bg-gray-300 dark:hover:bg-white/10'
                 )}
               >
                 Noise Suppress
@@ -323,41 +323,41 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                   'px-2 py-1 rounded text-[10px] font-medium transition-colors',
                   track.audioSettings.autoGainControl
                     ? 'bg-indigo-500/20 text-indigo-400'
-                    : 'bg-white/5 text-zinc-500 hover:bg-white/10'
+                    : 'bg-gray-200 dark:bg-white/5 text-gray-600 dark:text-zinc-500 hover:bg-gray-300 dark:hover:bg-white/10'
                 )}
               >
                 Auto Gain
               </button>
             </div>
-            <p className="text-[10px] text-zinc-600">Disable all for audio interfaces</p>
+            <p className="text-[10px] text-gray-500 dark:text-zinc-600">Disable all for audio interfaces</p>
           </div>
         )}
 
         {/* Advanced Settings */}
         <details className="group">
-          <summary className="flex items-center gap-2 text-xs font-medium text-zinc-500 cursor-pointer hover:text-zinc-300">
+          <summary className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-zinc-500 cursor-pointer hover:text-gray-700 dark:hover:text-zinc-300">
             <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
             Advanced
           </summary>
           <div className="mt-3 space-y-3 pl-5">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500">Sample Rate</label>
+                <label className="text-[10px] text-gray-500 dark:text-zinc-500">Sample Rate</label>
                 <select
                   value={track.audioSettings.sampleRate}
                   onChange={(e) => handleSettingChange({ sampleRate: parseInt(e.target.value) as 48000 | 44100 })}
-                  className="w-full h-7 px-2 bg-white/5 border border-white/10 rounded text-[10px] text-white"
+                  className="w-full h-7 px-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-[10px] text-gray-900 dark:text-white"
                 >
                   <option value={48000}>48 kHz</option>
                   <option value={44100}>44.1 kHz</option>
                 </select>
               </div>
               <div className="space-y-1">
-                <label className="text-[10px] text-zinc-500">Buffer Size</label>
+                <label className="text-[10px] text-gray-500 dark:text-zinc-500">Buffer Size</label>
                 <select
                   value={track.audioSettings.bufferSize}
                   onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 128 | 256 | 512 | 1024 })}
-                  className="w-full h-7 px-2 bg-white/5 border border-white/10 rounded text-[10px] text-white"
+                  className="w-full h-7 px-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-[10px] text-gray-900 dark:text-white"
                 >
                   <option value={128}>128</option>
                   <option value={256}>256</option>

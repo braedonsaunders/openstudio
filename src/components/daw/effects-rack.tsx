@@ -595,26 +595,26 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
   };
 
   return (
-    <div className="w-80 bg-[#16161f] border border-white/10 rounded-xl shadow-2xl overflow-hidden">
+    <div className="w-80 bg-white dark:bg-[#16161f] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-white/5 bg-gradient-to-r from-indigo-500/10 to-purple-500/10">
         <div className="flex items-center gap-2">
           <Sparkles className="w-4 h-4 text-indigo-400" />
-          <span className="text-sm font-medium text-white">Effects Rack</span>
+          <span className="text-sm font-medium text-gray-900 dark:text-white">Effects Rack</span>
         </div>
         <div className="flex items-center gap-1">
           <button
             onClick={() => setShowPresets(!showPresets)}
             className={cn(
               'px-2 py-1 text-[10px] font-medium rounded transition-colors',
-              showPresets ? 'bg-indigo-500/20 text-indigo-400' : 'text-zinc-500 hover:text-white'
+              showPresets ? 'bg-indigo-500/20 text-indigo-400' : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-white'
             )}
           >
             Presets
           </button>
           <button
             onClick={handleReset}
-            className="p-1.5 text-zinc-500 hover:text-white transition-colors"
+            className="p-1.5 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-white transition-colors"
             title="Reset all effects"
           >
             <RotateCcw className="w-3.5 h-3.5" />
