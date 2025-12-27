@@ -786,7 +786,7 @@ function MusicianCharacter({
           <path d="M24 40 Q22 22 40 17 Q58 22 56 40 L56 52 Q48 48 40 52 Q32 48 24 52 Z" fill="#1e293b" />
           <path d="M33 42 Q36 40 39 42" stroke="#1e293b" strokeWidth="1.5" fill="none" />
           <path d="M41 42 Q44 40 47 42" stroke="#1e293b" strokeWidth="1.5" fill="none" />
-          <motion.ellipse cx="40" cy="49" rx="4" ry="3" fill="#1e293b" animate={{ ry: [2.5, 4, 2.5] }} transition={{ duration: 1, repeat: Infinity }} />
+          <motion.ellipse cx="40" cy="49" rx="4" ry="3" fill="#1e293b" animate={{ scaleY: [0.8, 1.3, 0.8] }} transition={{ duration: 1, repeat: Infinity }} style={{ transformOrigin: '40px 49px' }} />
         </motion.g>
         <motion.text x="58" y="28" fontSize="12" fill="#f472b6" animate={{ y: [28, 15], opacity: [1, 0], x: [58, 66] }} transition={{ duration: 2, repeat: Infinity, ease: 'easeOut' }}>♪</motion.text>
       </motion.svg>
