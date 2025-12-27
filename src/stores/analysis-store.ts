@@ -28,6 +28,9 @@ export interface AnalysisData {
   // Danceability (rhythm regularity)
   danceability: number;
 
+  // Tuning (A=440Hz standard or other)
+  tuningFrequency: number;
+
   // Tuner
   tunerNote: string | null;
   tunerFrequency: number | null;
@@ -99,6 +102,7 @@ const initialAnalysis: AnalysisData = {
   loudness: 0,
   energy: 0,
   danceability: 0,
+  tuningFrequency: 440,
   tunerNote: null,
   tunerFrequency: null,
   tunerCents: null,

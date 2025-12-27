@@ -16,10 +16,11 @@ let lastKeyScale = null;
 let lastKeyStrength = 0;
 let lastEnergy = 0;
 let lastDanceability = 0;
+let lastTuningFrequency = 440;
 
-const FRAMES_FOR_KEY = 10; // ~1 second of audio for key detection
-const FRAMES_FOR_BPM = 30; // ~3 seconds for BPM
-const MAX_BUFFER_FRAMES = 50;
+const FRAMES_FOR_KEY = 30; // ~3 seconds of audio for key detection
+const FRAMES_FOR_BPM = 50; // ~5 seconds for BPM
+const MAX_BUFFER_FRAMES = 100; // Store more frames for better long-term analysis
 
 // Note names for tuner
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
@@ -147,6 +148,7 @@ function analyzeFrame(audioData, frameSize) {
       bpm: lastBPM,
       bpmConfidence: lastBPM ? 0.8 : 0,
       danceability: lastDanceability,
+      tuningFrequency: lastTuningFrequency,
       timestamp: Date.now(),
     };
   } catch (error) {
@@ -173,38 +175,54 @@ function analyzeLongTerm(combinedAudio) {
         sampleRate: sampleRate
       });
 
-      if (keyResult.key && keyResult.strength > 0.3) {
+      if (keyResult.key && keyResult.strength > 0.4) {
         const detectedKey = keyResult.key;
         const detectedScale = keyResult.scale; // 'major' or 'minor'
         const strength = keyResult.strength;
 
         keyBuffer.push({ key: detectedKey, scale: detectedScale, strength });
-        if (keyBuffer.length > 5) {
+        // Keep larger buffer for more stable detection
+        if (keyBuffer.length > 10) {
           keyBuffer.shift();
         }
 
-        // Find most common key in buffer (weighted by strength)
-        const keyCounts = {};
-        keyBuffer.forEach(k => {
-          const keyId = `${k.key}_${k.scale}`;
-          keyCounts[keyId] = (keyCounts[keyId] || 0) + k.strength;
-        });
+        // Only update key if we have enough samples
+        if (keyBuffer.length >= 3) {
+          // Find most common key in buffer (weighted by strength)
+          const keyCounts = {};
+          keyBuffer.forEach(k => {
+            const keyId = `${k.key}_${k.scale}`;
+            keyCounts[keyId] = (keyCounts[keyId] || 0) + k.strength;
+          });
 
-        let bestKey = null;
-        let bestScore = 0;
-        for (const [keyId, score] of Object.entries(keyCounts)) {
-          if (score > bestScore) {
-            bestScore = score;
-            bestKey = keyId;
+          let bestKey = null;
+          let bestScore = 0;
+          let secondBestScore = 0;
+          for (const [keyId, score] of Object.entries(keyCounts)) {
+            if (score > bestScore) {
+              secondBestScore = bestScore;
+              bestScore = score;
+              bestKey = keyId;
+            } else if (score > secondBestScore) {
+              secondBestScore = score;
+            }
           }
-        }
 
-        if (bestKey) {
-          const [key, scale] = bestKey.split('_');
-          lastKey = key;
-          lastKeyScale = scale;
-          lastKeyStrength = Math.min(bestScore / keyBuffer.length, 1);
-          console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)})`);
+          // Only change key if it's significantly better than alternatives
+          // and different from current key
+          if (bestKey && bestScore > secondBestScore * 1.3) {
+            const [key, scale] = bestKey.split('_');
+            const newKeyId = `${key}_${scale}`;
+            const currentKeyId = `${lastKey}_${lastKeyScale}`;
+
+            // Only update if it's a new key or confidence improved significantly
+            if (newKeyId !== currentKeyId || !lastKey) {
+              lastKey = key;
+              lastKeyScale = scale;
+              lastKeyStrength = Math.min(bestScore / keyBuffer.length, 1);
+              console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)})`);
+            }
+          }
         }
       }
     } catch (e) {
@@ -226,11 +244,10 @@ function analyzeLongTerm(combinedAudio) {
     // Tuning frequency detection (A=440Hz standard or other)
     try {
       const tuningResult = essentia.TuningFrequency(essentiaAudio);
-      if (tuningResult && tuningResult.tuningFrequency) {
-        // Could be useful to display if significantly off from 440Hz
-        const tuningHz = tuningResult.tuningFrequency;
-        if (Math.abs(tuningHz - 440) > 2) {
-          console.log(`[Worker] Tuning: ${tuningHz.toFixed(1)} Hz (off from 440Hz)`);
+      if (tuningResult && tuningResult.tuningFrequency && tuningResult.tuningFrequency > 400 && tuningResult.tuningFrequency < 480) {
+        lastTuningFrequency = tuningResult.tuningFrequency;
+        if (Math.abs(lastTuningFrequency - 440) > 2) {
+          console.log(`[Worker] Tuning: ${lastTuningFrequency.toFixed(1)} Hz`);
         }
       }
     } catch (e) {
@@ -266,17 +283,31 @@ function analyzeLongTerm(combinedAudio) {
 
       if (bpm) {
         bpmBuffer.push(bpm);
-        if (bpmBuffer.length > 5) {
+        // Keep larger buffer for stability
+        if (bpmBuffer.length > 10) {
           bpmBuffer.shift();
         }
 
-        // Use median BPM for stability
-        const sortedBPM = [...bpmBuffer].sort((a, b) => a - b);
-        const medianBPM = sortedBPM[Math.floor(sortedBPM.length / 2)];
+        // Only update BPM if we have enough samples
+        if (bpmBuffer.length >= 3) {
+          // Use median BPM for stability
+          const sortedBPM = [...bpmBuffer].sort((a, b) => a - b);
+          const medianBPM = sortedBPM[Math.floor(sortedBPM.length / 2)];
 
-        if (!lastBPM || Math.abs(medianBPM - lastBPM) < 15) {
-          lastBPM = Math.round(medianBPM);
-          console.log(`[Worker] BPM detected: ${lastBPM}`);
+          // Calculate standard deviation to check consistency
+          const mean = bpmBuffer.reduce((a, b) => a + b, 0) / bpmBuffer.length;
+          const variance = bpmBuffer.reduce((acc, val) => acc + Math.pow(val - mean, 2), 0) / bpmBuffer.length;
+          const stdDev = Math.sqrt(variance);
+
+          // Only update if readings are consistent (low std deviation)
+          // and either no previous BPM or close to current
+          if (stdDev < 10 && (!lastBPM || Math.abs(medianBPM - lastBPM) < 20)) {
+            const newBPM = Math.round(medianBPM);
+            if (newBPM !== lastBPM) {
+              lastBPM = newBPM;
+              console.log(`[Worker] BPM detected: ${lastBPM} (stdDev: ${stdDev.toFixed(1)})`);
+            }
+          }
         }
       }
     } catch (e) {
@@ -351,12 +382,13 @@ function reset() {
   lastKeyStrength = 0;
   lastEnergy = 0;
   lastDanceability = 0;
+  lastTuningFrequency = 440;
 }
 
 // Handle messages from main thread
 let frameCount = 0;
 let lastLongTermAnalysis = 0;
-const LONG_TERM_INTERVAL = 1000; // Run long-term analysis every 1 second
+const LONG_TERM_INTERVAL = 3000; // Run long-term analysis every 3 seconds for more stability
 
 self.onmessage = async function(e) {
   const { type, data } = e.data;
