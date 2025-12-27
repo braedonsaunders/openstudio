@@ -7,18 +7,52 @@ import { useAuthStore } from '@/stores/auth-store';
 import { saveChatMessage, getRoomChatMessages } from '@/lib/supabase/auth';
 import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
 import { REACTION_TYPES, type ReactionType } from '@/types/user';
-import { Send, MessageSquare, Smile, Flame, Heart, Sparkles } from 'lucide-react';
+import { Send, MessageSquare, Link2, Video, X, ExternalLink } from 'lucide-react';
 
 interface ChatPanelProps {
   roomId: string;
   onSendMessage: (message: string) => void;
   onSendReaction?: (userId: string, reactionType: ReactionType) => void;
+  onStartVideoChat?: () => void;
 }
 
-export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelProps) {
+// URL detection regex
+const URL_REGEX = /(https?:\/\/[^\s<]+[^<.,:;"')\]\s])/g;
+
+// Parse message content and convert URLs to clickable links
+function parseMessageContent(content: string): React.ReactNode {
+  const parts = content.split(URL_REGEX);
+
+  return parts.map((part, index) => {
+    if (URL_REGEX.test(part)) {
+      // Reset regex lastIndex
+      URL_REGEX.lastIndex = 0;
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-indigo-400 hover:text-indigo-300 underline inline-flex items-center gap-0.5 break-all"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {part.length > 50 ? `${part.slice(0, 50)}...` : part}
+          <ExternalLink className="w-3 h-3 inline shrink-0" />
+        </a>
+      );
+    }
+    return part;
+  });
+}
+
+export function ChatPanel({ roomId, onSendMessage, onSendReaction, onStartVideoChat }: ChatPanelProps) {
   const [message, setMessage] = useState('');
   const [showReactions, setShowReactions] = useState<string | null>(null);
+  const [showLinkInput, setShowLinkInput] = useState(false);
+  const [linkUrl, setLinkUrl] = useState('');
+  const [linkTitle, setLinkTitle] = useState('');
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const linkInputRef = useRef<HTMLInputElement>(null);
   const { messages, currentUser, addMessage } = useRoomStore();
   const { profile, avatar, user } = useAuthStore();
 
@@ -50,11 +84,18 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  // Focus link input when shown
+  useEffect(() => {
+    if (showLinkInput && linkInputRef.current) {
+      linkInputRef.current.focus();
+    }
+  }, [showLinkInput]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim()) return;
-
     const trimmedMessage = message.trim();
+    if (!trimmedMessage) return;
+
     setMessage('');
 
     // Send to realtime (other users)
@@ -68,6 +109,34 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
         console.error('Failed to persist message:', error);
       }
     }
+  };
+
+  const handleShareLink = async () => {
+    const trimmedUrl = linkUrl.trim();
+    if (!trimmedUrl) return;
+
+    // Format message with title if provided
+    const trimmedTitle = linkTitle.trim();
+    const linkMessage = trimmedTitle
+      ? `${trimmedTitle}: ${trimmedUrl}`
+      : trimmedUrl;
+
+    // Send to realtime
+    onSendMessage(linkMessage);
+
+    // Persist to database if user is authenticated
+    if (user && roomId) {
+      try {
+        await saveChatMessage(roomId, user.id, linkMessage, 'text');
+      } catch (error) {
+        console.error('Failed to persist link message:', error);
+      }
+    }
+
+    // Reset state
+    setLinkUrl('');
+    setLinkTitle('');
+    setShowLinkInput(false);
   };
 
   const handleReaction = async (targetUserId: string, reactionType: ReactionType) => {
@@ -98,6 +167,19 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
 
   return (
     <div className="h-full flex flex-col">
+      {/* Header with Video Chat Button */}
+      <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-white/5">
+        <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Chat</span>
+        <button
+          onClick={onStartVideoChat}
+          className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-indigo-500 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
+          title="Start video chat"
+        >
+          <Video className="w-3.5 h-3.5" />
+          <span>Video</span>
+        </button>
+      </div>
+
       {/* Messages List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3">
         {messages.length === 0 ? (
@@ -161,7 +243,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
                           : 'bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-200 rounded-tl-sm'
                       )}
                     >
-                      {msg.content}
+                      {parseMessageContent(msg.content)}
                     </div>
                   </div>
                 </div>
@@ -172,9 +254,75 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
         )}
       </div>
 
+      {/* Link Input Popup */}
+      {showLinkInput && (
+        <div className="px-3 py-2 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-white/[0.02]">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xs font-medium text-gray-500 dark:text-zinc-400">Share a link</span>
+            <button
+              onClick={() => {
+                setShowLinkInput(false);
+                setLinkUrl('');
+                setLinkTitle('');
+              }}
+              className="p-1 hover:bg-gray-200 dark:hover:bg-white/10 rounded"
+            >
+              <X className="w-3.5 h-3.5 text-gray-400" />
+            </button>
+          </div>
+          <input
+            ref={linkInputRef}
+            type="url"
+            value={linkUrl}
+            onChange={(e) => setLinkUrl(e.target.value)}
+            placeholder="https://..."
+            className="w-full px-2.5 py-1.5 mb-2 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50"
+          />
+          <input
+            type="text"
+            value={linkTitle}
+            onChange={(e) => setLinkTitle(e.target.value)}
+            placeholder="Title (optional)"
+            className="w-full px-2.5 py-1.5 mb-2 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50"
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && linkUrl.trim()) {
+                handleShareLink();
+              }
+            }}
+          />
+          <button
+            onClick={handleShareLink}
+            disabled={!linkUrl.trim()}
+            className={cn(
+              'w-full py-1.5 rounded-lg text-xs font-medium transition-all',
+              linkUrl.trim()
+                ? 'neon-button text-white'
+                : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+            )}
+          >
+            Share Link
+          </button>
+        </div>
+      )}
+
       {/* Input */}
       <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 dark:border-white/5">
         <div className="flex items-center gap-2">
+          {/* Share Link Button */}
+          <button
+            type="button"
+            onClick={() => setShowLinkInput(!showLinkInput)}
+            className={cn(
+              'p-2.5 rounded-xl transition-all',
+              showLinkInput
+                ? 'bg-indigo-500/20 text-indigo-500 dark:text-indigo-400'
+                : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300'
+            )}
+            title="Share a link"
+          >
+            <Link2 className="w-4 h-4" />
+          </button>
+
           <input
             type="text"
             value={message}
