@@ -1,9 +1,10 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
+import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { TransportBar } from './transport-bar';
@@ -15,6 +16,7 @@ import { KeyboardShortcuts } from './keyboard-shortcuts';
 import { AIGenerator } from '../tracks/ai-generator';
 import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
+import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { AudioSettingsModal, type AudioSettings } from '../settings/audio-settings-modal';
 import type { BackingTrack, StemType } from '@/types';
 import type { SunoGenerationConfig, SunoGenerationProgress } from '@/lib/ai/suno';
@@ -64,9 +66,36 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     leave,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume } = useAudioEngine();
+  const { toggleStem, setStemVolume, getAudioContext } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
-  const { isMuted, setMuted, isPlaying } = useAudioStore();
+  const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
+
+  // Audio analysis - initialize with audio context
+  useAudioAnalysis({
+    audioContext: getAudioContext(),
+    roomId,
+    userId: currentUser?.id,
+    isMaster,
+  });
+
+  // YouTube player ref
+  const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
+
+  // Check if current track is a YouTube track
+  const isYouTubeTrack = !!currentTrack?.youtubeId;
+
+  // YouTube playback controls (defined before keyboard shortcuts that use them)
+  const handleYouTubePlay = useCallback(() => {
+    youtubePlayerRef.current?.play();
+  }, []);
+
+  const handleYouTubePause = useCallback(() => {
+    youtubePlayerRef.current?.pause();
+  }, []);
+
+  const handleYouTubeSeek = useCallback((time: number) => {
+    youtubePlayerRef.current?.seek(time);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -80,19 +109,33 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         case ' ':
           e.preventDefault();
           if (isMaster) {
-            isPlaying ? pause() : play();
+            if (isYouTubeTrack) {
+              isPlaying ? handleYouTubePause() : handleYouTubePlay();
+            } else {
+              isPlaying ? pause() : play();
+            }
           }
           break;
         case 'ArrowLeft':
           if (isMaster && currentTrack) {
             const { currentTime } = useAudioStore.getState();
-            seek(Math.max(0, currentTime - (e.shiftKey ? 30 : 5)));
+            const newTime = Math.max(0, currentTime - (e.shiftKey ? 30 : 5));
+            if (isYouTubeTrack) {
+              handleYouTubeSeek(newTime);
+            } else {
+              seek(newTime);
+            }
           }
           break;
         case 'ArrowRight':
           if (isMaster && currentTrack) {
             const { currentTime, duration } = useAudioStore.getState();
-            seek(Math.min(duration, currentTime + (e.shiftKey ? 30 : 5)));
+            const newTime = Math.min(duration, currentTime + (e.shiftKey ? 30 : 5));
+            if (isYouTubeTrack) {
+              handleYouTubeSeek(newTime);
+            } else {
+              seek(newTime);
+            }
           }
           break;
         case '[':
@@ -136,35 +179,29 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious]);
+  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek]);
 
   // Handler functions
   const handleTrackSelect = useCallback(async (track: BackingTrack) => {
     useRoomStore.getState().setCurrentTrack(track);
   }, []);
 
-  const handleUpload = useCallback(async (track: { id: string; name: string; artist?: string; url: string; duration: number }) => {
-    // UploadModal already handled the file upload to R2
-    // Just add the track to the room queue
-    await addTrack({
-      id: track.id,
-      name: track.name,
-      artist: track.artist,
-      duration: track.duration,
-      url: track.url,
-      uploadedBy: currentUser?.id || 'unknown',
+  const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {
+    // UploadModal handles the actual upload to R2, we just add the track
+    const track: BackingTrack = {
+      id: uploadedTrack.id,
+      name: uploadedTrack.name,
+      artist: uploadedTrack.artist,
+      duration: uploadedTrack.duration,
+      url: uploadedTrack.url,
+      uploadedBy: currentUser?.id || 'user',
       uploadedAt: new Date().toISOString(),
-    });
+    };
+    await addTrack(track);
   }, [addTrack, currentUser]);
 
   const handleYouTubeSelect = useCallback(async (video: { id: string; title: string; channelTitle: string; duration?: string }) => {
-    const response = await fetch(`/api/youtube/audio?videoId=${video.id}`);
-    if (!response.ok) {
-      throw new Error('Could not load YouTube track');
-    }
-
-    const { audioUrl, duration } = await response.json();
-
+    // Parse duration string to seconds
     const parseDuration = (d?: string): number => {
       if (!d) return 0;
       const parts = d.split(':').map(Number);
@@ -173,19 +210,42 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       return parts[0] || 0;
     };
 
+    // Create track with YouTube ID - playback will use YouTube IFrame API
     const track: BackingTrack = {
       id: video.id,
       name: video.title,
       artist: video.channelTitle,
-      duration: duration || parseDuration(video.duration),
-      url: audioUrl,
+      duration: parseDuration(video.duration),
+      url: '', // No URL needed - YouTube player handles playback
       uploadedBy: 'youtube',
       uploadedAt: new Date().toISOString(),
       youtubeId: video.id,
     };
 
     await addTrack(track);
+    setIsYouTubeModalOpen(false);
   }, [addTrack]);
+
+  // YouTube player event handlers
+  const handleYouTubeReady = useCallback(() => {
+    if (youtubePlayerRef.current) {
+      const duration = youtubePlayerRef.current.getDuration();
+      if (duration > 0) setDuration(duration);
+    }
+  }, [setDuration]);
+
+  const handleYouTubeStateChange = useCallback((playing: boolean) => {
+    setPlaying(playing);
+  }, [setPlaying]);
+
+  const handleYouTubeTimeUpdate = useCallback((time: number, dur: number) => {
+    setCurrentTime(time);
+    if (dur > 0) setDuration(dur);
+  }, [setCurrentTime, setDuration]);
+
+  const handleYouTubeDurationChange = useCallback((duration: number) => {
+    if (duration > 0) setDuration(duration);
+  }, [setDuration]);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
     setIsGenerating(true);
@@ -306,9 +366,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       {/* Transport Bar - Fixed Top */}
       <TransportBar
         roomId={roomId}
-        onPlay={play}
-        onPause={pause}
-        onSeek={seek}
+        onPlay={isYouTubeTrack ? handleYouTubePlay : play}
+        onPause={isYouTubeTrack ? handleYouTubePause : pause}
+        onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
         onPrevious={skipToPrevious}
         onNext={skipToNext}
         onMuteToggle={() => setMuted(!isMuted)}
@@ -335,7 +395,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           currentUser={currentUser}
           audioLevels={audioLevels}
           isMaster={isMaster}
-          onSeek={seek}
+          onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
         />
 
         {/* Panel Dock - Right */}
@@ -350,6 +410,19 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             onUpload={() => setIsUploadModalOpen(true)}
             onAIGenerate={() => setIsAIModalOpen(true)}
             onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
+            youtubePlayer={
+              isYouTubeTrack && currentTrack?.youtubeId ? (
+                <YouTubePlayer
+                  ref={youtubePlayerRef}
+                  videoId={currentTrack.youtubeId}
+                  onReady={handleYouTubeReady}
+                  onStateChange={handleYouTubeStateChange}
+                  onTimeUpdate={handleYouTubeTimeUpdate}
+                  onDurationChange={handleYouTubeDurationChange}
+                  volume={backingTrackVolume * 100}
+                />
+              ) : undefined
+            }
             // Mixer props
             onToggleStem={handleToggleStem}
             onStemVolumeChange={handleStemVolume}
@@ -416,6 +489,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         onSettingsChange={handleSettingsChange}
         currentSettings={audioSettings}
       />
+
     </div>
   );
 }
