@@ -164,8 +164,17 @@ export const useAuthStore = create<AuthState>()(
             const { user } = await authApi.signIn(email, password);
 
             if (user) {
-              // Fetch user data with individual error handling
-              const results = await Promise.allSettled([
+              // IMMEDIATELY set user and mark initialized so modal closes
+              // Profile data will load in the background
+              set({
+                user,
+                isInitialized: true,
+                isLoading: false,
+              });
+
+              // Fetch profile data in the background (non-blocking)
+              // This allows the modal to close immediately after successful auth
+              Promise.allSettled([
                 authApi.getUserProfile(user.id),
                 authApi.getUserAvatar(user.id),
                 authApi.getUserStats(user.id),
@@ -173,39 +182,36 @@ export const useAuthStore = create<AuthState>()(
                 authApi.getAllAchievements(),
                 authApi.getUserAchievements(user.id),
                 authApi.getFriends(user.id),
-              ]);
+              ]).then((results) => {
+                const profile = results[0].status === 'fulfilled' ? results[0].value : null;
+                const avatar = results[1].status === 'fulfilled' ? results[1].value : null;
+                const stats = results[2].status === 'fulfilled' ? results[2].value : null;
+                const instruments = results[3].status === 'fulfilled' ? results[3].value : [];
+                const achievements = results[4].status === 'fulfilled' ? results[4].value : [];
+                const unlockedAchievements = results[5].status === 'fulfilled' ? results[5].value : [];
+                const friendsResult = results[6].status === 'fulfilled' ? results[6].value : { friends: [], pending: [] };
 
-              const profile = results[0].status === 'fulfilled' ? results[0].value : null;
-              const avatar = results[1].status === 'fulfilled' ? results[1].value : null;
-              const stats = results[2].status === 'fulfilled' ? results[2].value : null;
-              const instruments = results[3].status === 'fulfilled' ? results[3].value : [];
-              const achievements = results[4].status === 'fulfilled' ? results[4].value : [];
-              const unlockedAchievements = results[5].status === 'fulfilled' ? results[5].value : [];
-              const friendsResult = results[6].status === 'fulfilled' ? results[6].value : { friends: [], pending: [] };
+                // Update streak (non-blocking)
+                if (profile) {
+                  authApi.updateStreak(user.id).catch(() => {});
+                }
 
-              // Update streak (non-blocking)
-              if (profile) {
-                authApi.updateStreak(user.id).catch(() => {});
-              }
-
-              set({
-                user,
-                profile,
-                avatar,
-                stats,
-                instruments,
-                achievements,
-                unlockedAchievements,
-                friends: friendsResult.friends,
-                pendingFriendRequests: friendsResult.pending,
-                isInitialized: true,
-                isLoading: false,
+                set({
+                  profile,
+                  avatar,
+                  stats,
+                  instruments,
+                  achievements,
+                  unlockedAchievements,
+                  friends: friendsResult.friends,
+                  pendingFriendRequests: friendsResult.pending,
+                });
               });
             } else {
-              set({ isLoading: false });
+              set({ isLoading: false, isInitialized: true });
             }
           } catch (error) {
-            set({ isLoading: false });
+            set({ isLoading: false, isInitialized: true });
             throw error;
           }
         },
