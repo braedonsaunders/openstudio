@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
@@ -14,6 +14,7 @@ import { TrackQueue } from '../tracks/track-queue';
 import { AIGenerator } from '../tracks/ai-generator';
 import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
+import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { AudioSettingsModal, type AudioSettings } from '../settings/audio-settings-modal';
 import { ConnectionStatus } from '../audio/connection-status';
 import { Button } from '../ui/button';
@@ -49,6 +50,8 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
   const [copied, setCopied] = useState(false);
   const [audioSettings, setAudioSettings] = useState<AudioSettings | undefined>();
 
+  const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
+
   const {
     users,
     currentUser,
@@ -68,7 +71,10 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
 
   const { toggleStem, setStemVolume } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
-  const { isMuted, setMuted } = useAudioStore();
+  const { isMuted, setMuted, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
+
+  // Check if current track is a YouTube track
+  const isYouTubeTrack = !!currentTrack?.youtubeId;
 
   const handleCopyRoomId = useCallback(() => {
     navigator.clipboard.writeText(roomId);
@@ -103,14 +109,6 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
   }, [roomId, addTrack]);
 
   const handleYouTubeSelect = useCallback(async (video: { id: string; title: string; channelTitle: string; duration?: string }) => {
-    // Get audio URL for the YouTube video
-    const response = await fetch(`/api/youtube/audio?videoId=${video.id}`);
-    if (!response.ok) {
-      throw new Error('Could not load YouTube track');
-    }
-
-    const { audioUrl, duration } = await response.json();
-
     // Parse duration string to seconds
     const parseDuration = (d?: string): number => {
       if (!d) return 0;
@@ -120,19 +118,55 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
       return parts[0] || 0;
     };
 
+    // Create track with YouTube ID - playback will use YouTube IFrame API
     const track: BackingTrack = {
       id: video.id,
       name: video.title,
       artist: video.channelTitle,
-      duration: duration || parseDuration(video.duration),
-      url: audioUrl,
+      duration: parseDuration(video.duration),
+      url: '', // No URL needed - YouTube player handles playback
       uploadedBy: 'youtube',
       uploadedAt: new Date().toISOString(),
       youtubeId: video.id,
     };
 
     await addTrack(track);
+    setIsYouTubeModalOpen(false);
   }, [addTrack]);
+
+  // YouTube player event handlers
+  const handleYouTubeReady = useCallback(() => {
+    if (youtubePlayerRef.current) {
+      const duration = youtubePlayerRef.current.getDuration();
+      setDuration(duration);
+    }
+  }, [setDuration]);
+
+  const handleYouTubeStateChange = useCallback((isPlaying: boolean) => {
+    setPlaying(isPlaying);
+  }, [setPlaying]);
+
+  const handleYouTubeTimeUpdate = useCallback((currentTime: number, duration: number) => {
+    setCurrentTime(currentTime);
+    setDuration(duration);
+  }, [setCurrentTime, setDuration]);
+
+  const handleYouTubeDurationChange = useCallback((duration: number) => {
+    setDuration(duration);
+  }, [setDuration]);
+
+  // YouTube playback controls
+  const handleYouTubePlay = useCallback(() => {
+    youtubePlayerRef.current?.play();
+  }, []);
+
+  const handleYouTubePause = useCallback(() => {
+    youtubePlayerRef.current?.pause();
+  }, []);
+
+  const handleYouTubeSeek = useCallback((time: number) => {
+    youtubePlayerRef.current?.seek(time);
+  }, []);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
     setIsGenerating(true);
@@ -391,13 +425,28 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
           <div className="col-span-12 lg:col-span-8 xl:col-span-9 space-y-6">
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
               <TransportControls
-                onPlay={play}
-                onPause={pause}
-                onSeek={seek}
+                onPlay={isYouTubeTrack ? handleYouTubePlay : play}
+                onPause={isYouTubeTrack ? handleYouTubePause : pause}
+                onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
                 onNext={skipToNext}
                 onPrevious={() => {}}
               />
             </div>
+
+            {/* YouTube Player - shown when playing YouTube tracks */}
+            {isYouTubeTrack && currentTrack?.youtubeId && (
+              <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+                <YouTubePlayer
+                  ref={youtubePlayerRef}
+                  videoId={currentTrack.youtubeId}
+                  onReady={handleYouTubeReady}
+                  onStateChange={handleYouTubeStateChange}
+                  onTimeUpdate={handleYouTubeTimeUpdate}
+                  onDurationChange={handleYouTubeDurationChange}
+                  volume={backingTrackVolume * 100}
+                />
+              </div>
+            )}
 
             {/* Connection stats */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
