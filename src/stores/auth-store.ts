@@ -202,10 +202,10 @@ export const useAuthStore = create<AuthState>()(
                 isLoading: false,
               });
             } else {
-              set({ isLoading: false });
+              set({ isLoading: false, isInitialized: true });
             }
           } catch (error) {
-            set({ isLoading: false });
+            set({ isLoading: false, isInitialized: true });
             throw error;
           }
         },
