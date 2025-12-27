@@ -17,9 +17,32 @@ import {
   ZoomIn,
   ZoomOut,
   Layers,
+  Trash2,
+  Copy,
+  Volume2,
+  VolumeX,
+  MoreHorizontal,
 } from 'lucide-react';
 import type { SongTrackReference } from '@/types/songs';
 import type { MidiNote, LoopDefinition } from '@/types/loops';
+
+// Context menu state
+interface ContextMenuState {
+  isOpen: boolean;
+  x: number;
+  y: number;
+  trackRef: SongTrackReference | null;
+  trackName: string;
+  trackType: 'audio' | 'loop';
+}
+
+// Drag state for moving track clips
+interface DragState {
+  isDragging: boolean;
+  trackRefId: string | null;
+  startX: number;
+  originalOffset: number;
+}
 
 interface MultiTrackTimelineProps {
   roomId: string;
@@ -168,11 +191,26 @@ export function MultiTrackTimeline({
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(50); // pixels per second
   const [scrollLeft, setScrollLeft] = useState(0);
+  const [contextMenu, setContextMenu] = useState<ContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    trackRef: null,
+    trackName: '',
+    trackType: 'audio',
+  });
+  const [dragState, setDragState] = useState<DragState>({
+    isDragging: false,
+    trackRefId: null,
+    startX: 0,
+    originalOffset: 0,
+  });
+  const [dragOffset, setDragOffset] = useState<number | null>(null);
 
-  const { getCurrentSong } = useSongsStore();
-  const { queue } = useRoomStore();
-  const { getTracksByRoom } = useLoopTracksStore();
-  const { isPlaying, currentTime, duration } = useAudioStore();
+  const { getCurrentSong, removeTrackFromSong, updateTrackInSong } = useSongsStore();
+  const { queue, currentTrack, setCurrentTrack } = useRoomStore();
+  const { getTracksByRoom, removeTrack: removeLoopTrack } = useLoopTracksStore();
+  const { isPlaying, currentTime, duration, setPlaying } = useAudioStore();
 
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
@@ -272,6 +310,143 @@ export function MultiTrackTimeline({
   const handleZoomOut = useCallback(() => {
     setZoom((z) => Math.max(10, z / 1.25));
   }, []);
+
+  // Context menu handlers
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent, track: typeof unifiedTracks[0]) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({
+        isOpen: true,
+        x: e.clientX,
+        y: e.clientY,
+        trackRef: track.ref,
+        trackName: track.name,
+        trackType: track.type,
+      });
+    },
+    [unifiedTracks]
+  );
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (contextMenu.isOpen) {
+      const handleClick = () => closeContextMenu();
+      window.addEventListener('click', handleClick);
+      return () => window.removeEventListener('click', handleClick);
+    }
+  }, [contextMenu.isOpen, closeContextMenu]);
+
+  // Delete track handler - stops playback if needed
+  const handleDeleteTrack = useCallback(() => {
+    if (!contextMenu.trackRef || !currentSong) return;
+
+    const trackRef = contextMenu.trackRef;
+
+    // If this is an audio track and it's currently playing, stop playback
+    if (trackRef.type === 'audio' && currentTrack?.id === trackRef.trackId) {
+      // Stop playback
+      if (onStop) onStop();
+      setPlaying(false);
+      // Clear current track
+      setCurrentTrack(null);
+    }
+
+    // Remove from song
+    removeTrackFromSong(currentSong.id, trackRef.id);
+
+    // If it's a loop track, also remove from loop tracks store
+    if (trackRef.type === 'loop') {
+      removeLoopTrack(trackRef.trackId);
+    }
+
+    closeContextMenu();
+  }, [contextMenu.trackRef, currentSong, currentTrack, onStop, setPlaying, setCurrentTrack, removeTrackFromSong, removeLoopTrack, closeContextMenu]);
+
+  // Toggle mute handler
+  const handleToggleMute = useCallback(() => {
+    if (!contextMenu.trackRef || !currentSong) return;
+
+    updateTrackInSong(currentSong.id, contextMenu.trackRef.id, {
+      muted: !contextMenu.trackRef.muted,
+    });
+
+    closeContextMenu();
+  }, [contextMenu.trackRef, currentSong, updateTrackInSong, closeContextMenu]);
+
+  // Duplicate track handler
+  const handleDuplicateTrack = useCallback(() => {
+    if (!contextMenu.trackRef || !currentSong) return;
+
+    const { addTrackToSong } = useSongsStore.getState();
+    const trackRef = contextMenu.trackRef;
+
+    addTrackToSong(currentSong.id, {
+      type: trackRef.type,
+      trackId: trackRef.trackId,
+      startOffset: trackRef.startOffset + 1, // Offset slightly
+      muted: trackRef.muted,
+      volume: trackRef.volume,
+    });
+
+    closeContextMenu();
+  }, [contextMenu.trackRef, currentSong, closeContextMenu]);
+
+  // Drag handlers for moving clips along timeline
+  const handleDragStart = useCallback(
+    (e: React.MouseEvent, trackRef: SongTrackReference) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setDragState({
+        isDragging: true,
+        trackRefId: trackRef.id,
+        startX: e.clientX,
+        originalOffset: trackRef.startOffset,
+      });
+      setDragOffset(trackRef.startOffset);
+    },
+    []
+  );
+
+  // Handle drag move
+  useEffect(() => {
+    if (!dragState.isDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      const deltaX = e.clientX - dragState.startX;
+      const deltaTime = deltaX / zoom;
+      const newOffset = Math.max(0, dragState.originalOffset + deltaTime);
+      setDragOffset(newOffset);
+    };
+
+    const handleMouseUp = () => {
+      if (dragState.trackRefId && currentSong && dragOffset !== null) {
+        // Update the track's start offset
+        updateTrackInSong(currentSong.id, dragState.trackRefId, {
+          startOffset: Math.round(dragOffset * 10) / 10, // Round to 0.1s
+        });
+      }
+      setDragState({
+        isDragging: false,
+        trackRefId: null,
+        startX: 0,
+        originalOffset: 0,
+      });
+      setDragOffset(null);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [dragState, zoom, currentSong, dragOffset, updateTrackInSong]);
 
   // Generate time markers
   const timeMarkers = useMemo(() => {
@@ -409,7 +584,10 @@ export function MultiTrackTimeline({
             ) : (
               unifiedTracks.map((track) => {
                 const clipWidth = Math.max(track.duration * zoom, 40);
-                const clipLeft = track.ref.startOffset * zoom;
+                // Use drag offset if this track is being dragged
+                const isDraggingThis = dragState.isDragging && dragState.trackRefId === track.ref.id;
+                const displayOffset = isDraggingThis && dragOffset !== null ? dragOffset : track.ref.startOffset;
+                const clipLeft = displayOffset * zoom;
 
                 return (
                   <div
@@ -433,8 +611,9 @@ export function MultiTrackTimeline({
                     {/* Track clip */}
                     <div
                       className={cn(
-                        'absolute top-1 bottom-1 rounded-md overflow-hidden transition-opacity',
-                        track.muted ? 'opacity-40' : 'opacity-100'
+                        'absolute top-1 bottom-1 rounded-md overflow-hidden transition-opacity cursor-grab hover:ring-1 hover:ring-white/20',
+                        track.muted ? 'opacity-40' : 'opacity-100',
+                        isDraggingThis && 'cursor-grabbing ring-2 ring-indigo-500 z-20'
                       )}
                       style={{
                         left: clipLeft + 96,
@@ -442,6 +621,8 @@ export function MultiTrackTimeline({
                         backgroundColor: `${track.color}20`,
                         borderLeft: `3px solid ${track.color}`,
                       }}
+                      onMouseDown={(e) => handleDragStart(e, track.ref)}
+                      onContextMenu={(e) => handleContextMenu(e, track)}
                     >
                       {/* Content visualization */}
                       {track.type === 'loop' && track.loopDef ? (
@@ -489,6 +670,57 @@ export function MultiTrackTimeline({
             <span className="text-amber-500">● MIDI</span>
             <span className="text-indigo-500">● Audio</span>
           </div>
+        </div>
+      )}
+
+      {/* Context Menu */}
+      {contextMenu.isOpen && (
+        <div
+          className="fixed z-50 min-w-[160px] py-1 bg-white dark:bg-zinc-900 rounded-lg shadow-xl border border-gray-200 dark:border-zinc-700"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1.5 text-xs text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800 truncate">
+            {contextMenu.trackName}
+          </div>
+
+          <button
+            onClick={handleToggleMute}
+            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            {contextMenu.trackRef?.muted ? (
+              <>
+                <Volume2 className="w-4 h-4" />
+                <span>Unmute</span>
+              </>
+            ) : (
+              <>
+                <VolumeX className="w-4 h-4" />
+                <span>Mute</span>
+              </>
+            )}
+          </button>
+
+          <button
+            onClick={handleDuplicateTrack}
+            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <Copy className="w-4 h-4" />
+            <span>Duplicate</span>
+          </button>
+
+          <div className="my-1 border-t border-gray-100 dark:border-zinc-800" />
+
+          <button
+            onClick={handleDeleteTrack}
+            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete</span>
+          </button>
         </div>
       )}
     </div>
