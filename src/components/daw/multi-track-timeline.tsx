@@ -207,6 +207,7 @@ export function MultiTrackTimeline({
   });
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const dragOffsetRef = useRef<number | null>(null);
+  const isProgrammaticScroll = useRef(false);
 
   const { getCurrentSong, removeTrackFromSong, updateTrackInSong } = useSongsStore();
   const { queue, currentTrack, setCurrentTrack } = useRoomStore();
@@ -298,8 +299,12 @@ export function MultiTrackTimeline({
     [onSeek, scrollLeft, zoom, songDuration]
   );
 
-  // Handle scroll
+  // Handle scroll - ignore programmatic scrolls to avoid infinite loops
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (isProgrammaticScroll.current) {
+      isProgrammaticScroll.current = false;
+      return;
+    }
     setScrollLeft(e.currentTarget.scrollLeft);
   }, []);
 
@@ -314,7 +319,7 @@ export function MultiTrackTimeline({
 
   // Context menu handlers
   const handleContextMenu = useCallback(
-    (e: React.MouseEvent, track: typeof unifiedTracks[0]) => {
+    (e: React.MouseEvent, track: { ref: SongTrackReference; name: string; type: 'audio' | 'loop' }) => {
       e.preventDefault();
       e.stopPropagation();
       setContextMenu({
@@ -326,7 +331,7 @@ export function MultiTrackTimeline({
         trackType: track.type,
       });
     },
-    [unifiedTracks]
+    []
   );
 
   const closeContextMenu = useCallback(() => {
@@ -479,8 +484,10 @@ export function MultiTrackTimeline({
     const visibleWidth = container.clientWidth;
 
     if (playheadX > scrollPosition + visibleWidth - 100) {
+      isProgrammaticScroll.current = true;
       container.scrollLeft = playheadX - visibleWidth + 200;
     } else if (playheadX < scrollPosition) {
+      isProgrammaticScroll.current = true;
       container.scrollLeft = Math.max(0, playheadX - 100);
     }
   }, [currentTime, zoom, isPlaying]);
