@@ -211,19 +211,28 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           break;
         case 'm':
         case 'M':
-          setMuted(!isMuted);
+          if (!e.ctrlKey && !e.metaKey) {
+            setMuted(!isMuted);
+          }
           break;
         case 'q':
         case 'Q':
-          setActivePanel('queue');
+          if (!e.ctrlKey && !e.metaKey) {
+            setActivePanel('queue');
+          }
           break;
         case 'a':
         case 'A':
-          setActivePanel('analysis');
+          if (!e.ctrlKey && !e.metaKey) {
+            setActivePanel('analysis');
+          }
           break;
         case 'c':
         case 'C':
-          setActivePanel('chat');
+          // Don't trigger shortcut when Ctrl+C (copy) is pressed
+          if (!e.ctrlKey && !e.metaKey) {
+            setActivePanel('chat');
+          }
           break;
         case '?':
           setShowShortcuts(true);
