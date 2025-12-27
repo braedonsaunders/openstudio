@@ -3,6 +3,7 @@
 import { useRef, useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { useAnalysisStore } from '@/stores/analysis-store';
+import { useRoomStore } from '@/stores/room-store';
 import {
   Music,
   Activity,
@@ -13,6 +14,7 @@ import {
   Waves,
   Gauge,
   AlertCircle,
+  Info,
 } from 'lucide-react';
 
 // Key colors for visualization
@@ -46,6 +48,11 @@ export function AnalysisPanel() {
     setAnalysisSource,
     setTunerEnabled,
   } = useAnalysisStore();
+
+  const { currentTrack } = useRoomStore();
+
+  // Check if current track is YouTube (can't analyze YouTube audio - it's in an iframe)
+  const isYouTubeTrack = !!currentTrack?.youtubeId;
 
   // Use synced values when available
   const displayKey = syncedAnalysis?.key || localAnalysis?.key;
@@ -308,18 +315,21 @@ export function AnalysisPanel() {
         </div>
         <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
           {[
-            { id: 'backing' as const, icon: Radio, label: 'Track' },
-            { id: 'local' as const, icon: Mic2, label: 'Mic' },
-            { id: 'mixed' as const, icon: Music, label: 'Mix' },
-          ].map(({ id, icon: Icon, label }) => (
+            { id: 'backing' as const, icon: Radio, label: 'Track', disabled: isYouTubeTrack },
+            { id: 'local' as const, icon: Mic2, label: 'Mic', disabled: false },
+            { id: 'mixed' as const, icon: Music, label: 'Mix', disabled: false },
+          ].map(({ id, icon: Icon, label, disabled }) => (
             <button
               key={id}
-              onClick={() => setAnalysisSource(id)}
+              onClick={() => !disabled && setAnalysisSource(id)}
+              disabled={disabled}
+              title={disabled ? 'YouTube audio cannot be analyzed' : undefined}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-all',
                 analysisSource === id
                   ? 'bg-white text-black'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  : 'text-zinc-500 hover:text-zinc-300',
+                disabled && 'opacity-40 cursor-not-allowed hover:text-zinc-500'
               )}
             >
               <Icon className="w-3 h-3" />
@@ -327,6 +337,16 @@ export function AnalysisPanel() {
             </button>
           ))}
         </div>
+
+        {/* Info message for YouTube tracks */}
+        {isYouTubeTrack && analysisSource === 'backing' && (
+          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-blue-500/10 border border-blue-500/20">
+            <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-blue-300">
+              YouTube audio can&apos;t be analyzed. Select &quot;Mic&quot; to analyze your microphone input instead.
+            </span>
+          </div>
+        )}
       </div>
     </div>
   );

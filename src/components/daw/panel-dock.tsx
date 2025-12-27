@@ -100,16 +100,6 @@ export function PanelDock({
 
       {/* Panel Content */}
       <div className="flex-1 overflow-hidden relative">
-        {/* YouTube player - always mounted to prevent audio stopping on tab switch */}
-        {youtubePlayer && (
-          <div className={cn(
-            'absolute inset-0 z-10',
-            activePanel !== 'queue' && 'pointer-events-none opacity-0 h-0 overflow-hidden'
-          )}>
-            {youtubePlayer}
-          </div>
-        )}
-
         {activePanel === 'mixer' && (
           <StemMixerPanel
             onToggleStem={onToggleStem}
@@ -120,15 +110,20 @@ export function PanelDock({
           />
         )}
 
-        {activePanel === 'queue' && (
+        {/* Queue panel - always render but hide when not active to keep YouTube player mounted */}
+        <div className={cn(
+          'h-full',
+          activePanel !== 'queue' && 'hidden'
+        )}>
           <QueuePanel
             onTrackSelect={onTrackSelect}
             onTrackRemove={onTrackRemove}
             onUpload={onUpload}
             onAIGenerate={onAIGenerate}
             onYouTubeSearch={onYouTubeSearch}
+            youtubePlayer={youtubePlayer}
           />
-        )}
+        </div>
 
         {activePanel === 'analysis' && (
           <AnalysisPanel />
