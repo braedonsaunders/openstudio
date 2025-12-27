@@ -206,6 +206,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
     // Cleanup when dependencies change
     return () => {
+      console.log('Analysis effect cleanup running');
       if (analysisSource === 'backing' || analysisSource === 'mixed') {
         analyzerRef.current.stopAnalysis();
         setIsAnalyzing(false);
