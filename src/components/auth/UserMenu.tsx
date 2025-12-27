@@ -47,6 +47,13 @@ export function UserMenu() {
     return () => clearTimeout(timeout);
   }, [isInitialized, isLoading, initialize]);
 
+  // Close auth modal when user becomes authenticated
+  useEffect(() => {
+    if (user && showAuthModal) {
+      setShowAuthModal(false);
+    }
+  }, [user, showAuthModal]);
+
   // Close dropdown when clicking outside
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
