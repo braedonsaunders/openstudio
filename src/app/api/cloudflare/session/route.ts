@@ -49,8 +49,8 @@ export async function POST(request: NextRequest) {
     switch (action) {
       case 'create': {
         // Create a new session
-        // POST /sessions/new
-        const result = await callCloudflareAPI('/sessions/new', 'POST', {});
+        // POST /sessions/new (no body required)
+        const result = await callCloudflareAPI('/sessions/new', 'POST');
 
         // Track this session for the room
         if (!roomTracks.has(roomId)) {

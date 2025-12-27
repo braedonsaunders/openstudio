@@ -128,10 +128,10 @@ export default function HomePage() {
 
           <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
             <Card variant="bordered">
+              <div className="w-12 h-12 bg-indigo-500/20 rounded-xl flex items-center justify-center mb-4">
+                <Gauge className="w-6 h-6 text-indigo-500" />
+              </div>
               <CardHeader>
-                <div className="w-12 h-12 bg-indigo-500/20 rounded-xl flex items-center justify-center mb-4">
-                  <Gauge className="w-6 h-6 text-indigo-500" />
-                </div>
                 <CardTitle>Sub-30ms Latency</CardTitle>
                 <CardDescription>
                   Ultra-low latency audio streaming powered by Cloudflare&apos;s global edge network and WebRTC.
@@ -140,10 +140,10 @@ export default function HomePage() {
             </Card>
 
             <Card variant="bordered">
+              <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center mb-4">
+                <Wifi className="w-6 h-6 text-green-500" />
+              </div>
               <CardHeader>
-                <div className="w-12 h-12 bg-green-500/20 rounded-xl flex items-center justify-center mb-4">
-                  <Wifi className="w-6 h-6 text-green-500" />
-                </div>
                 <CardTitle>Adaptive Jitter Buffer</CardTitle>
                 <CardDescription>
                   Intelligent buffer sizing that automatically adjusts to your network conditions for optimal performance.
@@ -152,10 +152,10 @@ export default function HomePage() {
             </Card>
 
             <Card variant="bordered">
+              <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4">
+                <Sparkles className="w-6 h-6 text-purple-500" />
+              </div>
               <CardHeader>
-                <div className="w-12 h-12 bg-purple-500/20 rounded-xl flex items-center justify-center mb-4">
-                  <Sparkles className="w-6 h-6 text-purple-500" />
-                </div>
                 <CardTitle>AI Stem Separation</CardTitle>
                 <CardDescription>
                   Powered by Meta SAM, isolate vocals, drums, bass, and other instruments from any backing track.
@@ -164,10 +164,10 @@ export default function HomePage() {
             </Card>
 
             <Card variant="bordered">
+              <div className="w-12 h-12 bg-pink-500/20 rounded-xl flex items-center justify-center mb-4">
+                <Music className="w-6 h-6 text-pink-500" />
+              </div>
               <CardHeader>
-                <div className="w-12 h-12 bg-pink-500/20 rounded-xl flex items-center justify-center mb-4">
-                  <Music className="w-6 h-6 text-pink-500" />
-                </div>
                 <CardTitle>AI Track Generation</CardTitle>
                 <CardDescription>
                   Describe the backing track you want and let Suno AI create it. Endless mode keeps the music flowing.
@@ -176,10 +176,10 @@ export default function HomePage() {
             </Card>
 
             <Card variant="bordered">
+              <div className="w-12 h-12 bg-yellow-500/20 rounded-xl flex items-center justify-center mb-4">
+                <Users className="w-6 h-6 text-yellow-500" />
+              </div>
               <CardHeader>
-                <div className="w-12 h-12 bg-yellow-500/20 rounded-xl flex items-center justify-center mb-4">
-                  <Users className="w-6 h-6 text-yellow-500" />
-                </div>
                 <CardTitle>SFU Architecture</CardTitle>
                 <CardDescription>
                   Selective Forwarding Unit means you upload once, and everyone receives. No mesh network bottlenecks.
@@ -188,10 +188,10 @@ export default function HomePage() {
             </Card>
 
             <Card variant="bordered">
+              <div className="w-12 h-12 bg-cyan-500/20 rounded-xl flex items-center justify-center mb-4">
+                <Globe className="w-6 h-6 text-cyan-500" />
+              </div>
               <CardHeader>
-                <div className="w-12 h-12 bg-cyan-500/20 rounded-xl flex items-center justify-center mb-4">
-                  <Globe className="w-6 h-6 text-cyan-500" />
-                </div>
                 <CardTitle>Global Edge Network</CardTitle>
                 <CardDescription>
                   Rooms are hosted at the nearest Cloudflare PoP to minimize latency for all participants.
