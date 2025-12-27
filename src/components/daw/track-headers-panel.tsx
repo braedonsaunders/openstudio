@@ -85,25 +85,25 @@ export function TrackHeadersPanel({
 
   return (
     <div
-      className="bg-[#0d0d14] border-r border-white/5 flex flex-col shrink-0 z-10"
+      className="bg-gray-50 dark:bg-[#0d0d14] border-r border-gray-200 dark:border-white/5 flex flex-col shrink-0 z-10"
       style={{ width: width ? `${width}px` : '240px' }}
     >
       {/* Header */}
-      <div className="h-8 px-4 flex items-center border-b border-white/5 bg-[#12121a]">
-        <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tracks</span>
-        <span className="ml-auto text-xs text-zinc-600">{totalTracks}</span>
+      <div className="h-8 px-4 flex items-center border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a]">
+        <span className="text-xs font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Tracks</span>
+        <span className="ml-auto text-xs text-gray-400 dark:text-zinc-600">{totalTracks}</span>
       </div>
 
       {/* Timeline header alignment spacer */}
-      <div className="h-8 border-b border-white/5" />
+      <div className="h-8 border-b border-gray-200 dark:border-white/5" />
 
       {/* Track Headers List */}
       <div className="flex-1 overflow-y-auto">
         {/* Local User Tracks (Your tracks) */}
         {currentUser && localTracks.length > 0 && (
-          <div className="border-b border-white/10">
-            <div className="px-3 py-1.5 bg-white/[0.02]">
-              <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+          <div className="border-b border-gray-200 dark:border-white/10">
+            <div className="px-3 py-1.5 bg-gray-100/50 dark:bg-white/[0.02]">
+              <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">
                 Your Tracks
               </span>
             </div>
@@ -127,8 +127,8 @@ export function TrackHeadersPanel({
         {/* Remote User Tracks */}
         {remoteUsers.length > 0 && (
           <div>
-            <div className="px-3 py-1.5 bg-white/[0.02]">
-              <span className="text-[10px] font-medium text-zinc-500 uppercase tracking-wider">
+            <div className="px-3 py-1.5 bg-gray-100/50 dark:bg-white/[0.02]">
+              <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">
                 Other Musicians
               </span>
             </div>
@@ -157,17 +157,17 @@ export function TrackHeadersPanel({
         {/* Empty state for no remote users */}
         {remoteUsers.length === 0 && localTracks.length === 0 && (
           <div className="p-4 text-center">
-            <p className="text-sm text-zinc-500">No tracks yet</p>
-            <p className="text-xs text-zinc-600 mt-1">Add a track to get started</p>
+            <p className="text-sm text-gray-500 dark:text-zinc-500">No tracks yet</p>
+            <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Add a track to get started</p>
           </div>
         )}
       </div>
 
       {/* Footer with Add Track button */}
-      <div className="h-12 px-3 flex items-center border-t border-white/5 bg-[#0d0d14]">
+      <div className="h-12 px-3 flex items-center border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14]">
         <button
           onClick={() => setShowAddTrackModal(true)}
-          className="flex items-center gap-2 px-3 py-2 w-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/30 rounded-lg text-indigo-400 transition-all"
+          className="flex items-center gap-2 px-3 py-2 w-full bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 hover:border-indigo-500/30 rounded-lg text-indigo-600 dark:text-indigo-400 transition-all"
         >
           <Plus className="w-4 h-4" />
           <span className="text-xs font-medium">Add Track</span>

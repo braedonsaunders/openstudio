@@ -74,7 +74,7 @@ export function LiveArrangementView({
   const totalTracks = localTracks.length + remoteUsers.length;
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0f]">
+    <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#0a0a0f]">
       {/* Seekable Backing Track (independent from live timeline) */}
       {currentTrack && (
         <SeekableBackingTrack
@@ -91,24 +91,24 @@ export function LiveArrangementView({
       )}
 
       {/* Live Session Header */}
-      <div className="h-8 px-4 flex items-center justify-between border-b border-white/5 bg-[#0d0d14]">
+      <div className="h-8 px-4 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#0d0d14]">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-red-500 animate-pulse" />
-            <span className="text-xs font-medium text-white">LIVE SESSION</span>
+            <span className="text-xs font-medium text-gray-900 dark:text-white">LIVE SESSION</span>
           </div>
-          <div className="h-4 w-px bg-white/10" />
-          <span className="text-xs text-zinc-500 font-mono">{formatSessionTime(sessionTime)}</span>
-          <div className="h-4 w-px bg-white/10" />
-          <span className="text-xs text-zinc-500">
+          <div className="h-4 w-px bg-gray-300 dark:bg-white/10" />
+          <span className="text-xs text-gray-500 dark:text-zinc-500 font-mono">{formatSessionTime(sessionTime)}</span>
+          <div className="h-4 w-px bg-gray-300 dark:bg-white/10" />
+          <span className="text-xs text-gray-500 dark:text-zinc-500">
             {totalTracks} track{totalTracks !== 1 ? 's' : ''}
           </span>
         </div>
 
-        <div className="flex items-center gap-2 text-[10px] text-zinc-600">
+        <div className="flex items-center gap-2 text-[10px] text-gray-400 dark:text-zinc-600">
           <span>← PAST</span>
-          <div className="w-16 h-px bg-gradient-to-r from-zinc-700 to-indigo-500" />
-          <span className="text-indigo-400 font-medium">NOW</span>
+          <div className="w-16 h-px bg-gradient-to-r from-gray-400 dark:from-zinc-700 to-indigo-500" />
+          <span className="text-indigo-600 dark:text-indigo-400 font-medium">NOW</span>
         </div>
       </div>
 
@@ -159,7 +159,7 @@ export function LiveArrangementView({
           {/* Empty state */}
           {totalTracks === 0 && (
             <div className="flex-1 flex items-center justify-center">
-              <div className="text-center p-8 glass-panel rounded-2xl max-w-md">
+              <div className="text-center p-8 bg-white/80 dark:bg-transparent dark:glass-panel rounded-2xl max-w-md border border-gray-200 dark:border-transparent shadow-lg dark:shadow-none">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
                   <svg
                     className="w-8 h-8 text-white"
@@ -175,8 +175,8 @@ export function LiveArrangementView({
                     />
                   </svg>
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Waiting for Musicians</h3>
-                <p className="text-sm text-zinc-400">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Waiting for Musicians</h3>
+                <p className="text-sm text-gray-500 dark:text-zinc-400">
                   Share the room code to invite others to join this live jam session.
                 </p>
               </div>
@@ -188,13 +188,13 @@ export function LiveArrangementView({
         <NowLine isRecording={true} className="right-6" />
 
         {/* Fade gradient on left edge (history fading out) */}
-        <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-[#0a0a0f] to-transparent pointer-events-none z-20" />
+        <div className="absolute left-0 top-0 bottom-0 w-24 bg-gradient-to-r from-white dark:from-[#0a0a0f] to-transparent pointer-events-none z-20" />
       </div>
 
       {/* Zoom Control */}
-      <div className="h-8 px-4 flex items-center justify-between border-t border-white/5 bg-[#0d0d14]">
+      <div className="h-8 px-4 flex items-center justify-between border-t border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#0d0d14]">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-500">History:</span>
+          <span className="text-xs text-gray-500 dark:text-zinc-500">History:</span>
           <input
             type="range"
             min="0.5"
@@ -204,14 +204,14 @@ export function LiveArrangementView({
             onChange={(e) => setZoom(parseFloat(e.target.value))}
             className="w-24 h-1 accent-indigo-500"
           />
-          <span className="text-xs text-zinc-400 w-16">
+          <span className="text-xs text-gray-500 dark:text-zinc-400 w-16">
             {Math.round(HISTORY_SECONDS / zoom)}s visible
           </span>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-zinc-500">
+        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-zinc-500">
           <span>Ctrl+Scroll to zoom</span>
-          <span className="text-indigo-400">● Live audio flows ← from NOW</span>
+          <span className="text-indigo-600 dark:text-indigo-400">● Live audio flows ← from NOW</span>
         </div>
       </div>
     </div>

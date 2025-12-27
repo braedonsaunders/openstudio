@@ -343,11 +343,11 @@ export function AnalysisPanel() {
         </div>
 
         {/* Info message for YouTube tracks (can't be analyzed - uses iframe) */}
-        {isYouTubeTrack && analysisSource === 'backing' && (
+        {isYouTubeTrack && (analysisSource === 'backing' || analysisSource === 'mixed') && (
           <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
             <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
             <span className="text-[11px] text-amber-300">
-              YouTube tracks use iframe playback and cannot be analyzed. Select &quot;Mix&quot; or &quot;Mic&quot; instead.
+              YouTube audio cannot be analyzed (iframe isolation). Use &quot;Mic&quot; to analyze instruments playing along, or &quot;Mix&quot; to analyze all participants.
             </span>
           </div>
         )}
@@ -363,11 +363,11 @@ export function AnalysisPanel() {
         )}
 
         {/* Info message for Mix mode */}
-        {analysisSource === 'mixed' && (
+        {analysisSource === 'mixed' && !isYouTubeTrack && (
           <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-indigo-500/10 border border-indigo-500/20">
             <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
             <span className="text-[11px] text-indigo-300">
-              Analyzes all audio: backing track + all users&apos; instruments. Great for jam sessions!
+              Analyzes backing track + all participants&apos; microphones. Great for jam sessions!
             </span>
           </div>
         )}

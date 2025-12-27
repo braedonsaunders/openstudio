@@ -94,7 +94,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     leave,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, getAudioContext, getBackingTrackAnalyser, getMasterAnalyser, setOnTrackEnded, playBackingTrack } = useAudioEngine();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
 
@@ -108,9 +108,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   // - "Mix": Analyzes all audio (backing + all users' instruments)
   // Results are synced to all other room members
   useAudioAnalysis({
-    audioContext: getAudioContext(),
-    backingTrackAnalyser: getBackingTrackAnalyser(),
-    masterAnalyser: getMasterAnalyser(),
+    audioContext,
+    backingTrackAnalyser,
+    masterAnalyser,
     isPlaying,
     roomId,
     userId: currentUser?.id,
