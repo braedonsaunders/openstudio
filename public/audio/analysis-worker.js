@@ -443,62 +443,34 @@ function analyzeLongTerm(combinedAudio) {
   try {
     const essentiaAudio = essentia.arrayToVector(combinedAudio);
 
-    // Key detection using essentia's Key algorithm with HPCP
-    // Uses well-researched profiles (bgate, edma, krumhansl, etc.)
+    // Key detection using essentia's KeyExtractor with multiple profiles
+    // KeyExtractor computes HPCP internally and uses the Key algorithm
     try {
-      // Compute spectrum for HPCP
-      const frameSize = 4096;
-      const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
-
-      if (!spectrum || !spectrum.spectrum) {
-        throw new Error('Spectrum computation failed');
-      }
-
-      // Get spectrum as array
-      const spectrumArray = essentia.vectorToArray(spectrum.spectrum);
-
-      // Check if spectrum has valid data
-      const spectrumSum = spectrumArray.reduce((a, b) => a + Math.abs(b), 0);
-      if (spectrumSum < 0.0001) {
-        throw new Error('Spectrum is silent');
-      }
-
-      // Compute frequencies array for HPCP
-      const numBins = spectrumArray.length;
-      const frequencies = new Float32Array(numBins);
-      const fftSize = (numBins - 1) * 2;
-      for (let i = 0; i < numBins; i++) {
-        frequencies[i] = (i * sampleRate) / fftSize;
-      }
-
-      // Compute HPCP with higher resolution for better key detection
-      const freqVector = essentia.arrayToVector(frequencies);
-      const hpcpResult = essentia.HPCP(spectrum.spectrum, freqVector);
-      const hpcpArray = essentia.vectorToArray(hpcpResult.hpcp);
-
-      if (!hpcpArray || hpcpArray.length !== 12) {
-        throw new Error(`Invalid HPCP result: length=${hpcpArray?.length}`);
-      }
-
-      // Accumulate HPCP over time for more stable detection
-      for (let i = 0; i < 12; i++) {
-        accumulatedHPCP[i] += hpcpArray[i];
-      }
-      hpcpFrameCount++;
-
-      // Use accumulated HPCP for key detection
-      const avgHPCP = Array.from(accumulatedHPCP).map(v => v / hpcpFrameCount);
-      const hpcpVector = essentia.arrayToVector(new Float32Array(avgHPCP));
-
-      // Try multiple profile types and use consensus
-      const profiles = ['bgate', 'edma', 'krumhansl', 'temperley', 'shaath'];
+      // Try multiple profile types and use consensus voting
+      const profiles = ['bgate', 'edma', 'krumhansl', 'temperley'];
       const keyVotes = {};
 
       for (const profile of profiles) {
         try {
-          const keyResult = essentia.Key(hpcpVector, true, 4, 12, 0.2, profile, 0.6, false, true, true);
+          // KeyExtractor takes audio directly and computes everything
+          const keyResult = essentia.KeyExtractor(
+            essentiaAudio,
+            true,     // averageDetuningCorrection
+            4096,     // frameSize
+            4096,     // hopSize
+            12,       // hpcpSize
+            5000,     // maxFrequency
+            25,       // minFrequency
+            0.2,      // pcpThreshold
+            profile,  // profileType
+            sampleRate,
+            0.0001,   // spectralPeaksThreshold
+            440,      // tuningFrequency
+            'cosine', // weightType
+            'hann'    // windowType
+          );
 
-          if (keyResult && keyResult.key && keyResult.strength > 0.1) {
+          if (keyResult && keyResult.key && keyResult.scale && keyResult.strength > 0.1) {
             const keyId = `${keyResult.key}_${keyResult.scale}`;
             if (!keyVotes[keyId]) {
               keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
@@ -508,7 +480,7 @@ function analyzeLongTerm(combinedAudio) {
             keyVotes[keyId].strengths.push(keyResult.strength);
           }
         } catch (profileError) {
-          // Profile not available, skip
+          // Profile not available or error, skip
         }
       }
 
@@ -517,7 +489,6 @@ function analyzeLongTerm(combinedAudio) {
       let bestScore = 0;
 
       for (const [keyId, data] of Object.entries(keyVotes)) {
-        // Score = count * average strength
         const avgStrength = data.totalStrength / data.count;
         const score = data.count * avgStrength;
         if (score > bestScore) {
@@ -538,12 +509,10 @@ function analyzeLongTerm(combinedAudio) {
           timestamp: Date.now()
         });
 
-        // Keep buffer size reasonable
         if (keyBuffer.length > 10) {
           keyBuffer.shift();
         }
 
-        // Update key if we have enough samples
         if (keyBuffer.length >= 3) {
           const keyCounts = {};
           keyBuffer.forEach(k => {
@@ -555,7 +524,6 @@ function analyzeLongTerm(combinedAudio) {
             keyCounts[keyId].totalStrength += k.strength;
           });
 
-          // Find most common key
           let bestKey = null;
           let bestKeyScore = 0;
           for (const [keyId, data] of Object.entries(keyCounts)) {
@@ -571,12 +539,12 @@ function analyzeLongTerm(combinedAudio) {
             const keyData = keyCounts[bestKey];
             const avgStrength = keyData.totalStrength / keyData.count;
 
-            if (keyData.count >= 2 && avgStrength > 0.3) {
+            if (keyData.count >= 2 && avgStrength > 0.2) {
               const newKeyId = `${key}_${scale}`;
               const currentKeyId = `${lastKey}_${lastKeyScale}`;
 
               const shouldChange = !lastKey ||
-                (newKeyId !== currentKeyId && (keyData.count >= 4 || avgStrength > 0.5));
+                (newKeyId !== currentKeyId && (keyData.count >= 4 || avgStrength > 0.4));
 
               if (shouldChange && newKeyId !== currentKeyId) {
                 lastKey = key;
@@ -594,17 +562,17 @@ function analyzeLongTerm(combinedAudio) {
         }
       }
     } catch (e) {
-      // Fallback: try KeyExtractor directly on audio
+      // Fallback: try with default parameters
       try {
         const keyResult = essentia.KeyExtractor(essentiaAudio);
-        if (keyResult && keyResult.key && keyResult.strength > 0.5 && !lastKey) {
+        if (keyResult && keyResult.key && keyResult.scale && keyResult.strength > 0.3 && !lastKey) {
           lastKey = keyResult.key;
           lastKeyScale = keyResult.scale;
           lastKeyStrength = keyResult.strength;
           console.log(`[Worker] Key detected (fallback): ${lastKey} ${lastKeyScale}`);
         }
       } catch (e2) {
-        // Key detection failed silently
+        // Key detection failed
       }
     }
 
