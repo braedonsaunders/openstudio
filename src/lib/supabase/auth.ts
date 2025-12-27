@@ -41,7 +41,7 @@ export async function signUp(email: string, password: string, username: string, 
     .from('user_profiles')
     .select('username')
     .eq('username', username)
-    .single();
+    .maybeSingle();
 
   if (existingUser) {
     throw new Error('Username already taken');
@@ -61,12 +61,39 @@ export async function signUp(email: string, password: string, username: string, 
 
   if (error) throw error;
 
-  // The trigger will create the profile, but we need to update username
+  // Create or update the user profile
+  // Use upsert to handle cases where trigger may or may not have created the profile
   if (data.user) {
-    await supabaseAuth
+    const { error: profileError } = await supabaseAuth
       .from('user_profiles')
-      .update({ username, display_name: displayName })
-      .eq('id', data.user.id);
+      .upsert({
+        id: data.user.id,
+        username,
+        display_name: displayName,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+      }, {
+        onConflict: 'id',
+        ignoreDuplicates: false,
+      });
+
+    if (profileError) {
+      console.error('Profile creation error:', profileError);
+      // Don't throw - the user is created, profile can be fixed later
+    }
+
+    // Also create initial stats and avatar records
+    await Promise.all([
+      supabaseAuth.from('user_stats').upsert({
+        user_id: data.user.id,
+        total_jam_seconds: 0,
+        total_sessions: 0,
+      }, { onConflict: 'user_id' }),
+      supabaseAuth.from('user_avatars').upsert({
+        user_id: data.user.id,
+        avatar_data: {},
+      }, { onConflict: 'user_id' }),
+    ]).catch(err => console.error('Error creating user records:', err));
   }
 
   return data;
@@ -78,7 +105,16 @@ export async function signIn(email: string, password: string) {
     password,
   });
 
-  if (error) throw error;
+  if (error) {
+    // Provide user-friendly error messages
+    if (error.message.includes('Invalid login credentials')) {
+      throw new Error('Invalid email or password. Please check your credentials and try again.');
+    }
+    if (error.message.includes('Email not confirmed')) {
+      throw new Error('Please verify your email address before signing in.');
+    }
+    throw error;
+  }
   return data;
 }
 
