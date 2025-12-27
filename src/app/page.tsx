@@ -1100,7 +1100,7 @@ export default function HomePage() {
   const router = useRouter();
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
-  const { user, profile, isLoading, isInitialized, initialize } = useAuthStore();
+  const { user, profile, isLoading, isInitialized } = useAuthStore();
 
   const [roomCode, setRoomCode] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -1118,12 +1118,7 @@ export default function HomePage() {
 
   const [visibleAudience, setVisibleAudience] = useState([true, false, true, false, true]);
 
-  // Initialize auth on mount
-  useEffect(() => {
-    if (!isInitialized && !isLoading) {
-      initialize();
-    }
-  }, [isInitialized, isLoading, initialize]);
+  // Auth initialization is handled by onAuthStateChange in auth-store
 
   useEffect(() => {
     setMounted(true);

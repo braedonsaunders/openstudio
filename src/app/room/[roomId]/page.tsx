@@ -55,7 +55,7 @@ export default function RoomPage() {
   const router = useRouter();
   const roomId = params.roomId as string;
 
-  const { user, profile, avatar, instruments: userInstruments, isInitialized, initialize } = useAuthStore();
+  const { user, profile, avatar, instruments: userInstruments, isInitialized } = useAuthStore();
 
   const [hasJoined, setHasJoined] = useState(false);
   const [userName, setUserName] = useState('');
@@ -64,12 +64,7 @@ export default function RoomPage() {
   const [audioPermission, setAudioPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
   const [audioLevel, setAudioLevel] = useState(0);
 
-  // Initialize auth
-  useEffect(() => {
-    if (!isInitialized) {
-      initialize();
-    }
-  }, [isInitialized, initialize]);
+  // Auth initialization is handled by onAuthStateChange in auth-store
 
   // Pre-populate name and instrument from profile when auth is ready
   useEffect(() => {

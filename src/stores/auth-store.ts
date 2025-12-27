@@ -441,28 +441,34 @@ export const useAuthStore = create<AuthState>()(
   )
 );
 
-// Subscribe to auth state changes
+// Subscribe to auth state changes - this runs synchronously when the module loads
+// to ensure the listener is registered before INITIAL_SESSION fires
 if (typeof window !== 'undefined') {
-  import('@/lib/supabase/auth').then(({ supabaseAuth }) => {
-    supabaseAuth.auth.onAuthStateChange(async (event, session) => {
-      const store = useAuthStore.getState();
+  authApi.supabaseAuth.auth.onAuthStateChange(async (event, session) => {
+    const store = useAuthStore.getState();
 
-      if (event === 'SIGNED_IN' && session?.user) {
-        // Only initialize if not already initialized or loading
-        // The signIn() method handles its own state updates for email/password login
-        // This handler is mainly for OAuth flows where signIn() wasn't called directly
-        const currentState = useAuthStore.getState();
-        if (!currentState.isInitialized && !currentState.isLoading) {
-          await useAuthStore.getState().initialize();
-        }
-      } else if (event === 'SIGNED_OUT') {
-        store.reset();
-      } else if (event === 'INITIAL_SESSION' && session?.user) {
-        // Handle initial session on page load (e.g., after OAuth redirect)
-        if (!store.isInitialized && !store.isLoading) {
+    if (event === 'SIGNED_IN' && session?.user) {
+      // Only initialize if not already initialized or loading
+      // The signIn() method handles its own state updates for email/password login
+      // This handler is mainly for OAuth flows where signIn() wasn't called directly
+      const currentState = useAuthStore.getState();
+      if (!currentState.isInitialized && !currentState.isLoading) {
+        await useAuthStore.getState().initialize();
+      }
+    } else if (event === 'SIGNED_OUT') {
+      store.reset();
+    } else if (event === 'INITIAL_SESSION') {
+      // Handle initial session on page load - this fires when Supabase has
+      // finished restoring the session from localStorage
+      if (!store.isInitialized && !store.isLoading) {
+        if (session?.user) {
+          // User is logged in - load their data
           await store.initialize();
+        } else {
+          // No user session - mark as initialized (not loading, just no user)
+          useAuthStore.setState({ isInitialized: true });
         }
       }
-    });
+    }
   });
 }
