@@ -464,11 +464,12 @@ function analyzeLongTerm(combinedAudio) {
       }
 
       // Compute frequencies array for HPCP
+      // Each bin k in the spectrum represents frequency k * sampleRate / fftSize
       const numBins = spectrumArray.length;
       const frequencies = new Float32Array(numBins);
-      const nyquist = sampleRate / 2;
+      const fftSize = (numBins - 1) * 2; // Spectrum length is fftSize/2 + 1
       for (let i = 0; i < numBins; i++) {
-        frequencies[i] = (i / numBins) * nyquist;
+        frequencies[i] = (i * sampleRate) / fftSize;
       }
 
       // Compute HPCP
@@ -555,7 +556,12 @@ function analyzeLongTerm(combinedAudio) {
                 lastKey = detectedKey;
                 lastKeyScale = detectedScale;
                 lastKeyStrength = Math.min(avgCorrelation, 1);
-                console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (correlation: ${lastKeyStrength.toFixed(3)}, count: ${keyData.count}/${keyBuffer.length})`);
+                // Show top 3 candidates for debugging
+                const sortedKeys = Object.entries(keyCounts)
+                  .map(([k, d]) => ({ key: k, score: d.count * (d.totalCorr / d.count) }))
+                  .sort((a, b) => b.score - a.score)
+                  .slice(0, 3);
+                console.log(`[Worker] Key: ${lastKey} ${lastKeyScale} (corr: ${lastKeyStrength.toFixed(2)}) | Top 3: ${sortedKeys.map(k => k.key.replace('_', ' ')).join(', ')}`);
               }
             }
           }
