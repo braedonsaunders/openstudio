@@ -115,12 +115,35 @@ export function useAudioEngine() {
     useAudioStore.getState().setBackingTrackVolume(volume);
   }, []);
 
+  // Get audio context for external use (e.g., analysis)
+  const getAudioContext = useCallback((): AudioContext | null => {
+    return engineRef.current?.getAudioContext() || null;
+  }, []);
+
   // Load and play backing track
   const loadBackingTrack = useCallback(async (track: BackingTrack) => {
-    if (!engineRef.current) return;
+    if (!engineRef.current) {
+      console.error('Audio engine not initialized');
+      return;
+    }
 
-    await engineRef.current.loadBackingTrack(track.url);
-    setDuration(track.duration);
+    // Skip loading for YouTube tracks (handled by iframe)
+    if (track.youtubeId) {
+      console.log('YouTube track - skipping audio engine load');
+      setDuration(track.duration);
+      return;
+    }
+
+    try {
+      await engineRef.current.loadBackingTrack(track.url);
+      // Use actual buffer duration if available, otherwise use track.duration
+      const actualDuration = engineRef.current.getDuration() || track.duration;
+      setDuration(actualDuration);
+    } catch (error) {
+      console.error('Failed to load backing track:', error);
+      // Still set duration from metadata
+      setDuration(track.duration);
+    }
 
     // Load stems if available
     if (track.stems) {
@@ -143,7 +166,16 @@ export function useAudioEngine() {
 
   // Play backing track with sync
   const playBackingTrack = useCallback((syncTimestamp: number, offset: number = 0) => {
-    if (!engineRef.current) return;
+    if (!engineRef.current) {
+      console.error('Audio engine not ready for playback');
+      return;
+    }
+
+    // Check if buffer is loaded
+    if (!engineRef.current.getDuration()) {
+      console.error('No audio buffer loaded');
+      return;
+    }
 
     if (stemsAvailable) {
       engineRef.current.playStemmedTrack(syncTimestamp, offset);
@@ -251,6 +283,7 @@ export function useAudioEngine() {
     setRemoteVolume,
     setMasterVolume,
     setBackingTrackVolume,
+    getAudioContext,
     loadBackingTrack,
     playBackingTrack,
     pauseBackingTrack,

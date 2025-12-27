@@ -200,7 +200,7 @@ export const YouTubePlayer = forwardRef<YouTubePlayerRef, YouTubePlayerProps>(
                     const duration = playerRef.current.getDuration();
                     onTimeUpdate?.(currentTime, duration);
                   }
-                }, 250);
+                }, 50); // 20fps for smooth playhead updates
               } else if (!playing && timeUpdateIntervalRef.current) {
                 clearInterval(timeUpdateIntervalRef.current);
                 timeUpdateIntervalRef.current = null;
