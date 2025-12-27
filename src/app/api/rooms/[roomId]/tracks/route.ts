@@ -53,17 +53,29 @@ export async function GET(
     }
 
     // Transform database records to BackingTrack format
-    const backingTracks = (tracks || []).map((track) => ({
-      id: track.id,
-      name: track.name,
-      artist: track.artist,
-      duration: track.duration,
-      url: track.url,
-      uploadedBy: track.uploaded_by,
-      uploadedAt: track.created_at,
-      youtubeId: track.youtube_id,
-      aiGenerated: track.ai_generated,
-    }));
+    const backingTracks = (tracks || []).map((track) => {
+      // Convert old R2 URLs to use the proxy endpoint
+      let url = track.url;
+      if (url && url.includes('r2.cloudflarestorage.com')) {
+        // Extract trackId from old URL format: tracks/{trackId}.{ext}
+        const match = url.match(/tracks\/([^.]+)\./);
+        if (match) {
+          url = `/api/audio/${match[1]}`;
+        }
+      }
+
+      return {
+        id: track.id,
+        name: track.name,
+        artist: track.artist,
+        duration: track.duration,
+        url,
+        uploadedBy: track.uploaded_by,
+        uploadedAt: track.created_at,
+        youtubeId: track.youtube_id,
+        aiGenerated: track.ai_generated,
+      };
+    });
 
     return NextResponse.json(backingTracks);
   } catch (error) {
