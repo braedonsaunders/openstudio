@@ -16,6 +16,7 @@ import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { AudioSettingsModal, type AudioSettings } from '../settings/audio-settings-modal';
 import { ConnectionStatus } from '../audio/connection-status';
+import { AnalysisHUD, KeyBadge, BPMBadge } from '../analysis/analysis-hud';
 import { Button } from '../ui/button';
 import {
   Settings,
@@ -278,6 +279,9 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
               </button>
             </div>
             <ConnectionStatus />
+            {/* Inline analysis badges */}
+            <KeyBadge />
+            <BPMBadge />
           </div>
 
           <div className="flex items-center gap-3">
@@ -398,6 +402,9 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
                 onPrevious={() => {}}
               />
             </div>
+
+            {/* Audio Analysis */}
+            <AnalysisHUD />
 
             {/* Connection stats */}
             <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
