@@ -73,6 +73,12 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
 
+  // YouTube player ref
+  const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
+
+  // YouTube audio element for analysis (when using Piped audio extraction)
+  const [youtubeAudioElement, setYoutubeAudioElement] = useState<HTMLAudioElement | null>(null);
+
   // Audio analysis - initialize with audio context and backing track element
   useAudioAnalysis({
     audioContext: getAudioContext(),
@@ -81,12 +87,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     userId: currentUser?.id,
     isMaster,
   });
-
-  // YouTube player ref
-  const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
-
-  // YouTube audio element for analysis (when using Piped audio extraction)
-  const [youtubeAudioElement, setYoutubeAudioElement] = useState<HTMLAudioElement | null>(null);
 
   // Check if current track is a YouTube track
   const isYouTubeTrack = !!currentTrack?.youtubeId;
