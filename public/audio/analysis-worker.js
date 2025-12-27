@@ -150,22 +150,33 @@ function analyzeLongTerm(combinedAudio) {
   try {
     const essentiaAudio = essentia.arrayToVector(combinedAudio);
 
-    // Key detection
+    // Key detection using HPCP -> Key approach
     try {
-      const keyResult = essentia.KeyExtractor(
-        essentiaAudio,
-        true,  // averageDetuningCorrection
-        4096,  // frameSize
-        4096,  // hopSize
-        12,    // hpcpSize
-        3500,  // maxFrequency
-        60,    // maximumSpectralPeaks
-        500,   // minFrequency
-        'bgate', // spectralPeaksThreshold
+      // Compute spectrum first
+      const frameSize = 4096;
+      const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
+
+      // Use SpectralPeaks to get frequencies and magnitudes
+      const peaks = essentia.SpectralPeaks(
+        spectrum.spectrum,
+        0,           // magnitudeThreshold
+        5000,        // maxFrequency
+        60,          // maxPeaks
+        100,         // minFrequency
+        'height',    // orderBy
         sampleRate
       );
 
-      console.log('[Worker] KeyExtractor result:', keyResult.key, keyResult.scale, 'strength:', keyResult.strength);
+      // Compute HPCP from spectral peaks
+      const hpcp = essentia.HPCP(
+        peaks.frequencies,
+        peaks.magnitudes
+      );
+
+      // Detect key from HPCP - use minimal params with defaults
+      const keyResult = essentia.Key(hpcp.hpcp);
+
+      console.log('[Worker] Key result:', keyResult.key, keyResult.scale, 'strength:', keyResult.strength);
 
       if (keyResult.key && keyResult.key !== '' && keyResult.strength > 0.1) {
         // Add to buffer for smoothing
