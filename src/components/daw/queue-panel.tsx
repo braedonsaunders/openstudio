@@ -1,20 +1,25 @@
 'use client';
 
+import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
+import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { LoopBrowserModal } from '../loops/loop-browser-modal';
+import { getLoopById } from '@/lib/audio/loop-library';
 import {
-  Plus,
   Upload,
   Youtube,
   Sparkles,
-  Play,
-  Pause,
   X,
   GripVertical,
   Music,
+  Repeat,
+  Volume2,
+  VolumeX,
 } from 'lucide-react';
 import type { BackingTrack } from '@/types';
+import type { LoopDefinition } from '@/types/loops';
 
 interface QueuePanelProps {
   onTrackSelect: (track: BackingTrack) => void;
@@ -23,6 +28,9 @@ interface QueuePanelProps {
   onAIGenerate: () => void;
   onYouTubeSearch: () => void;
   youtubePlayer?: React.ReactNode;
+  roomId: string;
+  userId: string;
+  userName?: string;
 }
 
 export function QueuePanel({
@@ -32,9 +40,62 @@ export function QueuePanel({
   onAIGenerate,
   onYouTubeSearch,
   youtubePlayer,
+  roomId,
+  userId,
+  userName,
 }: QueuePanelProps) {
   const { queue, currentTrack, isMaster } = useRoomStore();
   const { isPlaying, currentTime, duration } = useAudioStore();
+  const {
+    getTracksByRoom,
+    addTrack: addLoopTrack,
+    removeTrack: removeLoopTrack,
+    setTrackMuted,
+    setTrackVolume,
+  } = useLoopTracksStore();
+
+  const [showLoopBrowser, setShowLoopBrowser] = useState(false);
+
+  // Get loop tracks for this room
+  const loopTracks = getTracksByRoom(roomId);
+
+  // Handler for adding a loop track from the browser
+  const handleAddLoop = useCallback(
+    async (loop: LoopDefinition) => {
+      if (!userId || !roomId) return;
+
+      const track = addLoopTrack(roomId, loop, userId, userName);
+
+      // Persist to database
+      try {
+        await fetch(`/api/rooms/${roomId}/loop-tracks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(track),
+        });
+      } catch (err) {
+        console.error('Failed to persist loop track:', err);
+      }
+
+      setShowLoopBrowser(false);
+    },
+    [userId, userName, roomId, addLoopTrack]
+  );
+
+  // Handler for removing a loop track
+  const handleRemoveLoopTrack = useCallback(
+    async (trackId: string) => {
+      removeLoopTrack(trackId);
+      try {
+        await fetch(`/api/rooms/${roomId}/loop-tracks?id=${trackId}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.error('Failed to delete loop track:', err);
+      }
+    },
+    [roomId, removeLoopTrack]
+  );
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -58,7 +119,7 @@ export function QueuePanel({
     <div className="h-full flex flex-col">
       {/* Header with Add Buttons */}
       <div className="px-4 py-3 border-b border-gray-200 dark:border-white/5">
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 mb-2">
           <button
             onClick={onUpload}
             className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400 hover:text-gray-700 dark:hover:text-white text-xs font-medium transition-all"
@@ -81,6 +142,15 @@ export function QueuePanel({
             AI
           </button>
         </div>
+        {isMaster && (
+          <button
+            onClick={() => setShowLoopBrowser(true)}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-amber-500/20 hover:bg-amber-500/30 text-amber-600 dark:text-amber-400 text-xs font-medium transition-all"
+          >
+            <Repeat className="w-3.5 h-3.5" />
+            Add Loop Track
+          </button>
+        )}
       </div>
 
       {/* Now Playing */}
@@ -214,15 +284,90 @@ export function QueuePanel({
         )}
       </div>
 
+      {/* Loop Tracks Section */}
+      {loopTracks.length > 0 && (
+        <div className="border-t border-gray-200 dark:border-white/5">
+          <div className="px-4 py-2 bg-gray-50 dark:bg-white/[0.02]">
+            <div className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Loop Tracks</div>
+          </div>
+          <div className="divide-y divide-gray-100 dark:divide-white/5">
+            {loopTracks.map((track) => {
+              const loopDef = getLoopById(track.loopId);
+              return (
+                <div
+                  key={track.id}
+                  className="group flex items-center gap-3 px-4 py-2 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                >
+                  {/* Loop Icon */}
+                  <div
+                    className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                    style={{ backgroundColor: `${track.color}20` }}
+                  >
+                    <Repeat className="w-4 h-4" style={{ color: track.color }} />
+                  </div>
+
+                  {/* Track Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm text-gray-900 dark:text-white truncate">
+                      {track.name || loopDef?.name || 'Loop'}
+                    </div>
+                    <div className="text-xs text-gray-500 dark:text-zinc-500">
+                      {loopDef?.bpm} BPM • {loopDef?.bars} bars
+                    </div>
+                  </div>
+
+                  {/* Mute Button */}
+                  <button
+                    onClick={() => setTrackMuted(track.id, !track.muted)}
+                    className={cn(
+                      'p-1.5 rounded transition-colors',
+                      track.muted
+                        ? 'bg-red-500/20 text-red-400'
+                        : 'text-gray-400 dark:text-zinc-600 hover:text-gray-600 dark:hover:text-zinc-400'
+                    )}
+                    title={track.muted ? 'Unmute' : 'Mute'}
+                  >
+                    {track.muted ? <VolumeX className="w-3.5 h-3.5" /> : <Volume2 className="w-3.5 h-3.5" />}
+                  </button>
+
+                  {/* Remove Button */}
+                  {isMaster && (
+                    <button
+                      onClick={() => handleRemoveLoopTrack(track.id)}
+                      className="p-1 text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Queue Summary */}
-      {queue.tracks.length > 0 && (
+      {(queue.tracks.length > 0 || loopTracks.length > 0) && (
         <div className="px-4 py-2 border-t border-gray-200 dark:border-white/5 flex items-center justify-between text-xs text-gray-500 dark:text-zinc-500">
-          <span>{queue.tracks.length} track{queue.tracks.length !== 1 ? 's' : ''}</span>
+          <span>
+            {queue.tracks.length} track{queue.tracks.length !== 1 ? 's' : ''}
+            {loopTracks.length > 0 && ` • ${loopTracks.length} loop${loopTracks.length !== 1 ? 's' : ''}`}
+          </span>
           <span>
             {formatTime(queue.tracks.reduce((acc, t) => acc + t.duration, 0))}
           </span>
         </div>
       )}
+
+      {/* Loop Browser Modal */}
+      <LoopBrowserModal
+        isOpen={showLoopBrowser}
+        onClose={() => setShowLoopBrowser(false)}
+        roomId={roomId}
+        userId={userId}
+        userName={userName}
+        onAddLoop={handleAddLoop}
+      />
     </div>
   );
 }

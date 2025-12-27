@@ -546,7 +546,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           isMaster={isMaster}
           onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
           sessionStartTime={sessionStartTime}
-          roomId={roomId}
         />
 
         {/* Right Resize Handle */}
@@ -585,8 +584,10 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             onSeparateTrack={handleSeparateTrack}
             isSeparating={isSeparating}
             separationProgress={separationProgress}
-            // Chat props
+            // Chat/Room props
             roomId={roomId}
+            userId={currentUser?.id || ''}
+            userName={currentUser?.name}
             onSendMessage={sendMessage}
             width={rightPanelWidth}
           />

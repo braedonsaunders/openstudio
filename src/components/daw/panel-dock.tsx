@@ -34,8 +34,10 @@ interface PanelDockProps {
   onSeparateTrack: () => void;
   isSeparating: boolean;
   separationProgress: number;
-  // Chat props
+  // Chat/Room props
   roomId: string;
+  userId: string;
+  userName?: string;
   onSendMessage: (message: string) => void;
   // Layout props
   width?: number;
@@ -43,7 +45,7 @@ interface PanelDockProps {
 
 const panels: { id: PanelType; icon: typeof Sliders; label: string }[] = [
   { id: 'mixer', icon: Sliders, label: 'Mixer' },
-  { id: 'queue', icon: ListMusic, label: 'Queue' },
+  { id: 'queue', icon: ListMusic, label: 'Backing' },
   { id: 'analysis', icon: Activity, label: 'Analysis' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
   { id: 'ai', icon: Sparkles, label: 'AI' },
@@ -64,6 +66,8 @@ export function PanelDock({
   isSeparating,
   separationProgress,
   roomId,
+  userId,
+  userName,
   onSendMessage,
   width,
 }: PanelDockProps) {
@@ -127,6 +131,9 @@ export function PanelDock({
             onAIGenerate={handleOpenAIPanel}
             onYouTubeSearch={onYouTubeSearch}
             youtubePlayer={youtubePlayer}
+            roomId={roomId}
+            userId={userId}
+            userName={userName}
           />
         </div>
 
