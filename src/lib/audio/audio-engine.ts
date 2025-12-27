@@ -457,6 +457,21 @@ export class AudioEngine {
   }
 
   /**
+   * Get current engine configuration
+   */
+  getConfig(): AudioEngineConfig {
+    return { ...this.config };
+  }
+
+  /**
+   * Update engine configuration (buffer size, sample rate, etc.)
+   * Note: Some changes require re-initialization to take effect
+   */
+  updateConfig(newConfig: Partial<AudioEngineConfig>): void {
+    this.config = { ...this.config, ...newConfig };
+  }
+
+  /**
    * Get the analyser node connected to the backing track audio.
    * This can be used for real-time audio analysis (key/BPM detection).
    */

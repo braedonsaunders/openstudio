@@ -164,7 +164,7 @@ export function TransportBar({
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-zinc-400">Buffer Size</span>
                   <span className="text-xs font-medium text-white">
-                    {settings.bufferSize} samples ({((settings.bufferSize / settings.sampleRate) * 1000).toFixed(1)}ms)
+                    {performanceMetrics.currentBufferSize} samples ({((performanceMetrics.currentBufferSize / settings.sampleRate) * 1000).toFixed(1)}ms)
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
