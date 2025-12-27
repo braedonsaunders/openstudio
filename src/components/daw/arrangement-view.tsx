@@ -119,8 +119,8 @@ export function ArrangementView({
       >
         {/* Content wrapper with minimum width */}
         <div
-          className="relative"
-          style={{ width: Math.max(totalWidth, '100%'), minHeight: '100%' }}
+          className="relative min-w-full"
+          style={{ width: totalWidth > 0 ? `${totalWidth}px` : '100%', minHeight: '100%' }}
         >
           {/* Grid Lines */}
           <div className="absolute inset-0 pointer-events-none">
