@@ -276,26 +276,34 @@ function analyzeFrame(audioData, frameSize) {
       chordConfidence = chordResult.confidence;
     } catch (e) {}
 
-    // Energy estimation (spectral energy distribution)
-    // Normalized to 0-1 using logarithmic scale with dynamic range compression
+    // Energy estimation using spectral energy relative to RMS
+    // This gives a measure of spectral brightness/fullness
     let energy = 0;
     try {
-      const energyResult = essentia.Energy(essentiaFrame);
-      const rawEnergy = energyResult.energy || 0;
-      // Convert to dB-like scale and normalize
-      // Audio frames typically have energy in range 0 to ~1 for normalized audio
-      // We use a more conservative normalization for musical content
-      if (rawEnergy > 0) {
-        const energyDb = 10 * Math.log10(rawEnergy + 1e-10);
-        // Map from typical range [-50, -5] to [0, 1] for better visual response
-        // Most music content falls in this range
-        energy = Math.max(0, Math.min(1, (energyDb + 50) / 45));
+      // Use RMS-based energy with perceptual scaling
+      // RMS values typically range from 0.001 (silence) to 0.5+ (loud)
+      if (rms > 0.001) {
+        // Apply logarithmic compression for perceptual scaling
+        // Map typical RMS range [0.001, 0.5] to [0, 1]
+        const rmsDb = 20 * Math.log10(rms);
+        // Typical music RMS is around -20dB to -6dB
+        // Map [-40dB, -6dB] to [0, 1]
+        energy = Math.max(0, Math.min(1, (rmsDb + 40) / 34));
       }
     } catch (e) {}
 
+    // Calculate loudness with logarithmic scaling for better visual response
+    // RMS of 0.001 (-60dB) = 0%, RMS of 1.0 (0dB) = 100%
+    let loudness = 0;
+    if (rms > 0.0001) {
+      const rmsDb = 20 * Math.log10(rms);
+      // Map [-60dB, 0dB] to [0, 100] with slight boost for typical levels
+      loudness = Math.max(0, Math.min(100, ((rmsDb + 60) / 60) * 100));
+    }
+
     return {
       rms,
-      loudness: rms * 100,
+      loudness,
       energy,
       spectralCentroid,
       tunerNote,
@@ -326,30 +334,59 @@ function analyzeLongTerm(combinedAudio) {
   try {
     const essentiaAudio = essentia.arrayToVector(combinedAudio);
 
-    // Key detection using KeyExtractor (bundles Windowing -> Spectrum -> SpectralPeaks -> HPCP -> Key)
+    // Key detection using KeyExtractor with multiple profile types for accuracy
     try {
-      // Use KeyExtractor with options object
-      // profileType options: 'bgate' (default), 'edma'/'edmm' (electronic), 'gomez' (general), 'krumhansl', 'temperley'
-      const keyResult = essentia.KeyExtractor(essentiaAudio, {
-        profileType: 'edma', // Best for electronic/pop music
-        frameSize: 4096,
-        hopSize: 2048,
-        sampleRate: sampleRate
-      });
+      // Try multiple profile types and take consensus
+      const profileTypes = ['krumhansl', 'temperley', 'edma'];
+      const keyVotes = {};
 
-      if (keyResult.key && keyResult.strength > 0.4) {
-        const detectedKey = keyResult.key;
-        const detectedScale = keyResult.scale; // 'major' or 'minor'
-        const strength = keyResult.strength;
+      for (const profileType of profileTypes) {
+        try {
+          const keyResult = essentia.KeyExtractor(essentiaAudio, {
+            profileType: profileType,
+            frameSize: 4096,
+            hopSize: 2048,
+            sampleRate: sampleRate
+          });
 
-        keyBuffer.push({ key: detectedKey, scale: detectedScale, strength });
-        // Keep larger buffer for more stable detection
-        if (keyBuffer.length > 10) {
+          if (keyResult.key && keyResult.strength > 0.3) {
+            const keyId = `${keyResult.key}_${keyResult.scale}`;
+            if (!keyVotes[keyId]) {
+              keyVotes[keyId] = { count: 0, totalStrength: 0 };
+            }
+            keyVotes[keyId].count++;
+            keyVotes[keyId].totalStrength += keyResult.strength;
+          }
+        } catch (e) {
+          // Profile type not supported, skip
+        }
+      }
+
+      // Find best consensus key
+      let bestKeyId = null;
+      let bestScore = 0;
+      for (const [keyId, data] of Object.entries(keyVotes)) {
+        // Score = count * average strength (rewards agreement between profiles)
+        const score = data.count * (data.totalStrength / data.count);
+        if (score > bestScore) {
+          bestScore = score;
+          bestKeyId = keyId;
+        }
+      }
+
+      // Only accept if at least 2 profiles agree with decent strength
+      if (bestKeyId && keyVotes[bestKeyId].count >= 2 && bestScore > 0.8) {
+        const [detectedKey, detectedScale] = bestKeyId.split('_');
+        const avgStrength = keyVotes[bestKeyId].totalStrength / keyVotes[bestKeyId].count;
+
+        keyBuffer.push({ key: detectedKey, scale: detectedScale, strength: avgStrength });
+        // Keep larger buffer for stability
+        if (keyBuffer.length > 15) {
           keyBuffer.shift();
         }
 
-        // Only update key if we have enough samples
-        if (keyBuffer.length >= 3) {
+        // Only update key if we have enough samples (at least 5)
+        if (keyBuffer.length >= 5) {
           // Find most common key in buffer (weighted by strength)
           const keyCounts = {};
           keyBuffer.forEach(k => {
@@ -358,41 +395,44 @@ function analyzeLongTerm(combinedAudio) {
           });
 
           let bestKey = null;
-          let bestScore = 0;
+          let bestKeyScore = 0;
           let secondBestScore = 0;
           for (const [keyId, score] of Object.entries(keyCounts)) {
-            if (score > bestScore) {
-              secondBestScore = bestScore;
-              bestScore = score;
+            if (score > bestKeyScore) {
+              secondBestScore = bestKeyScore;
+              bestKeyScore = score;
               bestKey = keyId;
             } else if (score > secondBestScore) {
               secondBestScore = score;
             }
           }
 
-          // Only change key if it's significantly better than alternatives
-          // and different from current key
-          if (bestKey && bestScore > secondBestScore * 1.3) {
+          // Require significant margin (1.5x) and minimum occurrences
+          const keyOccurrences = keyBuffer.filter(k => `${k.key}_${k.scale}` === bestKey).length;
+          if (bestKey && bestKeyScore > secondBestScore * 1.5 && keyOccurrences >= 3) {
             const [key, scale] = bestKey.split('_');
             const newKeyId = `${key}_${scale}`;
             const currentKeyId = `${lastKey}_${lastKeyScale}`;
 
-            // Only update if it's a new key or confidence improved significantly
+            // Apply hysteresis: require higher threshold to change existing key
+            const changeThreshold = lastKey ? 1.8 : 1.5;
+
             if (newKeyId !== currentKeyId || !lastKey) {
-              lastKey = key;
-              lastKeyScale = scale;
-              lastKeyStrength = Math.min(bestScore / keyBuffer.length, 1);
-              console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)})`);
+              if (!lastKey || bestKeyScore > secondBestScore * changeThreshold) {
+                lastKey = key;
+                lastKeyScale = scale;
+                lastKeyStrength = Math.min(bestKeyScore / keyBuffer.length, 1);
+                console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)}, occurrences: ${keyOccurrences})`);
+              }
             }
           }
         }
       }
     } catch (e) {
-      // Try with positional parameters if options object doesn't work
+      // Fallback to simple detection
       try {
-        // Some essentia.js versions use positional params
         const keyResult = essentia.KeyExtractor(essentiaAudio);
-        if (keyResult && keyResult.key && keyResult.strength > 0.3) {
+        if (keyResult && keyResult.key && keyResult.strength > 0.5 && !lastKey) {
           lastKey = keyResult.key;
           lastKeyScale = keyResult.scale;
           lastKeyStrength = keyResult.strength;

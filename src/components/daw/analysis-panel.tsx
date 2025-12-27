@@ -146,24 +146,22 @@ export function AnalysisPanel() {
           <span className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Key & Scale</span>
           <div className="flex items-center justify-center gap-2 mt-2">
             <div
-              className="w-4 h-4 rounded-full"
+              className="w-4 h-4 rounded-full shrink-0"
               style={{ backgroundColor: keyColor, boxShadow: `0 0 12px ${keyColor}` }}
             />
-            <div className="flex flex-col items-start">
-              <span className="text-2xl font-bold text-gray-900 dark:text-white leading-tight">
-                {displayKey || '--'}
-              </span>
+            <span className="text-2xl font-bold text-gray-900 dark:text-white leading-tight">
+              {displayKey || '--'}
               {displayScale && (
                 <span className={cn(
-                  'text-xs font-medium px-1.5 py-0.5 rounded',
+                  'text-sm font-medium ml-1',
                   displayScale === 'minor'
-                    ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
-                    : 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                    ? 'text-indigo-500 dark:text-indigo-400'
+                    : 'text-amber-500 dark:text-amber-400'
                 )}>
-                  {displayScale === 'minor' ? 'Minor' : 'Major'}
+                  {displayScale === 'minor' ? 'min' : 'maj'}
                 </span>
               )}
-            </div>
+            </span>
           </div>
           {localAnalysis?.keyConfidence !== undefined && localAnalysis.keyConfidence > 0 && (
             <div className="mt-2 flex items-center justify-center gap-1">
@@ -219,14 +217,14 @@ export function AnalysisPanel() {
       )}
 
       {/* Spectrum Analyzer - Always Visible */}
-      <div className="px-4 pb-3">
-        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500 mb-2">
+      <div className="pb-3">
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500 mb-2 px-4">
           <Waves className="w-3.5 h-3.5" />
           <span>Spectrum</span>
         </div>
-        <div ref={containerRef} className="rounded-xl overflow-hidden bg-gray-900 dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5">
-          <canvas ref={canvasRef} className="w-full h-20" style={{ display: 'block', width: '100%' }} />
-          <div className="flex justify-between px-2 py-1 text-[9px] text-gray-400 dark:text-zinc-600">
+        <div ref={containerRef} className="bg-gray-900 dark:bg-[#0a0a0f] border-y border-gray-200 dark:border-white/5">
+          <canvas ref={canvasRef} style={{ display: 'block', width: '100%', height: '80px' }} />
+          <div className="flex justify-between px-3 py-1 text-[9px] text-gray-400 dark:text-zinc-600">
             <span>20Hz</span>
             <span>1kHz</span>
             <span>20kHz</span>
