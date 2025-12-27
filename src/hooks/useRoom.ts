@@ -63,6 +63,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     pauseBackingTrack,
     seekTo,
     updateFromStats,
+    destroyEngine,
   } = useAudioEngine();
 
   // Join room
@@ -335,8 +336,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current = null;
     cloudflareRef.current = null;
 
+    // Clean up the audio engine
+    destroyEngine();
+
     reset();
-  }, [reset, roomId]);
+  }, [reset, roomId, destroyEngine]);
 
   // Master controls
   const play = useCallback(async () => {
