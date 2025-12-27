@@ -466,3 +466,190 @@ export interface AIGenerationConfig {
   // Provider-specific options
   murekaOptions?: Partial<MurekaGenerationRequest>;
 }
+
+// ============================================================================
+// Guitar Effects Types
+// ============================================================================
+
+// Overdrive Settings - Soft clipping tube-style saturation
+export interface OverdriveSettings {
+  enabled: boolean;
+  drive: number; // 0-1, amount of overdrive
+  tone: number; // 0-1, brightness control
+  level: number; // 0-1, output level
+}
+
+// Distortion Settings - Hard clipping with multiple voicings
+export type DistortionType = 'classic' | 'hard' | 'fuzz' | 'asymmetric' | 'rectifier';
+
+export interface DistortionSettings {
+  enabled: boolean;
+  amount: number; // 0-1, distortion intensity
+  type: DistortionType;
+  tone: number; // 0-1, brightness control
+  level: number; // 0-1, output level
+}
+
+// Amp Simulator Settings - Full amp modeling
+export type AmpType = 'clean' | 'crunch' | 'highgain' | 'british' | 'american' | 'modern';
+
+export interface AmpSimulatorSettings {
+  enabled: boolean;
+  type: AmpType;
+  gain: number; // 0-1, preamp gain
+  bass: number; // 0-1, bass EQ
+  mid: number; // 0-1, mid EQ
+  treble: number; // 0-1, treble EQ
+  presence: number; // 0-1, presence/high-end boost
+  master: number; // 0-1, master volume
+}
+
+// Cabinet Simulator Settings - IR-based speaker emulation
+export type CabinetType = '1x12' | '2x12' | '4x12' | '1x15' | '2x10' | 'direct';
+export type MicPosition = 'center' | 'edge' | 'room' | 'blend';
+
+export interface CabinetSimulatorSettings {
+  enabled: boolean;
+  type: CabinetType;
+  micPosition: MicPosition;
+  mix: number; // 0-1, dry/wet mix
+  roomLevel: number; // 0-1, room ambience
+  customIRUrl?: string; // URL to custom impulse response
+}
+
+// Delay Settings - Multi-mode delay with tempo sync
+export type DelayType = 'digital' | 'analog' | 'tape' | 'pingpong' | 'reverse';
+export type DelaySubdivision =
+  | '1/1'
+  | '1/2'
+  | '1/2D'
+  | '1/4'
+  | '1/4D'
+  | '1/4T'
+  | '1/8'
+  | '1/8D'
+  | '1/8T'
+  | '1/16'
+  | '1/16D'
+  | '1/16T';
+
+export interface DelaySettings {
+  enabled: boolean;
+  type: DelayType;
+  time: number; // 0.01-2.0 seconds
+  feedback: number; // 0-1
+  mix: number; // 0-1
+  tone: number; // 0-1, brightness of echoes
+  modulation: number; // 0-1, for analog/tape character
+  pingPongSpread: number; // 0-1, stereo spread
+  tempo: number; // BPM
+  tempoSync: boolean;
+  subdivision: DelaySubdivision;
+}
+
+// Chorus Settings - LFO-modulated delay for thickness
+export interface ChorusSettings {
+  enabled: boolean;
+  rate: number; // 0.1-10 Hz, LFO rate
+  depth: number; // 0-1, modulation depth
+  delay: number; // 2-20 ms, base delay time
+  feedback: number; // 0-1
+  spread: number; // 0-180 degrees, stereo spread
+  mix: number; // 0-1
+}
+
+// Flanger Settings - Short modulated delay with feedback
+export interface FlangerSettings {
+  enabled: boolean;
+  rate: number; // 0.05-5 Hz, LFO rate
+  depth: number; // 0-1, modulation depth
+  delay: number; // 0.5-10 ms, base delay time
+  feedback: number; // 0-1
+  mix: number; // 0-1
+  negative: boolean; // Invert feedback for different character
+}
+
+// Phaser Settings - Allpass filter cascade with LFO
+export interface PhaserSettings {
+  enabled: boolean;
+  rate: number; // 0.1-8 Hz, LFO rate
+  depth: number; // 0-1, modulation depth
+  baseFrequency: number; // 100-4000 Hz, center frequency
+  octaves: number; // 0.5-6, sweep range
+  stages: number; // 2-12 (even numbers), number of allpass stages
+  feedback: number; // 0-1, resonance
+  q: number; // 0.1-10, filter Q
+  mix: number; // 0-1
+}
+
+// Wah Settings - Bandpass filter with multiple control modes
+export type WahMode = 'manual' | 'auto' | 'envelope';
+
+export interface WahSettings {
+  enabled: boolean;
+  mode: WahMode;
+  frequency: number; // 0-1, manual position (heel to toe)
+  rate: number; // 0.1-10 Hz, auto mode LFO rate
+  depth: number; // 0-1, sweep depth
+  baseFrequency: number; // Hz, minimum frequency
+  maxFrequency: number; // Hz, maximum frequency
+  q: number; // 1-20, filter resonance
+  sensitivity: number; // 0-1, envelope sensitivity
+  attack: number; // seconds, envelope attack
+  release: number; // seconds, envelope release
+  mix: number; // 0-1
+}
+
+// Tremolo Settings - Amplitude modulation
+export type TremoloWaveform = 'sine' | 'triangle' | 'square' | 'sawtooth';
+
+export interface TremoloSettings {
+  enabled: boolean;
+  rate: number; // 0.1-20 Hz, LFO rate
+  depth: number; // 0-1, modulation depth
+  spread: number; // 0-180 degrees, stereo spread
+  waveform: TremoloWaveform;
+}
+
+// Complete Guitar Effects Chain
+export interface GuitarEffectsChain {
+  wah: WahSettings;
+  overdrive: OverdriveSettings;
+  distortion: DistortionSettings;
+  ampSimulator: AmpSimulatorSettings;
+  cabinet: CabinetSimulatorSettings;
+  chorus: ChorusSettings;
+  flanger: FlangerSettings;
+  phaser: PhaserSettings;
+  delay: DelaySettings;
+  tremolo: TremoloSettings;
+}
+
+// Guitar Effect Preset Types
+export type GuitarPresetCategory =
+  | 'clean'
+  | 'crunch'
+  | 'high-gain'
+  | 'metal'
+  | 'blues'
+  | 'acoustic-sim'
+  | 'ambient'
+  | 'classic-rock'
+  | 'modern-rock'
+  | 'funk'
+  | 'custom';
+
+export interface GuitarEffectPreset {
+  id: string;
+  name: string;
+  category: GuitarPresetCategory;
+  description?: string;
+  effects: GuitarEffectsChain;
+}
+
+// Extended Track Audio Settings with Guitar Effects
+export interface ExtendedTrackAudioSettings extends TrackAudioSettings {
+  guitarEffects?: GuitarEffectsChain;
+  guitarPreset?: string;
+  isGuitarTrack: boolean;
+}
