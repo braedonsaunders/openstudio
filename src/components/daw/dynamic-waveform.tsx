@@ -6,6 +6,7 @@ interface DynamicWaveformProps {
   audioLevel: number;
   trackColor: string;
   isMuted: boolean;
+  isArmed?: boolean; // When false, track is not receiving input
   zoom: number;
   historySeconds: number;
 }
@@ -85,6 +86,7 @@ export function DynamicWaveform({
   audioLevel,
   trackColor,
   isMuted,
+  isArmed = true,
   zoom,
   historySeconds,
 }: DynamicWaveformProps) {
@@ -319,8 +321,8 @@ export function DynamicWaveform({
       ctx.lineWidth = 1;
       ctx.stroke();
 
-      // Particle effects for high energy
-      if (smoothLevel > 0.3 && !isMuted) {
+      // Particle effects for high energy (only when armed and not muted)
+      if (smoothLevel > 0.3 && !isMuted && isArmed) {
         // Spawn new particles
         if (Math.random() < smoothLevel * 0.5 && particlesRef.current.length < MAX_PARTICLES) {
           const spawnX = nowLineX - 5;
@@ -357,8 +359,8 @@ export function DynamicWaveform({
         return true;
       });
 
-      // Draw current level indicator (pulsing orb at NOW position)
-      if (smoothLevel > 0.02 && !isMuted) {
+      // Draw current level indicator (pulsing orb at NOW position - only when armed and not muted)
+      if (smoothLevel > 0.02 && !isMuted && isArmed) {
         const orbSize = 4 + smoothLevel * 8;
         const pulseSize = orbSize + Math.sin(phase * 4) * smoothLevel * 4;
 
@@ -436,14 +438,17 @@ export function DynamicWaveform({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [trackColor, zoom, isMuted, audioLevel, baseColor, historySeconds, maxSamples]);
+  }, [trackColor, zoom, isMuted, isArmed, audioLevel, baseColor, historySeconds, maxSamples]);
+
+  // Calculate opacity: muted or not armed = dimmed
+  const opacity = isMuted ? 0.3 : !isArmed ? 0.4 : 1;
 
   return (
     <canvas
       ref={canvasRef}
       className="absolute inset-0 w-full h-full"
       style={{
-        opacity: isMuted ? 0.3 : 1,
+        opacity,
         background: 'linear-gradient(to right, rgba(10,10,15,1), rgba(10,10,15,0.95))'
       }}
     />

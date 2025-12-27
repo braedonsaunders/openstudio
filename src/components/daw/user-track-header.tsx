@@ -213,7 +213,10 @@ export function UserTrackHeader({
     }
   };
 
-  const isActive = audioLevel > 0.05 && !track.isMuted;
+  // Only active if armed, not muted, and has signal
+  const isActive = track.isArmed && !track.isMuted && audioLevel > 0.05;
+  // When not armed, show level as 0 (track is not receiving input)
+  const effectiveLevel = track.isArmed ? audioLevel : 0;
 
   return (
     <div
@@ -407,7 +410,7 @@ export function UserTrackHeader({
         {/* Right: Full Height Level Meter */}
         <div className="w-6 h-full shrink-0 bg-black/20 border-l border-gray-200 dark:border-white/5">
           <FullHeightMeter
-            level={audioLevel}
+            level={effectiveLevel}
             color={track.color}
             showPeak={true}
             segments={16}

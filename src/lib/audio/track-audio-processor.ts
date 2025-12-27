@@ -28,6 +28,7 @@ export class TrackAudioProcessor {
 
   // Audio nodes
   private inputGainNode: GainNode;
+  private armGainNode: GainNode; // Gates input when track is not armed
   private volumeGainNode: GainNode;
   private muteGainNode: GainNode;
   private inputAnalyser: AnalyserNode;
@@ -63,6 +64,7 @@ export class TrackAudioProcessor {
 
     // Create audio nodes
     this.inputGainNode = audioContext.createGain();
+    this.armGainNode = audioContext.createGain(); // Gates input when not armed
     this.volumeGainNode = audioContext.createGain();
     this.muteGainNode = audioContext.createGain();
     this.inputAnalyser = audioContext.createAnalyser();
@@ -78,8 +80,10 @@ export class TrackAudioProcessor {
     );
 
     // Wire up the signal chain:
-    // input -> inputGain -> inputAnalyser -> effects -> volumeGain -> muteGain -> outputAnalyser -> output
-    this.inputGainNode.connect(this.inputAnalyser);
+    // input -> inputGain -> armGain -> inputAnalyser -> effects -> volumeGain -> muteGain -> outputAnalyser -> output
+    // When not armed, armGain is 0, blocking all input from being processed or visualized
+    this.inputGainNode.connect(this.armGainNode);
+    this.armGainNode.connect(this.inputAnalyser);
     this.inputAnalyser.connect(this.effectsProcessor.getInputNode());
     this.effectsProcessor.connect(this.volumeGainNode);
     this.volumeGainNode.connect(this.muteGainNode);
@@ -120,6 +124,7 @@ export class TrackAudioProcessor {
     const prevMuted = this.state.isMuted;
     const prevSolo = this.state.isSolo;
     const prevVolume = this.state.volume;
+    const prevArmed = this.state.isArmed;
 
     Object.assign(this.state, updates);
 
@@ -138,6 +143,17 @@ export class TrackAudioProcessor {
     if (updates.inputGain !== undefined) {
       this.updateInputGain();
     }
+
+    if (updates.isArmed !== undefined && updates.isArmed !== prevArmed) {
+      this.updateArmState();
+    }
+  }
+
+  private updateArmState(): void {
+    // When not armed, block all input audio from being processed or visualized
+    // This is like a traditional DAW where unarmed tracks don't receive input
+    const targetGain = this.state.isArmed ? 1 : 0;
+    this.armGainNode.gain.setTargetAtTime(targetGain, this.audioContext.currentTime, 0.01);
   }
 
   private updateInputGain(): void {
@@ -252,6 +268,7 @@ export class TrackAudioProcessor {
     this.disconnect();
     this.effectsProcessor.dispose();
     this.inputGainNode.disconnect();
+    this.armGainNode.disconnect();
     this.volumeGainNode.disconnect();
     this.muteGainNode.disconnect();
     this.inputAnalyser.disconnect();
