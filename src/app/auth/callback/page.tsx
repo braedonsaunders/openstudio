@@ -3,16 +3,24 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { supabaseAuth } from '@/lib/supabase/auth';
+import { useAuthStore } from '@/stores/auth-store';
 import { Music, Loader2 } from 'lucide-react';
 
 export default function AuthCallbackPage() {
   const router = useRouter();
+  const { isInitialized, initialize } = useAuthStore();
 
   useEffect(() => {
     const handleCallback = async () => {
       try {
         const { error } = await supabaseAuth.auth.getSession();
         if (error) throw error;
+
+        // Wait for auth store to initialize before redirecting
+        // This ensures profile data is loaded
+        if (!isInitialized) {
+          await initialize();
+        }
 
         // Redirect to rooms after successful auth
         router.push('/rooms');
@@ -23,7 +31,7 @@ export default function AuthCallbackPage() {
     };
 
     handleCallback();
-  }, [router]);
+  }, [router, isInitialized, initialize]);
 
   return (
     <div className="min-h-screen bg-gray-950 flex items-center justify-center">

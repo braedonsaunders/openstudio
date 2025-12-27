@@ -190,7 +190,14 @@ export const useAuthStore = create<AuthState>()(
                   authApi.getUserStats(user.id),
                 ]);
 
-                set({ profile, avatar, stats, isProfileLoading: false, profileError: null });
+                // Set profileError if profile is null to prevent infinite retry loops
+                set({
+                  profile,
+                  avatar,
+                  stats,
+                  isProfileLoading: false,
+                  profileError: profile ? null : 'Profile not found'
+                });
 
                 // Update streak (non-blocking)
                 if (profile) {
@@ -292,7 +299,14 @@ export const useAuthStore = create<AuthState>()(
               authApi.getUserStats(user.id),
             ]);
 
-            set({ profile, avatar, stats, isProfileLoading: false, profileError: null });
+            // Set profileError if profile is null to prevent infinite retry loops
+            set({
+              profile,
+              avatar,
+              stats,
+              isProfileLoading: false,
+              profileError: profile ? null : 'Profile not found'
+            });
           } catch (error) {
             console.error('Failed to refresh profile:', error);
             set({
