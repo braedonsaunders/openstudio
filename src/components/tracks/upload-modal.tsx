@@ -14,10 +14,18 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
+interface UploadedTrack {
+  id: string;
+  name: string;
+  artist?: string;
+  url: string;
+  duration: number;
+}
+
 interface UploadModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onUpload: (file: File, metadata: { name: string; artist?: string }) => Promise<void>;
+  onUpload: (track: UploadedTrack) => Promise<void>;
   className?: string;
 }
 
@@ -125,8 +133,14 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
         xhr.send(file);
       });
 
-      // Notify parent with track info
-      await onUpload(file, { name: name.trim(), artist: artist.trim() || undefined });
+      // Notify parent with track info (no file - already uploaded to R2)
+      await onUpload({
+        id: trackId,
+        name: name.trim(),
+        artist: artist.trim() || undefined,
+        url: publicUrl,
+        duration: 0, // Will be determined when audio loads
+      });
 
       setUploadProgress(100);
       setUploadState('success');

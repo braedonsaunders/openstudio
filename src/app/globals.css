@@ -211,3 +211,361 @@ input[type="range"]::-moz-range-thumb {
   background: linear-gradient(to top, var(--success), var(--warning), var(--error));
   transition: height 50ms ease-out;
 }
+
+/* ============================================ */
+/* DAW LAYOUT SYSTEM                            */
+/* ============================================ */
+
+:root {
+  /* DAW Layout Dimensions */
+  --daw-transport-height: 56px;
+  --daw-track-header-width: 240px;
+  --daw-panel-dock-width: 320px;
+  --daw-bottom-dock-height: 200px;
+  --daw-track-lane-height: 72px;
+  --daw-timeline-height: 32px;
+
+  /* DAW Colors - Neon Accents */
+  --neon-primary: #6366f1;
+  --neon-secondary: #8b5cf6;
+  --neon-cyan: #06b6d4;
+  --neon-pink: #ec4899;
+  --neon-green: #10b981;
+  --neon-orange: #f97316;
+  --neon-yellow: #eab308;
+
+  /* Glow Effects */
+  --glow-primary: 0 0 20px rgba(99, 102, 241, 0.4);
+  --glow-success: 0 0 15px rgba(16, 185, 129, 0.4);
+  --glow-danger: 0 0 15px rgba(239, 68, 68, 0.4);
+  --glow-playhead: 0 0 12px rgba(99, 102, 241, 0.6), 0 0 24px rgba(139, 92, 246, 0.3);
+
+  /* Track Colors (up to 10 users) */
+  --track-color-1: #f472b6;
+  --track-color-2: #fb923c;
+  --track-color-3: #a3e635;
+  --track-color-4: #22d3ee;
+  --track-color-5: #a78bfa;
+  --track-color-6: #fbbf24;
+  --track-color-7: #34d399;
+  --track-color-8: #f87171;
+  --track-color-9: #60a5fa;
+  --track-color-10: #c084fc;
+
+  /* Stem Colors */
+  --stem-vocals: #ec4899;
+  --stem-drums: #f97316;
+  --stem-bass: #22c55e;
+  --stem-other: #3b82f6;
+
+  /* Timing */
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --transition-fast: 75ms ease-out;
+  --transition-base: 150ms ease-out;
+  --transition-slow: 300ms var(--ease-out-expo);
+
+  /* Z-Index Layers */
+  --z-track-headers: 10;
+  --z-playhead: 20;
+  --z-transport: 30;
+  --z-panel-dock: 40;
+  --z-modal-backdrop: 50;
+  --z-modal: 60;
+  --z-toast: 70;
+}
+
+/* DAW Dark Theme - Applied to room pages */
+.daw-theme {
+  --background: #0a0a0f;
+  --background-secondary: #12121a;
+  --background-tertiary: #1a1a24;
+  --background-elevated: #22222e;
+  --foreground: #fafafa;
+  --foreground-secondary: #a1a1aa;
+  --foreground-muted: #71717a;
+  --border: rgba(255, 255, 255, 0.08);
+  --border-subtle: rgba(255, 255, 255, 0.04);
+}
+
+/* Glass Panel Effect */
+.glass-panel {
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.05) 0%,
+    rgba(255, 255, 255, 0.02) 100%
+  );
+  backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow:
+    0 8px 32px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Glass Elevated (for modals) */
+.glass-elevated {
+  background: linear-gradient(
+    180deg,
+    rgba(30, 30, 45, 0.95) 0%,
+    rgba(20, 20, 30, 0.98) 100%
+  );
+  backdrop-filter: blur(40px) saturate(200%);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+/* Glass Button */
+.glass-button {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(8px);
+  transition: all 150ms ease;
+}
+
+.glass-button:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+
+/* Neon Glow Button */
+.neon-button {
+  position: relative;
+  background: linear-gradient(135deg, var(--neon-primary), var(--neon-secondary));
+  border: none;
+  box-shadow: var(--glow-primary);
+  transition: all 200ms ease;
+}
+
+.neon-button:hover {
+  box-shadow: 0 0 30px rgba(99, 102, 241, 0.6), 0 0 60px rgba(139, 92, 246, 0.3);
+  transform: translateY(-1px);
+}
+
+.neon-button:active {
+  transform: translateY(0);
+}
+
+/* Playhead Animation */
+@keyframes playhead-pulse {
+  0%, 100% {
+    box-shadow: var(--glow-playhead);
+  }
+  50% {
+    box-shadow: 0 0 20px rgba(99, 102, 241, 0.8), 0 0 40px rgba(139, 92, 246, 0.5);
+  }
+}
+
+.playhead {
+  animation: playhead-pulse 2s ease-in-out infinite;
+}
+
+/* Track Speaking Animation */
+@keyframes track-speaking {
+  0%, 100% {
+    border-color: rgba(99, 102, 241, 0.2);
+  }
+  50% {
+    border-color: rgba(99, 102, 241, 0.6);
+  }
+}
+
+.track-speaking {
+  animation: track-speaking 0.5s ease-in-out infinite;
+}
+
+/* Recording Pulse */
+@keyframes recording-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.recording-dot {
+  animation: recording-pulse 1s ease-in-out infinite;
+}
+
+/* Level Meter Gradient */
+.meter-gradient {
+  background: linear-gradient(
+    to top,
+    #22c55e 0%,
+    #22c55e 60%,
+    #eab308 60%,
+    #eab308 85%,
+    #ef4444 85%,
+    #ef4444 100%
+  );
+}
+
+/* VU Meter Style */
+.vu-meter {
+  background: linear-gradient(
+    to right,
+    #22c55e 0%,
+    #22c55e 70%,
+    #eab308 70%,
+    #eab308 90%,
+    #ef4444 90%,
+    #ef4444 100%
+  );
+}
+
+/* Fader Track */
+.fader-track {
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.05) 100%
+  );
+  border-radius: 4px;
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+}
+
+.fader-thumb {
+  background: linear-gradient(135deg, #3f3f46, #27272a);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  transition: all 150ms ease;
+}
+
+.fader-thumb:hover {
+  background: linear-gradient(135deg, #52525b, #3f3f46);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+.fader-thumb:active {
+  background: linear-gradient(135deg, #6366f1, #4f46e5);
+  border-color: rgba(99, 102, 241, 0.5);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.5);
+}
+
+/* Knob Control */
+.knob-outer {
+  background: linear-gradient(135deg, #27272a, #18181b);
+  border: 2px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.3),
+    inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+.knob-indicator {
+  background: var(--neon-primary);
+  box-shadow: 0 0 8px var(--neon-primary);
+}
+
+/* Spectrum Analyzer Bars */
+.spectrum-bar {
+  background: linear-gradient(
+    to top,
+    var(--neon-primary) 0%,
+    var(--neon-secondary) 50%,
+    var(--neon-pink) 100%
+  );
+  transition: height 50ms ease-out;
+}
+
+/* Transport Time Display */
+.time-display {
+  font-family: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Grid Lines */
+.grid-line {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.grid-line-beat {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.grid-line-bar {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Waveform Colors */
+.waveform-played {
+  fill: var(--neon-primary);
+  opacity: 1;
+}
+
+.waveform-unplayed {
+  fill: var(--neon-primary);
+  opacity: 0.3;
+}
+
+/* Scrollbar for DAW theme */
+.daw-theme::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.daw-theme::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.daw-theme::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+  border-radius: 4px;
+}
+
+.daw-theme::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+/* Tooltip styles */
+.tooltip-content {
+  background: rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+}
+
+/* Badge glow effect */
+.badge-glow {
+  box-shadow: 0 0 8px currentColor;
+}
+
+/* Panel transitions */
+.panel-slide-left {
+  animation: slideFromLeft 300ms var(--ease-out-expo);
+}
+
+@keyframes slideFromLeft {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.panel-slide-right {
+  animation: slideFromRight 300ms var(--ease-out-expo);
+}
+
+@keyframes slideFromRight {
+  from {
+    opacity: 0;
+    transform: translateX(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.panel-slide-up {
+  animation: slideFromBottom 300ms var(--ease-out-expo);
+}
+
+@keyframes slideFromBottom {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

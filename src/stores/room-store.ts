@@ -2,6 +2,15 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { User, Room, RoomSettings, BackingTrack, TrackQueue, RoomMessage, StemMixState } from '@/types';
 
+// Synced analysis data from master
+export interface SyncedAnalysisData {
+  key: string | null;
+  keyScale: 'major' | 'minor' | null;
+  bpm: number | null;
+  updatedBy: string;
+  updatedAt: number;
+}
+
 interface RoomState {
   // Room data
   room: Room | null;
@@ -27,6 +36,9 @@ interface RoomState {
 
   // Audio levels
   audioLevels: Map<string, number>;
+
+  // Synced audio analysis
+  syncedAnalysis: SyncedAnalysisData | null;
 
   // Actions
   setRoom: (room: Room) => void;
@@ -65,6 +77,10 @@ interface RoomState {
   setAudioLevel: (userId: string, level: number) => void;
   setAudioLevels: (levels: Map<string, number>) => void;
 
+  // Synced analysis actions
+  setSyncedAnalysis: (data: SyncedAnalysisData | null) => void;
+  broadcastAnalysis: (key: string | null, keyScale: 'major' | 'minor' | null, bpm: number | null) => void;
+
   // Reset
   reset: () => void;
 }
@@ -99,6 +115,7 @@ export const useRoomStore = create<RoomState>()(
     isJoining: false,
     error: null,
     audioLevels: new Map(),
+    syncedAnalysis: null,
 
     setRoom: (room) => set({ room }),
     setCurrentUser: (user) => set({ currentUser: user }),
@@ -238,6 +255,35 @@ export const useRoomStore = create<RoomState>()(
 
     setAudioLevels: (levels) => set({ audioLevels: levels }),
 
+    setSyncedAnalysis: (data) => set({ syncedAnalysis: data }),
+
+    broadcastAnalysis: (key, keyScale, bpm) => {
+      const state = get();
+      if (!state.currentUser || !state.isMaster) return;
+
+      const analysisData: SyncedAnalysisData = {
+        key,
+        keyScale,
+        bpm,
+        updatedBy: state.currentUser.id,
+        updatedAt: Date.now(),
+      };
+
+      set({ syncedAnalysis: analysisData });
+
+      // Add as a sync message to be broadcast to other users
+      state.addMessage({
+        type: 'sync',
+        userId: state.currentUser.id,
+        content: '',
+        timestamp: new Date().toISOString(),
+        data: {
+          type: 'analysis',
+          ...analysisData,
+        },
+      });
+    },
+
     reset: () =>
       set({
         room: null,
@@ -253,6 +299,7 @@ export const useRoomStore = create<RoomState>()(
         isJoining: false,
         error: null,
         audioLevels: new Map(),
+        syncedAnalysis: null,
       }),
   }))
 );

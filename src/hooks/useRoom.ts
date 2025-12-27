@@ -88,6 +88,26 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       setCurrentUser(user);
 
+      // Ensure room exists in database (create if needed)
+      try {
+        const roomResponse = await fetch(`/api/rooms?id=${roomId}`);
+        if (!roomResponse.ok) {
+          // Room doesn't exist, create it
+          await fetch('/api/rooms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: roomId,
+              name: `Room ${roomId}`,
+              createdBy: user.id,
+            }),
+          });
+        }
+      } catch (err) {
+        console.error('Failed to ensure room exists:', err);
+        // Continue anyway - room_tracks may still work
+      }
+
       // Initialize audio engine
       await initialize();
 
@@ -123,9 +143,29 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Initialize realtime connection
       const realtime = new RealtimeRoomManager(roomId, user.id);
 
-      realtime.on('connected', () => {
+      realtime.on('connected', async () => {
         setConnected(true);
         setJoining(false);
+
+        // Load existing tracks from database
+        try {
+          const response = await fetch(`/api/rooms/${roomId}/tracks`);
+          if (response.ok) {
+            const tracks = await response.json();
+            if (tracks.length > 0) {
+              setQueue({
+                tracks,
+                currentIndex: 0,
+                isPlaying: false,
+                currentTime: 0,
+                syncTimestamp: 0,
+              });
+              setCurrentTrack(tracks[0]);
+            }
+          }
+        } catch (err) {
+          console.error('Failed to load tracks:', err);
+        }
       });
 
       realtime.on('presence:sync', (data) => {
@@ -208,7 +248,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           type: 'chat',
           userId: payload.userId,
           content: payload.message,
-          timestamp: payload.timestamp,
+          timestamp: new Date(payload.timestamp).toISOString(),
         });
       });
 
@@ -245,14 +285,30 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   // Leave room
   const leave = useCallback(async () => {
+    // Check if we're the last user before disconnecting
+    const userCount = realtimeRef.current?.getUserCount() ?? 0;
+    const isLastUser = userCount <= 1;
+
     await realtimeRef.current?.disconnect();
     await cloudflareRef.current?.leaveRoom();
+
+    // If we were the last user, destroy the room and its tracks
+    if (isLastUser && roomId) {
+      try {
+        await fetch(`/api/rooms?id=${roomId}`, {
+          method: 'DELETE',
+        });
+        console.log('Room destroyed after last user left');
+      } catch (err) {
+        console.error('Failed to destroy room:', err);
+      }
+    }
 
     realtimeRef.current = null;
     cloudflareRef.current = null;
 
     reset();
-  }, [reset]);
+  }, [reset, roomId]);
 
   // Master controls
   const play = useCallback(async () => {
@@ -293,14 +349,25 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     realtimeRef.current?.broadcastQueueUpdate(updatedQueue);
 
+    // Persist track to database
+    try {
+      await fetch(`/api/rooms/${roomId}/tracks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(track),
+      });
+    } catch (err) {
+      console.error('Failed to persist track:', err);
+    }
+
     // If this is the first track, set it as current
     if (queue.tracks.length === 0) {
       setCurrentTrack(track);
       setQueue({ ...updatedQueue, currentIndex: 0 });
     }
-  }, [queue, addToQueue, setCurrentTrack, setQueue]);
+  }, [roomId, queue, addToQueue, setCurrentTrack, setQueue]);
 
-  const removeTrack = useCallback((trackId: string) => {
+  const removeTrack = useCallback(async (trackId: string) => {
     removeFromQueue(trackId);
 
     const updatedQueue = {
@@ -309,7 +376,16 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     };
 
     realtimeRef.current?.broadcastQueueUpdate(updatedQueue);
-  }, [queue, removeFromQueue]);
+
+    // Remove track from database
+    try {
+      await fetch(`/api/rooms/${roomId}/tracks?trackId=${trackId}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.error('Failed to delete track:', err);
+    }
+  }, [roomId, queue, removeFromQueue]);
 
   const skipToNext = useCallback(() => {
     if (!isMaster) return;
@@ -318,6 +394,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastNextTrack(queue.currentIndex + 1);
   }, [isMaster, nextTrack, queue.currentIndex]);
 
+  const skipToPrevious = useCallback(() => {
+    if (!isMaster) return;
+
+    const { previousTrack } = useRoomStore.getState();
+    previousTrack();
+    realtimeRef.current?.broadcastNextTrack(Math.max(0, queue.currentIndex - 1));
+  }, [isMaster, queue.currentIndex]);
+
   // Chat
   const sendMessage = useCallback((message: string) => {
     realtimeRef.current?.broadcastChat(message);
@@ -325,7 +409,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       type: 'chat',
       userId: userIdRef.current,
       content: message,
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
     });
   }, [addMessage]);
 
@@ -366,6 +450,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     addTrack,
     removeTrack,
     skipToNext,
+    skipToPrevious,
     sendMessage,
     muteUser,
     setUserVolume,
