@@ -2,23 +2,21 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { useMetronomeStore, type BpmMode } from '@/stores/metronome-store';
+import { useMetronomeStore } from '@/stores/metronome-store';
+import { useSessionTempoStore, type TempoSource, selectTempo, selectTimeSignature, selectSource } from '@/stores/session-tempo-store';
 import { useMetronome } from '@/hooks/use-metronome';
 import { Tooltip } from '@/components/ui/tooltip';
 import {
   Timer,
   Play,
   Pause,
-  Radio,
   Lock,
-  Unlock,
   Activity,
   Hand,
+  Music2,
   ChevronDown,
   Volume2,
-  VolumeX,
   Wifi,
-  WifiOff,
   Settings,
 } from 'lucide-react';
 
@@ -30,20 +28,25 @@ interface MetronomeControlsProps {
   compact?: boolean;
 }
 
-const BPM_MODE_LABELS: Record<BpmMode, { label: string; description: string; icon: typeof Lock }> = {
-  'locked': {
-    label: 'Locked',
-    description: 'Fixed BPM, ignores track tempo',
+const TEMPO_SOURCE_LABELS: Record<TempoSource, { label: string; description: string; icon: typeof Lock }> = {
+  'manual': {
+    label: 'Manual',
+    description: 'Set tempo manually',
     icon: Lock,
   },
-  'follow-analyzer': {
-    label: 'Follow Track',
-    description: 'Syncs with detected BPM from audio',
+  'track': {
+    label: 'Track',
+    description: 'Use backing track BPM',
+    icon: Music2,
+  },
+  'analyzer': {
+    label: 'Auto-Detect',
+    description: 'Real-time BPM detection',
     icon: Activity,
   },
-  'tap-tempo': {
+  'tap': {
     label: 'Tap Tempo',
-    description: 'Set BPM by tapping the beat',
+    description: 'Tap to set tempo',
     icon: Hand,
   },
 };
@@ -66,37 +69,36 @@ export function MetronomeControls({
   const [showSettings, setShowSettings] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
 
-  // Store state
+  // Metronome settings store
   const {
     enabled,
-    bpm,
     volume,
-    bpmMode,
-    lockedBpm,
-    beatsPerBar,
     clickType,
     accentFirstBeat,
     broadcastEnabled,
     currentBeat,
-    analyzerBpm,
     setEnabled,
-    setBpm,
     setVolume,
-    setBpmMode,
-    setLockedBpm,
-    setBeatsPerBar,
     setClickType,
     setAccentFirstBeat,
     setBroadcastEnabled,
   } = useMetronomeStore();
 
+  // Session tempo store
+  const tempo = useSessionTempoStore(selectTempo);
+  const source = useSessionTempoStore(selectSource);
+  const { beatsPerBar } = useSessionTempoStore(selectTimeSignature);
+  const trackTempo = useSessionTempoStore((s) => s.trackTempo);
+  const analyzerTempo = useSessionTempoStore((s) => s.analyzerTempo);
+  const setSource = useSessionTempoStore((s) => s.setSource);
+  const setManualTempo = useSessionTempoStore((s) => s.setManualTempo);
+  const setTimeSignature = useSessionTempoStore((s) => s.setTimeSignature);
+  const recordTap = useSessionTempoStore((s) => s.recordTap);
+
   // Metronome hook
   const {
-    isPlaying,
-    effectiveBpm,
     start,
     stop,
-    toggle,
     tap,
   } = useMetronome({
     audioContext,
@@ -104,18 +106,18 @@ export function MetronomeControls({
     onBroadcastStreamReady,
   });
 
-  // Handle BPM input change
-  const handleBpmChange = useCallback((value: number) => {
-    if (bpmMode === 'locked') {
-      setLockedBpm(value);
+  // Handle tempo input change
+  const handleTempoChange = useCallback((value: number) => {
+    if (source === 'manual' || source === 'tap') {
+      setManualTempo(value);
     }
-    setBpm(value);
-  }, [bpmMode, setLockedBpm, setBpm]);
+  }, [source, setManualTempo]);
 
   // Handle tap tempo
   const handleTap = useCallback(() => {
+    recordTap();
     tap();
-  }, [tap]);
+  }, [recordTap, tap]);
 
   // Toggle metronome on/off
   const handleToggle = useCallback(() => {
@@ -128,10 +130,10 @@ export function MetronomeControls({
   }, [enabled, setEnabled, start, stop]);
 
   // Handle mode change
-  const handleModeChange = useCallback((mode: BpmMode) => {
-    setBpmMode(mode);
+  const handleSourceChange = useCallback((newSource: TempoSource) => {
+    setSource(newSource);
     setShowModeDropdown(false);
-  }, [setBpmMode]);
+  }, [setSource]);
 
   // Close dropdowns on outside click
   useEffect(() => {
@@ -146,7 +148,7 @@ export function MetronomeControls({
     }
   }, [showModeDropdown, showSettings]);
 
-  const ModeIcon = BPM_MODE_LABELS[bpmMode].icon;
+  const SourceIcon = TEMPO_SOURCE_LABELS[source].icon;
 
   // Beat visualization dots
   const beatDots = Array.from({ length: beatsPerBar }, (_, i) => (
@@ -185,7 +187,7 @@ export function MetronomeControls({
         {enabled && (
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-white/5">
             <span className="text-sm font-semibold text-white">
-              {Math.round(effectiveBpm)}
+              {Math.round(tempo)}
             </span>
             <span className="text-xs text-zinc-400">BPM</span>
           </div>
@@ -218,7 +220,7 @@ export function MetronomeControls({
                   : 'text-zinc-500 hover:text-zinc-300 hover:bg-white/5'
               )}
             >
-              {broadcastEnabled ? <Wifi className="w-3.5 h-3.5" /> : <WifiOff className="w-3.5 h-3.5" />}
+              <Wifi className="w-3.5 h-3.5" />
             </button>
           </Tooltip>
 
@@ -264,12 +266,12 @@ export function MetronomeControls({
           <div className="flex items-center gap-2">
             <input
               type="number"
-              value={Math.round(effectiveBpm)}
-              onChange={(e) => handleBpmChange(parseInt(e.target.value) || 120)}
-              disabled={bpmMode === 'follow-analyzer'}
+              value={Math.round(tempo)}
+              onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
+              disabled={source === 'analyzer' || source === 'track'}
               className={cn(
                 'w-16 px-2 py-1 text-xl font-bold bg-transparent border-none outline-none text-center',
-                bpmMode === 'follow-analyzer'
+                (source === 'analyzer' || source === 'track')
                   ? 'text-indigo-400'
                   : 'text-white'
               )}
@@ -278,11 +280,17 @@ export function MetronomeControls({
             />
             <span className="text-sm text-zinc-400">BPM</span>
 
-            {/* Mode indicator */}
-            {bpmMode === 'follow-analyzer' && analyzerBpm && (
+            {/* Source indicator */}
+            {source === 'analyzer' && analyzerTempo && (
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-indigo-500/20">
                 <Activity className="w-3 h-3 text-indigo-400" />
-                <span className="text-xs text-indigo-400">Following</span>
+                <span className="text-xs text-indigo-400">Auto</span>
+              </div>
+            )}
+            {source === 'track' && trackTempo && (
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-500/20">
+                <Music2 className="w-3 h-3 text-emerald-400" />
+                <span className="text-xs text-emerald-400">Track</span>
               </div>
             )}
           </div>
@@ -294,7 +302,7 @@ export function MetronomeControls({
         </div>
 
         {/* Tap tempo button (when in tap mode) */}
-        {bpmMode === 'tap-tempo' && (
+        {source === 'tap' && (
           <button
             onClick={handleTap}
             className="px-3 py-2 rounded-lg bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition-all font-medium text-sm"
@@ -304,7 +312,7 @@ export function MetronomeControls({
         )}
       </div>
 
-      {/* BPM Mode selector */}
+      {/* Tempo Source selector */}
       <div className="relative">
         <button
           onClick={(e) => {
@@ -314,8 +322,8 @@ export function MetronomeControls({
           className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
         >
           <div className="flex items-center gap-2">
-            <ModeIcon className="w-4 h-4 text-zinc-400" />
-            <span className="text-sm text-white">{BPM_MODE_LABELS[bpmMode].label}</span>
+            <SourceIcon className="w-4 h-4 text-zinc-400" />
+            <span className="text-sm text-white">{TEMPO_SOURCE_LABELS[source].label}</span>
           </div>
           <ChevronDown className={cn(
             'w-4 h-4 text-zinc-400 transition-transform',
@@ -323,33 +331,47 @@ export function MetronomeControls({
           )} />
         </button>
 
-        {/* Mode dropdown */}
+        {/* Source dropdown */}
         {showModeDropdown && (
           <div className="absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-zinc-800 border border-white/10 shadow-xl z-50">
-            {(Object.keys(BPM_MODE_LABELS) as BpmMode[]).map((mode) => {
-              const { label, description, icon: Icon } = BPM_MODE_LABELS[mode];
+            {(Object.keys(TEMPO_SOURCE_LABELS) as TempoSource[]).map((src) => {
+              const { label, description, icon: Icon } = TEMPO_SOURCE_LABELS[src];
+              const isDisabled = (src === 'track' && !trackTempo) || (src === 'analyzer' && !analyzerTempo);
+
               return (
                 <button
-                  key={mode}
+                  key={src}
                   onClick={(e) => {
                     e.stopPropagation();
-                    handleModeChange(mode);
+                    if (!isDisabled) {
+                      handleSourceChange(src);
+                    }
                   }}
+                  disabled={isDisabled}
                   className={cn(
-                    'w-full flex items-start gap-3 px-3 py-2 hover:bg-white/5 transition-all',
-                    bpmMode === mode && 'bg-white/5'
+                    'w-full flex items-start gap-3 px-3 py-2 transition-all',
+                    source === src && 'bg-white/5',
+                    isDisabled
+                      ? 'opacity-40 cursor-not-allowed'
+                      : 'hover:bg-white/5'
                   )}
                 >
                   <Icon className={cn(
                     'w-4 h-4 mt-0.5',
-                    bpmMode === mode ? 'text-orange-400' : 'text-zinc-400'
+                    source === src ? 'text-orange-400' : 'text-zinc-400'
                   )} />
                   <div className="flex flex-col items-start">
                     <span className={cn(
                       'text-sm font-medium',
-                      bpmMode === mode ? 'text-orange-400' : 'text-white'
+                      source === src ? 'text-orange-400' : 'text-white'
                     )}>
                       {label}
+                      {src === 'track' && trackTempo && (
+                        <span className="ml-1 text-zinc-500">({trackTempo} BPM)</span>
+                      )}
+                      {src === 'analyzer' && analyzerTempo && (
+                        <span className="ml-1 text-zinc-500">({Math.round(analyzerTempo)} BPM)</span>
+                      )}
                     </span>
                     <span className="text-xs text-zinc-500">{description}</span>
                   </div>
@@ -385,7 +407,7 @@ export function MetronomeControls({
             <span className="text-xs text-zinc-400 w-16">Time Sig</span>
             <select
               value={beatsPerBar}
-              onChange={(e) => setBeatsPerBar(parseInt(e.target.value))}
+              onChange={(e) => setTimeSignature(parseInt(e.target.value), 4)}
               className="flex-1 px-2 py-1 rounded bg-white/5 text-white text-sm border border-white/10 outline-none"
             >
               {[2, 3, 4, 5, 6, 7, 8].map((beats) => (
@@ -452,29 +474,34 @@ export function MetronomeInline({
 }) {
   const [showPopover, setShowPopover] = useState(false);
 
+  // Metronome settings store
   const {
     enabled,
     currentBeat,
-    beatsPerBar,
-    bpmMode,
-    lockedBpm,
     volume,
     clickType,
     accentFirstBeat,
     broadcastEnabled,
-    analyzerBpm,
     setEnabled,
-    setBpmMode,
-    setLockedBpm,
     setVolume,
     setClickType,
     setAccentFirstBeat,
     setBroadcastEnabled,
-    setBeatsPerBar,
   } = useMetronomeStore();
 
+  // Session tempo store
+  const tempo = useSessionTempoStore(selectTempo);
+  const source = useSessionTempoStore(selectSource);
+  const { beatsPerBar } = useSessionTempoStore(selectTimeSignature);
+  const trackTempo = useSessionTempoStore((s) => s.trackTempo);
+  const analyzerTempo = useSessionTempoStore((s) => s.analyzerTempo);
+  const setSource = useSessionTempoStore((s) => s.setSource);
+  const setManualTempo = useSessionTempoStore((s) => s.setManualTempo);
+  const setTimeSignature = useSessionTempoStore((s) => s.setTimeSignature);
+  const recordTap = useSessionTempoStore((s) => s.recordTap);
+
+  // Metronome hook
   const {
-    effectiveBpm,
     start,
     stop,
     tap,
@@ -492,15 +519,20 @@ export function MetronomeInline({
     }
   }, [enabled, setEnabled, start, stop]);
 
-  const handleBpmChange = useCallback((value: number) => {
-    if (bpmMode === 'locked') {
-      setLockedBpm(value);
+  const handleTempoChange = useCallback((value: number) => {
+    if (source === 'manual' || source === 'tap') {
+      setManualTempo(value);
     }
-  }, [bpmMode, setLockedBpm]);
+  }, [source, setManualTempo]);
 
-  const handleModeChange = useCallback((mode: BpmMode) => {
-    setBpmMode(mode);
-  }, [setBpmMode]);
+  const handleSourceChange = useCallback((newSource: TempoSource) => {
+    setSource(newSource);
+  }, [setSource]);
+
+  const handleTap = useCallback(() => {
+    recordTap();
+    tap();
+  }, [recordTap, tap]);
 
   // Close popover when clicking outside
   useEffect(() => {
@@ -517,8 +549,6 @@ export function MetronomeInline({
     return () => document.removeEventListener('click', handleClickOutside);
   }, [showPopover]);
 
-  const ModeIcon = BPM_MODE_LABELS[bpmMode].icon;
-
   return (
     <div className={cn('relative metronome-popover-container', className)}>
       <div className="flex items-center gap-1">
@@ -534,7 +564,7 @@ export function MetronomeInline({
             )}
           >
             <Timer className="w-3.5 h-3.5" />
-            <span className="text-sm font-medium">{Math.round(effectiveBpm)}</span>
+            <span className="text-sm font-medium">{Math.round(tempo)}</span>
 
             {/* Mini beat indicator */}
             {enabled && (
@@ -587,12 +617,12 @@ export function MetronomeInline({
               <label className="text-xs text-zinc-500 mb-1 block">BPM</label>
               <input
                 type="number"
-                value={Math.round(effectiveBpm)}
-                onChange={(e) => handleBpmChange(parseInt(e.target.value) || 120)}
-                disabled={bpmMode === 'follow-analyzer'}
+                value={Math.round(tempo)}
+                onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
+                disabled={source === 'analyzer' || source === 'track'}
                 className={cn(
                   'w-full px-3 py-2 text-lg font-bold rounded-lg bg-white/5 border border-white/10 outline-none',
-                  bpmMode === 'follow-analyzer'
+                  (source === 'analyzer' || source === 'track')
                     ? 'text-indigo-400 cursor-not-allowed'
                     : 'text-white focus:border-orange-500/50'
                 )}
@@ -602,9 +632,9 @@ export function MetronomeInline({
             </div>
 
             {/* Tap tempo button */}
-            {bpmMode === 'tap-tempo' && (
+            {source === 'tap' && (
               <button
-                onClick={tap}
+                onClick={handleTap}
                 className="px-4 py-2 mt-5 rounded-lg bg-orange-500/20 text-orange-400 hover:bg-orange-500/30 transition-all font-bold text-sm"
               >
                 TAP
@@ -612,21 +642,27 @@ export function MetronomeInline({
             )}
           </div>
 
-          {/* BPM Mode */}
+          {/* Tempo Source */}
           <div className="mb-3">
-            <label className="text-xs text-zinc-500 mb-1.5 block">Mode</label>
-            <div className="grid grid-cols-3 gap-1">
-              {(Object.keys(BPM_MODE_LABELS) as BpmMode[]).map((mode) => {
-                const { label, icon: Icon } = BPM_MODE_LABELS[mode];
+            <label className="text-xs text-zinc-500 mb-1.5 block">Tempo Source</label>
+            <div className="grid grid-cols-2 gap-1">
+              {(Object.keys(TEMPO_SOURCE_LABELS) as TempoSource[]).map((src) => {
+                const { label, icon: Icon } = TEMPO_SOURCE_LABELS[src];
+                const isDisabled = (src === 'track' && !trackTempo) || (src === 'analyzer' && !analyzerTempo);
+
                 return (
                   <button
-                    key={mode}
-                    onClick={() => handleModeChange(mode)}
+                    key={src}
+                    onClick={() => !isDisabled && handleSourceChange(src)}
+                    disabled={isDisabled}
                     className={cn(
-                      'flex flex-col items-center gap-1 p-2 rounded-lg transition-all',
-                      bpmMode === mode
+                      'flex items-center gap-2 p-2 rounded-lg transition-all',
+                      source === src
                         ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                        : 'bg-white/5 text-zinc-400 border border-white/10 hover:bg-white/10 hover:text-white'
+                        : 'bg-white/5 text-zinc-400 border border-white/10',
+                      isDisabled
+                        ? 'opacity-40 cursor-not-allowed'
+                        : 'hover:bg-white/10 hover:text-white'
                     )}
                   >
                     <Icon className="w-4 h-4" />
@@ -635,11 +671,19 @@ export function MetronomeInline({
                 );
               })}
             </div>
-            {bpmMode === 'follow-analyzer' && analyzerBpm && (
+            {source === 'analyzer' && analyzerTempo && (
               <div className="flex items-center gap-1.5 mt-2 px-2 py-1 rounded bg-indigo-500/10">
                 <Activity className="w-3 h-3 text-indigo-400" />
                 <span className="text-xs text-indigo-400">
-                  Detected: {Math.round(analyzerBpm)} BPM
+                  Detected: {Math.round(analyzerTempo)} BPM
+                </span>
+              </div>
+            )}
+            {source === 'track' && trackTempo && (
+              <div className="flex items-center gap-1.5 mt-2 px-2 py-1 rounded bg-emerald-500/10">
+                <Music2 className="w-3 h-3 text-emerald-400" />
+                <span className="text-xs text-emerald-400">
+                  Track: {trackTempo} BPM
                 </span>
               </div>
             )}
@@ -652,7 +696,7 @@ export function MetronomeInline({
             <span className="text-xs text-zinc-500 w-20">Time Sig</span>
             <select
               value={beatsPerBar}
-              onChange={(e) => setBeatsPerBar(parseInt(e.target.value))}
+              onChange={(e) => setTimeSignature(parseInt(e.target.value), 4)}
               className="flex-1 px-2 py-1.5 rounded-lg bg-white/5 text-white text-sm border border-white/10 outline-none"
             >
               {[2, 3, 4, 5, 6, 7, 8].map((beats) => (
