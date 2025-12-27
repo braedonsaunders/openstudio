@@ -217,9 +217,11 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key
 1. Go to **Database** → **Replication**
 2. Ensure **Realtime** is enabled (it should be by default)
 
-### Step 5: Create Database Tables (Optional)
+### Step 5: Create Database Tables
 
-For persistent room storage, run this SQL in the **SQL Editor**:
+Run the following SQL in the Supabase **SQL Editor** to create all required tables.
+
+#### 5a. Room and Track Tables
 
 ```sql
 -- Rooms table
@@ -259,6 +261,201 @@ CREATE POLICY "Public read access" ON tracks FOR SELECT USING (true);
 -- Allow authenticated insert/update
 CREATE POLICY "Allow insert" ON rooms FOR INSERT WITH CHECK (true);
 CREATE POLICY "Allow insert" ON tracks FOR INSERT WITH CHECK (true);
+```
+
+#### 5b. User Account System Tables (Required for Sign Up)
+
+Run this SQL to enable user authentication and profiles:
+
+```sql
+-- User Profiles (extends Supabase auth.users)
+CREATE TABLE user_profiles (
+  id UUID PRIMARY KEY REFERENCES auth.users(id) ON DELETE CASCADE,
+  username VARCHAR(20) UNIQUE NOT NULL,
+  display_name VARCHAR(50) NOT NULL,
+  bio TEXT,
+
+  -- Type & Status
+  account_type VARCHAR(20) DEFAULT 'free',
+  is_verified BOOLEAN DEFAULT FALSE,
+  is_banned BOOLEAN DEFAULT FALSE,
+  ban_reason TEXT,
+  ban_expires_at TIMESTAMPTZ,
+
+  -- Progression
+  total_xp INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 1,
+
+  -- Streaks
+  current_daily_streak INTEGER DEFAULT 0,
+  longest_daily_streak INTEGER DEFAULT 0,
+  last_active_date DATE,
+  streak_freezes INTEGER DEFAULT 0,
+
+  -- Social Links
+  link_spotify VARCHAR(255),
+  link_soundcloud VARCHAR(255),
+  link_youtube VARCHAR(255),
+  link_instagram VARCHAR(255),
+  link_website VARCHAR(255),
+
+  -- Privacy Settings
+  profile_visibility VARCHAR(20) DEFAULT 'public',
+  show_stats BOOLEAN DEFAULT TRUE,
+  show_activity BOOLEAN DEFAULT TRUE,
+  allow_friend_requests BOOLEAN DEFAULT TRUE,
+  allow_room_invites BOOLEAN DEFAULT TRUE,
+
+  -- Preferences (JSON)
+  preferences JSONB DEFAULT '{}',
+
+  -- Timestamps
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  updated_at TIMESTAMPTZ DEFAULT NOW(),
+  last_online_at TIMESTAMPTZ
+);
+
+-- User Avatars
+CREATE TABLE user_avatars (
+  user_id UUID PRIMARY KEY REFERENCES user_profiles(id) ON DELETE CASCADE,
+  avatar_data JSONB NOT NULL DEFAULT '{}',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- User Stats
+CREATE TABLE user_stats (
+  user_id UUID PRIMARY KEY REFERENCES user_profiles(id) ON DELETE CASCADE,
+  total_jam_seconds BIGINT DEFAULT 0,
+  average_session_seconds INTEGER DEFAULT 0,
+  longest_session_seconds INTEGER DEFAULT 0,
+  total_sessions INTEGER DEFAULT 0,
+  sessions_this_week INTEGER DEFAULT 0,
+  sessions_this_month INTEGER DEFAULT 0,
+  unique_collaborators INTEGER DEFAULT 0,
+  reactions_received INTEGER DEFAULT 0,
+  reactions_given INTEGER DEFAULT 0,
+  messages_sent INTEGER DEFAULT 0,
+  rooms_created INTEGER DEFAULT 0,
+  rooms_joined INTEGER DEFAULT 0,
+  tracks_uploaded INTEGER DEFAULT 0,
+  tracks_generated INTEGER DEFAULT 0,
+  stems_separated INTEGER DEFAULT 0,
+  activity_by_hour JSONB DEFAULT '[]',
+  activity_by_day JSONB DEFAULT '[]',
+  updated_at TIMESTAMPTZ DEFAULT NOW()
+);
+
+-- User Instruments
+CREATE TABLE user_instruments (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
+  instrument_id VARCHAR(50) NOT NULL,
+  is_primary BOOLEAN DEFAULT FALSE,
+  variant VARCHAR(50),
+  finish VARCHAR(50),
+  total_hours DECIMAL(10,2) DEFAULT 0,
+  total_sessions INTEGER DEFAULT 0,
+  level INTEGER DEFAULT 1,
+  xp INTEGER DEFAULT 0,
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  last_played_at TIMESTAMPTZ,
+  UNIQUE(user_id, instrument_id)
+);
+
+-- Achievements Definition
+CREATE TABLE achievements (
+  id VARCHAR(50) PRIMARY KEY,
+  name VARCHAR(100) NOT NULL,
+  description TEXT NOT NULL,
+  category VARCHAR(50) NOT NULL,
+  icon VARCHAR(50),
+  xp_reward INTEGER DEFAULT 50,
+  criteria JSONB NOT NULL,
+  is_hidden BOOLEAN DEFAULT FALSE,
+  sort_order INTEGER DEFAULT 0
+);
+
+-- User Achievements
+CREATE TABLE user_achievements (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
+  achievement_id VARCHAR(50) REFERENCES achievements(id),
+  unlocked_at TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(user_id, achievement_id)
+);
+
+-- Friendships
+CREATE TABLE friendships (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
+  friend_id UUID REFERENCES user_profiles(id) ON DELETE CASCADE,
+  status VARCHAR(20) DEFAULT 'pending',
+  requested_at TIMESTAMPTZ DEFAULT NOW(),
+  accepted_at TIMESTAMPTZ,
+  jams_together INTEGER DEFAULT 0,
+  total_time_together_seconds BIGINT DEFAULT 0,
+  UNIQUE(user_id, friend_id)
+);
+
+-- Enable Row Level Security on user tables
+ALTER TABLE user_profiles ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_avatars ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_stats ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_instruments ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_achievements ENABLE ROW LEVEL SECURITY;
+ALTER TABLE friendships ENABLE ROW LEVEL SECURITY;
+
+-- User profiles policies
+CREATE POLICY "Public profiles are viewable by everyone"
+  ON user_profiles FOR SELECT
+  USING (profile_visibility = 'public');
+
+CREATE POLICY "Users can view their own profile"
+  ON user_profiles FOR SELECT
+  USING (auth.uid() = id);
+
+CREATE POLICY "Users can insert their own profile"
+  ON user_profiles FOR INSERT
+  WITH CHECK (auth.uid() = id);
+
+CREATE POLICY "Users can update their own profile"
+  ON user_profiles FOR UPDATE
+  USING (auth.uid() = id);
+
+-- User avatars policies
+CREATE POLICY "Avatars are viewable by everyone"
+  ON user_avatars FOR SELECT
+  USING (true);
+
+CREATE POLICY "Users can manage their own avatar"
+  ON user_avatars FOR ALL
+  USING (auth.uid() = user_id);
+
+-- User stats policies
+CREATE POLICY "Stats are viewable by everyone"
+  ON user_stats FOR SELECT
+  USING (true);
+
+CREATE POLICY "Users can manage their own stats"
+  ON user_stats FOR ALL
+  USING (auth.uid() = user_id);
+
+-- User instruments policies
+CREATE POLICY "Instruments are viewable by everyone"
+  ON user_instruments FOR SELECT
+  USING (true);
+
+CREATE POLICY "Users can manage their own instruments"
+  ON user_instruments FOR ALL
+  USING (auth.uid() = user_id);
+
+-- Indexes for performance
+CREATE INDEX idx_user_profiles_username ON user_profiles(username);
+CREATE INDEX idx_user_profiles_level ON user_profiles(level);
+CREATE INDEX idx_user_profiles_last_online ON user_profiles(last_online_at);
+CREATE INDEX idx_friendships_user ON friendships(user_id, status);
+CREATE INDEX idx_friendships_friend ON friendships(friend_id, status);
+CREATE INDEX idx_user_achievements_user ON user_achievements(user_id);
 ```
 
 ---
