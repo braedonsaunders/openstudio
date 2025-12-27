@@ -68,7 +68,7 @@ export function CenterSplitView({
   return (
     <div
       id="center-split-container"
-      className="flex-1 flex flex-col min-w-0"
+      className="flex-1 flex flex-col min-w-0 h-full"
     >
       {/* Upper Section: Multi-Track Timeline (1/3) */}
       <div

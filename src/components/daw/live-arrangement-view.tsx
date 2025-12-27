@@ -2,12 +2,10 @@
 
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { useAudioStore } from '@/stores/audio-store';
-import { useRoomStore } from '@/stores/room-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { LiveTrackLane } from './live-track-lane';
 import { UserTrackLane } from './user-track-lane';
 import { MidiTrackLane } from './midi-track-lane';
-import { SeekableBackingTrack } from './seekable-backing-track';
 import { NowLine } from './now-line';
 import type { User } from '@/types';
 
@@ -40,13 +38,8 @@ export function LiveArrangementView({
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
 
-  const { isPlaying, currentTime, duration } = useAudioStore();
-  const { currentTrack, stemsAvailable, stemMixState, waveformData, queue } = useRoomStore();
+  const { isPlaying } = useAudioStore();
   const { getTracksByUser, trackLevels } = useUserTracksStore();
-
-  // Fallback: if no currentTrack but queue has tracks, use the first one
-  // This ensures waveform is always visible when tracks exist
-  const displayTrack = currentTrack || (queue.tracks.length > 0 ? queue.tracks[0] : null);
 
   // Calculate session elapsed time
   const [sessionTime, setSessionTime] = useState(0);
@@ -79,22 +72,6 @@ export function LiveArrangementView({
 
   return (
     <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#0a0a0f]">
-      {/* Seekable Backing Track (independent from live timeline) */}
-      {/* Always show when there are tracks in the queue */}
-      {displayTrack && (
-        <SeekableBackingTrack
-          track={displayTrack}
-          currentTime={currentTime}
-          duration={duration || displayTrack.duration || 0}
-          isPlaying={isPlaying}
-          isMaster={isMaster}
-          onSeek={onSeek}
-          stemsAvailable={stemsAvailable}
-          stemMixState={stemMixState}
-          waveformData={waveformData}
-        />
-      )}
-
       {/* Live Session Header */}
       <div className="h-8 px-4 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#0d0d14]">
         <div className="flex items-center gap-3">
