@@ -59,12 +59,14 @@ export function TracksPanel({
     addTrackToSong,
     removeTrackFromSong,
     loadSongs,
+    isLoading: songsLoading,
   } = useSongsStore();
 
   const [showLoopBrowser, setShowLoopBrowser] = useState(false);
   const [showSongDropdown, setShowSongDropdown] = useState(false);
   const [isCreatingSong, setIsCreatingSong] = useState(false);
   const [newSongName, setNewSongName] = useState('');
+  const [hasLoadedSongs, setHasLoadedSongs] = useState(false);
 
   // Get data
   const songs = getSongsByRoom(roomId);
@@ -74,22 +76,28 @@ export function TracksPanel({
   // Load songs on mount
   useEffect(() => {
     if (roomId) {
-      loadSongs(roomId);
+      loadSongs(roomId).then(() => {
+        setHasLoadedSongs(true);
+      });
     }
   }, [roomId, loadSongs]);
 
-  // Create default song if none exist
+  // Create default song if none exist AFTER loading from database
   useEffect(() => {
-    if (songs.length === 0 && userId && !isCreatingSong) {
+    // Only create default song after we've loaded from DB and confirmed none exist
+    if (hasLoadedSongs && !songsLoading && songs.length === 0 && userId && !isCreatingSong) {
+      setIsCreatingSong(true);
       const defaultSong = createSong(roomId, 'Song 1', userId, userName);
       // Persist to database
       fetch(`/api/rooms/${roomId}/songs`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(defaultSong),
-      }).catch(console.error);
+      })
+        .catch(console.error)
+        .finally(() => setIsCreatingSong(false));
     }
-  }, [songs.length, roomId, userId, userName, createSong, isCreatingSong]);
+  }, [hasLoadedSongs, songsLoading, songs.length, roomId, userId, userName, createSong, isCreatingSong]);
 
   // Handler for creating a new song
   const handleCreateSong = useCallback(async () => {
