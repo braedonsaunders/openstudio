@@ -303,18 +303,23 @@ export function LoopBrowserModal({
               <div className="flex items-center gap-2">
                 <Gauge className="w-4 h-4 text-slate-400" />
                 <span className="text-sm text-slate-600">BPM:</span>
-                <span className="text-sm font-medium text-slate-800 w-16">
-                  {bpmRange[0]}-{bpmRange[1]}
-                </span>
-                <div className="w-32">
-                  <Slider
-                    value={bpmRange}
-                    min={40}
-                    max={200}
-                    step={5}
-                    onValueChange={(value) => setBpmRange(value as [number, number])}
-                  />
-                </div>
+                <input
+                  type="number"
+                  value={bpmRange[0]}
+                  onChange={(e) => setBpmRange([parseInt(e.target.value) || 40, bpmRange[1]])}
+                  className="w-14 h-7 px-2 text-sm text-center border border-slate-200 rounded-md"
+                  min={40}
+                  max={200}
+                />
+                <span className="text-slate-400">-</span>
+                <input
+                  type="number"
+                  value={bpmRange[1]}
+                  onChange={(e) => setBpmRange([bpmRange[0], parseInt(e.target.value) || 200])}
+                  className="w-14 h-7 px-2 text-sm text-center border border-slate-200 rounded-md"
+                  min={40}
+                  max={200}
+                />
               </div>
 
               {/* Intensity Filter */}
@@ -346,14 +351,15 @@ export function LoopBrowserModal({
                 <Volume2 className="w-4 h-4 text-slate-400" />
                 <div className="w-20">
                   <Slider
-                    value={[previewVolume]}
+                    value={previewVolume}
                     min={0}
                     max={1}
                     step={0.1}
-                    onValueChange={(value) => {
-                      setPreviewVolume(value[0]);
+                    onChange={(e) => {
+                      const vol = parseFloat(e.target.value);
+                      setPreviewVolume(vol);
                       if (soundEngineRef.current) {
-                        soundEngineRef.current.setMasterVolume(value[0]);
+                        soundEngineRef.current.setMasterVolume(vol);
                       }
                     }}
                   />
