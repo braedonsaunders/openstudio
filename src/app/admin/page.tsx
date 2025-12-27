@@ -38,21 +38,57 @@ type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics';
 
 export default function AdminPage() {
   const router = useRouter();
-  const { profile, user } = useAuthStore();
+  const { profile, user, isLoading, isInitialized, isProfileLoading, profileError, refreshProfile } = useAuthStore();
   const [activeTab, setActiveTab] = useState<Tab>('dashboard');
   const { resolvedTheme, toggleTheme } = useTheme();
 
-  // Redirect non-admins
+  // Redirect non-admins once profile is loaded
   useEffect(() => {
-    if (profile && profile.accountType !== 'admin') {
+    if (isInitialized && !isProfileLoading && profile && profile.accountType !== 'admin') {
       router.push('/');
     }
-  }, [profile, router]);
+  }, [profile, isInitialized, isProfileLoading, router]);
 
-  if (!profile || profile.accountType !== 'admin') {
+  // Redirect to home if not logged in
+  useEffect(() => {
+    if (isInitialized && !isLoading && !user) {
+      router.push('/');
+    }
+  }, [user, isInitialized, isLoading, router]);
+
+  // Show loading only during actual loading
+  if (isLoading || !isInitialized || isProfileLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500" />
+      </div>
+    );
+  }
+
+  // Show error state if profile failed to load
+  if (user && !profile && profileError) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-red-500 mb-4">Failed to load profile</p>
+          <button
+            onClick={() => refreshProfile()}
+            className="px-4 py-2 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 transition-colors"
+          >
+            Retry
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Not an admin (or no profile)
+  if (!profile || profile.accountType !== 'admin') {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
+        <div className="text-center">
+          <p className="text-gray-500 dark:text-gray-400">Access denied</p>
+        </div>
       </div>
     );
   }
