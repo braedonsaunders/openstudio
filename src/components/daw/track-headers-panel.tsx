@@ -68,7 +68,7 @@ export function TrackHeadersPanel({
               key={user.id}
               user={user}
               isLocal={isLocal}
-              isMaster={user.isMaster}
+              isMaster={user.isMaster ?? false}
               audioLevel={level}
               trackColor={trackColor}
               trackNumber={index + 1}

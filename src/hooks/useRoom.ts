@@ -208,7 +208,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           type: 'chat',
           userId: payload.userId,
           content: payload.message,
-          timestamp: payload.timestamp,
+          timestamp: new Date(payload.timestamp).toISOString(),
         });
       });
 
@@ -333,7 +333,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       type: 'chat',
       userId: userIdRef.current,
       content: message,
-      timestamp: Date.now(),
+      timestamp: new Date().toISOString(),
     });
   }, [addMessage]);
 

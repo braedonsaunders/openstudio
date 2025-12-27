@@ -123,8 +123,8 @@ export function TrackHeader({
               )}
               style={{
                 backgroundColor: trackColor,
-                ringColor: trackColor,
-              }}
+                '--tw-ring-color': trackColor,
+              } as React.CSSProperties}
             >
               {user.name.charAt(0).toUpperCase()}
             </div>
