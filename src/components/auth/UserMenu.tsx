@@ -29,7 +29,7 @@ export function UserMenu() {
   const [initTimeout, setInitTimeout] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { user, profile, avatar, signOut, isLoading, isInitialized, initialize } = useAuthStore();
+  const { user, profile, avatar, signOut, isLoading, isInitialized, initialize, refreshProfile } = useAuthStore();
 
   // Trigger initialization on mount and set timeout fallback
   useEffect(() => {
@@ -46,6 +46,13 @@ export function UserMenu() {
 
     return () => clearTimeout(timeout);
   }, [isInitialized, isLoading, initialize]);
+
+  // If user is logged in but profile is missing, fetch it
+  useEffect(() => {
+    if (user && !profile && isInitialized && !isLoading) {
+      refreshProfile();
+    }
+  }, [user, profile, isInitialized, isLoading, refreshProfile]);
 
   // Close auth modal when user becomes authenticated
   useEffect(() => {
