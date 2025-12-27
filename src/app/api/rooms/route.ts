@@ -270,31 +270,77 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    // Delete all tracks for this room first (in case CASCADE isn't set up)
-    await supabase
+    // First, verify the room exists
+    const { data: existingRoom, error: fetchError } = await supabase
+      .from('rooms')
+      .select('id')
+      .eq('id', roomId)
+      .single();
+
+    if (fetchError || !existingRoom) {
+      return NextResponse.json(
+        { error: 'Room not found' },
+        { status: 404 }
+      );
+    }
+
+    // Delete user_tracks for this room first (explicit deletion to bypass potential RLS issues)
+    const { error: userTracksError } = await supabase
+      .from('user_tracks')
+      .delete()
+      .eq('room_id', roomId);
+
+    if (userTracksError) {
+      console.error('Error deleting user tracks:', userTracksError);
+      // Continue anyway - table might not exist or might be empty
+    }
+
+    // Delete room_tracks for this room (in case CASCADE isn't set up)
+    const { error: roomTracksError } = await supabase
       .from('room_tracks')
       .delete()
       .eq('room_id', roomId);
 
-    // Delete the room
-    const { error } = await supabase
+    if (roomTracksError) {
+      console.error('Error deleting room tracks:', roomTracksError);
+      // Continue anyway - table might not exist or might be empty
+    }
+
+    // Delete the room itself
+    const { error: deleteError, count } = await supabase
       .from('rooms')
       .delete()
-      .eq('id', roomId);
+      .eq('id', roomId)
+      .select();
 
-    if (error) {
-      console.error('Error deleting room:', error);
+    if (deleteError) {
+      console.error('Error deleting room:', deleteError);
       return NextResponse.json(
-        { error: 'Failed to delete room' },
+        { error: 'Failed to delete room: ' + deleteError.message },
         { status: 500 }
       );
     }
 
-    return NextResponse.json({ success: true });
+    // Verify the room was actually deleted
+    const { data: checkRoom } = await supabase
+      .from('rooms')
+      .select('id')
+      .eq('id', roomId)
+      .single();
+
+    if (checkRoom) {
+      console.error('Room still exists after deletion attempt:', roomId);
+      return NextResponse.json(
+        { error: 'Room deletion failed - room still exists. This may be due to database permissions.' },
+        { status: 500 }
+      );
+    }
+
+    return NextResponse.json({ success: true, deleted: roomId });
   } catch (error) {
     console.error('Error in DELETE room:', error);
     return NextResponse.json(
-      { error: 'Failed to delete room' },
+      { error: 'Failed to delete room: ' + (error instanceof Error ? error.message : 'Unknown error') },
       { status: 500 }
     );
   }

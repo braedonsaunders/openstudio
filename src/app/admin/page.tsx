@@ -567,6 +567,7 @@ function RoomsTab() {
   const [selectedRoom, setSelectedRoom] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [deleteInProgress, setDeleteInProgress] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
 
   const loadRooms = useCallback(async () => {
     setIsLoading(true);
@@ -592,16 +593,25 @@ function RoomsTab() {
   const handleDeleteRoom = async () => {
     if (!selectedRoom) return;
     setDeleteInProgress(true);
+    setDeleteError(null);
     try {
       const response = await fetch(`/api/rooms?id=${selectedRoom}`, {
         method: 'DELETE',
       });
-      if (response.ok) {
+      const data = await response.json();
+
+      if (response.ok && data.success) {
         setRooms(rooms.filter(r => r.id !== selectedRoom));
         setShowDeleteModal(false);
         setSelectedRoom(null);
+      } else {
+        const errorMessage = data.error || 'Failed to delete room';
+        setDeleteError(errorMessage);
+        console.error('Failed to delete room:', errorMessage);
       }
     } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : 'Network error occurred';
+      setDeleteError(errorMessage);
       console.error('Failed to delete room:', error);
     } finally {
       setDeleteInProgress(false);
@@ -743,7 +753,7 @@ function RoomsTab() {
       )}
 
       {/* Delete Confirmation Modal */}
-      <Modal isOpen={showDeleteModal} onClose={() => setShowDeleteModal(false)} title="Delete Room">
+      <Modal isOpen={showDeleteModal} onClose={() => { setShowDeleteModal(false); setDeleteError(null); }} title="Delete Room">
         <div className="space-y-4">
           <p className="text-gray-500 dark:text-gray-400">
             Are you sure you want to delete room{' '}
@@ -754,8 +764,16 @@ function RoomsTab() {
           <p className="text-sm text-red-500">
             This will permanently delete the room and all associated tracks. This action cannot be undone.
           </p>
+          {deleteError && (
+            <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                <p className="text-sm text-red-500">{deleteError}</p>
+              </div>
+            </div>
+          )}
           <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setShowDeleteModal(false)}>
+            <Button variant="ghost" onClick={() => { setShowDeleteModal(false); setDeleteError(null); }}>
               Cancel
             </Button>
             <Button
@@ -768,7 +786,7 @@ function RoomsTab() {
               ) : (
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
-              Delete Room
+              {deleteError ? 'Retry Delete' : 'Delete Room'}
             </Button>
           </div>
         </div>
