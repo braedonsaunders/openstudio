@@ -90,7 +90,6 @@ export function PanelDock({
               title={label}
             >
               <Icon className="w-3.5 h-3.5" />
-              <span className="hidden xl:inline">{label}</span>
             </button>
           ))}
         </div>
