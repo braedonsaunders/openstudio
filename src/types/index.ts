@@ -117,6 +117,35 @@ export interface WebRTCStats {
   timestamp: number;
 }
 
+// Real-time audio performance metrics
+export interface AudioPerformanceMetrics {
+  // Timing metrics (all in ms)
+  audioContextLatency: number; // BaseLatency + OutputLatency
+  jsProcessingTime: number; // Time spent in JS audio processing
+  effectsProcessingTime: number; // Time spent in effects chain
+  totalLatency: number; // Sum of all latency sources
+
+  // Buffer metrics
+  currentBufferSize: number;
+  underruns: number; // Audio buffer underruns count
+
+  // Per-track metrics
+  trackMetrics: Map<string, TrackPerformanceMetrics>;
+
+  // Timestamps
+  lastUpdate: number;
+}
+
+export interface TrackPerformanceMetrics {
+  trackId: string;
+  inputLevel: number;
+  outputLevel: number;
+  effectsTime: number;
+  isMuted: boolean;
+  isSolo: boolean;
+  isClipping: boolean;
+}
+
 export interface RoomMessage {
   type: 'chat' | 'system' | 'sync' | 'control';
   userId: string;

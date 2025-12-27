@@ -6,6 +6,7 @@ import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { useTrackPersistence } from '@/hooks/useTrackPersistence';
+import { useTrackAudioSync } from '@/hooks/useTrackAudioSync';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { MenuBar } from './menu-bar';
@@ -102,6 +103,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   // Track persistence - automatically saves track settings changes to database
   useTrackPersistence(roomId);
+
+  // Sync track audio state (mute/solo/volume/effects) with audio engine
+  useTrackAudioSync(currentUser?.id);
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);

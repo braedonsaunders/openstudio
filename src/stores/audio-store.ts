@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { JitterStats, WebRTCStats, RoomSettings } from '@/types';
+import type { JitterStats, WebRTCStats, RoomSettings, AudioPerformanceMetrics, TrackPerformanceMetrics } from '@/types';
 
 interface AudioState {
   // Settings
@@ -20,6 +20,9 @@ interface AudioState {
   webrtcStats: WebRTCStats | null;
   connectionQuality: 'excellent' | 'good' | 'fair' | 'poor';
   currentBufferSize: number;
+
+  // Performance metrics
+  performanceMetrics: AudioPerformanceMetrics;
 
   // Playback
   isPlaying: boolean;
@@ -49,6 +52,8 @@ interface AudioState {
   setWebRTCStats: (stats: WebRTCStats) => void;
   setConnectionQuality: (quality: 'excellent' | 'good' | 'fair' | 'poor') => void;
   setCurrentBufferSize: (size: number) => void;
+  setPerformanceMetrics: (metrics: Partial<AudioPerformanceMetrics>) => void;
+  updateTrackMetrics: (trackId: string, metrics: TrackPerformanceMetrics) => void;
   setPlaying: (playing: boolean) => void;
   setCurrentTime: (time: number) => void;
   setDuration: (duration: number) => void;
@@ -77,7 +82,18 @@ const initialJitterStats: JitterStats = {
   recommendedBuffer: 256,
 };
 
-export const useAudioStore = create<AudioState>((set) => ({
+const initialPerformanceMetrics: AudioPerformanceMetrics = {
+  audioContextLatency: 0,
+  jsProcessingTime: 0,
+  effectsProcessingTime: 0,
+  totalLatency: 0,
+  currentBufferSize: 256,
+  underruns: 0,
+  trackMetrics: new Map(),
+  lastUpdate: 0,
+};
+
+export const useAudioStore = create<AudioState>((set, get) => ({
   settings: defaultSettings,
   inputDeviceId: null,
   outputDeviceId: null,
@@ -91,6 +107,7 @@ export const useAudioStore = create<AudioState>((set) => ({
   webrtcStats: null,
   connectionQuality: 'good',
   currentBufferSize: 256,
+  performanceMetrics: initialPerformanceMetrics,
   isPlaying: false,
   currentTime: 0,
   duration: 0,
@@ -117,6 +134,26 @@ export const useAudioStore = create<AudioState>((set) => ({
   setWebRTCStats: (stats) => set({ webrtcStats: stats }),
   setConnectionQuality: (quality) => set({ connectionQuality: quality }),
   setCurrentBufferSize: (size) => set({ currentBufferSize: size }),
+  setPerformanceMetrics: (metrics) =>
+    set((state) => ({
+      performanceMetrics: {
+        ...state.performanceMetrics,
+        ...metrics,
+        lastUpdate: Date.now(),
+      },
+    })),
+  updateTrackMetrics: (trackId, metrics) =>
+    set((state) => {
+      const newTrackMetrics = new Map(state.performanceMetrics.trackMetrics);
+      newTrackMetrics.set(trackId, metrics);
+      return {
+        performanceMetrics: {
+          ...state.performanceMetrics,
+          trackMetrics: newTrackMetrics,
+          lastUpdate: Date.now(),
+        },
+      };
+    }),
   setPlaying: (playing) => set({ isPlaying: playing }),
   setCurrentTime: (time) => set({ currentTime: time }),
   setDuration: (duration) => set({ duration: duration }),
@@ -141,6 +178,7 @@ export const useAudioStore = create<AudioState>((set) => ({
       webrtcStats: null,
       connectionQuality: 'good',
       currentBufferSize: 256,
+      performanceMetrics: initialPerformanceMetrics,
       isPlaying: false,
       currentTime: 0,
       duration: 0,
