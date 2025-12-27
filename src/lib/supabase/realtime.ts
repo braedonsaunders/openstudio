@@ -1,5 +1,5 @@
 import { supabase, getRealtimeChannel, RealtimeChannel } from './client';
-import type { User, BackingTrack, RoomMessage, TrackQueue } from '@/types';
+import type { User, BackingTrack, RoomMessage, TrackQueue, TrackAudioSettings, TrackEffectsChain, UserTrack } from '@/types';
 
 export interface RoomState {
   users: Record<string, User>;
@@ -74,6 +74,27 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'ai:generate' }, ({ payload }) => {
       this.emit('ai:generate', payload);
+    });
+
+    // User track events
+    this.channel.on('broadcast', { event: 'usertrack:add' }, ({ payload }) => {
+      this.emit('usertrack:add', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'usertrack:remove' }, ({ payload }) => {
+      this.emit('usertrack:remove', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'usertrack:update' }, ({ payload }) => {
+      this.emit('usertrack:update', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'usertrack:effects' }, ({ payload }) => {
+      this.emit('usertrack:effects', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'usertrack:settings' }, ({ payload }) => {
+      this.emit('usertrack:settings', payload);
     });
 
     await this.channel.subscribe(async (status) => {
@@ -171,6 +192,47 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'ai:generate',
       payload: { ...request, userId: this.userId },
+    });
+  }
+
+  // User track broadcasts
+  async broadcastUserTrackAdd(track: UserTrack): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'usertrack:add',
+      payload: { track, userId: this.userId },
+    });
+  }
+
+  async broadcastUserTrackRemove(trackId: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'usertrack:remove',
+      payload: { trackId, userId: this.userId },
+    });
+  }
+
+  async broadcastUserTrackUpdate(trackId: string, updates: Partial<UserTrack>): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'usertrack:update',
+      payload: { trackId, updates, userId: this.userId },
+    });
+  }
+
+  async broadcastUserTrackEffects(trackId: string, effects: Partial<TrackEffectsChain>): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'usertrack:effects',
+      payload: { trackId, effects, userId: this.userId },
+    });
+  }
+
+  async broadcastUserTrackSettings(trackId: string, settings: Partial<TrackAudioSettings>): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'usertrack:settings',
+      payload: { trackId, settings, userId: this.userId },
     });
   }
 
