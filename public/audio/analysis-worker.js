@@ -447,15 +447,21 @@ function analyzeLongTerm(combinedAudio) {
     // More accurate than essentia's KeyExtractor for real music
     try {
       // Compute spectrum for HPCP
-      const frameSize = 8192;
+      const frameSize = 4096;
       const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
 
-      // Compute HPCP (Harmonic Pitch Class Profile)
-      // Use wider frequency range for better key detection (40-5000 Hz)
+      // Compute frequencies array for HPCP (required parameter)
+      const numBins = spectrum.spectrum.length;
+      const frequencies = new Float32Array(numBins);
+      const nyquist = sampleRate / 2;
+      for (let i = 0; i < numBins; i++) {
+        frequencies[i] = (i / numBins) * nyquist;
+      }
+
+      // Compute HPCP with minimal parameters to avoid API issues
       const hpcpResult = essentia.HPCP(
         spectrum.spectrum,
-        essentia.arrayToVector(new Float32Array(spectrum.spectrum.length)),
-        true, 500, 40, 5000, false, 0.5, true, sampleRate
+        essentia.arrayToVector(frequencies)
       );
 
       const hpcpArray = essentia.vectorToArray(hpcpResult.hpcp);
@@ -543,13 +549,9 @@ function analyzeLongTerm(combinedAudio) {
       }
     } catch (e) {
       console.warn('[Worker] HPCP key detection failed:', e.message || e);
-      // Fallback: try essentia's KeyExtractor
+      // Fallback: try essentia's KeyExtractor with default parameters
       try {
-        const keyResult = essentia.KeyExtractor(essentiaAudio, {
-          frameSize: 8192,
-          hopSize: 4096,
-          sampleRate: sampleRate
-        });
+        const keyResult = essentia.KeyExtractor(essentiaAudio);
         if (keyResult && keyResult.key && keyResult.strength > 0.5 && !lastKey) {
           lastKey = keyResult.key;
           lastKeyScale = keyResult.scale;
