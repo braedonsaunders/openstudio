@@ -90,7 +90,7 @@ export function UserMenu() {
     );
   }
 
-  if (!user) {
+  if (!user || !profile) {
     return (
       <>
         <div className="flex items-center gap-2">
