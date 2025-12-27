@@ -13,6 +13,9 @@ let keyBuffer = [];
 let lastBPM = null;
 let lastKey = null;
 let lastKeyScale = null;
+let lastKeyStrength = 0;
+let lastEnergy = 0;
+let lastDanceability = 0;
 
 const FRAMES_FOR_KEY = 10; // ~1 second of audio for key detection
 const FRAMES_FOR_BPM = 30; // ~3 seconds for BPM
@@ -121,9 +124,17 @@ function analyzeFrame(audioData, frameSize) {
       chordConfidence = chordResult.confidence;
     } catch (e) {}
 
+    // Energy estimation (spectral energy distribution)
+    let energy = 0;
+    try {
+      const energyResult = essentia.Energy(essentiaFrame);
+      energy = energyResult.energy || 0;
+    } catch (e) {}
+
     return {
       rms,
       loudness: rms * 100,
+      energy,
       spectralCentroid,
       tunerNote,
       tunerFrequency,
@@ -132,9 +143,10 @@ function analyzeFrame(audioData, frameSize) {
       chordConfidence,
       key: lastKey,
       keyScale: lastKeyScale,
-      keyConfidence: lastKey ? 0.8 : 0,
+      keyConfidence: lastKeyStrength,
       bpm: lastBPM,
       bpmConfidence: lastBPM ? 0.8 : 0,
+      danceability: lastDanceability,
       timestamp: Date.now(),
     };
   } catch (error) {
@@ -150,36 +162,132 @@ function analyzeLongTerm(combinedAudio) {
   try {
     const essentiaAudio = essentia.arrayToVector(combinedAudio);
 
-    // Key detection - simplified approach using chroma-based analysis
-    // Note: essentia.js WASM has limited algorithm support, so we use a simpler method
+    // Key detection using KeyExtractor (bundles Windowing -> Spectrum -> SpectralPeaks -> HPCP -> Key)
     try {
-      // For now, skip complex key detection as essentia.js WASM has compatibility issues
-      // TODO: Implement using essentia.js TensorFlow models for better key detection
-      // The UI will show "detecting..." until we have a proper solution
+      // Use KeyExtractor with options object
+      // profileType options: 'bgate' (default), 'edma'/'edmm' (electronic), 'gomez' (general), 'krumhansl', 'temperley'
+      const keyResult = essentia.KeyExtractor(essentiaAudio, {
+        profileType: 'edma', // Best for electronic/pop music
+        frameSize: 4096,
+        hopSize: 2048,
+        sampleRate: sampleRate
+      });
+
+      if (keyResult.key && keyResult.strength > 0.3) {
+        const detectedKey = keyResult.key;
+        const detectedScale = keyResult.scale; // 'major' or 'minor'
+        const strength = keyResult.strength;
+
+        keyBuffer.push({ key: detectedKey, scale: detectedScale, strength });
+        if (keyBuffer.length > 5) {
+          keyBuffer.shift();
+        }
+
+        // Find most common key in buffer (weighted by strength)
+        const keyCounts = {};
+        keyBuffer.forEach(k => {
+          const keyId = `${k.key}_${k.scale}`;
+          keyCounts[keyId] = (keyCounts[keyId] || 0) + k.strength;
+        });
+
+        let bestKey = null;
+        let bestScore = 0;
+        for (const [keyId, score] of Object.entries(keyCounts)) {
+          if (score > bestScore) {
+            bestScore = score;
+            bestKey = keyId;
+          }
+        }
+
+        if (bestKey) {
+          const [key, scale] = bestKey.split('_');
+          lastKey = key;
+          lastKeyScale = scale;
+          lastKeyStrength = Math.min(bestScore / keyBuffer.length, 1);
+          console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)})`);
+        }
+      }
     } catch (e) {
-      // Key detection disabled for now
+      // Try with positional parameters if options object doesn't work
+      try {
+        // Some essentia.js versions use positional params
+        const keyResult = essentia.KeyExtractor(essentiaAudio);
+        if (keyResult && keyResult.key && keyResult.strength > 0.3) {
+          lastKey = keyResult.key;
+          lastKeyScale = keyResult.scale;
+          lastKeyStrength = keyResult.strength;
+          console.log(`[Worker] Key detected (fallback): ${lastKey} ${lastKeyScale}`);
+        }
+      } catch (e2) {
+        console.warn('[Worker] Key detection failed:', e.message || e);
+      }
     }
 
-    // BPM detection
+    // Tuning frequency detection (A=440Hz standard or other)
     try {
-      const rhythmResult = essentia.RhythmExtractor2013(essentiaAudio);
+      const tuningResult = essentia.TuningFrequency(essentiaAudio);
+      if (tuningResult && tuningResult.tuningFrequency) {
+        // Could be useful to display if significantly off from 440Hz
+        const tuningHz = tuningResult.tuningFrequency;
+        if (Math.abs(tuningHz - 440) > 2) {
+          console.log(`[Worker] Tuning: ${tuningHz.toFixed(1)} Hz (off from 440Hz)`);
+        }
+      }
+    } catch (e) {
+      // Tuning detection not critical
+    }
 
-      if (rhythmResult.bpm > 40 && rhythmResult.bpm < 240) {
-        bpmBuffer.push(rhythmResult.bpm);
+    // Danceability estimation (based on rhythm regularity)
+    try {
+      const danceResult = essentia.Danceability(essentiaAudio);
+      if (danceResult && danceResult.danceability >= 0) {
+        lastDanceability = danceResult.danceability;
+      }
+    } catch (e) {
+      // Danceability not critical, skip if fails
+    }
+
+    // BPM detection using PercivalBpmEstimator (more reliable) or RhythmExtractor2013
+    try {
+      // Try PercivalBpmEstimator first (recommended in docs)
+      let bpm = null;
+      try {
+        const percivalResult = essentia.PercivalBpmEstimator(essentiaAudio);
+        if (percivalResult && percivalResult.bpm > 40 && percivalResult.bpm < 240) {
+          bpm = percivalResult.bpm;
+        }
+      } catch (e1) {
+        // Fall back to RhythmExtractor2013
+        const rhythmResult = essentia.RhythmExtractor2013(essentiaAudio);
+        if (rhythmResult && rhythmResult.bpm > 40 && rhythmResult.bpm < 240) {
+          bpm = rhythmResult.bpm;
+        }
+      }
+
+      if (bpm) {
+        bpmBuffer.push(bpm);
         if (bpmBuffer.length > 5) {
           bpmBuffer.shift();
         }
 
-        // Use median BPM
+        // Use median BPM for stability
         const sortedBPM = [...bpmBuffer].sort((a, b) => a - b);
         const medianBPM = sortedBPM[Math.floor(sortedBPM.length / 2)];
 
         if (!lastBPM || Math.abs(medianBPM - lastBPM) < 15) {
           lastBPM = Math.round(medianBPM);
+          console.log(`[Worker] BPM detected: ${lastBPM}`);
         }
       }
     } catch (e) {
-      console.error('[Worker] BPM detection error:', e);
+      console.error('[Worker] BPM detection error:', e.message || e);
+    }
+
+    // Memory cleanup - delete the vector to prevent WASM memory leaks
+    try {
+      essentia.deleteVector(essentiaAudio);
+    } catch (e) {
+      // deleteVector might not exist in all versions
     }
   } catch (error) {
     console.error('[Worker] Long-term analysis error:', error);
@@ -240,6 +348,9 @@ function reset() {
   lastBPM = null;
   lastKey = null;
   lastKeyScale = null;
+  lastKeyStrength = 0;
+  lastEnergy = 0;
+  lastDanceability = 0;
 }
 
 // Handle messages from main thread
