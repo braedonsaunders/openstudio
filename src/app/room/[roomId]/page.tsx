@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { StudioLayout } from '@/components/studio/studio-layout';
+import { DAWLayout } from '@/components/daw';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -99,9 +99,9 @@ export default function RoomPage() {
     setHasJoined(true);
   }, [userName, instrument, join]);
 
-  // Show studio layout once joined
+  // Show DAW layout once joined
   if (hasJoined && isConnected) {
-    return <StudioLayout roomId={roomId} />;
+    return <DAWLayout roomId={roomId} />;
   }
 
   return (

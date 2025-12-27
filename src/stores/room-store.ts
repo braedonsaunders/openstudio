@@ -276,7 +276,7 @@ export const useRoomStore = create<RoomState>()(
         type: 'sync',
         userId: state.currentUser.id,
         content: '',
-        timestamp: Date.now(),
+        timestamp: new Date().toISOString(),
         data: {
           type: 'analysis',
           ...analysisData,
