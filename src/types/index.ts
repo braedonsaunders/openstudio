@@ -249,6 +249,10 @@ export interface UserTrack {
   isRecording: boolean;
   stream?: MediaStream;
   createdAt: number;
+  // Ownership and persistence fields
+  ownerUserId?: string; // Original owner (for reassignment on rejoin)
+  ownerUserName?: string; // Display name of original owner
+  isActive?: boolean; // Whether the owner is currently connected
 }
 
 // Extended Room types for room management

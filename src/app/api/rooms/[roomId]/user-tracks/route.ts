@@ -67,6 +67,9 @@ export async function GET(
       isArmed: track.is_armed,
       isRecording: track.is_recording,
       createdAt: new Date(track.created_at).getTime(),
+      ownerUserId: track.owner_user_id || track.user_id,
+      ownerUserName: track.owner_user_name,
+      isActive: track.is_active ?? true,
     }));
 
     return NextResponse.json(userTracks);
@@ -122,6 +125,9 @@ export async function POST(
         volume: track.volume ?? 1,
         is_armed: track.isArmed ?? true,
         is_recording: track.isRecording ?? false,
+        owner_user_id: track.ownerUserId || track.userId,
+        owner_user_name: track.ownerUserName,
+        is_active: track.isActive ?? true,
       }, { onConflict: 'id' })
       .select()
       .single();
@@ -149,6 +155,9 @@ export async function POST(
       isArmed: data.is_armed,
       isRecording: data.is_recording,
       createdAt: new Date(data.created_at).getTime(),
+      ownerUserId: data.owner_user_id || data.user_id,
+      ownerUserName: data.owner_user_name,
+      isActive: data.is_active ?? true,
     });
   } catch (error) {
     console.error('Error in POST user track:', error);
@@ -185,6 +194,10 @@ export async function PATCH(
     if (updates.volume !== undefined) dbUpdates.volume = updates.volume;
     if (updates.isArmed !== undefined) dbUpdates.is_armed = updates.isArmed;
     if (updates.isRecording !== undefined) dbUpdates.is_recording = updates.isRecording;
+    if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
+    if (updates.ownerUserId !== undefined) dbUpdates.owner_user_id = updates.ownerUserId;
+    if (updates.ownerUserName !== undefined) dbUpdates.owner_user_name = updates.ownerUserName;
+    if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
 
     const { error } = await supabase
       .from('user_tracks')

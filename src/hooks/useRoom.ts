@@ -8,7 +8,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useAudioEngine } from './useAudioEngine';
-import type { User, Room, BackingTrack, TrackQueue } from '@/types';
+import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
 
 interface UseRoomOptions {
   onUserJoined?: (user: User) => void;
@@ -115,13 +115,58 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Initialize audio engine
       await initialize();
 
-      // Get or create user's first track to get audio settings
+      // Load persisted user tracks from the database
       const userTracksState = useUserTracksStore.getState();
-      let userTracks = userTracksState.getTracksByUser(user.id);
+      let userTracks: UserTrack[] = [];
+
+      try {
+        const tracksResponse = await fetch(`/api/rooms/${roomId}/user-tracks`);
+        if (tracksResponse.ok) {
+          const persistedTracks: UserTrack[] = await tracksResponse.json();
+
+          // Load all tracks into the store
+          userTracksState.loadPersistedTracks(persistedTracks);
+
+          // Check if this user had any tracks previously (by owner ID)
+          const ownedTracks = persistedTracks.filter(t => t.ownerUserId === user.id);
+
+          if (ownedTracks.length > 0) {
+            // User is rejoining - reassign their tracks back to them
+            console.log(`Restoring ${ownedTracks.length} tracks for rejoining user ${user.name}`);
+            for (const track of ownedTracks) {
+              userTracksState.assignTrackToUser(track.id, user.id, user.name);
+              // Persist the reactivation
+              fetch(`/api/rooms/${roomId}/user-tracks`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  trackId: track.id,
+                  userId: user.id,
+                  isActive: true,
+                }),
+              }).catch(err => console.error('Failed to update track status:', err));
+            }
+            userTracks = userTracksState.getTracksByUser(user.id);
+          }
+        }
+      } catch (err) {
+        console.error('Failed to load persisted user tracks:', err);
+      }
+
+      // Create a default track if user has none
       if (userTracks.length === 0) {
-        // Create a default track for the user
-        userTracksState.addTrack(user.id, 'Track 1');
         userTracks = userTracksState.getTracksByUser(user.id);
+        if (userTracks.length === 0) {
+          const newTrack = userTracksState.addTrack(user.id, 'Track 1', undefined, user.name);
+          userTracks = [newTrack];
+
+          // Persist the new track
+          fetch(`/api/rooms/${roomId}/user-tracks`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newTrack),
+          }).catch(err => console.error('Failed to persist new track:', err));
+        }
       }
 
       // Use the first track's audio settings for capture
@@ -223,9 +268,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       realtime.on('presence:leave', (data) => {
         const { users: leftUsers } = data as { users: User[] };
+        const userTracksStore = useUserTracksStore.getState();
         leftUsers.forEach((u) => {
           removeUser(u.id);
           removeRemoteStream(u.id);
+          // Mark their tracks as inactive (greyed out)
+          userTracksStore.setUserTracksActive(u.id, false);
           options.onUserLeft?.(u.id);
         });
       });
@@ -303,6 +351,42 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         });
       });
 
+      // User track broadcast handlers
+      realtime.on('usertrack:add', (data) => {
+        const payload = data as { track: UserTrack; userId: string };
+        if (payload.userId === user.id) return; // Skip our own broadcasts
+        const userTracksStore = useUserTracksStore.getState();
+        userTracksStore.loadPersistedTracks([payload.track]);
+      });
+
+      realtime.on('usertrack:remove', (data) => {
+        const payload = data as { trackId: string; userId: string };
+        if (payload.userId === user.id) return;
+        const userTracksStore = useUserTracksStore.getState();
+        userTracksStore.removeTrack(payload.trackId);
+      });
+
+      realtime.on('usertrack:update', (data) => {
+        const payload = data as { trackId: string; updates: Partial<UserTrack>; userId: string };
+        if (payload.userId === user.id) return;
+        const userTracksStore = useUserTracksStore.getState();
+        userTracksStore.updateTrack(payload.trackId, payload.updates);
+      });
+
+      realtime.on('usertrack:settings', (data) => {
+        const payload = data as { trackId: string; settings: Partial<UserTrack['audioSettings']>; userId: string };
+        if (payload.userId === user.id) return;
+        const userTracksStore = useUserTracksStore.getState();
+        userTracksStore.updateTrackSettings(payload.trackId, payload.settings);
+      });
+
+      realtime.on('usertrack:effects', (data) => {
+        const payload = data as { trackId: string; effects: Partial<UserTrack['audioSettings']['effects']>; userId: string };
+        if (payload.userId === user.id) return;
+        const userTracksStore = useUserTracksStore.getState();
+        userTracksStore.updateTrackEffects(payload.trackId, payload.effects);
+      });
+
       await realtime.connect(user);
       realtimeRef.current = realtime;
 
@@ -336,9 +420,38 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   // Leave room
   const leave = useCallback(async () => {
+    // Get current user before disconnecting
+    const currentUserId = userIdRef.current;
+
     // Check if we're the last user before disconnecting
     const userCount = realtimeRef.current?.getUserCount() ?? 0;
     const isLastUser = userCount <= 1;
+
+    // Mark this user's tracks as inactive (not deleted) so they persist
+    const userTracksState = useUserTracksStore.getState();
+    const userTracks = userTracksState.getTracksByUser(currentUserId);
+
+    // Broadcast that this user's tracks are now inactive
+    if (realtimeRef.current && userTracks.length > 0) {
+      for (const track of userTracks) {
+        realtimeRef.current.broadcastUserTrackUpdate(track.id, { isActive: false });
+      }
+    }
+
+    // Mark tracks as inactive in local state
+    userTracksState.setUserTracksActive(currentUserId, false);
+
+    // Persist the inactive state to database
+    for (const track of userTracks) {
+      fetch(`/api/rooms/${roomId}/user-tracks`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trackId: track.id,
+          isActive: false,
+        }),
+      }).catch(err => console.error('Failed to mark track as inactive:', err));
+    }
 
     await realtimeRef.current?.disconnect();
     await cloudflareRef.current?.leaveRoom();
