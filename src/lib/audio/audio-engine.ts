@@ -348,6 +348,9 @@ export class AudioEngine {
   }
 
   stopBackingTrack(): void {
+    // Set isPlaying false BEFORE stopping to prevent the onended callback
+    // from interfering with subsequent playback (e.g., during seek while playing)
+    this.isPlaying = false;
     if (this.backingTrackSource) {
       try {
         this.backingTrackSource.stop();
@@ -357,10 +360,12 @@ export class AudioEngine {
       this.backingTrackSource.disconnect();
       this.backingTrackSource = null;
     }
-    this.isPlaying = false;
   }
 
   stopStemmedTrack(): void {
+    // Set isPlaying false BEFORE stopping to prevent the onended callback
+    // from interfering with subsequent playback (e.g., during seek while playing)
+    this.isPlaying = false;
     for (const source of this.stemSources.values()) {
       try {
         source.stop();
@@ -370,7 +375,6 @@ export class AudioEngine {
       source.disconnect();
     }
     this.stemSources.clear();
-    this.isPlaying = false;
   }
 
   setStemEnabled(stemType: string, enabled: boolean): void {
