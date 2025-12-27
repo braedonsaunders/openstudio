@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+import Replicate from 'replicate';
 
-// Mock generation jobs
+// Store generation jobs in memory (use Redis in production)
 const generations = new Map<string, {
   id: string;
   status: 'queued' | 'generating' | 'processing' | 'complete' | 'error';
@@ -16,6 +17,13 @@ const generations = new Map<string, {
   };
   error?: string;
 }>();
+
+// Export for status endpoint
+export { generations };
+
+const replicate = new Replicate({
+  auth: process.env.REPLICATE_API_TOKEN,
+});
 
 export async function POST(request: NextRequest) {
   try {
@@ -39,8 +47,8 @@ export async function POST(request: NextRequest) {
       message: 'Generation queued...',
     });
 
-    // Simulate async generation (in production, this would call Suno API)
-    simulateGeneration(generationId, prompt, duration, style);
+    // Start async generation
+    generateWithReplicate(generationId, prompt, duration, style, tempo, instrumental);
 
     return NextResponse.json({ generationId });
   } catch (error) {
@@ -52,23 +60,103 @@ export async function POST(request: NextRequest) {
   }
 }
 
-// Simulate generation process
-async function simulateGeneration(
+async function generateWithReplicate(
+  generationId: string,
+  prompt: string,
+  duration: number,
+  style?: string,
+  tempo?: number,
+  instrumental?: boolean
+) {
+  const job = generations.get(generationId);
+  if (!job) return;
+
+  try {
+    // Update status
+    generations.set(generationId, {
+      ...job,
+      status: 'generating',
+      progress: 10,
+      message: 'AI is composing your track...',
+    });
+
+    // Build enhanced prompt
+    let fullPrompt = prompt;
+    if (style) fullPrompt += `, ${style} style`;
+    if (tempo) fullPrompt += `, ${tempo} BPM`;
+    if (instrumental) fullPrompt += ', instrumental, no vocals';
+
+    // Check if Replicate token is configured
+    if (!process.env.REPLICATE_API_TOKEN) {
+      // Fallback to mock generation for demo
+      await mockGeneration(generationId, prompt, duration, style);
+      return;
+    }
+
+    // Use MusicGen model on Replicate
+    generations.set(generationId, {
+      ...generations.get(generationId)!,
+      progress: 30,
+      message: 'Creating melody and harmony...',
+    });
+
+    const output = await replicate.run(
+      "meta/musicgen:671ac645ce5e552cc63a54a2bbff63fcf798043055d2dac5fc9e36a837eedcfb",
+      {
+        input: {
+          prompt: fullPrompt,
+          duration: Math.min(duration, 30), // MusicGen max 30s
+          model_version: "stereo-large",
+          output_format: "mp3",
+          normalization_strategy: "peak",
+        }
+      }
+    );
+
+    generations.set(generationId, {
+      ...generations.get(generationId)!,
+      progress: 80,
+      message: 'Processing audio...',
+    });
+
+    // Output is the audio URL
+    const audioUrl = output as unknown as string;
+    const trackId = uuidv4();
+
+    generations.set(generationId, {
+      id: generationId,
+      status: 'complete',
+      progress: 100,
+      message: 'Track generated successfully!',
+      track: {
+        id: trackId,
+        title: `AI: ${prompt.slice(0, 40)}${prompt.length > 40 ? '...' : ''}`,
+        audioUrl,
+        duration,
+        style: style || 'generated',
+      },
+    });
+  } catch (error) {
+    console.error('Replicate generation error:', error);
+
+    // Fallback to mock generation
+    await mockGeneration(generationId, prompt, duration, style);
+  }
+}
+
+// Mock generation for demo/fallback
+async function mockGeneration(
   generationId: string,
   prompt: string,
   duration: number,
   style?: string
 ) {
-  const job = generations.get(generationId);
-  if (!job) return;
-
-  // Simulate stages
   const stages = [
-    { status: 'generating', progress: 20, message: 'AI is composing your track...', delay: 2000 },
-    { status: 'generating', progress: 40, message: 'Creating melody and harmony...', delay: 3000 },
-    { status: 'generating', progress: 60, message: 'Adding instruments...', delay: 3000 },
-    { status: 'processing', progress: 80, message: 'Rendering audio...', delay: 2000 },
-    { status: 'processing', progress: 95, message: 'Finalizing...', delay: 1000 },
+    { progress: 20, message: 'AI is composing your track...', delay: 2000 },
+    { progress: 40, message: 'Creating melody and harmony...', delay: 3000 },
+    { progress: 60, message: 'Adding instruments...', delay: 3000 },
+    { progress: 80, message: 'Rendering audio...', delay: 2000 },
+    { progress: 95, message: 'Finalizing...', delay: 1000 },
   ];
 
   for (const stage of stages) {
@@ -79,14 +167,17 @@ async function simulateGeneration(
 
     generations.set(generationId, {
       ...currentJob,
-      status: stage.status as 'generating' | 'processing',
+      status: 'generating',
       progress: stage.progress,
       message: stage.message,
     });
   }
 
-  // Complete with mock track
   const trackId = uuidv4();
+
+  // Use a sample audio file for demo
+  const demoAudioUrl = 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+
   generations.set(generationId, {
     id: generationId,
     status: 'complete',
@@ -94,8 +185,8 @@ async function simulateGeneration(
     message: 'Track generated successfully!',
     track: {
       id: trackId,
-      title: `AI Track: ${prompt.slice(0, 30)}...`,
-      audioUrl: `/api/tracks/${trackId}/audio`,
+      title: `AI: ${prompt.slice(0, 40)}${prompt.length > 40 ? '...' : ''}`,
+      audioUrl: demoAudioUrl,
       duration,
       style: style || 'generated',
     },

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { separations } from '../../separate/route';
 
 export async function GET(
   request: NextRequest,
@@ -6,25 +7,22 @@ export async function GET(
 ) {
   const { jobId } = await params;
 
-  // Mock response for demo purposes
-  // In production, would fetch from shared storage
-  const mockProgress = Math.min(100, Math.floor(Math.random() * 30) + 70);
+  // Get job from shared storage
+  const job = separations.get(jobId);
 
-  if (mockProgress >= 100) {
-    return NextResponse.json({
-      status: 'completed',
-      progress: 100,
-      stems: {
-        vocals: `/api/tracks/${jobId}/stems/vocals`,
-        drums: `/api/tracks/${jobId}/stems/drums`,
-        bass: `/api/tracks/${jobId}/stems/bass`,
-        other: `/api/tracks/${jobId}/stems/other`,
-      },
-    });
+  if (!job) {
+    return NextResponse.json(
+      { error: 'Job not found' },
+      { status: 404 }
+    );
   }
 
   return NextResponse.json({
-    status: 'processing',
-    progress: mockProgress,
+    id: job.id,
+    status: job.status,
+    progress: job.progress,
+    message: job.message,
+    stems: job.stems,
+    error: job.error,
   });
 }
