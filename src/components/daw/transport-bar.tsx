@@ -95,35 +95,35 @@ export function TransportBar({
   const keyColor = displayKey ? keyColors[displayKey] || 'bg-zinc-500' : 'bg-zinc-600';
 
   return (
-    <header className="h-14 bg-[#12121a] border-b border-white/5 flex items-center px-4 gap-4 z-30 shrink-0">
+    <header className="h-14 bg-white dark:bg-[#12121a] border-b border-gray-200 dark:border-white/5 flex items-center px-4 gap-4 z-30 shrink-0">
       {/* Logo & Room */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <Music className="w-4.5 h-4.5 text-white" />
           </div>
-          <span className="text-base font-semibold text-white hidden sm:block">OpenStudio</span>
+          <span className="text-base font-semibold text-gray-900 dark:text-white hidden sm:block">OpenStudio</span>
         </div>
 
-        <div className="h-5 w-px bg-white/10" />
+        <div className="h-5 w-px bg-gray-200 dark:bg-white/10" />
 
         <button
           onClick={handleCopyRoomId}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 transition-colors group"
+          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/5 transition-colors group"
         >
-          <span className="text-xs text-zinc-400">Room</span>
-          <span className="text-sm font-mono font-medium text-white">{roomId}</span>
+          <span className="text-xs text-gray-500 dark:text-zinc-400">Room</span>
+          <span className="text-sm font-mono font-medium text-gray-900 dark:text-white">{roomId}</span>
           {copied ? (
-            <Check className="w-3.5 h-3.5 text-emerald-400" />
+            <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
           ) : (
-            <Copy className="w-3.5 h-3.5 text-zinc-500 group-hover:text-zinc-300 transition-colors" />
+            <Copy className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 group-hover:text-gray-600 dark:group-hover:text-zinc-300 transition-colors" />
           )}
         </button>
 
         {/* Connection Status */}
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10">
-          <Zap className="w-3.5 h-3.5 text-emerald-400" />
-          <span className="text-xs font-medium text-emerald-400">12ms</span>
+          <Zap className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">12ms</span>
         </div>
       </div>
 
@@ -136,8 +136,8 @@ export function TransportBar({
           className={cn(
             'p-2 rounded-lg transition-all',
             isMaster
-              ? 'hover:bg-white/10 text-zinc-400 hover:text-white'
-              : 'text-zinc-600 cursor-not-allowed'
+              ? 'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white'
+              : 'text-gray-300 dark:text-zinc-600 cursor-not-allowed'
           )}
         >
           <SkipBack className="w-5 h-5" />
@@ -151,7 +151,7 @@ export function TransportBar({
             'w-12 h-12 rounded-full flex items-center justify-center transition-all',
             isMaster && currentTrack
               ? 'neon-button text-white'
-              : 'bg-zinc-800 text-zinc-500 cursor-not-allowed'
+              : 'bg-gray-200 dark:bg-zinc-800 text-gray-400 dark:text-zinc-500 cursor-not-allowed'
           )}
         >
           {isPlaying ? (
@@ -168,8 +168,8 @@ export function TransportBar({
           className={cn(
             'p-2 rounded-lg transition-all',
             isMaster
-              ? 'hover:bg-white/10 text-zinc-400 hover:text-white'
-              : 'text-zinc-600 cursor-not-allowed'
+              ? 'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white'
+              : 'text-gray-300 dark:text-zinc-600 cursor-not-allowed'
           )}
         >
           <SkipForward className="w-5 h-5" />
@@ -181,20 +181,20 @@ export function TransportBar({
           className={cn(
             'p-2 rounded-lg transition-all ml-2',
             loopEnabled
-              ? 'bg-indigo-500/20 text-indigo-400'
-              : 'hover:bg-white/10 text-zinc-500 hover:text-white'
+              ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+              : 'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-zinc-500 hover:text-gray-900 dark:hover:text-white'
           )}
         >
           <Repeat className="w-4 h-4" />
         </button>
 
         {/* Time Display */}
-        <div className="flex items-center gap-2 ml-4 px-3 py-1.5 rounded-lg bg-black/30">
-          <span className="time-display text-lg font-medium text-white">
+        <div className="flex items-center gap-2 ml-4 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-black/30">
+          <span className="time-display text-lg font-medium text-gray-900 dark:text-white">
             {formatTimeDetailed(currentTime)}
           </span>
-          <span className="text-zinc-500">/</span>
-          <span className="time-display text-sm text-zinc-400">
+          <span className="text-gray-400 dark:text-zinc-500">/</span>
+          <span className="time-display text-sm text-gray-500 dark:text-zinc-400">
             {formatTimeDuration(duration)}
           </span>
         </div>
@@ -204,24 +204,24 @@ export function TransportBar({
       <div className="flex items-center gap-3">
         {/* BPM Badge */}
         {displayBPM && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/5">
-            <span className="text-sm font-semibold text-white">{Math.round(displayBPM)}</span>
-            <span className="text-xs text-zinc-400">BPM</span>
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">{Math.round(displayBPM)}</span>
+            <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
           </div>
         )}
 
         {/* Key Badge */}
         {displayKey && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/5 border border-white/5">
+          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
             <div className={cn('w-2.5 h-2.5 rounded-full', keyColor)} />
-            <span className="text-sm font-semibold text-white">
+            <span className="text-sm font-semibold text-gray-900 dark:text-white">
               {displayKey}
-              <span className="text-zinc-400">{displayScale === 'minor' ? 'm' : ''}</span>
+              <span className="text-gray-500 dark:text-zinc-400">{displayScale === 'minor' ? 'm' : ''}</span>
             </span>
           </div>
         )}
 
-        <div className="h-5 w-px bg-white/10" />
+        <div className="h-5 w-px bg-gray-200 dark:bg-white/10" />
 
         {/* Mute Button */}
         <button
@@ -229,8 +229,8 @@ export function TransportBar({
           className={cn(
             'p-2.5 rounded-lg transition-all',
             isMuted
-              ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-              : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+              ? 'bg-red-500/20 text-red-500 dark:text-red-400 hover:bg-red-500/30'
+              : 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white'
           )}
         >
           {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
@@ -239,7 +239,7 @@ export function TransportBar({
         {/* Settings */}
         <button
           onClick={onSettingsClick}
-          className="p-2.5 rounded-lg bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white transition-all"
+          className="p-2.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white transition-all"
         >
           <Settings className="w-5 h-5" />
         </button>
@@ -247,7 +247,7 @@ export function TransportBar({
         {/* Leave */}
         <button
           onClick={onLeave}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/5 text-zinc-400 hover:bg-red-500/20 hover:text-red-400 transition-all"
+          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-red-500/20 hover:text-red-500 dark:hover:text-red-400 transition-all"
         >
           <LogOut className="w-4 h-4" />
           <span className="text-sm font-medium hidden sm:block">Leave</span>

@@ -20,6 +20,8 @@ import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { OutputSettingsModal } from '../settings/output-settings-modal';
+import { useTheme } from '@/components/theme/ThemeProvider';
+import { Sun, Moon } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
 import type { SunoGenerationConfig, SunoGenerationProgress } from '@/lib/ai/suno';
 
@@ -30,6 +32,10 @@ interface DAWLayoutProps {
 export type PanelType = 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai';
 
 export function DAWLayout({ roomId }: DAWLayoutProps) {
+  // Theme
+  const { resolvedTheme, toggleTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
   // Panel state
   const [activePanel, setActivePanel] = useState<PanelType>('mixer');
   const [isPanelDockVisible, setIsPanelDockVisible] = useState(true);
@@ -398,7 +404,24 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, [setStemVolume, storeStemVolume]);
 
   return (
-    <div className="daw-theme h-screen flex flex-col bg-[#0a0a0f] text-white overflow-hidden">
+    <div className={`h-screen flex flex-col overflow-hidden transition-colors ${
+      isDark
+        ? 'daw-theme bg-[#0a0a0f] text-white'
+        : 'bg-gray-50 text-gray-900'
+    }`}>
+      {/* Theme Toggle - Fixed Position */}
+      <button
+        onClick={toggleTheme}
+        className={`fixed top-2 right-4 z-50 p-2 rounded-lg transition-colors ${
+          isDark
+            ? 'bg-white/10 hover:bg-white/20 text-white'
+            : 'bg-gray-900/10 hover:bg-gray-900/20 text-gray-900'
+        }`}
+        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
+      >
+        {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
+
       {/* Desktop Menu Bar */}
       <MenuBar
         onNewSession={() => {}}
