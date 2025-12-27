@@ -45,10 +45,12 @@ export function AvatarDisplay({
 }: AvatarDisplayProps) {
   // Get background style
   const getBackgroundStyle = (): React.CSSProperties => {
-    if (!avatar) {
-      return {
-        background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-      };
+    const defaultBackground = {
+      background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
+    };
+
+    if (!avatar || !avatar.background) {
+      return defaultBackground;
     }
 
     const bg = avatar.background;
@@ -59,9 +61,7 @@ export function AvatarDisplay({
         background: `linear-gradient(135deg, ${bg.colors[0]} 0%, ${bg.colors[1] || bg.colors[0]} 100%)`,
       };
     }
-    return {
-      background: 'linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%)',
-    };
+    return defaultBackground;
   };
 
   // Get initials for fallback
