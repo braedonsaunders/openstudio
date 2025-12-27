@@ -66,15 +66,22 @@ export class EssentiaAnalyzer {
     this.sampleRate = sampleRate;
 
     try {
-      // Dynamically import essentia.js - only in browser environment
+      // Only run in browser environment
       if (typeof window === 'undefined') {
         console.warn('Essentia.js can only run in browser');
         return;
       }
 
-      // Use dynamic import with webpackIgnore to avoid bundler issues
-      const essentiaModule = await import(/* webpackIgnore: true */ 'essentia.js');
-      const { Essentia, EssentiaWASM } = essentiaModule;
+      // Load essentia.js from CDN using script tags (most compatible approach)
+      await this.loadEssentiaFromCDN();
+
+      // Get the global Essentia classes loaded by the scripts
+      const EssentiaWASM = (window as any).EssentiaWASM;
+      const Essentia = (window as any).Essentia;
+
+      if (!EssentiaWASM || !Essentia) {
+        throw new Error('Failed to load essentia.js from CDN');
+      }
 
       // Initialize WASM module
       this.essentiaWASM = await EssentiaWASM();
@@ -89,8 +96,38 @@ export class EssentiaAnalyzer {
     }
   }
 
+  private async loadEssentiaFromCDN(): Promise<void> {
+    // Helper to load a script from CDN
+    const loadScript = (src: string): Promise<void> => {
+      return new Promise((resolve, reject) => {
+        // Check if already loaded
+        if (document.querySelector(`script[src="${src}"]`)) {
+          resolve();
+          return;
+        }
+
+        const script = document.createElement('script');
+        script.src = src;
+        script.async = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error(`Failed to load script: ${src}`));
+        document.head.appendChild(script);
+      });
+    };
+
+    // Load essentia.js UMD builds from CDN
+    // Using the UMD builds because they expose globals
+    await loadScript('https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.umd.js');
+    await loadScript('https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.umd.js');
+  }
+
   setOnAnalysis(callback: (data: AnalysisData) => void): void {
     this.onAnalysis = callback;
+  }
+
+  // Returns true if essentia is properly initialized and ready for analysis
+  isReady(): boolean {
+    return this.isInitialized && this.essentia !== null;
   }
 
   async connectToAudioContext(audioContext: AudioContext): Promise<void> {
