@@ -233,8 +233,20 @@ CREATE TABLE rooms (
   pop_location TEXT DEFAULT 'auto',
   max_users INTEGER DEFAULT 10,
   is_public BOOLEAN DEFAULT true,
-  settings JSONB DEFAULT '{}'::jsonb
+  settings JSONB DEFAULT '{}'::jsonb,
+  description TEXT,
+  genre TEXT,
+  tags JSONB,
+  rules TEXT,
+  creator_name TEXT,
+  creator_username TEXT,
+  last_activity TIMESTAMP WITH TIME ZONE DEFAULT NOW()
 );
+
+-- Indexes for room queries
+CREATE INDEX idx_rooms_genre ON rooms(genre);
+CREATE INDEX idx_rooms_last_activity ON rooms(last_activity DESC);
+CREATE INDEX idx_rooms_is_public ON rooms(is_public) WHERE is_public = true;
 
 -- Tracks table
 CREATE TABLE tracks (
