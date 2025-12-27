@@ -312,3 +312,138 @@ export interface RoomSearchParams {
   limit?: number;
   offset?: number;
 }
+
+// Mureka AI Music Generation Types
+export type MurekaStyle =
+  | 'pop'
+  | 'rock'
+  | 'hiphop'
+  | 'rnb'
+  | 'electronic'
+  | 'jazz'
+  | 'classical'
+  | 'folk'
+  | 'country'
+  | 'metal'
+  | 'reggae'
+  | 'latin'
+  | 'ambient'
+  | 'lofi'
+  | 'cinematic'
+  | 'funk'
+  | 'soul'
+  | 'blues';
+
+export type MurekaMood =
+  | 'happy'
+  | 'sad'
+  | 'energetic'
+  | 'chill'
+  | 'romantic'
+  | 'dark'
+  | 'uplifting'
+  | 'melancholic'
+  | 'aggressive'
+  | 'peaceful'
+  | 'mysterious'
+  | 'epic'
+  | 'dreamy'
+  | 'nostalgic';
+
+export interface MurekaGenerationRequest {
+  prompt: string;
+  lyrics?: string;
+  style?: MurekaStyle;
+  mood?: MurekaMood;
+  tempo?: 'slow' | 'medium' | 'fast' | 'very_fast';
+  duration?: number;
+  instrumental?: boolean;
+  model?: 'standard' | 'pro' | 'ultra';
+  referenceAudioUrl?: string;
+  key?: string;
+  customTags?: string[];
+}
+
+export interface MurekaTrack {
+  id: string;
+  title: string;
+  audioUrl: string;
+  duration: number;
+  style: MurekaStyle;
+  mood?: MurekaMood;
+  prompt: string;
+  lyrics?: string;
+  hasVocals: boolean;
+  createdAt: string;
+  waveformUrl?: string;
+  coverArtUrl?: string;
+  stems?: {
+    vocals?: string;
+    instrumental?: string;
+  };
+}
+
+export interface MurekaGenerationProgress {
+  stage: 'queued' | 'composing' | 'arranging' | 'vocals' | 'mixing' | 'mastering' | 'complete' | 'error';
+  progress: number;
+  message: string;
+  estimatedTimeRemaining?: number;
+  currentStep?: string;
+}
+
+// AudioDec (Facebook SAM Audio) Types - Stem Separation & Audio Manipulation
+export type AudioDecStemType = 'vocals' | 'drums' | 'bass' | 'guitar' | 'piano' | 'strings' | 'other';
+
+export interface AudioDecConfig {
+  audioUrl: string;
+  separationType: 'stems' | 'vocal-removal' | 'music-removal';
+  outputFormat?: 'wav' | 'mp3' | 'flac';
+  quality?: 'fast' | 'balanced' | 'high';
+  stemTypes?: AudioDecStemType[];
+}
+
+export interface AudioDecResult {
+  jobId: string;
+  status: 'queued' | 'processing' | 'complete' | 'error';
+  stems?: {
+    [key in AudioDecStemType]?: string;
+  };
+  processingTime?: number;
+  error?: string;
+}
+
+export interface AudioDecProgress {
+  stage: 'uploading' | 'analyzing' | 'separating' | 'encoding' | 'complete';
+  progress: number;
+  message: string;
+  currentStem?: AudioDecStemType;
+}
+
+// Text-to-Song Modification Types
+export interface TextToSongModification {
+  audioUrl: string;
+  modification: 'style-transfer' | 'tempo-change' | 'key-change' | 'remix' | 'extend';
+  parameters: {
+    targetStyle?: MurekaStyle;
+    targetTempo?: number;
+    targetKey?: string;
+    extensionDuration?: number;
+    preserveVocals?: boolean;
+  };
+}
+
+// AI Generation Provider Union Type
+export type AIGenerationProvider = 'suno' | 'mureka' | 'musicgen';
+
+export interface AIGenerationConfig {
+  provider: AIGenerationProvider;
+  prompt: string;
+  duration?: number;
+  style?: string;
+  tempo?: number;
+  key?: string;
+  instrumental?: boolean;
+  // Provider-specific options
+  sunoOptions?: Partial<SunoGenerationRequest>;
+  murekaOptions?: Partial<MurekaGenerationRequest>;
+}
