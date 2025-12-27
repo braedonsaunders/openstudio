@@ -25,6 +25,7 @@ export class AudioEngine {
   private masterGain: GainNode | null = null;
   private backingTrackGain: GainNode | null = null;
   private backingTrackAnalyser: AnalyserNode | null = null;
+  private masterAnalyser: AnalyserNode | null = null;
   private localStream: MediaStream | null = null;
   private localAnalyser: AnalyserNode | null = null;
   private remoteStreams: Map<string, AudioStream> = new Map();
@@ -73,6 +74,13 @@ export class AudioEngine {
     this.backingTrackAnalyser.fftSize = 2048; // Higher resolution for pitch detection
     this.backingTrackAnalyser.smoothingTimeConstant = 0.3;
     this.backingTrackGain.connect(this.backingTrackAnalyser);
+
+    // Create master analyser for analyzing all audio (backing + all users)
+    // This is useful for jam sessions where you want to detect key from all instruments
+    this.masterAnalyser = this.audioContext.createAnalyser();
+    this.masterAnalyser.fftSize = 2048;
+    this.masterAnalyser.smoothingTimeConstant = 0.3;
+    this.masterGain.connect(this.masterAnalyser);
 
     // Load audio worklet processor
     try {
@@ -206,6 +214,15 @@ export class AudioEngine {
    */
   hasBackingTrackAudio(): boolean {
     return this.backingTrackBuffer !== null || this.stemBuffers.size > 0;
+  }
+
+  /**
+   * Get the master analyser node connected to all audio output.
+   * This includes backing tracks AND all user audio streams.
+   * Useful for jam sessions to detect key from combined instruments.
+   */
+  getMasterAnalyser(): AnalyserNode | null {
+    return this.masterAnalyser;
   }
 
   async loadStem(stemType: string, url: string): Promise<void> {
@@ -423,6 +440,7 @@ export class AudioEngine {
     this.masterGain?.disconnect();
     this.backingTrackGain?.disconnect();
     this.backingTrackAnalyser?.disconnect();
+    this.masterAnalyser?.disconnect();
 
     this.audioContext?.close();
     this.audioContext = null;

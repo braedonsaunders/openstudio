@@ -10,6 +10,7 @@ interface UseAudioAnalysisOptions {
   audioContext?: AudioContext | null;
   localStream?: MediaStream | null;
   backingTrackAnalyser?: AnalyserNode | null;
+  masterAnalyser?: AnalyserNode | null;
   isPlaying?: boolean;
   roomId?: string;
   userId?: string;
@@ -17,7 +18,7 @@ interface UseAudioAnalysisOptions {
 }
 
 export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
-  const { audioContext, localStream, backingTrackAnalyser, isPlaying, roomId, userId, isMaster } = options;
+  const { audioContext, localStream, backingTrackAnalyser, masterAnalyser, isPlaying, roomId, userId, isMaster } = options;
 
   const analyzerRef = useRef(getEssentiaAnalyzer());
   const isInitializedRef = useRef(false);
@@ -169,11 +170,13 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
             analyzerRef.current.stopAnalysis();
             setIsAnalyzing(false);
           }
-        } else if (analysisSource === 'mixed') {
-          // For mixed mode, analyze local stream (could be enhanced to mix both)
-          if (localStream) {
-            await analyzerRef.current.analyzeStream(localStream);
+        } else if (analysisSource === 'mixed' && masterAnalyser) {
+          // Mixed mode: analyze all audio (backing + all users' instruments)
+          // Only analyze when master to avoid duplicate processing
+          if (isMaster) {
+            analyzerRef.current.analyzeFromAnalyserNode(masterAnalyser);
             setIsAnalyzing(true);
+            console.log('Started mixed audio analysis (master) - analyzing all audio');
           }
         }
       } catch (error) {
@@ -186,7 +189,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
     // Cleanup when dependencies change
     return () => {
-      if (analysisSource === 'backing') {
+      if (analysisSource === 'backing' || analysisSource === 'mixed') {
         analyzerRef.current.stopAnalysis();
         setIsAnalyzing(false);
       }
@@ -195,6 +198,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     analysisSource,
     localStream,
     backingTrackAnalyser,
+    masterAnalyser,
     isPlaying,
     isMaster,
     audioContext,

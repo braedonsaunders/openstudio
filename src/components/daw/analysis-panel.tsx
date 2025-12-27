@@ -319,15 +319,15 @@ export function AnalysisPanel() {
         </div>
         <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
           {[
-            { id: 'backing' as const, icon: Radio, label: 'Track', disabled: !canAnalyzeTrack },
-            { id: 'local' as const, icon: Mic2, label: 'Mic', disabled: false },
-            { id: 'mixed' as const, icon: Music, label: 'Mix', disabled: false },
-          ].map(({ id, icon: Icon, label, disabled }) => (
+            { id: 'backing' as const, icon: Radio, label: 'Track', disabled: !canAnalyzeTrack, title: 'Analyze backing track only' },
+            { id: 'local' as const, icon: Mic2, label: 'Mic', disabled: false, title: 'Analyze your microphone' },
+            { id: 'mixed' as const, icon: Music, label: 'Mix', disabled: false, title: 'Analyze all audio (backing + all instruments)' },
+          ].map(({ id, icon: Icon, label, disabled, title }) => (
             <button
               key={id}
               onClick={() => !disabled && setAnalysisSource(id)}
               disabled={disabled}
-              title={disabled ? 'No track available for analysis' : undefined}
+              title={disabled ? 'No track available for analysis' : title}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-all',
                 analysisSource === id
@@ -343,21 +343,41 @@ export function AnalysisPanel() {
         </div>
 
         {/* Info message for YouTube tracks (can't be analyzed - uses iframe) */}
-        {isYouTubeTrack && (
+        {isYouTubeTrack && analysisSource === 'backing' && (
           <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
             <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
             <span className="text-[11px] text-amber-300">
-              YouTube tracks use iframe playback and cannot be analyzed. Select &quot;Mic&quot; to analyze your microphone.
+              YouTube tracks use iframe playback and cannot be analyzed. Select &quot;Mix&quot; or &quot;Mic&quot; instead.
             </span>
           </div>
         )}
 
-        {/* Info message for uploaded tracks */}
+        {/* Info message for Track mode */}
         {!isYouTubeTrack && backingTrackAvailable && analysisSource === 'backing' && (
           <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-emerald-500/10 border border-emerald-500/20">
             <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
             <span className="text-[11px] text-emerald-300">
-              Analysis runs automatically when playing. Results sync to all room members.
+              Analyzes backing track only. Results sync to all room members.
+            </span>
+          </div>
+        )}
+
+        {/* Info message for Mix mode */}
+        {analysisSource === 'mixed' && (
+          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-indigo-500/10 border border-indigo-500/20">
+            <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-indigo-300">
+              Analyzes all audio: backing track + all users&apos; instruments. Great for jam sessions!
+            </span>
+          </div>
+        )}
+
+        {/* Info message for Mic mode */}
+        {analysisSource === 'local' && (
+          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-blue-500/10 border border-blue-500/20">
+            <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-blue-300">
+              Analyzes your microphone input only. Use for tuning or personal key detection.
             </span>
           </div>
         )}

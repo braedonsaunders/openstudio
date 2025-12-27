@@ -69,20 +69,23 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     leave,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, getAudioContext, getBackingTrackAnalyser } = useAudioEngine();
+  const { toggleStem, setStemVolume, getAudioContext, getBackingTrackAnalyser, getMasterAnalyser } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
 
-  // Audio analysis - initialize with audio context and backing track analyser from audio engine
-  // Analysis automatically runs when:
-  // - Master user is playing audio
-  // - Results are synced to all other room members
+  // Audio analysis - initialize with audio context and analysers from audio engine
+  // Analysis modes:
+  // - "Track": Analyzes backing track only (when master is playing)
+  // - "Mic": Analyzes local microphone
+  // - "Mix": Analyzes all audio (backing + all users' instruments)
+  // Results are synced to all other room members
   useAudioAnalysis({
     audioContext: getAudioContext(),
     backingTrackAnalyser: getBackingTrackAnalyser(),
+    masterAnalyser: getMasterAnalyser(),
     isPlaying,
     roomId,
     userId: currentUser?.id,
