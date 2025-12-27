@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useCallback } from 'react';
+import { useRef, useEffect, useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 
 interface WaveformProps {
@@ -30,7 +30,14 @@ export function Waveform({
   const containerRef = useRef<HTMLDivElement>(null);
   const animationRef = useRef<number | null>(null);
 
-  const drawWaveform = useCallback((data: number[], progress: number) => {
+  // Determine if we're showing placeholder
+  const isPlaceholder = !waveformData || waveformData.length === 0;
+
+  // Placeholder colors - more muted/gray to indicate it's not real data
+  const placeholderColor = '#3f3f46'; // zinc-700
+  const placeholderProgressColor = '#52525b'; // zinc-600
+
+  const drawWaveform = useCallback((data: number[], progress: number, placeholder: boolean) => {
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -43,6 +50,10 @@ export function Waveform({
 
     ctx.clearRect(0, 0, width, height);
 
+    // Use different colors for placeholder
+    const baseColor = placeholder ? placeholderColor : color;
+    const playedColor = placeholder ? placeholderProgressColor : progressColor;
+
     data.forEach((value, index) => {
       const x = index * barWidth;
       const barHeight = value * height * 0.8;
@@ -50,7 +61,7 @@ export function Waveform({
 
       const isPlayed = index / data.length < progress;
 
-      ctx.fillStyle = isPlayed ? progressColor : color;
+      ctx.fillStyle = isPlayed ? playedColor : baseColor;
       ctx.fillRect(
         x + barGap / 2,
         y,
@@ -62,19 +73,35 @@ export function Waveform({
     // Draw progress line
     if (progress > 0) {
       const progressX = progress * width;
-      ctx.strokeStyle = '#fff';
+      ctx.strokeStyle = placeholder ? '#71717a' : '#fff'; // More muted for placeholder
       ctx.lineWidth = 2;
       ctx.beginPath();
       ctx.moveTo(progressX, 0);
       ctx.lineTo(progressX, height);
       ctx.stroke();
     }
-  }, [color, progressColor]);
 
-  // Generate placeholder waveform data if not provided
-  const generatePlaceholderWaveform = useCallback(() => {
+    // Draw placeholder indicator - dashed border at bottom
+    if (placeholder) {
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = '#52525b';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, height - 1);
+      ctx.lineTo(width, height - 1);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }, [color, progressColor, placeholderColor, placeholderProgressColor]);
+
+  // Generate placeholder waveform data - more uniform to look obviously fake
+  const placeholderData = useMemo(() => {
     const bars = 100;
-    return Array.from({ length: bars }, () => 0.3 + Math.random() * 0.7);
+    // Create a smooth sine-wave pattern that looks obviously placeholder
+    return Array.from({ length: bars }, (_, i) => {
+      const phase = (i / bars) * Math.PI * 4;
+      return 0.3 + Math.sin(phase) * 0.15 + Math.random() * 0.1;
+    });
   }, []);
 
   useEffect(() => {
@@ -94,11 +121,11 @@ export function Waveform({
       ctx.scale(window.devicePixelRatio, window.devicePixelRatio);
     }
 
-    const data = waveformData || generatePlaceholderWaveform();
+    const data = waveformData && waveformData.length > 0 ? waveformData : placeholderData;
     const progress = duration > 0 ? currentTime / duration : 0;
 
-    drawWaveform(data, progress);
-  }, [waveformData, currentTime, duration, drawWaveform, generatePlaceholderWaveform]);
+    drawWaveform(data, progress, isPlaceholder);
+  }, [waveformData, currentTime, duration, drawWaveform, placeholderData, isPlaceholder]);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     if (!onSeek || !duration) return;
@@ -119,14 +146,23 @@ export function Waveform({
       ref={containerRef}
       className={cn(
         'relative w-full h-16 bg-gray-800/50 rounded-lg cursor-pointer',
+        isPlaceholder && 'opacity-60',
         className
       )}
       onClick={handleClick}
+      title={isPlaceholder ? 'Loading waveform...' : undefined}
     >
       <canvas
         ref={canvasRef}
         className="absolute inset-0 w-full h-full"
       />
+      {isPlaceholder && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <span className="text-xs text-zinc-500 bg-black/30 px-2 py-0.5 rounded">
+            Loading waveform...
+          </span>
+        </div>
+      )}
     </div>
   );
 }

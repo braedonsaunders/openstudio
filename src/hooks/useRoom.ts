@@ -474,8 +474,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     }
   }, [roomId, queue, removeFromQueue]);
 
-  const skipToNext = useCallback(() => {
+  const skipToNext = useCallback(async () => {
     if (!isMaster) return;
+
+    // Check if currently playing to resume after switch
+    const wasPlaying = useAudioStore.getState().isPlaying;
 
     // Stop current playback and reset audio state
     pauseBackingTrack();
@@ -484,10 +487,19 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     nextTrack();
     realtimeRef.current?.broadcastNextTrack(queue.currentIndex + 1);
-  }, [isMaster, nextTrack, queue.currentIndex, pauseBackingTrack]);
 
-  const skipToPrevious = useCallback(() => {
+    // Auto-play if was playing before
+    if (wasPlaying) {
+      // Small delay to allow track state to update
+      setTimeout(() => play(), 100);
+    }
+  }, [isMaster, nextTrack, queue.currentIndex, pauseBackingTrack, play]);
+
+  const skipToPrevious = useCallback(async () => {
     if (!isMaster) return;
+
+    // Check if currently playing to resume after switch
+    const wasPlaying = useAudioStore.getState().isPlaying;
 
     // Stop current playback and reset audio state
     pauseBackingTrack();
@@ -496,13 +508,22 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     previousTrack();
     realtimeRef.current?.broadcastNextTrack(Math.max(0, queue.currentIndex - 1));
-  }, [isMaster, queue.currentIndex, pauseBackingTrack, previousTrack]);
 
-  const skipToTrack = useCallback((trackIndex: number) => {
+    // Auto-play if was playing before
+    if (wasPlaying) {
+      // Small delay to allow track state to update
+      setTimeout(() => play(), 100);
+    }
+  }, [isMaster, queue.currentIndex, pauseBackingTrack, previousTrack, play]);
+
+  const skipToTrack = useCallback(async (trackIndex: number) => {
     if (!isMaster) return;
 
     // Don't do anything if trying to jump to the current track
     if (trackIndex === queue.currentIndex) return;
+
+    // Check if currently playing to resume after switch
+    const wasPlaying = useAudioStore.getState().isPlaying;
 
     // Stop current playback and reset audio state
     pauseBackingTrack();
@@ -511,7 +532,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     jumpToTrack(trackIndex);
     realtimeRef.current?.broadcastNextTrack(trackIndex);
-  }, [isMaster, queue.currentIndex, pauseBackingTrack, jumpToTrack]);
+
+    // Auto-play if was playing before
+    if (wasPlaying) {
+      // Small delay to allow track state to update
+      setTimeout(() => play(), 100);
+    }
+  }, [isMaster, queue.currentIndex, pauseBackingTrack, jumpToTrack, play]);
 
   // Chat
   const sendMessage = useCallback((message: string) => {
