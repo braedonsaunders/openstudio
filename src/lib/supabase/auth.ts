@@ -562,12 +562,16 @@ export async function saveChatMessage(
   reactionType?: string,
   targetUserId?: string
 ): Promise<void> {
+  // Prevent saving blank messages (except reactions which have emoji content)
+  const trimmedContent = content?.trim();
+  if (!trimmedContent && messageType === 'text') return;
+
   const { error } = await supabaseAuth
     .from('room_chat_messages')
     .insert({
       room_id: roomId,
       user_id: userId,
-      content,
+      content: trimmedContent || content,
       message_type: messageType,
       reaction_type: reactionType,
       target_user_id: targetUserId,

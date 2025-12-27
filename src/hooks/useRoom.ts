@@ -273,10 +273,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       realtime.on('chat:message', (data) => {
         const payload = data as { message: string; userId: string; timestamp: number };
+        // Filter out blank messages
+        const trimmedMessage = payload.message?.trim();
+        if (!trimmedMessage) return;
+
         addMessage({
           type: 'chat',
           userId: payload.userId,
-          content: payload.message,
+          content: trimmedMessage,
           timestamp: new Date(payload.timestamp).toISOString(),
         });
       });
@@ -485,11 +489,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   // Chat
   const sendMessage = useCallback((message: string) => {
-    realtimeRef.current?.broadcastChat(message);
+    // Prevent blank messages from being sent
+    const trimmedMessage = message?.trim();
+    if (!trimmedMessage) return;
+
+    realtimeRef.current?.broadcastChat(trimmedMessage);
     addMessage({
       type: 'chat',
       userId: userIdRef.current,
-      content: message,
+      content: trimmedMessage,
       timestamp: new Date().toISOString(),
     });
   }, [addMessage]);

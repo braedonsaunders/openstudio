@@ -38,6 +38,7 @@ interface PanelDockProps {
   // Chat props
   roomId: string;
   onSendMessage: (message: string) => void;
+  onStartVideoChat?: () => void;
   // Layout props
   width?: number;
 }
@@ -67,6 +68,7 @@ export function PanelDock({
   separationProgress,
   roomId,
   onSendMessage,
+  onStartVideoChat,
   width,
 }: PanelDockProps) {
   return (
@@ -136,7 +138,7 @@ export function PanelDock({
         )}
 
         {activePanel === 'chat' && (
-          <ChatPanel roomId={roomId} onSendMessage={onSendMessage} />
+          <ChatPanel roomId={roomId} onSendMessage={onSendMessage} onStartVideoChat={onStartVideoChat} />
         )}
 
         {activePanel === 'ai' && (

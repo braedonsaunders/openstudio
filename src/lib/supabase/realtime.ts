@@ -172,10 +172,14 @@ export class RealtimeRoomManager {
   }
 
   async broadcastChat(message: string): Promise<void> {
+    // Prevent blank messages from being broadcast
+    const trimmedMessage = message?.trim();
+    if (!trimmedMessage) return;
+
     await this.channel?.send({
       type: 'broadcast',
       event: 'chat:message',
-      payload: { message, userId: this.userId, timestamp: Date.now() },
+      payload: { message: trimmedMessage, userId: this.userId, timestamp: Date.now() },
     });
   }
 

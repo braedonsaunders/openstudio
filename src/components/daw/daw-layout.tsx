@@ -20,6 +20,7 @@ import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { OutputSettingsModal } from '../settings/output-settings-modal';
+import { VideoChatModal } from './video-chat-modal';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
@@ -66,6 +67,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isVideoChatOpen, setIsVideoChatOpen] = useState(false);
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -576,6 +578,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             // Chat props
             roomId={roomId}
             onSendMessage={sendMessage}
+            onStartVideoChat={() => setIsVideoChatOpen(true)}
             width={rightPanelWidth}
           />
         )}
@@ -631,6 +634,14 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       <OutputSettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+      />
+
+      <VideoChatModal
+        isOpen={isVideoChatOpen}
+        onClose={() => setIsVideoChatOpen(false)}
+        roomId={roomId}
+        userId={currentUser?.id || ''}
+        userName={currentUser?.name || 'User'}
       />
 
     </div>
