@@ -146,8 +146,8 @@ export function LiveTrackLane({
   return (
     <div
       className={cn(
-        'h-[80px] border-b border-white/5 relative transition-colors flex-shrink-0',
-        isActive && 'bg-white/[0.02]',
+        'h-[80px] border-b border-gray-200 dark:border-white/5 relative transition-colors flex-shrink-0',
+        isActive && 'bg-gray-100/50 dark:bg-white/[0.02]',
         user.isMuted && 'opacity-30'
       )}
       style={{ '--track-color': trackColor } as React.CSSProperties}
@@ -218,7 +218,7 @@ export function LiveTrackLane({
       )}
 
       {/* Gradient fade on left edge */}
-      <div className="absolute left-1 top-0 bottom-0 w-16 bg-gradient-to-r from-[#0a0a0f] to-transparent pointer-events-none" />
+      <div className="absolute left-1 top-0 bottom-0 w-16 bg-gradient-to-r from-white dark:from-[#0a0a0f] to-transparent pointer-events-none" />
     </div>
   );
 }

@@ -220,8 +220,8 @@ export function UserTrackHeader({
   return (
     <div
       className={cn(
-        'border-b border-white/5 transition-all',
-        audioLevel > 0.1 && !track.isMuted && 'bg-white/[0.02]'
+        'border-b border-gray-200 dark:border-white/5 transition-all',
+        audioLevel > 0.1 && !track.isMuted && 'bg-gray-100/50 dark:bg-white/[0.02]'
       )}
       style={{ '--track-color': track.color } as React.CSSProperties}
     >
@@ -253,7 +253,7 @@ export function UserTrackHeader({
             {/* Expand/Collapse */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-0.5 text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="p-0.5 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
             >
               {isExpanded ? (
                 <ChevronDown className="w-3 h-3" />
@@ -308,11 +308,11 @@ export function UserTrackHeader({
                 </div>
               ) : (
                 <div className="flex items-center gap-1">
-                  <span className="text-xs font-medium text-white truncate">
+                  <span className="text-xs font-medium text-gray-900 dark:text-white truncate">
                     {track.name}
                   </span>
                   {isFirst && (
-                    <span className="text-[9px] text-zinc-500">(You)</span>
+                    <span className="text-[9px] text-gray-500 dark:text-zinc-500">(You)</span>
                   )}
                 </div>
               )}
@@ -333,7 +333,7 @@ export function UserTrackHeader({
                 'w-5 h-5 rounded flex items-center justify-center transition-all',
                 track.isArmed
                   ? 'bg-red-500/20 text-red-400'
-                  : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
               )}
               title={track.isArmed ? 'Disarm track' : 'Arm track for recording'}
             >
@@ -347,7 +347,7 @@ export function UserTrackHeader({
                 'w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold transition-all',
                 track.isMuted
                   ? 'bg-red-500/20 text-red-400'
-                  : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
               )}
             >
               M
@@ -360,7 +360,7 @@ export function UserTrackHeader({
                 'w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold transition-all',
                 track.isSolo
                   ? 'bg-yellow-500/20 text-yellow-400'
-                  : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
+                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
               )}
             >
               S
@@ -370,7 +370,7 @@ export function UserTrackHeader({
             <div className="flex-1" />
 
             {/* Input source label */}
-            <div className="flex items-center gap-1 text-zinc-500 mr-1">
+            <div className="flex items-center gap-1 text-gray-500 dark:text-zinc-500 mr-1">
               {track.audioSettings.inputMode === 'application' ? (
                 <span className="text-[9px] truncate max-w-[60px]">
                   {track.audioSettings.applicationName || 'App'}
@@ -397,7 +397,7 @@ export function UserTrackHeader({
                   ? 'bg-purple-500/20 text-purple-400'
                   : activeEffectsCount > 0
                     ? 'text-purple-400 hover:text-purple-300'
-                    : 'text-zinc-500 hover:text-zinc-300'
+                    : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300'
               )}
               title="Effects Rack"
             >
@@ -422,7 +422,7 @@ export function UserTrackHeader({
                 'p-1 rounded transition-colors',
                 showAdvancedSettings
                   ? 'bg-indigo-500/20 text-indigo-400'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300'
               )}
               title="Advanced Audio Settings"
             >
@@ -442,7 +442,7 @@ export function UserTrackHeader({
                 'p-1 rounded transition-colors',
                 showSettings
                   ? 'bg-indigo-500/20 text-indigo-400'
-                  : 'text-zinc-500 hover:text-zinc-300'
+                  : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300'
               )}
               title="Quick Settings"
             >
@@ -458,7 +458,7 @@ export function UserTrackHeader({
                 setShowAdvancedSettings(false);
                 setShowEffects(false);
               }}
-              className="p-1 text-zinc-500 hover:text-zinc-300 transition-colors"
+              className="p-1 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
             >
               <MoreHorizontal className="w-3.5 h-3.5" />
             </button>
@@ -470,13 +470,13 @@ export function UserTrackHeader({
       {isExpanded && (
         <div className="px-3 pb-2">
           <div className="flex items-center gap-2">
-            <Volume2 className="w-3 h-3 text-zinc-500 shrink-0" />
+            <Volume2 className="w-3 h-3 text-gray-500 dark:text-zinc-500 shrink-0" />
             <Fader
               value={track.volume}
               onChange={(v) => setTrackVolume(track.id, v)}
               className="flex-1"
             />
-            <span className="text-[9px] text-zinc-500 w-6 text-right">
+            <span className="text-[9px] text-gray-500 dark:text-zinc-500 w-6 text-right">
               {Math.round(track.volume * 100)}%
             </span>
           </div>
@@ -522,21 +522,21 @@ export function UserTrackHeader({
         isOpen={showMenu}
         onClose={() => setShowMenu(false)}
       >
-        <div className="w-48 bg-[#16161f] border border-white/10 rounded-lg shadow-xl overflow-hidden">
+        <div className="w-48 bg-white dark:bg-[#16161f] border border-gray-200 dark:border-white/10 rounded-lg shadow-xl overflow-hidden">
           <button
             onClick={handleStartRename}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
           >
             <Pencil className="w-3.5 h-3.5" />
             Rename Track
           </button>
-          <div className="border-t border-white/5" />
+          <div className="border-t border-gray-200 dark:border-white/5" />
           <button
             onClick={() => {
               setShowMenu(false);
               setShowEffects(true);
             }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
           >
             <Sparkles className="w-3.5 h-3.5 text-purple-400" />
             Effects Rack
@@ -551,7 +551,7 @@ export function UserTrackHeader({
               setShowMenu(false);
               setShowAdvancedSettings(true);
             }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
           >
             <Sliders className="w-3.5 h-3.5" />
             Advanced Audio Settings
@@ -561,20 +561,20 @@ export function UserTrackHeader({
               setShowMenu(false);
               setShowSettings(true);
             }}
-            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+            className="w-full flex items-center gap-2 px-3 py-2 text-xs text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
           >
             <Settings2 className="w-3.5 h-3.5" />
             Quick Settings
           </button>
           {onRemove && (
             <>
-              <div className="border-t border-white/5" />
+              <div className="border-t border-gray-200 dark:border-white/5" />
               <button
                 onClick={() => {
                   onRemove();
                   setShowMenu(false);
                 }}
-                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-400 hover:bg-red-500/10 transition-colors"
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-red-500 dark:text-red-400 hover:bg-red-500/10 transition-colors"
               >
                 <Trash2 className="w-3.5 h-3.5" />
                 Remove Track
