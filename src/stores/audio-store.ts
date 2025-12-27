@@ -84,10 +84,11 @@ const initialJitterStats: JitterStats = {
 
 const initialPerformanceMetrics: AudioPerformanceMetrics = {
   audioContextLatency: 0,
+  outputLatency: 0,
   jsProcessingTime: 0,
   effectsProcessingTime: 0,
   totalLatency: 0,
-  currentBufferSize: 256,
+  currentBufferSize: 0,
   underruns: 0,
   trackMetrics: new Map(),
   lastUpdate: 0,

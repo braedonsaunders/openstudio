@@ -102,11 +102,10 @@ export function useAudioEngine() {
       if (!performanceIntervalRef.current) {
         performanceIntervalRef.current = setInterval(() => {
           if (globalEngine) {
-            // Get actual config from engine (which stays in sync with store settings)
-            const engineConfig = globalEngine.getConfig();
-
-            const audioContextLatency = globalEngine.getContextLatency();
-            const bufferLatency = globalEngine.getBufferLatency();
+            // Get actual latency values from the audio context
+            const contextLatency = globalEngine.getContextLatency(); // baseLatency (processing)
+            const outputLatency = globalEngine.getOutputLatency(); // hardware output latency
+            const actualBufferSize = globalEngine.getActualBufferSize(); // buffer in samples
 
             // Get effects metering if effects processor exists
             const effectsMetering = globalEngine.getLocalEffectsMetering();
@@ -124,10 +123,11 @@ export function useAudioEngine() {
             }
 
             setPerformanceMetrics({
-              audioContextLatency,
+              audioContextLatency: contextLatency,
+              outputLatency: outputLatency,
               effectsProcessingTime,
-              totalLatency: audioContextLatency + bufferLatency,
-              currentBufferSize: engineConfig.bufferSize,
+              totalLatency: contextLatency + outputLatency,
+              currentBufferSize: actualBufferSize,
             });
           }
         }, 200); // Update every 200ms

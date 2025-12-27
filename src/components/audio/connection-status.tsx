@@ -11,7 +11,7 @@ interface ConnectionStatusProps {
 }
 
 export function ConnectionStatus({ className, showDetails = false }: ConnectionStatusProps) {
-  const { jitterStats, webrtcStats, connectionQuality, currentBufferSize } = useAudioStore();
+  const { jitterStats, webrtcStats, connectionQuality, performanceMetrics, settings } = useAudioStore();
 
   const getIcon = () => {
     switch (connectionQuality) {
@@ -47,7 +47,7 @@ export function ConnectionStatus({ className, showDetails = false }: ConnectionS
             <div>Connection: {qualityLabel[connectionQuality]}</div>
             <div>Latency: {formatLatency(jitterStats.roundTripTime)}</div>
             <div>Jitter: {formatLatency(jitterStats.averageJitter)}</div>
-            <div>Buffer: {currentBufferSize} samples</div>
+            <div>Buffer: {performanceMetrics.currentBufferSize} samples</div>
           </div>
         }
       >
@@ -89,7 +89,7 @@ export function ConnectionStatus({ className, showDetails = false }: ConnectionS
         <StatCard
           icon={Server}
           label="Buffer Size"
-          value={`${currentBufferSize} samples`}
+          value={`${performanceMetrics.currentBufferSize} samples`}
         />
         <StatCard
           label="Packet Loss"
@@ -102,20 +102,20 @@ export function ConnectionStatus({ className, showDetails = false }: ConnectionS
         <div className="flex items-center justify-between text-xs">
           <span className="text-slate-500 font-medium">Buffer Latency</span>
           <span className="text-slate-700 font-medium">
-            {((currentBufferSize / 48000) * 1000).toFixed(1)}ms
+            {performanceMetrics.audioContextLatency.toFixed(1)}ms
           </span>
         </div>
         <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
           <div
             className={cn('h-full transition-all duration-300', getConnectionQualityBg(connectionQuality))}
-            style={{ width: `${(currentBufferSize / 1024) * 100}%` }}
+            style={{ width: `${Math.min((performanceMetrics.currentBufferSize / 2048) * 100, 100)}%` }}
           />
         </div>
         <div className="flex justify-between text-xs text-slate-400">
-          <span>128</span>
           <span>256</span>
           <span>512</span>
           <span>1024</span>
+          <span>2048</span>
         </div>
       </div>
     </div>

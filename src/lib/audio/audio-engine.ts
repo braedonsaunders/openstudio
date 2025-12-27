@@ -455,28 +455,55 @@ export class AudioEngine {
   }
 
   /**
-   * Get audio context latency in milliseconds
-   * Includes both base latency and output latency
+   * Get hardware output latency in milliseconds
+   * This is the latency added by the audio output hardware/driver
+   */
+  getOutputLatency(): number {
+    if (!this.audioContext) return 0;
+    const outputLatency = (this.audioContext as AudioContext & { outputLatency?: number }).outputLatency ?? 0;
+    return outputLatency * 1000;
+  }
+
+  /**
+   * Get audio context latency in milliseconds (baseLatency only)
+   * This represents the processing latency controlled by latencyHint
    */
   getContextLatency(): number {
     if (!this.audioContext) return 0;
     const baseLatency = this.audioContext.baseLatency ?? 0;
-    const outputLatency = (this.audioContext as AudioContext & { outputLatency?: number }).outputLatency ?? 0;
-    return (baseLatency + outputLatency) * 1000;
+    return baseLatency * 1000;
   }
 
   /**
-   * Get buffer latency in milliseconds based on current buffer size
+   * Get the actual buffer size in samples based on audio context's baseLatency
+   * This reflects what the browser is actually using, not our config value
+   */
+  getActualBufferSize(): number {
+    if (!this.audioContext) return this.config.bufferSize;
+    const baseLatency = this.audioContext.baseLatency ?? 0;
+    // Calculate buffer samples from baseLatency (which is in seconds)
+    const actualBuffer = Math.round(baseLatency * this.config.sampleRate);
+    // Return actual value, or config value if not available
+    return actualBuffer > 0 ? actualBuffer : this.config.bufferSize;
+  }
+
+  /**
+   * Get buffer latency in milliseconds based on actual audio context buffer
    */
   getBufferLatency(): number {
-    return (this.config.bufferSize / this.config.sampleRate) * 1000;
+    if (!this.audioContext) {
+      return (this.config.bufferSize / this.config.sampleRate) * 1000;
+    }
+    // Use the actual baseLatency from the context - this IS the buffer latency
+    const baseLatency = this.audioContext.baseLatency ?? 0;
+    return baseLatency * 1000;
   }
 
   /**
-   * Get total estimated latency
+   * Get total estimated latency (processing + hardware output)
    */
   getTotalLatency(): number {
-    return this.getContextLatency() + this.getBufferLatency();
+    return this.getContextLatency() + this.getOutputLatency();
   }
 
   /**

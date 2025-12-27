@@ -154,27 +154,29 @@ export function TransportBar({
 
               {/* Audio Processing Performance */}
               <div className="space-y-1.5">
-                <div className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Audio Processing</div>
+                <div className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Audio Latency</div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Context Latency</span>
+                  <span className="text-xs text-zinc-400">Buffer</span>
                   <span className="text-xs font-medium text-white">
-                    {performanceMetrics.audioContextLatency.toFixed(1)}ms
+                    {performanceMetrics.currentBufferSize > 0
+                      ? `${performanceMetrics.currentBufferSize} samples (${performanceMetrics.audioContextLatency.toFixed(1)}ms)`
+                      : 'Initializing...'}
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Effects Processing</span>
+                  <span className="text-xs text-zinc-400">Output</span>
+                  <span className="text-xs font-medium text-white">
+                    {performanceMetrics.outputLatency.toFixed(1)}ms
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">Effects</span>
                   <span className="text-xs font-medium text-white">
                     {performanceMetrics.effectsProcessingTime.toFixed(2)}ms
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Buffer Size</span>
-                  <span className="text-xs font-medium text-white">
-                    {performanceMetrics.currentBufferSize} samples ({((performanceMetrics.currentBufferSize / settings.sampleRate) * 1000).toFixed(1)}ms)
-                  </span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Total Latency</span>
+                  <span className="text-xs text-zinc-400 font-medium">Total</span>
                   <span className={cn(
                     'text-xs font-medium',
                     performanceMetrics.totalLatency < 10 && 'text-emerald-400',
