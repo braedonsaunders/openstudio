@@ -8,6 +8,9 @@ export { MenuBar } from './menu-bar';
 // Transport
 export { TransportBar } from './transport-bar';
 
+// Metronome
+export { MetronomeControls, MetronomeInline } from './metronome-controls';
+
 // Track components
 export { TrackHeadersPanel } from './track-headers-panel';
 export { TrackHeader } from './track-header';
