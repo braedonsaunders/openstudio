@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { useRoom } from '@/hooks/useRoom';
+import { useAuthStore } from '@/stores/auth-store';
 import {
   Music,
   User,
@@ -33,12 +34,28 @@ export default function RoomPage() {
   const router = useRouter();
   const roomId = params.roomId as string;
 
+  const { user, profile, isInitialized, initialize } = useAuthStore();
+
   const [hasJoined, setHasJoined] = useState(false);
   const [userName, setUserName] = useState('');
   const [instrument, setInstrument] = useState('');
   const [isTestingAudio, setIsTestingAudio] = useState(false);
   const [audioPermission, setAudioPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
   const [audioLevel, setAudioLevel] = useState(0);
+
+  // Initialize auth
+  useEffect(() => {
+    if (!isInitialized) {
+      initialize();
+    }
+  }, [isInitialized, initialize]);
+
+  // Pre-populate name from profile when auth is ready
+  useEffect(() => {
+    if (profile && !userName) {
+      setUserName(profile.displayName);
+    }
+  }, [profile, userName]);
 
   const { join, isJoining, error, isConnected } = useRoom(roomId, {
     onUserJoined: (user) => {
