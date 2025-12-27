@@ -22,6 +22,115 @@ const FRAMES_FOR_KEY = 50; // ~5 seconds of audio for key detection (more data =
 const FRAMES_FOR_BPM = 50; // ~5 seconds for BPM
 const MAX_BUFFER_FRAMES = 150; // Store more frames for better long-term analysis
 
+// Krumhansl-Kessler key profiles (empirically derived from listener studies)
+// These represent the "stability" of each pitch class in major and minor keys
+const KRUMHANSL_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+const KRUMHANSL_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+
+// Alternative: Temperley profiles (from "Music and Probability" book)
+const TEMPERLEY_MAJOR = [5.0, 2.0, 3.5, 2.0, 4.5, 4.0, 2.0, 4.5, 2.0, 3.5, 1.5, 4.0];
+const TEMPERLEY_MINOR = [5.0, 2.0, 3.5, 4.5, 2.0, 4.0, 2.0, 4.5, 3.5, 2.0, 1.5, 4.0];
+
+// Key names in order (C, C#, D, ...)
+const KEY_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+// Rotate array by n positions
+function rotateArray(arr, n) {
+  const len = arr.length;
+  n = ((n % len) + len) % len; // Handle negative rotation
+  return [...arr.slice(len - n), ...arr.slice(0, len - n)];
+}
+
+// Pearson correlation coefficient between two arrays
+function pearsonCorrelation(x, y) {
+  const n = x.length;
+  let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0, sumY2 = 0;
+
+  for (let i = 0; i < n; i++) {
+    sumX += x[i];
+    sumY += y[i];
+    sumXY += x[i] * y[i];
+    sumX2 += x[i] * x[i];
+    sumY2 += y[i] * y[i];
+  }
+
+  const numerator = n * sumXY - sumX * sumY;
+  const denominator = Math.sqrt((n * sumX2 - sumX * sumX) * (n * sumY2 - sumY * sumY));
+
+  if (denominator === 0) return 0;
+  return numerator / denominator;
+}
+
+// Detect key from HPCP (12-dimensional pitch class profile)
+// Returns { key: 'C', scale: 'major', correlation: 0.85 }
+function detectKeyFromHPCP(hpcp) {
+  if (!hpcp || hpcp.length !== 12) return null;
+
+  // Normalize HPCP
+  const sum = hpcp.reduce((a, b) => a + b, 0);
+  if (sum === 0) return null;
+  const normalizedHPCP = hpcp.map(v => v / sum);
+
+  let bestKey = null;
+  let bestScale = null;
+  let bestCorrelation = -1;
+  const allCorrelations = [];
+
+  // Test all 24 keys (12 major + 12 minor)
+  for (let i = 0; i < 12; i++) {
+    // Rotate profiles to match key (C=0, C#=1, D=2, etc.)
+    const majorProfile = rotateArray(KRUMHANSL_MAJOR, i);
+    const minorProfile = rotateArray(KRUMHANSL_MINOR, i);
+
+    // Also test Temperley profiles and average
+    const tempMajor = rotateArray(TEMPERLEY_MAJOR, i);
+    const tempMinor = rotateArray(TEMPERLEY_MINOR, i);
+
+    // Calculate correlations with both profile sets
+    const corrMajorK = pearsonCorrelation(normalizedHPCP, majorProfile.map(v => v / majorProfile.reduce((a, b) => a + b, 0)));
+    const corrMinorK = pearsonCorrelation(normalizedHPCP, minorProfile.map(v => v / minorProfile.reduce((a, b) => a + b, 0)));
+    const corrMajorT = pearsonCorrelation(normalizedHPCP, tempMajor.map(v => v / tempMajor.reduce((a, b) => a + b, 0)));
+    const corrMinorT = pearsonCorrelation(normalizedHPCP, tempMinor.map(v => v / tempMinor.reduce((a, b) => a + b, 0)));
+
+    // Average correlations from both profiles
+    const corrMajor = (corrMajorK + corrMajorT) / 2;
+    const corrMinor = (corrMinorK + corrMinorT) / 2;
+
+    allCorrelations.push({ key: KEY_NAMES[i], scale: 'major', correlation: corrMajor });
+    allCorrelations.push({ key: KEY_NAMES[i], scale: 'minor', correlation: corrMinor });
+
+    if (corrMajor > bestCorrelation) {
+      bestCorrelation = corrMajor;
+      bestKey = KEY_NAMES[i];
+      bestScale = 'major';
+    }
+    if (corrMinor > bestCorrelation) {
+      bestCorrelation = corrMinor;
+      bestKey = KEY_NAMES[i];
+      bestScale = 'minor';
+    }
+  }
+
+  // Sort all correlations to find second best
+  allCorrelations.sort((a, b) => b.correlation - a.correlation);
+  const secondBest = allCorrelations[1];
+
+  // Calculate confidence based on margin over second best
+  const margin = bestCorrelation - secondBest.correlation;
+
+  return {
+    key: bestKey,
+    scale: bestScale,
+    correlation: bestCorrelation,
+    margin: margin,
+    secondBest: secondBest
+  };
+}
+
+// Accumulated HPCP for more stable key detection
+let accumulatedHPCP = new Float32Array(12);
+let hpcpFrameCount = 0;
+
 // Note names for tuner
 const NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
 
@@ -334,129 +443,128 @@ function analyzeLongTerm(combinedAudio) {
   try {
     const essentiaAudio = essentia.arrayToVector(combinedAudio);
 
-    // Key detection using KeyExtractor with multiple profile types for accuracy
-    // Uses consensus voting across all available profiles for best results
+    // Key detection using HPCP with Krumhansl-Kessler correlation
+    // More accurate than essentia's KeyExtractor for real music
     try {
-      // Use all available profile types for maximum accuracy
-      // Different profiles work better for different genres
-      const profileTypes = ['krumhansl', 'temperley', 'edma', 'bgate', 'braw', 'diatonic'];
-      const keyVotes = {};
+      // Compute spectrum for HPCP
+      const frameSize = 8192;
+      const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
 
-      for (const profileType of profileTypes) {
-        try {
-          // Use larger FFT for better frequency resolution in key detection
-          const keyResult = essentia.KeyExtractor(essentiaAudio, {
-            profileType: profileType,
-            frameSize: 8192,  // Larger FFT for better bass/harmonic resolution
-            hopSize: 4096,
-            sampleRate: sampleRate
-          });
+      // Compute HPCP (Harmonic Pitch Class Profile)
+      // Use wider frequency range for better key detection (40-5000 Hz)
+      const hpcpResult = essentia.HPCP(
+        spectrum.spectrum,
+        essentia.arrayToVector(new Float32Array(spectrum.spectrum.length)),
+        true,   // harmonics
+        500,    // bandSplitFrequency
+        40,     // minFrequency (lower for bass content)
+        5000,   // maxFrequency (higher for upper harmonics)
+        false,  // maxShifted
+        0.5,    // minWeight
+        true,   // nonLinear
+        sampleRate
+      );
 
-          if (keyResult.key && keyResult.strength > 0.25) {
-            const keyId = `${keyResult.key}_${keyResult.scale}`;
-            if (!keyVotes[keyId]) {
-              keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
-            }
-            keyVotes[keyId].count++;
-            keyVotes[keyId].totalStrength += keyResult.strength;
-            keyVotes[keyId].strengths.push(keyResult.strength);
-          }
-        } catch (e) {
-          // Profile type not supported, skip
-        }
+      const hpcpArray = essentia.vectorToArray(hpcpResult.hpcp);
+
+      // Accumulate HPCP over time for more stable detection
+      for (let i = 0; i < 12; i++) {
+        accumulatedHPCP[i] += hpcpArray[i];
       }
+      hpcpFrameCount++;
 
-      // Find best consensus key with improved scoring
-      let bestKeyId = null;
-      let bestScore = 0;
-      let detectedKeys = Object.entries(keyVotes);
+      // Detect key from accumulated HPCP
+      const avgHPCP = Array.from(accumulatedHPCP).map(v => v / hpcpFrameCount);
+      const keyResult = detectKeyFromHPCP(avgHPCP);
 
-      for (const [keyId, data] of detectedKeys) {
-        // Improved scoring: count^1.5 * median strength
-        // This rewards agreement more than just raw strength
-        const sortedStrengths = [...data.strengths].sort((a, b) => a - b);
-        const medianStrength = sortedStrengths[Math.floor(sortedStrengths.length / 2)];
-        const score = Math.pow(data.count, 1.5) * medianStrength;
-        if (score > bestScore) {
-          bestScore = score;
-          bestKeyId = keyId;
-        }
-      }
+      if (keyResult && keyResult.correlation > 0.5) {
+        const { key, scale, correlation, margin } = keyResult;
 
-      // Accept if at least 2 profiles agree (relaxed from previous requirement)
-      if (bestKeyId && keyVotes[bestKeyId].count >= 2) {
-        const [detectedKey, detectedScale] = bestKeyId.split('_');
-        const avgStrength = keyVotes[bestKeyId].totalStrength / keyVotes[bestKeyId].count;
+        keyBuffer.push({
+          key: key,
+          scale: scale,
+          strength: correlation,
+          margin: margin,
+          timestamp: Date.now()
+        });
 
-        keyBuffer.push({ key: detectedKey, scale: detectedScale, strength: avgStrength, timestamp: Date.now() });
-
-        // Smaller buffer for faster adaptation to new tracks (was 15, now 8)
-        if (keyBuffer.length > 8) {
+        // Keep buffer size reasonable for stability
+        if (keyBuffer.length > 10) {
           keyBuffer.shift();
         }
 
-        // Only update key if we have enough samples (at least 3 for quick response)
+        // Update key if we have enough samples
         if (keyBuffer.length >= 3) {
-          // Find most common key in buffer (weighted by strength)
+          // Count occurrences of each key weighted by correlation
           const keyCounts = {};
           keyBuffer.forEach(k => {
             const keyId = `${k.key}_${k.scale}`;
-            keyCounts[keyId] = (keyCounts[keyId] || 0) + k.strength;
+            if (!keyCounts[keyId]) {
+              keyCounts[keyId] = { count: 0, totalCorr: 0, totalMargin: 0 };
+            }
+            keyCounts[keyId].count++;
+            keyCounts[keyId].totalCorr += k.strength;
+            keyCounts[keyId].totalMargin += k.margin;
           });
 
-          let bestKey = null;
-          let bestKeyScore = 0;
-          let secondBestScore = 0;
-          for (const [keyId, score] of Object.entries(keyCounts)) {
-            if (score > bestKeyScore) {
-              secondBestScore = bestKeyScore;
-              bestKeyScore = score;
-              bestKey = keyId;
-            } else if (score > secondBestScore) {
-              secondBestScore = score;
+          // Find best key
+          let bestKeyId = null;
+          let bestScore = 0;
+          for (const [keyId, data] of Object.entries(keyCounts)) {
+            // Score = count * average correlation * (1 + average margin)
+            const avgCorr = data.totalCorr / data.count;
+            const avgMargin = data.totalMargin / data.count;
+            const score = data.count * avgCorr * (1 + avgMargin);
+            if (score > bestScore) {
+              bestScore = score;
+              bestKeyId = keyId;
             }
           }
 
-          // Relaxed margin requirement for faster key detection
-          const keyOccurrences = keyBuffer.filter(k => `${k.key}_${k.scale}` === bestKey).length;
-          const marginRequired = secondBestScore > 0 ? 1.3 : 0; // Only need 1.3x margin (was 1.5x)
+          if (bestKeyId) {
+            const [detectedKey, detectedScale] = bestKeyId.split('_');
+            const keyData = keyCounts[bestKeyId];
+            const avgCorrelation = keyData.totalCorr / keyData.count;
 
-          if (bestKey && (secondBestScore === 0 || bestKeyScore > secondBestScore * marginRequired) && keyOccurrences >= 2) {
-            const [key, scale] = bestKey.split('_');
-            const newKeyId = `${key}_${scale}`;
-            const currentKeyId = `${lastKey}_${lastKeyScale}`;
+            // Only update if correlation is good and key has appeared multiple times
+            if (keyData.count >= 2 && avgCorrelation > 0.55) {
+              const newKeyId = `${detectedKey}_${detectedScale}`;
+              const currentKeyId = `${lastKey}_${lastKeyScale}`;
 
-            // Reduced hysteresis for more responsive key changes
-            // Still require higher confidence to change an established key
-            const changeThreshold = lastKey ? 1.4 : 1.2;  // Was 1.8/1.5
+              // Apply modest hysteresis to prevent flickering
+              const shouldChange = !lastKey || // No previous key
+                newKeyId !== currentKeyId && ( // Different key AND
+                  keyData.count >= 4 ||  // Strong consensus OR
+                  avgCorrelation > 0.7   // High correlation
+                );
 
-            if (newKeyId !== currentKeyId || !lastKey) {
-              if (!lastKey || bestKeyScore > secondBestScore * changeThreshold || keyOccurrences >= 4) {
-                lastKey = key;
-                lastKeyScale = scale;
-                lastKeyStrength = Math.min(bestKeyScore / keyBuffer.length, 1);
-                console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)}, occurrences: ${keyOccurrences}/${keyBuffer.length}, profiles: ${keyVotes[bestKeyId].count})`);
+              if (shouldChange && newKeyId !== currentKeyId) {
+                lastKey = detectedKey;
+                lastKeyScale = detectedScale;
+                lastKeyStrength = Math.min(avgCorrelation, 1);
+                console.log(`[Worker] Key detected: ${lastKey} ${lastKeyScale} (correlation: ${lastKeyStrength.toFixed(3)}, count: ${keyData.count}/${keyBuffer.length})`);
               }
             }
           }
         }
       }
     } catch (e) {
-      // Fallback to simple detection with larger FFT
+      console.warn('[Worker] HPCP key detection failed:', e.message || e);
+      // Fallback: try essentia's KeyExtractor
       try {
         const keyResult = essentia.KeyExtractor(essentiaAudio, {
           frameSize: 8192,
           hopSize: 4096,
           sampleRate: sampleRate
         });
-        if (keyResult && keyResult.key && keyResult.strength > 0.4 && !lastKey) {
+        if (keyResult && keyResult.key && keyResult.strength > 0.5 && !lastKey) {
           lastKey = keyResult.key;
           lastKeyScale = keyResult.scale;
           lastKeyStrength = keyResult.strength;
           console.log(`[Worker] Key detected (fallback): ${lastKey} ${lastKeyScale}`);
         }
       } catch (e2) {
-        console.warn('[Worker] Key detection failed:', e.message || e);
+        console.warn('[Worker] Key detection failed completely:', e2.message || e2);
       }
     }
 
@@ -605,6 +713,9 @@ function reset() {
   lastEnergy = 0;
   lastDanceability = 0;
   lastTuningFrequency = 440;
+  // Reset accumulated HPCP for key detection
+  accumulatedHPCP = new Float32Array(12);
+  hpcpFrameCount = 0;
   // Reset tuner state
   tunerPitchBuffer = [];
   lastStablePitch = null;
