@@ -229,7 +229,7 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
   useEffect(() => {
     if (!isConnected) return;
 
-    const userIds = new Set(users.map((u) => u.id));
+    const userIds = new Set(users.keys());
     const participantIds = new Set(participants.keys());
 
     // Add new users
