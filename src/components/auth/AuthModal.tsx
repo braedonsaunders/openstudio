@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef } from 'react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -37,23 +37,34 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
 
   const { signIn, signUp, signInWithGoogle, signInWithDiscord, isLoading } = useAuthStore();
 
-  const handleUsernameChange = useCallback(async (value: string) => {
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
+
+  const handleUsernameChange = useCallback((value: string) => {
     // Only allow valid username characters
     const sanitized = value.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 20);
     setUsername(sanitized);
 
+    // Clear any pending debounce
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
     if (sanitized.length >= 3) {
       setCheckingUsername(true);
-      try {
-        const available = await checkUsernameAvailable(sanitized);
-        setUsernameAvailable(available);
-      } catch {
-        setUsernameAvailable(null);
-      } finally {
-        setCheckingUsername(false);
-      }
+      // Debounce the API call by 400ms
+      debounceRef.current = setTimeout(async () => {
+        try {
+          const available = await checkUsernameAvailable(sanitized);
+          setUsernameAvailable(available);
+        } catch {
+          setUsernameAvailable(null);
+        } finally {
+          setCheckingUsername(false);
+        }
+      }, 400);
     } else {
       setUsernameAvailable(null);
+      setCheckingUsername(false);
     }
   }, []);
 
