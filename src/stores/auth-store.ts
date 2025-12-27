@@ -448,9 +448,13 @@ if (typeof window !== 'undefined') {
       const store = useAuthStore.getState();
 
       if (event === 'SIGNED_IN' && session?.user) {
-        // Force re-initialization by resetting the initialized flag
-        useAuthStore.setState({ isInitialized: false, isLoading: false });
-        await useAuthStore.getState().initialize();
+        // Only initialize if not already initialized or loading
+        // The signIn() method handles its own state updates for email/password login
+        // This handler is mainly for OAuth flows where signIn() wasn't called directly
+        const currentState = useAuthStore.getState();
+        if (!currentState.isInitialized && !currentState.isLoading) {
+          await useAuthStore.getState().initialize();
+        }
       } else if (event === 'SIGNED_OUT') {
         store.reset();
       } else if (event === 'INITIAL_SESSION' && session?.user) {
