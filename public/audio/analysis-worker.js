@@ -303,6 +303,12 @@ async function initialize(rate) {
 
     isInitialized = true;
     console.log('[Worker] Essentia.js initialized');
+
+    // Check available key detection algorithms
+    const keyAlgos = ['Key', 'KeyExtractor', 'HPCP', 'Spectrum'];
+    const available = keyAlgos.filter(a => typeof essentia[a] === 'function');
+    console.log('[Worker] Available key algorithms:', available.join(', '));
+
     return true;
   } catch (error) {
     console.error('[Worker] Failed to initialize essentia.js:', error);
@@ -450,37 +456,82 @@ function analyzeLongTerm(combinedAudio) {
       const profiles = ['bgate', 'edma', 'krumhansl', 'temperley'];
       const keyVotes = {};
 
-      for (const profile of profiles) {
+      // First check if KeyExtractor exists
+      if (!essentia.KeyExtractor) {
+        console.log('[Worker] KeyExtractor not available, trying Key algorithm');
+        // Try alternative: compute HPCP manually then use Key
         try {
-          // KeyExtractor takes audio directly and computes everything
-          const keyResult = essentia.KeyExtractor(
-            essentiaAudio,
-            true,     // averageDetuningCorrection
-            4096,     // frameSize
-            4096,     // hopSize
-            12,       // hpcpSize
-            5000,     // maxFrequency
-            25,       // minFrequency
-            0.2,      // pcpThreshold
-            profile,  // profileType
-            sampleRate,
-            0.0001,   // spectralPeaksThreshold
-            440,      // tuningFrequency
-            'cosine', // weightType
-            'hann'    // windowType
-          );
-
-          if (keyResult && keyResult.key && keyResult.scale && keyResult.strength > 0.1) {
-            const keyId = `${keyResult.key}_${keyResult.scale}`;
-            if (!keyVotes[keyId]) {
-              keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
+          const frameSize = 4096;
+          const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
+          if (spectrum && spectrum.spectrum) {
+            const spectrumArray = essentia.vectorToArray(spectrum.spectrum);
+            const numBins = spectrumArray.length;
+            const frequencies = new Float32Array(numBins);
+            const fftSize = (numBins - 1) * 2;
+            for (let i = 0; i < numBins; i++) {
+              frequencies[i] = (i * sampleRate) / fftSize;
             }
-            keyVotes[keyId].count++;
-            keyVotes[keyId].totalStrength += keyResult.strength;
-            keyVotes[keyId].strengths.push(keyResult.strength);
+            const freqVector = essentia.arrayToVector(frequencies);
+            const hpcpResult = essentia.HPCP(spectrum.spectrum, freqVector);
+
+            if (hpcpResult && hpcpResult.hpcp) {
+              // Try Key algorithm with HPCP
+              for (const profile of profiles) {
+                try {
+                  const keyResult = essentia.Key(hpcpResult.hpcp, true, 4, 12, 0.2, profile, 0.6, false, true, true);
+                  if (keyResult && keyResult.key && keyResult.scale && keyResult.strength > 0.1) {
+                    const keyId = `${keyResult.key}_${keyResult.scale}`;
+                    if (!keyVotes[keyId]) {
+                      keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
+                    }
+                    keyVotes[keyId].count++;
+                    keyVotes[keyId].totalStrength += keyResult.strength;
+                    keyVotes[keyId].strengths.push(keyResult.strength);
+                    console.log(`[Worker] Key profile ${profile}: ${keyResult.key} ${keyResult.scale} (${keyResult.strength.toFixed(2)})`);
+                  }
+                } catch (e) {
+                  console.log(`[Worker] Key profile ${profile} failed:`, e.message);
+                }
+              }
+            }
           }
-        } catch (profileError) {
-          // Profile not available or error, skip
+        } catch (hpcpError) {
+          console.log('[Worker] HPCP/Key fallback failed:', hpcpError.message);
+        }
+      } else {
+        for (const profile of profiles) {
+          try {
+            // KeyExtractor takes audio directly and computes everything
+            const keyResult = essentia.KeyExtractor(
+              essentiaAudio,
+              true,     // averageDetuningCorrection
+              4096,     // frameSize
+              4096,     // hopSize
+              12,       // hpcpSize
+              5000,     // maxFrequency
+              25,       // minFrequency
+              0.2,      // pcpThreshold
+              profile,  // profileType
+              sampleRate,
+              0.0001,   // spectralPeaksThreshold
+              440,      // tuningFrequency
+              'cosine', // weightType
+              'hann'    // windowType
+            );
+
+            if (keyResult && keyResult.key && keyResult.scale && keyResult.strength > 0.1) {
+              const keyId = `${keyResult.key}_${keyResult.scale}`;
+              if (!keyVotes[keyId]) {
+                keyVotes[keyId] = { count: 0, totalStrength: 0, strengths: [] };
+              }
+              keyVotes[keyId].count++;
+              keyVotes[keyId].totalStrength += keyResult.strength;
+              keyVotes[keyId].strengths.push(keyResult.strength);
+              console.log(`[Worker] KeyExtractor profile ${profile}: ${keyResult.key} ${keyResult.scale} (${keyResult.strength.toFixed(2)})`);
+            }
+          } catch (profileError) {
+            console.log(`[Worker] KeyExtractor profile ${profile} failed:`, profileError.message);
+          }
         }
       }
 
@@ -488,7 +539,14 @@ function analyzeLongTerm(combinedAudio) {
       let bestKeyId = null;
       let bestScore = 0;
 
-      for (const [keyId, data] of Object.entries(keyVotes)) {
+      const voteEntries = Object.entries(keyVotes);
+      if (voteEntries.length === 0) {
+        console.log('[Worker] No key votes collected');
+      } else {
+        console.log(`[Worker] Key votes: ${voteEntries.map(([k, v]) => `${k.replace('_', ' ')}(${v.count})`).join(', ')}`);
+      }
+
+      for (const [keyId, data] of voteEntries) {
         const avgStrength = data.totalStrength / data.count;
         const score = data.count * avgStrength;
         if (score > bestScore) {
@@ -497,7 +555,7 @@ function analyzeLongTerm(combinedAudio) {
         }
       }
 
-      if (bestKeyId && keyVotes[bestKeyId].count >= 2) {
+      if (bestKeyId && keyVotes[bestKeyId].count >= 1) {  // Lowered threshold to 1 for debugging
         const [detectedKey, detectedScale] = bestKeyId.split('_');
         const avgStrength = keyVotes[bestKeyId].totalStrength / keyVotes[bestKeyId].count;
 
