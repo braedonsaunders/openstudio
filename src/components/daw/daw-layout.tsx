@@ -88,6 +88,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     removeTrack,
     skipToNext,
     skipToPrevious,
+    skipToTrack,
     sendMessage,
     muteUser,
     setUserVolume,
@@ -231,9 +232,13 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek]);
 
   // Handler functions
-  const handleTrackSelect = useCallback(async (track: BackingTrack) => {
-    useRoomStore.getState().setCurrentTrack(track);
-  }, []);
+  const handleTrackSelect = useCallback((track: BackingTrack) => {
+    const { queue } = useRoomStore.getState();
+    const trackIndex = queue.tracks.findIndex(t => t.id === track.id);
+    if (trackIndex !== -1) {
+      skipToTrack(trackIndex);
+    }
+  }, [skipToTrack]);
 
   const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {
     // UploadModal handles the actual upload to R2, we just add the track

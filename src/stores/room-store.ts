@@ -60,6 +60,7 @@ interface RoomState {
   setQueueTime: (time: number) => void;
   nextTrack: () => void;
   previousTrack: () => void;
+  jumpToTrack: (index: number) => void;
 
   // Stem actions
   setStemMixState: (state: StemMixState) => void;
@@ -213,6 +214,17 @@ export const useRoomStore = create<RoomState>()(
         return {
           queue: { ...state.queue, currentIndex: prevIndex, currentTime: 0 },
           currentTrack: state.queue.tracks[prevIndex],
+        };
+      }),
+
+    jumpToTrack: (index: number) =>
+      set((state) => {
+        if (index < 0 || index >= state.queue.tracks.length) {
+          return state;
+        }
+        return {
+          queue: { ...state.queue, currentIndex: index, currentTime: 0, isPlaying: false },
+          currentTrack: state.queue.tracks[index],
         };
       }),
 
