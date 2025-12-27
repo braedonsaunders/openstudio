@@ -147,6 +147,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         setConnected(true);
         setJoining(false);
 
+        // First user to connect becomes master by default
+        // This ensures playback controls work immediately
+        // Will be corrected by presence:sync if needed
+        setIsMaster(true);
+        updateUser(user.id, { isMaster: true });
+
         // Load existing tracks from database
         try {
           const response = await fetch(`/api/rooms/${roomId}/tracks`);

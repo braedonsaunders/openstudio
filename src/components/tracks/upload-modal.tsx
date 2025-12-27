@@ -89,6 +89,18 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
     setError(null);
 
     try {
+      // Calculate duration from the audio file
+      const duration = await new Promise<number>((resolve) => {
+        const audio = new Audio();
+        audio.addEventListener('loadedmetadata', () => {
+          resolve(audio.duration || 0);
+        });
+        audio.addEventListener('error', () => {
+          resolve(0); // Fallback to 0 if can't determine
+        });
+        audio.src = URL.createObjectURL(file);
+      });
+
       // Get presigned URL for direct upload
       const presignResponse = await fetch('/api/upload/presign', {
         method: 'POST',
@@ -139,7 +151,7 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
         name: name.trim(),
         artist: artist.trim() || undefined,
         url: publicUrl,
-        duration: 0, // Will be determined when audio loads
+        duration,
       });
 
       setUploadProgress(100);
