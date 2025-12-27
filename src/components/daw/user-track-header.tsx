@@ -7,7 +7,7 @@ import { FullHeightMeter } from './full-height-meter';
 import { Fader } from './fader';
 import { AdvancedAudioSettingsPopover } from './advanced-audio-settings';
 import { EffectsRack } from './effects-rack';
-import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useUserTracksStore, TRACK_COLORS } from '@/stores/user-tracks-store';
 import {
   Mic,
   Monitor,
@@ -146,10 +146,11 @@ export function UserTrackHeader({
   const [isExpanded, setIsExpanded] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showEffects, setShowEffects] = useState(false);
-  const [isRenaming, setIsRenaming] = useState(false);
+  const [showTrackEditor, setShowTrackEditor] = useState(false);
   const [newName, setNewName] = useState(track.name);
   const advancedSettingsButtonRef = useRef<HTMLButtonElement>(null);
   const effectsButtonRef = useRef<HTMLButtonElement>(null);
+  const trackEditorButtonRef = useRef<HTMLButtonElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -169,36 +170,46 @@ export function UserTrackHeader({
     track.audioSettings.effects?.limiter?.enabled,
   ].filter(Boolean).length;
 
-  // Focus input when renaming starts
+  // Focus input when track editor opens
   useEffect(() => {
-    if (isRenaming && renameInputRef.current) {
-      renameInputRef.current.focus();
-      renameInputRef.current.select();
+    if (showTrackEditor && renameInputRef.current) {
+      // Small delay to ensure popover is rendered
+      setTimeout(() => {
+        renameInputRef.current?.focus();
+        renameInputRef.current?.select();
+      }, 50);
     }
-  }, [isRenaming]);
+  }, [showTrackEditor]);
 
-  const handleStartRename = () => {
-    setNewName(track.name);
-    setIsRenaming(true);
+  // Reset name when opening editor
+  useEffect(() => {
+    if (showTrackEditor) {
+      setNewName(track.name);
+    }
+  }, [showTrackEditor, track.name]);
+
+  const handleOpenTrackEditor = () => {
+    setShowTrackEditor(true);
+    setShowEffects(false);
+    setShowAdvancedSettings(false);
   };
 
-  const handleConfirmRename = () => {
-    if (newName.trim()) {
+  const handleSaveName = () => {
+    if (newName.trim() && newName.trim() !== track.name) {
       updateTrack(track.id, { name: newName.trim() });
     }
-    setIsRenaming(false);
   };
 
-  const handleCancelRename = () => {
-    setNewName(track.name);
-    setIsRenaming(false);
+  const handleColorChange = (color: string) => {
+    updateTrack(track.id, { color });
   };
 
-  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
+  const handleNameKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
-      handleConfirmRename();
+      handleSaveName();
+      setShowTrackEditor(false);
     } else if (e.key === 'Escape') {
-      handleCancelRename();
+      setShowTrackEditor(false);
     }
   };
 
@@ -269,40 +280,14 @@ export function UserTrackHeader({
 
             {/* Track Name */}
             <div className="min-w-0 flex-1">
-              {isRenaming ? (
-                <div className="flex items-center gap-1">
-                  <input
-                    ref={renameInputRef}
-                    type="text"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                    onKeyDown={handleRenameKeyDown}
-                    onBlur={handleConfirmRename}
-                    className="w-full h-5 px-1 bg-white/10 border border-white/20 rounded text-xs text-white focus:outline-none focus:border-indigo-500"
-                  />
-                  <button
-                    onClick={handleConfirmRename}
-                    className="p-0.5 text-emerald-400 hover:text-emerald-300"
-                  >
-                    <Check className="w-3 h-3" />
-                  </button>
-                  <button
-                    onClick={handleCancelRename}
-                    className="p-0.5 text-zinc-400 hover:text-zinc-300"
-                  >
-                    <X className="w-3 h-3" />
-                  </button>
-                </div>
-              ) : (
-                <div className="flex items-center gap-1">
-                  <span className="text-xs font-medium text-gray-900 dark:text-white truncate">
-                    {track.name}
-                  </span>
-                  {isFirst && (
-                    <span className="text-[9px] text-gray-500 dark:text-zinc-500">(You)</span>
-                  )}
-                </div>
-              )}
+              <div className="flex items-center gap-1">
+                <span className="text-xs font-medium text-gray-900 dark:text-white truncate">
+                  {track.name}
+                </span>
+                {isFirst && (
+                  <span className="text-[9px] text-gray-500 dark:text-zinc-500">(You)</span>
+                )}
+              </div>
               {/* Input source label */}
               <div className="flex items-center gap-1 text-gray-500 dark:text-zinc-500">
                 <span className="text-[9px] truncate">
@@ -313,11 +298,17 @@ export function UserTrackHeader({
               </div>
             </div>
 
-            {/* Rename Track */}
+            {/* Track Editor (Name + Color) */}
             <button
-              onClick={handleStartRename}
-              className="p-1 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors shrink-0"
-              title="Rename Track"
+              ref={trackEditorButtonRef}
+              onClick={handleOpenTrackEditor}
+              className={cn(
+                'p-1 rounded transition-colors shrink-0',
+                showTrackEditor
+                  ? 'bg-indigo-500/20 text-indigo-400'
+                  : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300'
+              )}
+              title="Edit Track Name & Color"
             >
               <Pencil className="w-3.5 h-3.5" />
             </button>
@@ -462,6 +453,74 @@ export function UserTrackHeader({
           track={track}
           onClose={() => setShowAdvancedSettings(false)}
         />
+      </PopoverPortal>
+
+      {/* Track Name & Color Editor Popover */}
+      <PopoverPortal
+        anchorRef={trackEditorButtonRef}
+        isOpen={showTrackEditor}
+        onClose={() => {
+          handleSaveName();
+          setShowTrackEditor(false);
+        }}
+      >
+        <div className="w-56 bg-gray-900 border border-white/10 rounded-lg shadow-xl overflow-hidden">
+          {/* Header */}
+          <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+            <span className="text-xs font-medium text-white">Edit Track</span>
+            <button
+              onClick={() => {
+                handleSaveName();
+                setShowTrackEditor(false);
+              }}
+              className="p-0.5 text-zinc-400 hover:text-white transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="p-3 space-y-3">
+            {/* Track Name Input */}
+            <div>
+              <label className="text-[10px] text-zinc-500 uppercase tracking-wide block mb-1">
+                Name
+              </label>
+              <input
+                ref={renameInputRef}
+                type="text"
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                onKeyDown={handleNameKeyDown}
+                onBlur={handleSaveName}
+                className="w-full h-7 px-2 bg-white/5 border border-white/10 rounded text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500 transition-colors"
+                placeholder="Track name"
+              />
+            </div>
+
+            {/* Color Picker */}
+            <div>
+              <label className="text-[10px] text-zinc-500 uppercase tracking-wide block mb-2">
+                Color
+              </label>
+              <div className="grid grid-cols-5 gap-1.5">
+                {TRACK_COLORS.map((color) => (
+                  <button
+                    key={color}
+                    onClick={() => handleColorChange(color)}
+                    className={cn(
+                      'w-7 h-7 rounded-md transition-all hover:scale-110',
+                      track.color === color
+                        ? 'ring-2 ring-white ring-offset-1 ring-offset-gray-900'
+                        : 'hover:ring-1 hover:ring-white/50'
+                    )}
+                    style={{ backgroundColor: color }}
+                    title={color}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </PopoverPortal>
     </div>
   );

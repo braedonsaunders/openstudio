@@ -4,8 +4,8 @@ import type { UserTrack, TrackAudioSettings, TrackEffectsChain, InputChannelConf
 import { DEFAULT_EFFECTS_CHAIN, EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS, DEFAULT_GUITAR_EFFECTS } from '@/lib/audio/effects/guitar';
 
-// Track color palette
-const TRACK_COLORS = [
+// Track color palette - exported for use in color picker
+export const TRACK_COLORS = [
   '#f472b6', // Pink
   '#fb923c', // Orange
   '#a3e635', // Lime
