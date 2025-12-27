@@ -158,9 +158,32 @@ export class AudioEngine {
       sampleRate,
     });
 
-    this.localStream = await navigator.mediaDevices.getUserMedia({
-      audio: audioConstraints,
-    });
+    // Try with full constraints first, fall back to minimal for iOS Safari compatibility
+    try {
+      this.localStream = await navigator.mediaDevices.getUserMedia({
+        audio: audioConstraints,
+      });
+    } catch (err) {
+      const error = err as Error;
+      // Handle OverconstrainedError (common on iOS Safari) or NotSupportedError
+      if (error.name === 'OverconstrainedError' || error.name === 'NotSupportedError') {
+        console.warn('[AudioEngine] Constraints not supported, falling back to minimal constraints:', error.message);
+
+        // Try with just device ID if specified, otherwise minimal constraints
+        const fallbackConstraints: MediaTrackConstraints = deviceId && deviceId !== 'default'
+          ? { deviceId: { ideal: deviceId } }
+          : {};
+
+        this.localStream = await navigator.mediaDevices.getUserMedia({
+          audio: fallbackConstraints.deviceId ? fallbackConstraints : true,
+        });
+
+        console.log('[AudioEngine] Successfully captured audio with fallback constraints');
+      } else {
+        // Re-throw other errors (e.g., NotAllowedError for permission denied)
+        throw err;
+      }
+    }
 
     // Log actual stream settings
     const audioTrack = this.localStream.getAudioTracks()[0];

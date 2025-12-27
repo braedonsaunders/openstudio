@@ -76,9 +76,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     destroyEngine,
   } = useAudioEngine();
 
-  // Join room
-  const join = useCallback(async (userName: string, instrument?: string) => {
-    if (isJoining || isConnected) return;
+  // Join room - returns true on success, false on failure
+  const join = useCallback(async (userName: string, instrument?: string): Promise<boolean> => {
+    if (isJoining || isConnected) return false;
 
     setJoining(true);
     setError(null);
@@ -492,10 +492,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       };
 
       setRoom(roomData);
+      return true;
     } catch (err) {
       setError((err as Error).message);
       setJoining(false);
       options.onError?.(err as Error);
+      return false;
     }
   }, [roomId, isJoining, isConnected, setJoining, setError, setCurrentUser, initialize, startCapture, addRemoteStream, removeRemoteStream, setWebRTCStats, updateFromStats, setConnected, addUser, setIsMaster, updateUser, removeUser, queue.tracks, loadBackingTrack, playBackingTrack, setQueuePlaying, pauseBackingTrack, seekTo, setQueue, nextTrack, addMessage, setRoom, options, users]);
 

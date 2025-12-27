@@ -46,7 +46,7 @@ export function MidiTrackLane({
 }: MidiTrackLaneProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const animationRef = useRef<number>();
+  const animationRef = useRef<number | undefined>(undefined);
   const noteHistoryRef = useRef<MidiNoteEvent[]>([]);
   const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
 
