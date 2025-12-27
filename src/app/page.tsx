@@ -409,13 +409,13 @@ function DayScene() {
         </svg>
       </motion.div>
 
-      {/* Layer 7: Meadow ground - fast, closest */}
+      {/* Layer 7: Meadow ground - slides up from bottom */}
       <motion.div
         className="absolute bottom-0 left-0 right-0 h-[30%]"
-        initial={{ x: '-85%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '-85%' }}
-        transition={{ ...parallaxTransition, duration: 0.65, ease: [0.32, 0, 0.67, 0] }}
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ ...parallaxTransition, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
       >
         <svg className="w-full h-full" viewBox="0 0 1440 300" preserveAspectRatio="none">
           <ellipse cx="720" cy="400" rx="1000" ry="250" fill="url(#meadowGradient)" />
@@ -429,23 +429,23 @@ function DayScene() {
         </svg>
       </motion.div>
 
-      {/* Layer 8: Picnic blanket - fast */}
+      {/* Layer 8: Picnic blanket - slides up from bottom */}
       <motion.div
-        initial={{ x: '-90%', opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: '-90%', opacity: 0 }}
-        transition={{ ...parallaxTransition, duration: 0.6 }}
+        initial={{ y: '120%', opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: '120%', opacity: 0 }}
+        transition={{ ...parallaxTransition, duration: 0.65 }}
       >
         <PicnicBlanket />
       </motion.div>
 
-      {/* Layer 9: Animated grass/flowers - fastest, foreground */}
+      {/* Layer 9: Animated grass/flowers - slides up from bottom, fastest */}
       <motion.div
         className="absolute bottom-[5%] left-0 right-0 h-[15%] flex items-end justify-around pointer-events-none"
-        initial={{ x: '-100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '-100%' }}
-        transition={{ ...parallaxTransition, duration: 0.55 }}
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ ...parallaxTransition, duration: 0.6 }}
       >
         {Array.from({ length: 30 }).map((_, i) => (
           <motion.div
@@ -710,13 +710,13 @@ function NightScene() {
         </div>
       </motion.div>
 
-      {/* Layer 6: Ocean with reflection - fast */}
+      {/* Layer 6: Ocean with reflection - slides up from bottom */}
       <motion.div
         className="absolute bottom-0 left-0 right-0 h-[25%]"
-        initial={{ x: '85%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '85%' }}
-        transition={{ ...parallaxTransition, duration: 0.65, ease: [0.32, 0, 0.67, 0] }}
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ ...parallaxTransition, duration: 0.7, ease: [0.22, 1, 0.36, 1] }}
       >
         <svg className="w-full h-full" viewBox="0 0 1440 250" preserveAspectRatio="none">
           <defs>
@@ -745,22 +745,22 @@ function NightScene() {
         </motion.svg>
       </motion.div>
 
-      {/* Layer 7: Beach sand - fastest, closest */}
+      {/* Layer 7: Beach sand - slides up from bottom */}
       <motion.div
         className="absolute bottom-0 left-0 right-0 h-[12%]"
-        initial={{ x: '100%' }}
-        animate={{ x: 0 }}
-        exit={{ x: '100%' }}
-        transition={{ ...parallaxTransition, duration: 0.55 }}
+        initial={{ y: '100%' }}
+        animate={{ y: 0 }}
+        exit={{ y: '100%' }}
+        transition={{ ...parallaxTransition, duration: 0.65 }}
       >
         <div className="w-full h-full bg-gradient-to-t from-amber-900/80 to-amber-800/60" />
       </motion.div>
 
-      {/* Layer 8: Campfire - fastest, foreground */}
+      {/* Layer 8: Campfire - slides up from bottom */}
       <motion.div
-        initial={{ x: '90%', opacity: 0 }}
-        animate={{ x: 0, opacity: 1 }}
-        exit={{ x: '90%', opacity: 0 }}
+        initial={{ y: '80%', opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        exit={{ y: '80%', opacity: 0 }}
         transition={{ ...parallaxTransition, duration: 0.6 }}
       >
         <Campfire />
