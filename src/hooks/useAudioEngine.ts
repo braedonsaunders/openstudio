@@ -38,8 +38,12 @@ export function useAudioEngine() {
 
   // Initialize audio engine
   const initialize = useCallback(async () => {
-    if (engineRef.current) return;
+    if (engineRef.current) {
+      console.log('Audio engine already initialized');
+      return engineRef.current;
+    }
 
+    console.log('Initializing audio engine...');
     const engine = new AudioEngine({
       sampleRate: settings.sampleRate,
       bufferSize: settings.bufferSize,
@@ -48,6 +52,7 @@ export function useAudioEngine() {
     });
 
     await engine.initialize();
+    console.log('Audio engine initialized successfully');
 
     // Set up level monitoring
     engine.setOnLevelUpdate((levels) => {
@@ -60,9 +65,13 @@ export function useAudioEngine() {
     setInitialized(true);
 
     // Get available devices
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    setInputDevices(devices.filter((d) => d.kind === 'audioinput'));
-    setOutputDevices(devices.filter((d) => d.kind === 'audiooutput'));
+    try {
+      const devices = await navigator.mediaDevices.enumerateDevices();
+      setInputDevices(devices.filter((d) => d.kind === 'audioinput'));
+      setOutputDevices(devices.filter((d) => d.kind === 'audiooutput'));
+    } catch (err) {
+      console.warn('Failed to enumerate devices:', err);
+    }
 
     return engine;
   }, [settings, setInitialized, setAudioLevels, setLocalLevel, setInputDevices, setOutputDevices]);
@@ -185,7 +194,8 @@ export function useAudioEngine() {
   // Play backing track with sync
   const playBackingTrack = useCallback((syncTimestamp: number, offset: number = 0) => {
     if (!engineRef.current) {
-      console.error('Audio engine not ready for playback');
+      console.error('Audio engine not ready for playback - attempting to initialize');
+      // Don't try to play if engine isn't ready
       return;
     }
 
@@ -194,6 +204,9 @@ export function useAudioEngine() {
       console.error('No audio buffer loaded');
       return;
     }
+
+    // Ensure audio context is resumed
+    engineRef.current.resume().catch(console.error);
 
     if (stemsAvailable) {
       engineRef.current.playStemmedTrack(syncTimestamp, offset);
