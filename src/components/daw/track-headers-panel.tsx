@@ -12,6 +12,7 @@ interface TrackHeadersPanelProps {
   onMuteUser: (userId: string, muted: boolean) => void;
   onVolumeChange: (userId: string, volume: number) => void;
   onMuteSelf: () => void;
+  width?: number;
 }
 
 // Track color palette
@@ -36,6 +37,7 @@ export function TrackHeadersPanel({
   onMuteUser,
   onVolumeChange,
   onMuteSelf,
+  width,
 }: TrackHeadersPanelProps) {
   // Assign colors to users based on their position
   const getUserColor = (index: number) => TRACK_COLORS[index % TRACK_COLORS.length];
@@ -46,7 +48,10 @@ export function TrackHeadersPanel({
     : users;
 
   return (
-    <div className="w-60 bg-[#0d0d14] border-r border-white/5 flex flex-col shrink-0 z-10">
+    <div
+      className="bg-[#0d0d14] border-r border-white/5 flex flex-col shrink-0 z-10"
+      style={{ width: width ? `${width}px` : '240px' }}
+    >
       {/* Header */}
       <div className="h-8 px-4 flex items-center border-b border-white/5 bg-[#12121a]">
         <span className="text-xs font-medium text-zinc-500 uppercase tracking-wider">Tracks</span>
