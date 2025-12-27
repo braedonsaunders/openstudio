@@ -18,6 +18,24 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
+// Request options to help avoid YouTube bot detection
+const ytdlOptions = {
+  requestOptions: {
+    headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+      'Accept-Language': 'en-US,en;q=0.9',
+      'Accept-Encoding': 'gzip, deflate, br',
+      'Connection': 'keep-alive',
+      'Upgrade-Insecure-Requests': '1',
+      'Sec-Fetch-Dest': 'document',
+      'Sec-Fetch-Mode': 'navigate',
+      'Sec-Fetch-Site': 'none',
+      'Sec-Fetch-User': '?1',
+    },
+  },
+};
+
 export async function POST(request: NextRequest) {
   try {
     const { videoId, title, artist } = await request.json();
@@ -36,11 +54,33 @@ export async function POST(request: NextRequest) {
 
     let info;
     try {
-      info = await ytdl.getInfo(videoUrl);
-    } catch (error) {
-      console.error('Failed to get video info:', error);
+      info = await ytdl.getInfo(videoUrl, ytdlOptions);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      console.error('Failed to get video info:', errorMessage);
+
+      // Check for specific error types
+      if (errorMessage.includes('Sign in to confirm')) {
+        return NextResponse.json(
+          { error: 'This video requires sign-in. Please try a different video.' },
+          { status: 400 }
+        );
+      }
+      if (errorMessage.includes('age-restricted') || errorMessage.includes('age verification')) {
+        return NextResponse.json(
+          { error: 'This video is age-restricted. Please try a different video.' },
+          { status: 400 }
+        );
+      }
+      if (errorMessage.includes('private video')) {
+        return NextResponse.json(
+          { error: 'This video is private. Please try a different video.' },
+          { status: 400 }
+        );
+      }
+
       return NextResponse.json(
-        { error: 'Failed to get video info. Video may be unavailable or age-restricted.' },
+        { error: `Failed to get video info: ${errorMessage}` },
         { status: 400 }
       );
     }
@@ -64,7 +104,7 @@ export async function POST(request: NextRequest) {
     console.log(`Selected audio format: ${audioFormat.mimeType}, bitrate: ${audioFormat.audioBitrate}`);
 
     // Download the audio stream
-    const audioStream = ytdl(videoUrl, { format: audioFormat });
+    const audioStream = ytdl(videoUrl, { format: audioFormat, ...ytdlOptions });
 
     // Collect the audio data
     const chunks: Buffer[] = [];
