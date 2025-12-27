@@ -118,15 +118,19 @@ R2 is S3-compatible object storage for backing tracks.
 
 #### Step 3: Create API Tokens
 
-1. Go to **R2** → **Manage R2 API Tokens**
-2. Click **Create API Token**
-3. Configure the token:
+1. Go to **R2** → **Overview** (not inside a bucket)
+2. In the right sidebar, find **"Manage R2 API Tokens"**
+3. Click **Create API Token**
+4. Choose token type:
+   - **Account API token** (recommended) - works across all systems
+   - **User API token** - tied to your personal account
+5. Configure the token:
    - **Token name**: `openstudio-access`
-   - **Permissions**: `Object Read & Write`
-   - **Specify bucket(s)**: Select `openstudio-tracks`
-4. Click **Create API Token**
+   - **Permissions**: `Admin Read & Write`
+   - **Specify bucket(s)**: Select `openstudio-tracks` (or leave blank for all buckets)
+6. Click **Create API Token**
 
-**Save the credentials immediately** (they're only shown once):
+**Save the credentials immediately** (Secret Access Key is only shown once):
 
 ```
 Access Key ID: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
