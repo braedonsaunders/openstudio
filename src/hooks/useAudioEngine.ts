@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { AudioEngine } from '@/lib/audio/audio-engine';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
@@ -9,6 +9,11 @@ import type { BackingTrack } from '@/types';
 export function useAudioEngine() {
   const engineRef = useRef<AudioEngine | null>(null);
   const animationFrameRef = useRef<number | null>(null);
+
+  // State for analyser nodes (triggers re-render when engine initializes)
+  const [backingTrackAnalyser, setBackingTrackAnalyser] = useState<AnalyserNode | null>(null);
+  const [masterAnalyser, setMasterAnalyser] = useState<AnalyserNode | null>(null);
+  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
 
   const {
     settings,
@@ -63,6 +68,16 @@ export function useAudioEngine() {
 
     engineRef.current = engine;
     setInitialized(true);
+
+    // Store analyser nodes in state so they trigger re-renders
+    setAudioContext(engine.getAudioContext());
+    setBackingTrackAnalyser(engine.getBackingTrackAnalyser());
+    setMasterAnalyser(engine.getMasterAnalyser());
+
+    console.log('Audio engine analysers ready:', {
+      backingTrackAnalyser: !!engine.getBackingTrackAnalyser(),
+      masterAnalyser: !!engine.getMasterAnalyser(),
+    });
 
     // Get available devices
     try {
@@ -125,24 +140,9 @@ export function useAudioEngine() {
     useAudioStore.getState().setBackingTrackVolume(volume);
   }, []);
 
-  // Get audio context for external use (e.g., analysis)
-  const getAudioContext = useCallback((): AudioContext | null => {
-    return engineRef.current?.getAudioContext() || null;
-  }, []);
-
-  // Get the backing track analyser node for audio analysis
-  const getBackingTrackAnalyser = useCallback((): AnalyserNode | null => {
-    return engineRef.current?.getBackingTrackAnalyser() || null;
-  }, []);
-
   // Check if backing track audio is available for analysis
   const hasBackingTrackAudio = useCallback((): boolean => {
     return engineRef.current?.hasBackingTrackAudio() || false;
-  }, []);
-
-  // Get the master analyser node (analyzes all audio - backing + all users)
-  const getMasterAnalyser = useCallback((): AnalyserNode | null => {
-    return engineRef.current?.getMasterAnalyser() || null;
   }, []);
 
   // Load and play backing track
@@ -329,9 +329,10 @@ export function useAudioEngine() {
     setRemoteVolume,
     setMasterVolume,
     setBackingTrackVolume,
-    getAudioContext,
-    getBackingTrackAnalyser,
-    getMasterAnalyser,
+    // Analyser nodes as state (triggers re-render when available)
+    audioContext,
+    backingTrackAnalyser,
+    masterAnalyser,
     hasBackingTrackAudio,
     loadBackingTrack,
     playBackingTrack,
