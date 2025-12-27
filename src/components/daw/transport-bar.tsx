@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback } from 'react';
-import { cn } from '@/lib/utils';
+import { cn, formatLatency } from '@/lib/utils';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
 import { useAnalysisStore } from '@/stores/analysis-store';
@@ -53,7 +53,7 @@ export function TransportBar({
 }: TransportBarProps) {
   const [copied, setCopied] = useState(false);
 
-  const { isPlaying, currentTime, duration, isMuted } = useAudioStore();
+  const { isPlaying, currentTime, duration, isMuted, jitterStats } = useAudioStore();
   const { currentTrack, isMaster } = useRoomStore();
   const { syncedAnalysis, localAnalysis } = useAnalysisStore();
 
@@ -127,7 +127,9 @@ export function TransportBar({
         {/* Connection Status */}
         <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-emerald-500/10">
           <Zap className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
-          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">12ms</span>
+          <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+            {formatLatency(jitterStats.roundTripTime)}
+          </span>
         </div>
       </div>
 
