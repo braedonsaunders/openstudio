@@ -153,12 +153,16 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         setIsMaster(true);
         updateUser(user.id, { isMaster: true });
 
-        // Load existing tracks from database
+        // Load existing tracks from database (includes both file uploads and YouTube tracks)
         try {
           const response = await fetch(`/api/rooms/${roomId}/tracks`);
           if (response.ok) {
             const tracks = await response.json();
             if (tracks.length > 0) {
+              console.log('Loaded tracks from database:', tracks.length, 'tracks');
+              tracks.forEach((t: BackingTrack) => {
+                console.log(`  - ${t.name} (${t.youtubeId ? 'YouTube: ' + t.youtubeId : 'file upload'})`);
+              });
               setQueue({
                 tracks,
                 currentIndex: 0,
@@ -213,9 +217,19 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         const payload = data as { trackId: string; timestamp: number; syncTime: number };
         const track = queue.tracks.find((t) => t.id === payload.trackId);
         if (track) {
-          await loadBackingTrack(track);
-          playBackingTrack(payload.syncTime, payload.timestamp);
-          setQueuePlaying(true);
+          // YouTube tracks are handled by the YouTube player component, not audio engine
+          if (track.youtubeId) {
+            setQueuePlaying(true);
+            return;
+          }
+
+          const loadSuccess = await loadBackingTrack(track);
+          if (loadSuccess) {
+            playBackingTrack(payload.syncTime, payload.timestamp);
+            setQueuePlaying(true);
+          } else {
+            console.error('Failed to load track for playback sync');
+          }
         }
       });
 
@@ -320,8 +334,23 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const play = useCallback(async () => {
     if (!isMaster || !currentTrack) return;
 
+    // Skip audio engine for YouTube tracks - they use the YouTube player
+    if (currentTrack.youtubeId) {
+      // YouTube playback is handled by YouTubePlayer component
+      // Just update state and broadcast
+      realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, Date.now() + 100);
+      setQueuePlaying(true);
+      return;
+    }
+
     const syncTime = Date.now() + 100; // 100ms in future for sync
-    await loadBackingTrack(currentTrack);
+    const loadSuccess = await loadBackingTrack(currentTrack);
+
+    if (!loadSuccess) {
+      console.error('Failed to load backing track, cannot play');
+      return;
+    }
+
     playBackingTrack(syncTime, queue.currentTime);
 
     realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, syncTime);
@@ -355,13 +384,20 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     realtimeRef.current?.broadcastQueueUpdate(updatedQueue);
 
-    // Persist track to database
+    // Persist track to database (both file uploads and YouTube tracks)
     try {
-      await fetch(`/api/rooms/${roomId}/tracks`, {
+      const response = await fetch(`/api/rooms/${roomId}/tracks`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(track),
       });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        console.error('Failed to persist track:', response.status, errorData);
+      } else {
+        console.log('Track persisted to database:', track.id, track.youtubeId ? '(YouTube)' : '(file upload)');
+      }
     } catch (err) {
       console.error('Failed to persist track:', err);
     }
