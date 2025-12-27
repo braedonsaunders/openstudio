@@ -6,6 +6,7 @@ import { UserTrackHeader } from './user-track-header';
 import { InactiveTrackHeader } from './inactive-track-header';
 import { AddTrackModal } from './add-track-modal';
 import { LoopBrowserModal } from '../loops/loop-browser-modal';
+import { LoopTrackHeader } from '../loops/loop-track-header';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { Plus } from 'lucide-react';
@@ -63,7 +64,15 @@ export function TrackHeadersPanel({
     devicesLoaded,
   } = useUserTracksStore();
 
-  const { addTrack: addLoopTrack } = useLoopTracksStore();
+  const {
+    addTrack: addLoopTrack,
+    getTracksByRoom,
+    removeTrack: removeLoopTrack,
+    setTrackPlaying,
+  } = useLoopTracksStore();
+
+  // Get loop tracks for this room
+  const loopTracks = roomId ? getTracksByRoom(roomId) : [];
 
   // Handler for adding a loop track from the browser
   const handleAddLoop = useCallback(
@@ -118,7 +127,61 @@ export function TrackHeadersPanel({
   const getUserColor = (index: number) => TRACK_COLORS[index % TRACK_COLORS.length];
 
   // Count total tracks for display
-  const totalTracks = localTracks.length + remoteUsers.length + inactiveTracks.length;
+  const totalTracks = localTracks.length + remoteUsers.length + inactiveTracks.length + loopTracks.length;
+
+  // Loop track handlers
+  const handlePlayLoopTrack = useCallback(
+    async (trackId: string) => {
+      setTrackPlaying(trackId, true, Date.now());
+      // TODO: Actually trigger audio playback via sound engine
+      if (roomId) {
+        try {
+          await fetch(`/api/rooms/${roomId}/loop-tracks`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: trackId, isPlaying: true }),
+          });
+        } catch (err) {
+          console.error('Failed to update loop track:', err);
+        }
+      }
+    },
+    [roomId, setTrackPlaying]
+  );
+
+  const handleStopLoopTrack = useCallback(
+    async (trackId: string) => {
+      setTrackPlaying(trackId, false);
+      if (roomId) {
+        try {
+          await fetch(`/api/rooms/${roomId}/loop-tracks`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: trackId, isPlaying: false }),
+          });
+        } catch (err) {
+          console.error('Failed to update loop track:', err);
+        }
+      }
+    },
+    [roomId, setTrackPlaying]
+  );
+
+  const handleRemoveLoopTrack = useCallback(
+    async (trackId: string) => {
+      removeLoopTrack(trackId);
+      if (roomId) {
+        try {
+          await fetch(`/api/rooms/${roomId}/loop-tracks?id=${trackId}`, {
+            method: 'DELETE',
+          });
+        } catch (err) {
+          console.error('Failed to delete loop track:', err);
+        }
+      }
+    },
+    [roomId, removeLoopTrack]
+  );
 
   // Handle claiming an abandoned track
   const handleClaimTrack = async (trackId: string) => {
@@ -197,6 +260,26 @@ export function TrackHeadersPanel({
                 />
               );
             })}
+          </div>
+        )}
+
+        {/* Loop Tracks */}
+        {loopTracks.length > 0 && (
+          <div className="border-b border-gray-200 dark:border-white/10">
+            <div className="px-3 py-1.5 bg-gray-100/50 dark:bg-white/[0.02]">
+              <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">
+                Loop Tracks
+              </span>
+            </div>
+            {loopTracks.map((track) => (
+              <LoopTrackHeader
+                key={track.id}
+                track={track}
+                onPlay={() => handlePlayLoopTrack(track.id)}
+                onStop={() => handleStopLoopTrack(track.id)}
+                onRemove={() => handleRemoveLoopTrack(track.id)}
+              />
+            ))}
           </div>
         )}
 
