@@ -364,25 +364,38 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     reset();
   }, [reset, roomId, destroyEngine]);
 
-  // Master controls
+  // Master controls - BULLETPROOF with fresh state
   const play = useCallback(async () => {
-    console.log('Play called, isMaster:', isMaster, 'currentTrack:', currentTrack?.id);
-    if (!isMaster || !currentTrack) {
-      console.log('Play aborted: not master or no current track');
+    // Get ALL fresh state to avoid stale closure issues
+    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack, queue: freshQueue } = useRoomStore.getState();
+
+    console.log('Play called:', {
+      isMaster: freshIsMaster,
+      currentTrackId: freshCurrentTrack?.id,
+      currentTrackName: freshCurrentTrack?.name,
+    });
+
+    if (!freshIsMaster) {
+      console.log('Play aborted: not master');
+      return;
+    }
+
+    if (!freshCurrentTrack) {
+      console.log('Play aborted: no current track');
       return;
     }
 
     // Skip audio engine for YouTube tracks - they use the YouTube player
-    if (currentTrack.youtubeId) {
+    if (freshCurrentTrack.youtubeId) {
       console.log('YouTube track, delegating to YouTube player');
       // YouTube playback is handled by YouTubePlayer component
       // Just update state and broadcast
-      realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, Date.now() + 100);
+      realtimeRef.current?.broadcastPlay(freshCurrentTrack.id, freshQueue.currentTime, Date.now() + 100);
       setQueuePlaying(true);
       return;
     }
 
-    console.log('Playing uploaded track:', currentTrack.name, 'URL:', currentTrack.url);
+    console.log('Playing uploaded track:', freshCurrentTrack.name, 'URL:', freshCurrentTrack.url);
 
     // Ensure audio engine is initialized before attempting playback
     try {
@@ -394,22 +407,28 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     const syncTime = Date.now() + 100; // 100ms in future for sync
     console.log('Loading backing track...');
-    const loadSuccess = await loadBackingTrack(currentTrack);
+    const loadSuccess = await loadBackingTrack(freshCurrentTrack);
 
     if (!loadSuccess) {
       console.error('Failed to load backing track, cannot play');
       return;
     }
 
-    console.log('Playing backing track at offset:', queue.currentTime);
-    playBackingTrack(syncTime, queue.currentTime);
+    console.log('Playing backing track at offset:', freshQueue.currentTime);
+    playBackingTrack(syncTime, freshQueue.currentTime);
 
-    realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, syncTime);
+    realtimeRef.current?.broadcastPlay(freshCurrentTrack.id, freshQueue.currentTime, syncTime);
     setQueuePlaying(true);
-  }, [isMaster, currentTrack, initialize, loadBackingTrack, playBackingTrack, queue.currentTime, setQueuePlaying]);
+  }, [initialize, loadBackingTrack, playBackingTrack, setQueuePlaying]);
 
   const pause = useCallback(async () => {
-    if (!isMaster || !currentTrack) return;
+    // Get ALL fresh state to avoid stale closure issues
+    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack } = useRoomStore.getState();
+
+    if (!freshIsMaster || !freshCurrentTrack) {
+      console.log('Pause aborted: not master or no current track');
+      return;
+    }
 
     // Get the current playback time before pausing
     const { currentTime } = useAudioStore.getState();
@@ -419,17 +438,23 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Save the current time so we can resume from this position
     setQueueTime(currentTime);
 
-    realtimeRef.current?.broadcastPause(currentTrack.id, currentTime);
+    realtimeRef.current?.broadcastPause(freshCurrentTrack.id, currentTime);
     setQueuePlaying(false);
-  }, [isMaster, currentTrack, pauseBackingTrack, setQueueTime, setQueuePlaying]);
+  }, [pauseBackingTrack, setQueueTime, setQueuePlaying]);
 
   const seek = useCallback(async (time: number) => {
-    if (!isMaster || !currentTrack) return;
+    // Get ALL fresh state to avoid stale closure issues
+    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack } = useRoomStore.getState();
+
+    if (!freshIsMaster || !freshCurrentTrack) {
+      console.log('Seek aborted: not master or no current track');
+      return;
+    }
 
     const syncTime = Date.now() + 100;
     seekTo(time, syncTime);
-    realtimeRef.current?.broadcastSeek(currentTrack.id, time, syncTime);
-  }, [isMaster, currentTrack, seekTo]);
+    realtimeRef.current?.broadcastSeek(freshCurrentTrack.id, time, syncTime);
+  }, [seekTo]);
 
   // Queue management
   const addTrack = useCallback(async (track: BackingTrack) => {
@@ -491,10 +516,16 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   }, [roomId, queue, removeFromQueue]);
 
   const skipToNext = useCallback(async () => {
-    if (!isMaster) return;
+    // Get ALL fresh state to avoid stale closure issues
+    const { queue: freshQueue, isMaster: freshIsMaster } = useRoomStore.getState();
 
-    // Get fresh state to avoid stale closure issues
-    const freshQueue = useRoomStore.getState().queue;
+    console.log('skipToNext called:', { isMaster: freshIsMaster, currentIndex: freshQueue.currentIndex });
+
+    if (!freshIsMaster) {
+      console.log('skipToNext: Not master, ignoring');
+      return;
+    }
+
     const nextIndex = freshQueue.currentIndex + 1;
 
     // Check if there's a next track
@@ -521,13 +552,19 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Small delay to allow track state to update
       setTimeout(() => play(), 100);
     }
-  }, [isMaster, nextTrack, pauseBackingTrack, play]);
+  }, [nextTrack, pauseBackingTrack, play]);
 
   const skipToPrevious = useCallback(async () => {
-    if (!isMaster) return;
+    // Get ALL fresh state to avoid stale closure issues
+    const { queue: freshQueue, isMaster: freshIsMaster } = useRoomStore.getState();
 
-    // Get fresh state to avoid stale closure issues
-    const freshQueue = useRoomStore.getState().queue;
+    console.log('skipToPrevious called:', { isMaster: freshIsMaster, currentIndex: freshQueue.currentIndex });
+
+    if (!freshIsMaster) {
+      console.log('skipToPrevious: Not master, ignoring');
+      return;
+    }
+
     const prevIndex = freshQueue.currentIndex - 1;
 
     // Check if there's a previous track
@@ -554,13 +591,23 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Small delay to allow track state to update
       setTimeout(() => play(), 100);
     }
-  }, [isMaster, pauseBackingTrack, previousTrack, play]);
+  }, [pauseBackingTrack, previousTrack, play]);
 
   const skipToTrack = useCallback(async (trackIndex: number) => {
-    if (!isMaster) return;
+    // Get ALL fresh state to avoid stale closure issues
+    const { queue: freshQueue, isMaster: freshIsMaster } = useRoomStore.getState();
 
-    // Get fresh state to avoid stale closure issues
-    const freshQueue = useRoomStore.getState().queue;
+    console.log('skipToTrack called:', {
+      requestedIndex: trackIndex,
+      currentIndex: freshQueue.currentIndex,
+      isMaster: freshIsMaster,
+      queueLength: freshQueue.tracks.length,
+    });
+
+    if (!freshIsMaster) {
+      console.log('skipToTrack: Not master, ignoring');
+      return;
+    }
 
     // Validate track index
     if (trackIndex < 0 || trackIndex >= freshQueue.tracks.length) {
@@ -568,32 +615,30 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       return;
     }
 
-    // Don't do anything if trying to jump to the current track
-    if (trackIndex === freshQueue.currentIndex) {
-      console.log('skipToTrack: Already on this track, skipping');
-      return;
-    }
+    // Allow clicking on the same track - user might want to restart or just ensure it's selected
+    // Only skip the expensive operations if truly the same track
+    const isSameTrack = trackIndex === freshQueue.currentIndex;
 
     // Check if currently playing to resume after switch
     const wasPlaying = useAudioStore.getState().isPlaying;
 
-    console.log('skipToTrack: Switching to track index', trackIndex, 'from', freshQueue.currentIndex);
+    console.log('skipToTrack: Switching to track index', trackIndex, 'from', freshQueue.currentIndex, 'isSameTrack:', isSameTrack);
 
-    // Stop current playback and reset audio state
+    // Always stop and reset, even for same track (user clicked, so reset to beginning)
     pauseBackingTrack();
     useAudioStore.getState().setCurrentTime(0);
     useRoomStore.getState().setWaveformData(null);
 
-    // Perform the jump with fresh state
+    // Perform the jump
     jumpToTrack(trackIndex);
     realtimeRef.current?.broadcastNextTrack(trackIndex);
 
-    // Auto-play if was playing before
-    if (wasPlaying) {
+    // Auto-play if was playing before, OR if user clicked a different track (they probably want to hear it)
+    if (wasPlaying || !isSameTrack) {
       // Small delay to allow track state to update
       setTimeout(() => play(), 100);
     }
-  }, [isMaster, pauseBackingTrack, jumpToTrack, play]);
+  }, [pauseBackingTrack, jumpToTrack, play]);
 
   // Chat
   const sendMessage = useCallback((message: string) => {
