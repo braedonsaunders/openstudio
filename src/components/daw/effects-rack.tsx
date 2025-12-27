@@ -1,10 +1,10 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
-import type { UserTrack, TrackEffectsChain } from '@/types';
+import type { UserTrack } from '@/types';
 import {
   Sparkles,
   ChevronDown,
@@ -68,7 +68,7 @@ function Knob({
   }, []);
 
   // Add/remove event listeners
-  useState(() => {
+  useEffect(() => {
     if (isDragging) {
       window.addEventListener('mousemove', handleMouseMove);
       window.addEventListener('mouseup', handleMouseUp);
@@ -77,7 +77,7 @@ function Knob({
         window.removeEventListener('mouseup', handleMouseUp);
       };
     }
-  });
+  }, [isDragging, handleMouseMove, handleMouseUp]);
 
   const sizeClasses = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
 

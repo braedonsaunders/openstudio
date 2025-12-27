@@ -125,15 +125,64 @@ export async function POST(
         volume: track.volume ?? 1,
         is_armed: track.isArmed ?? true,
         is_recording: track.isRecording ?? false,
-        owner_user_id: track.ownerUserId || track.userId,
-        owner_user_name: track.ownerUserName,
-        is_active: track.isActive ?? true,
+        // Note: owner_user_id, owner_user_name, is_active require migration
+        // They will be ignored if columns don't exist
+        ...(track.ownerUserId && { owner_user_id: track.ownerUserId }),
+        ...(track.ownerUserName && { owner_user_name: track.ownerUserName }),
+        ...(track.isActive !== undefined && { is_active: track.isActive }),
       }, { onConflict: 'id' })
       .select()
       .single();
 
     if (error) {
       console.error('Error saving user track:', error);
+      // Handle missing column errors by retrying without new columns
+      if (error.message?.includes('is_active') || error.message?.includes('owner_user_id')) {
+        const { data: fallbackData, error: fallbackError } = await supabase
+          .from('user_tracks')
+          .upsert({
+            id: track.id,
+            room_id: roomId,
+            user_id: track.userId,
+            name: track.name,
+            color: track.color,
+            audio_settings: track.audioSettings,
+            is_muted: track.isMuted ?? false,
+            is_solo: track.isSolo ?? false,
+            volume: track.volume ?? 1,
+            is_armed: track.isArmed ?? true,
+            is_recording: track.isRecording ?? false,
+          }, { onConflict: 'id' })
+          .select()
+          .single();
+
+        if (fallbackError) {
+          if (fallbackError.code === '42P01') {
+            return NextResponse.json(track);
+          }
+          return NextResponse.json(
+            { error: 'Failed to save user track', details: fallbackError.message },
+            { status: 500 }
+          );
+        }
+
+        return NextResponse.json({
+          id: fallbackData.id,
+          userId: fallbackData.user_id,
+          name: fallbackData.name,
+          color: fallbackData.color,
+          audioSettings: fallbackData.audio_settings,
+          isMuted: fallbackData.is_muted,
+          isSolo: fallbackData.is_solo,
+          volume: fallbackData.volume,
+          isArmed: fallbackData.is_armed,
+          isRecording: fallbackData.is_recording,
+          createdAt: new Date(fallbackData.created_at).getTime(),
+          ownerUserId: fallbackData.user_id,
+          ownerUserName: track.ownerUserName,
+          isActive: true,
+        });
+      }
       if (error.code === '42P01') {
         return NextResponse.json(track);
       }
@@ -185,19 +234,27 @@ export async function PATCH(
     }
 
     // Map camelCase to snake_case for database
-    const dbUpdates: Record<string, unknown> = {};
-    if (updates.name !== undefined) dbUpdates.name = updates.name;
-    if (updates.color !== undefined) dbUpdates.color = updates.color;
-    if (updates.audioSettings !== undefined) dbUpdates.audio_settings = updates.audioSettings;
-    if (updates.isMuted !== undefined) dbUpdates.is_muted = updates.isMuted;
-    if (updates.isSolo !== undefined) dbUpdates.is_solo = updates.isSolo;
-    if (updates.volume !== undefined) dbUpdates.volume = updates.volume;
-    if (updates.isArmed !== undefined) dbUpdates.is_armed = updates.isArmed;
-    if (updates.isRecording !== undefined) dbUpdates.is_recording = updates.isRecording;
-    if (updates.userId !== undefined) dbUpdates.user_id = updates.userId;
-    if (updates.ownerUserId !== undefined) dbUpdates.owner_user_id = updates.ownerUserId;
-    if (updates.ownerUserName !== undefined) dbUpdates.owner_user_name = updates.ownerUserName;
-    if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
+    // Split into core updates (always work) and optional updates (require migration)
+    const coreUpdates: Record<string, unknown> = {};
+    const optionalUpdates: Record<string, unknown> = {};
+
+    if (updates.name !== undefined) coreUpdates.name = updates.name;
+    if (updates.color !== undefined) coreUpdates.color = updates.color;
+    if (updates.audioSettings !== undefined) coreUpdates.audio_settings = updates.audioSettings;
+    if (updates.isMuted !== undefined) coreUpdates.is_muted = updates.isMuted;
+    if (updates.isSolo !== undefined) coreUpdates.is_solo = updates.isSolo;
+    if (updates.volume !== undefined) coreUpdates.volume = updates.volume;
+    if (updates.isArmed !== undefined) coreUpdates.is_armed = updates.isArmed;
+    if (updates.isRecording !== undefined) coreUpdates.is_recording = updates.isRecording;
+    if (updates.userId !== undefined) coreUpdates.user_id = updates.userId;
+
+    // These columns require migration - may not exist
+    if (updates.ownerUserId !== undefined) optionalUpdates.owner_user_id = updates.ownerUserId;
+    if (updates.ownerUserName !== undefined) optionalUpdates.owner_user_name = updates.ownerUserName;
+    if (updates.isActive !== undefined) optionalUpdates.is_active = updates.isActive;
+
+    // Try with all updates first
+    const dbUpdates = { ...coreUpdates, ...optionalUpdates };
 
     const { error } = await supabase
       .from('user_tracks')
@@ -207,6 +264,21 @@ export async function PATCH(
 
     if (error) {
       console.error('Error updating user track:', error);
+      // If error is due to missing columns, retry with only core updates
+      if (error.message?.includes('is_active') || error.message?.includes('owner_user_id')) {
+        if (Object.keys(coreUpdates).length > 0) {
+          const { error: retryError } = await supabase
+            .from('user_tracks')
+            .update(coreUpdates)
+            .eq('id', trackId)
+            .eq('room_id', roomId);
+
+          if (retryError && retryError.code !== '42P01') {
+            return NextResponse.json({ error: 'Failed to update user track' }, { status: 500 });
+          }
+        }
+        return NextResponse.json({ success: true });
+      }
       if (error.code === '42P01') {
         return NextResponse.json({ success: true });
       }
