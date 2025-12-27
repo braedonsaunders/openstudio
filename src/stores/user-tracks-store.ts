@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { UserTrack, TrackAudioSettings, TrackEffectsChain, InputChannelConfig, GuitarEffectsChain } from '@/types';
+import type { UserTrack, TrackAudioSettings, TrackEffectsChain, InputChannelConfig, GuitarEffectsChain, MidiInputSettings, UserTrackType } from '@/types';
 import { DEFAULT_EFFECTS_CHAIN, EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS, DEFAULT_GUITAR_EFFECTS } from '@/lib/audio/effects/guitar';
 
@@ -41,6 +41,15 @@ const DEFAULT_AUDIO_SETTINGS: TrackAudioSettings = {
   monitoringVolume: 1,
 };
 
+// Default MIDI settings
+const DEFAULT_MIDI_SETTINGS: MidiInputSettings = {
+  deviceId: null,
+  channel: 'all',
+  soundBank: 'keys',
+  soundPreset: 'keys/synth-pad',
+  velocityCurve: 'linear',
+};
+
 // Extended device info with channel count
 export interface ExtendedDeviceInfo extends MediaDeviceInfo {
   channelCount?: number;
@@ -66,10 +75,13 @@ interface UserTracksState {
   deviceChannels: Map<string, number>;
 
   // Actions
-  addTrack: (userId: string, name?: string, settings?: Partial<TrackAudioSettings>, userName?: string) => UserTrack;
+  addTrack: (userId: string, name?: string, settings?: Partial<TrackAudioSettings>, userName?: string, trackType?: UserTrackType, midiSettings?: Partial<MidiInputSettings>) => UserTrack;
+  addMidiTrack: (userId: string, name?: string, midiSettings?: Partial<MidiInputSettings>, userName?: string) => UserTrack;
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<UserTrack>) => void;
   updateTrackSettings: (trackId: string, settings: Partial<TrackAudioSettings>) => void;
+  updateMidiSettings: (trackId: string, settings: Partial<MidiInputSettings>) => void;
+  setActiveMidiNotes: (trackId: string, notes: number[]) => void;
   updateTrackEffects: (trackId: string, effects: Partial<TrackEffectsChain>) => void;
   updateGuitarEffects: (trackId: string, effects: Partial<GuitarEffectsChain>) => void;
   loadGuitarPreset: (trackId: string, presetId: string) => void;
@@ -98,8 +110,11 @@ interface UserTracksState {
 
   // Query helpers
   getTracksByUser: (userId: string) => UserTrack[];
+  getMidiTracksByUser: (userId: string) => UserTrack[];
+  getAudioTracksByUser: (userId: string) => UserTrack[];
   getTrack: (trackId: string) => UserTrack | undefined;
   getAllTracks: () => UserTrack[];
+  getAllMidiTracks: () => UserTrack[];
   getInactiveTracks: () => UserTrack[];
   getTracksByOwner: (ownerUserId: string) => UserTrack[];
 
@@ -131,7 +146,7 @@ export const useUserTracksStore = create<UserTracksState>()(
     devicesLoaded: false,
     deviceChannels: new Map(),
 
-    addTrack: (userId, name, settings, userName) => {
+    addTrack: (userId, name, settings, userName, trackType = 'audio', midiSettings) => {
       const state = get();
       const userTracks = state.userTrackOrder.get(userId) || [];
       const trackNumber = userTracks.length + 1;
@@ -141,7 +156,9 @@ export const useUserTracksStore = create<UserTracksState>()(
         userId,
         name: name || `Track ${trackNumber}`,
         color: getNextColor(),
+        type: trackType,
         audioSettings: { ...DEFAULT_AUDIO_SETTINGS, ...settings },
+        midiSettings: trackType === 'midi' ? { ...DEFAULT_MIDI_SETTINGS, ...midiSettings } : undefined,
         isMuted: false,
         isSolo: false,
         volume: 1,
@@ -152,6 +169,47 @@ export const useUserTracksStore = create<UserTracksState>()(
         ownerUserId: userId,
         ownerUserName: userName,
         isActive: true,
+        // MIDI-specific
+        activeMidiNotes: trackType === 'midi' ? [] : undefined,
+      };
+
+      set((state) => {
+        const tracks = new Map(state.tracks);
+        tracks.set(track.id, track);
+
+        const userTrackOrder = new Map(state.userTrackOrder);
+        const order = userTrackOrder.get(userId) || [];
+        userTrackOrder.set(userId, [...order, track.id]);
+
+        return { tracks, userTrackOrder };
+      });
+
+      return track;
+    },
+
+    addMidiTrack: (userId, name, midiSettings, userName) => {
+      const state = get();
+      const userTracks = state.userTrackOrder.get(userId) || [];
+      const trackNumber = userTracks.length + 1;
+
+      const track: UserTrack = {
+        id: `${userId}-midi-${Date.now()}`,
+        userId,
+        name: name || `MIDI ${trackNumber}`,
+        color: getNextColor(),
+        type: 'midi',
+        audioSettings: DEFAULT_AUDIO_SETTINGS, // Required but not used for MIDI
+        midiSettings: { ...DEFAULT_MIDI_SETTINGS, ...midiSettings },
+        isMuted: false,
+        isSolo: false,
+        volume: 1,
+        isArmed: true,
+        isRecording: false,
+        createdAt: Date.now(),
+        ownerUserId: userId,
+        ownerUserName: userName,
+        isActive: true,
+        activeMidiNotes: [],
       };
 
       set((state) => {
@@ -208,6 +266,32 @@ export const useUserTracksStore = create<UserTracksState>()(
         tracks.set(trackId, {
           ...track,
           audioSettings: { ...track.audioSettings, ...settings },
+        });
+        return { tracks };
+      }),
+
+    updateMidiSettings: (trackId, settings) =>
+      set((state) => {
+        const track = state.tracks.get(trackId);
+        if (!track || track.type !== 'midi') return state;
+
+        const tracks = new Map(state.tracks);
+        tracks.set(trackId, {
+          ...track,
+          midiSettings: { ...DEFAULT_MIDI_SETTINGS, ...track.midiSettings, ...settings },
+        });
+        return { tracks };
+      }),
+
+    setActiveMidiNotes: (trackId, notes) =>
+      set((state) => {
+        const track = state.tracks.get(trackId);
+        if (!track || track.type !== 'midi') return state;
+
+        const tracks = new Map(state.tracks);
+        tracks.set(trackId, {
+          ...track,
+          activeMidiNotes: notes,
         });
         return { tracks };
       }),
@@ -464,6 +548,22 @@ export const useUserTracksStore = create<UserTracksState>()(
         .filter((t): t is UserTrack => t !== undefined);
     },
 
+    getMidiTracksByUser: (userId) => {
+      const state = get();
+      const order = state.userTrackOrder.get(userId) || [];
+      return order
+        .map((id) => state.tracks.get(id))
+        .filter((t): t is UserTrack => t !== undefined && t.type === 'midi');
+    },
+
+    getAudioTracksByUser: (userId) => {
+      const state = get();
+      const order = state.userTrackOrder.get(userId) || [];
+      return order
+        .map((id) => state.tracks.get(id))
+        .filter((t): t is UserTrack => t !== undefined && (t.type === 'audio' || !t.type));
+    },
+
     getTrack: (trackId) => get().tracks.get(trackId),
 
     getAllTracks: () => {
@@ -476,6 +576,18 @@ export const useUserTracksStore = create<UserTracksState>()(
         }
       }
       return allTracks;
+    },
+
+    getAllMidiTracks: () => {
+      const state = get();
+      const midiTracks: UserTrack[] = [];
+      for (const [, order] of state.userTrackOrder) {
+        for (const trackId of order) {
+          const track = state.tracks.get(trackId);
+          if (track && track.type === 'midi') midiTracks.push(track);
+        }
+      }
+      return midiTracks;
     },
 
     getInactiveTracks: () => {

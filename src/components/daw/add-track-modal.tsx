@@ -7,8 +7,7 @@ import { Button } from '../ui/button';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { DEFAULT_EFFECTS_CHAIN } from '@/lib/audio/effects/presets';
 import { MidiDeviceSelector } from '../midi/midi-device-selector';
-import type { TrackAudioSettings } from '@/types';
-import type { MidiInputSettings, UserTrackType } from '@/types/loops';
+import type { TrackAudioSettings, MidiInputSettings } from '@/types';
 import {
   Mic,
   Monitor,
@@ -57,8 +56,8 @@ const DEFAULT_MIDI_SETTINGS: MidiInputSettings = {
   velocityCurve: 'linear',
 };
 
-export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: AddTrackModalProps) {
-  const { inputDevices, devicesLoaded, loadDevices, addTrack, getTracksByUser } = useUserTracksStore();
+export function AddTrackModal({ isOpen, onClose, userId, userName, roomId, onOpenLoopBrowser, isMaster = false }: AddTrackModalProps) {
+  const { inputDevices, devicesLoaded, loadDevices, addTrack, addMidiTrack, getTracksByUser } = useUserTracksStore();
 
   const [trackType, setTrackType] = useState<TrackTypeOption | null>(null);
   const [trackName, setTrackName] = useState('');
@@ -307,9 +306,25 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
                 Cancel
               </Button>
               <Button
-                onClick={() => {
-                  // TODO: Create MIDI track
-                  console.log('Create MIDI track:', trackName, midiSettings);
+                onClick={async () => {
+                  if (!userId) return;
+
+                  // Create the MIDI track
+                  const newTrack = addMidiTrack(userId, trackName, midiSettings, userName);
+
+                  // Persist the new track to the database
+                  if (roomId) {
+                    try {
+                      await fetch(`/api/rooms/${roomId}/user-tracks`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(newTrack),
+                      });
+                    } catch (err) {
+                      console.error('Failed to persist MIDI track:', err);
+                    }
+                  }
+
                   onClose();
                 }}
                 className="flex-1"

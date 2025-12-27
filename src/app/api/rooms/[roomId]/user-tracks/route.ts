@@ -60,7 +60,9 @@ export async function GET(
       userId: track.user_id,
       name: track.name,
       color: track.color,
+      type: track.track_type || 'audio',
       audioSettings: track.audio_settings,
+      midiSettings: track.midi_settings,
       isMuted: track.is_muted,
       isSolo: track.is_solo,
       volume: track.volume,
@@ -70,6 +72,7 @@ export async function GET(
       ownerUserId: track.owner_user_id || track.user_id,
       ownerUserName: track.owner_user_name,
       isActive: track.is_active ?? true,
+      activeMidiNotes: track.track_type === 'midi' ? [] : undefined,
     }));
 
     return NextResponse.json(userTracks);
@@ -119,7 +122,9 @@ export async function POST(
         user_id: track.userId,
         name: track.name,
         color: track.color,
+        track_type: track.type || 'audio',
         audio_settings: track.audioSettings,
+        midi_settings: track.midiSettings,
         is_muted: track.isMuted ?? false,
         is_solo: track.isSolo ?? false,
         volume: track.volume ?? 1,
@@ -197,7 +202,9 @@ export async function POST(
       userId: data.user_id,
       name: data.name,
       color: data.color,
+      type: data.track_type || 'audio',
       audioSettings: data.audio_settings,
+      midiSettings: data.midi_settings,
       isMuted: data.is_muted,
       isSolo: data.is_solo,
       volume: data.volume,
@@ -207,6 +214,7 @@ export async function POST(
       ownerUserId: data.owner_user_id || data.user_id,
       ownerUserName: data.owner_user_name,
       isActive: data.is_active ?? true,
+      activeMidiNotes: data.track_type === 'midi' ? [] : undefined,
     });
   } catch (error) {
     console.error('Error in POST user track:', error);
@@ -240,7 +248,9 @@ export async function PATCH(
 
     if (updates.name !== undefined) coreUpdates.name = updates.name;
     if (updates.color !== undefined) coreUpdates.color = updates.color;
+    if (updates.type !== undefined) coreUpdates.track_type = updates.type;
     if (updates.audioSettings !== undefined) coreUpdates.audio_settings = updates.audioSettings;
+    if (updates.midiSettings !== undefined) coreUpdates.midi_settings = updates.midiSettings;
     if (updates.isMuted !== undefined) coreUpdates.is_muted = updates.isMuted;
     if (updates.isSolo !== undefined) coreUpdates.is_solo = updates.isSolo;
     if (updates.volume !== undefined) coreUpdates.volume = updates.volume;

@@ -255,13 +255,39 @@ export interface TrackAudioSettings {
   monitoringVolume: number; // 0 to 1
 }
 
-// User track - represents a single audio input track from a user
+// MIDI Input Settings for MIDI tracks
+export interface MidiInputSettings {
+  deviceId: string | null;
+  deviceName?: string;
+  channel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 'all';
+  soundBank: string;
+  soundPreset: string;
+  noteMapping?: Record<number, number>;
+  arpeggiator?: {
+    enabled: boolean;
+    mode: 'up' | 'down' | 'updown' | 'random' | 'order';
+    rate: '1/4' | '1/8' | '1/16' | '1/32';
+    octaves: 1 | 2 | 3 | 4;
+    gate: number;
+  };
+  velocityCurve: 'linear' | 'soft' | 'hard';
+}
+
+// User track type discriminator
+export type UserTrackType = 'audio' | 'midi';
+
+// User track - represents a single audio or MIDI input track from a user
 export interface UserTrack {
   id: string;
   userId: string;
   name: string;
   color: string;
+  // Track type discriminator
+  type: 'audio' | 'midi';
+  // Audio settings (required for audio tracks)
   audioSettings: TrackAudioSettings;
+  // MIDI settings (required for MIDI tracks)
+  midiSettings?: MidiInputSettings;
   isMuted: boolean;
   isSolo: boolean;
   volume: number;
@@ -273,6 +299,8 @@ export interface UserTrack {
   ownerUserId?: string; // Original owner (for reassignment on rejoin)
   ownerUserName?: string; // Display name of original owner
   isActive?: boolean; // Whether the owner is currently connected
+  // MIDI-specific live state (not persisted)
+  activeMidiNotes?: number[]; // Currently held MIDI notes
 }
 
 // Extended Room types for room management
