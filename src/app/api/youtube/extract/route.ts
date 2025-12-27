@@ -21,10 +21,11 @@ const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 const COBALT_API = 'https://api.cobalt.tools';
 
 interface CobaltResponse {
-  status: 'stream' | 'redirect' | 'picker' | 'error';
+  status: 'tunnel' | 'redirect' | 'picker' | 'error' | 'local-processing';
   url?: string;
   audio?: string;
   picker?: Array<{ type: string; url: string }>;
+  error?: { code: string };
   text?: string;
 }
 
@@ -54,10 +55,8 @@ export async function POST(request: NextRequest) {
         },
         body: JSON.stringify({
           url: videoUrl,
+          downloadMode: 'audio',
           audioFormat: 'mp3',
-          isAudioOnly: true,
-          aFormat: 'mp3',
-          filenameStyle: 'basic',
         }),
       });
 
@@ -82,13 +81,15 @@ export async function POST(request: NextRequest) {
     let audioUrl: string | null = null;
 
     if (cobaltResponse.status === 'error') {
+      const errorMsg = cobaltResponse.error?.code || cobaltResponse.text || 'Cobalt API error';
+      console.error('Cobalt returned error:', errorMsg);
       return NextResponse.json(
-        { error: cobaltResponse.text || 'Cobalt API error' },
+        { error: `Cobalt error: ${errorMsg}` },
         { status: 400 }
       );
     }
 
-    if (cobaltResponse.status === 'stream' || cobaltResponse.status === 'redirect') {
+    if (cobaltResponse.status === 'tunnel' || cobaltResponse.status === 'redirect') {
       audioUrl = cobaltResponse.url || cobaltResponse.audio || null;
     } else if (cobaltResponse.status === 'picker' && cobaltResponse.picker) {
       // Find audio in picker results
