@@ -143,36 +143,22 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     useRoomStore.getState().setCurrentTrack(track);
   }, []);
 
-  const handleUpload = useCallback(async (file: File, metadata: { name: string; artist?: string }) => {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('name', metadata.name);
-    if (metadata.artist) {
-      formData.append('artist', metadata.artist);
-    }
-    formData.append('roomId', roomId);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    });
-
-    if (!response.ok) {
-      throw new Error('Upload failed');
-    }
-
-    const track = await response.json();
+  const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {
+    // UploadModal handles the actual upload to R2, we just add the track
+    const track: BackingTrack = {
+      id: uploadedTrack.id,
+      name: uploadedTrack.name,
+      artist: uploadedTrack.artist,
+      duration: uploadedTrack.duration,
+      url: uploadedTrack.url,
+      uploadedBy: 'user',
+      uploadedAt: new Date().toISOString(),
+    };
     await addTrack(track);
-  }, [roomId, addTrack]);
+  }, [addTrack]);
 
   const handleYouTubeSelect = useCallback(async (video: { id: string; title: string; channelTitle: string; duration?: string }) => {
-    const response = await fetch(`/api/youtube/audio?videoId=${video.id}`);
-    if (!response.ok) {
-      throw new Error('Could not load YouTube track');
-    }
-
-    const { audioUrl, duration } = await response.json();
-
+    // Parse duration string to seconds
     const parseDuration = (d?: string): number => {
       if (!d) return 0;
       const parts = d.split(':').map(Number);
@@ -181,18 +167,20 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       return parts[0] || 0;
     };
 
+    // Create track with YouTube ID - playback will use YouTube IFrame API
     const track: BackingTrack = {
       id: video.id,
       name: video.title,
       artist: video.channelTitle,
-      duration: duration || parseDuration(video.duration),
-      url: audioUrl,
+      duration: parseDuration(video.duration),
+      url: '', // No URL needed - YouTube player handles playback
       uploadedBy: 'youtube',
       uploadedAt: new Date().toISOString(),
       youtubeId: video.id,
     };
 
     await addTrack(track);
+    setIsYouTubeModalOpen(false);
   }, [addTrack]);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
