@@ -5,6 +5,8 @@ import { cn } from '@/lib/utils';
 import { VerticalMeter } from './vertical-meter';
 import { Fader } from './fader';
 import { TrackAudioSettingsPopover } from './track-audio-settings';
+import { AdvancedAudioSettingsPopover } from './advanced-audio-settings';
+import { EffectsRack } from './effects-rack';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import {
   Mic,
@@ -19,6 +21,8 @@ import {
   Pencil,
   Check,
   X,
+  Sparkles,
+  Sliders,
 } from 'lucide-react';
 import type { UserTrack } from '@/types';
 
@@ -41,10 +45,14 @@ export function UserTrackHeader({
 }: UserTrackHeaderProps) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
+  const [showEffects, setShowEffects] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const [isRenaming, setIsRenaming] = useState(false);
   const [newName, setNewName] = useState(track.name);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const advancedSettingsRef = useRef<HTMLDivElement>(null);
+  const effectsRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
@@ -56,11 +64,26 @@ export function UserTrackHeader({
     updateTrack,
   } = useUserTracksStore();
 
+  // Count active effects
+  const activeEffectsCount = [
+    track.audioSettings.effects?.noiseGate?.enabled,
+    track.audioSettings.effects?.eq?.enabled,
+    track.audioSettings.effects?.compressor?.enabled,
+    track.audioSettings.effects?.reverb?.enabled,
+    track.audioSettings.effects?.limiter?.enabled,
+  ].filter(Boolean).length;
+
   // Close popover on outside click
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
         setShowSettings(false);
+      }
+      if (advancedSettingsRef.current && !advancedSettingsRef.current.contains(e.target as Node)) {
+        setShowAdvancedSettings(false);
+      }
+      if (effectsRef.current && !effectsRef.current.contains(e.target as Node)) {
+        setShowEffects(false);
       }
       if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
         setShowMenu(false);
@@ -269,17 +292,86 @@ export function UserTrackHeader({
           <VerticalMeter level={audioLevel} color={track.color} />
         </div>
 
-        {/* Settings Button */}
+        {/* Effects Rack Button */}
+        <div className="relative" ref={effectsRef}>
+          <button
+            onClick={() => {
+              setShowEffects(!showEffects);
+              setShowSettings(false);
+              setShowAdvancedSettings(false);
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors relative',
+              showEffects
+                ? 'bg-purple-500/20 text-purple-400'
+                : activeEffectsCount > 0
+                  ? 'text-purple-400 hover:text-purple-300'
+                  : 'text-zinc-500 hover:text-zinc-300'
+            )}
+            title="Effects Rack"
+          >
+            <Sparkles className="w-4 h-4" />
+            {activeEffectsCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-purple-500 rounded-full text-[8px] font-bold text-white flex items-center justify-center">
+                {activeEffectsCount}
+              </span>
+            )}
+          </button>
+
+          {showEffects && (
+            <div className="absolute right-0 top-full mt-2 z-50">
+              <EffectsRack
+                track={track}
+                onClose={() => setShowEffects(false)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Advanced Settings Button */}
+        <div className="relative" ref={advancedSettingsRef}>
+          <button
+            onClick={() => {
+              setShowAdvancedSettings(!showAdvancedSettings);
+              setShowSettings(false);
+              setShowEffects(false);
+            }}
+            className={cn(
+              'p-1.5 rounded transition-colors',
+              showAdvancedSettings
+                ? 'bg-indigo-500/20 text-indigo-400'
+                : 'text-zinc-500 hover:text-zinc-300'
+            )}
+            title="Advanced Audio Settings"
+          >
+            <Sliders className="w-4 h-4" />
+          </button>
+
+          {showAdvancedSettings && (
+            <div className="absolute right-0 top-full mt-2 z-50">
+              <AdvancedAudioSettingsPopover
+                track={track}
+                onClose={() => setShowAdvancedSettings(false)}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* Quick Settings Button */}
         <div className="relative" ref={settingsRef}>
           <button
-            onClick={() => setShowSettings(!showSettings)}
+            onClick={() => {
+              setShowSettings(!showSettings);
+              setShowAdvancedSettings(false);
+              setShowEffects(false);
+            }}
             className={cn(
               'p-1.5 rounded transition-colors',
               showSettings
                 ? 'bg-indigo-500/20 text-indigo-400'
                 : 'text-zinc-500 hover:text-zinc-300'
             )}
-            title="Audio Input Settings"
+            title="Quick Settings"
           >
             <Settings2 className="w-4 h-4" />
           </button>
@@ -304,13 +396,39 @@ export function UserTrackHeader({
           </button>
 
           {showMenu && (
-            <div className="absolute right-0 top-full mt-1 w-40 bg-[#16161f] border border-white/10 rounded-lg shadow-xl overflow-hidden z-50">
+            <div className="absolute right-0 top-full mt-1 w-48 bg-[#16161f] border border-white/10 rounded-lg shadow-xl overflow-hidden z-50">
               <button
                 onClick={handleStartRename}
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
               >
                 <Pencil className="w-3.5 h-3.5" />
                 Rename Track
+              </button>
+              <div className="border-t border-white/5" />
+              <button
+                onClick={() => {
+                  setShowEffects(true);
+                  setShowMenu(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-purple-400" />
+                Effects Rack
+                {activeEffectsCount > 0 && (
+                  <span className="ml-auto text-[10px] text-purple-400">
+                    {activeEffectsCount} active
+                  </span>
+                )}
+              </button>
+              <button
+                onClick={() => {
+                  setShowAdvancedSettings(true);
+                  setShowMenu(false);
+                }}
+                className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
+              >
+                <Sliders className="w-3.5 h-3.5" />
+                Advanced Audio Settings
               </button>
               <button
                 onClick={() => {
@@ -320,7 +438,7 @@ export function UserTrackHeader({
                 className="w-full flex items-center gap-2 px-3 py-2 text-xs text-zinc-300 hover:bg-white/5 transition-colors"
               >
                 <Settings2 className="w-3.5 h-3.5" />
-                Audio Input Settings
+                Quick Settings
               </button>
               {onRemove && (
                 <>

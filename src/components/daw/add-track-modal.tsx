@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Modal } from '../ui/modal';
 import { Button } from '../ui/button';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { DEFAULT_EFFECTS_CHAIN } from '@/lib/audio/effects/presets';
 import type { TrackAudioSettings } from '@/types';
 import {
   Mic,
@@ -29,6 +30,15 @@ const DEFAULT_SETTINGS: TrackAudioSettings = {
   noiseSuppression: false,
   echoCancellation: false,
   autoGainControl: false,
+  channelConfig: {
+    channelCount: 2,
+    leftChannel: 0,
+    rightChannel: 1,
+  },
+  inputGain: 0,
+  effects: DEFAULT_EFFECTS_CHAIN,
+  directMonitoring: true,
+  monitoringVolume: 1,
 };
 
 export function AddTrackModal({ isOpen, onClose, userId }: AddTrackModalProps) {

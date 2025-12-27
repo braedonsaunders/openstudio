@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { UserTrack, TrackAudioSettings } from '@/types';
+import type { UserTrack, TrackAudioSettings, TrackEffectsChain, InputChannelConfig } from '@/types';
+import { DEFAULT_EFFECTS_CHAIN, EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 
 // Track color palette
 const TRACK_COLORS = [
@@ -16,6 +17,14 @@ const TRACK_COLORS = [
   '#c084fc', // Purple
 ];
 
+// Default channel configuration (stereo)
+const DEFAULT_CHANNEL_CONFIG: InputChannelConfig = {
+  channelCount: 2,
+  leftChannel: 0,
+  rightChannel: 1,
+};
+
+// Default audio settings with effects chain
 const DEFAULT_AUDIO_SETTINGS: TrackAudioSettings = {
   inputMode: 'microphone',
   inputDeviceId: 'default',
@@ -24,7 +33,18 @@ const DEFAULT_AUDIO_SETTINGS: TrackAudioSettings = {
   noiseSuppression: false,
   echoCancellation: false,
   autoGainControl: false,
+  channelConfig: DEFAULT_CHANNEL_CONFIG,
+  inputGain: 0,
+  effects: DEFAULT_EFFECTS_CHAIN,
+  directMonitoring: true,
+  monitoringVolume: 1,
 };
+
+// Extended device info with channel count
+export interface ExtendedDeviceInfo extends MediaDeviceInfo {
+  channelCount?: number;
+  maxChannels?: number;
+}
 
 interface UserTracksState {
   // All tracks indexed by track ID
@@ -36,16 +56,24 @@ interface UserTracksState {
   // Audio levels per track
   trackLevels: Map<string, number>;
 
-  // Available audio devices
-  inputDevices: MediaDeviceInfo[];
-  outputDevices: MediaDeviceInfo[];
+  // Available audio devices with extended info
+  inputDevices: ExtendedDeviceInfo[];
+  outputDevices: ExtendedDeviceInfo[];
   devicesLoaded: boolean;
+
+  // Device channel capabilities (deviceId -> channel count)
+  deviceChannels: Map<string, number>;
 
   // Actions
   addTrack: (userId: string, name?: string, settings?: Partial<TrackAudioSettings>) => UserTrack;
   removeTrack: (trackId: string) => void;
   updateTrack: (trackId: string, updates: Partial<UserTrack>) => void;
   updateTrackSettings: (trackId: string, settings: Partial<TrackAudioSettings>) => void;
+  updateTrackEffects: (trackId: string, effects: Partial<TrackEffectsChain>) => void;
+  updateTrackChannelConfig: (trackId: string, channelConfig: InputChannelConfig) => void;
+  setTrackInputGain: (trackId: string, gainDb: number) => void;
+  setTrackMonitoring: (trackId: string, enabled: boolean, volume?: number) => void;
+  loadPreset: (trackId: string, presetId: string) => void;
 
   // Track state actions
   setTrackMuted: (trackId: string, muted: boolean) => void;
@@ -60,8 +88,10 @@ interface UserTracksState {
 
   // Device actions
   loadDevices: () => Promise<void>;
-  setInputDevices: (devices: MediaDeviceInfo[]) => void;
-  setOutputDevices: (devices: MediaDeviceInfo[]) => void;
+  loadDevicesWithChannels: () => Promise<void>;
+  setInputDevices: (devices: ExtendedDeviceInfo[]) => void;
+  setOutputDevices: (devices: ExtendedDeviceInfo[]) => void;
+  getDeviceChannelCount: (deviceId: string) => number;
 
   // Query helpers
   getTracksByUser: (userId: string) => UserTrack[];
@@ -88,6 +118,7 @@ export const useUserTracksStore = create<UserTracksState>()(
     inputDevices: [],
     outputDevices: [],
     devicesLoaded: false,
+    deviceChannels: new Map(),
 
     addTrack: (userId, name, settings) => {
       const state = get();
@@ -166,6 +197,104 @@ export const useUserTracksStore = create<UserTracksState>()(
         return { tracks };
       }),
 
+    updateTrackEffects: (trackId, effects) =>
+      set((state) => {
+        const track = state.tracks.get(trackId);
+        if (!track) return state;
+
+        const tracks = new Map(state.tracks);
+        const currentEffects = track.audioSettings.effects || DEFAULT_EFFECTS_CHAIN;
+        const newEffects: TrackEffectsChain = {
+          noiseGate: effects.noiseGate ? { ...currentEffects.noiseGate, ...effects.noiseGate } : currentEffects.noiseGate,
+          eq: effects.eq ? {
+            enabled: effects.eq.enabled ?? currentEffects.eq.enabled,
+            bands: effects.eq.bands ?? currentEffects.eq.bands,
+          } : currentEffects.eq,
+          compressor: effects.compressor ? { ...currentEffects.compressor, ...effects.compressor } : currentEffects.compressor,
+          reverb: effects.reverb ? { ...currentEffects.reverb, ...effects.reverb } : currentEffects.reverb,
+          limiter: effects.limiter ? { ...currentEffects.limiter, ...effects.limiter } : currentEffects.limiter,
+        };
+
+        tracks.set(trackId, {
+          ...track,
+          audioSettings: {
+            ...track.audioSettings,
+            effects: newEffects,
+            activePreset: undefined, // Clear preset when manually editing
+          },
+        });
+        return { tracks };
+      }),
+
+    updateTrackChannelConfig: (trackId, channelConfig) =>
+      set((state) => {
+        const track = state.tracks.get(trackId);
+        if (!track) return state;
+
+        const tracks = new Map(state.tracks);
+        tracks.set(trackId, {
+          ...track,
+          audioSettings: {
+            ...track.audioSettings,
+            channelConfig,
+          },
+        });
+        return { tracks };
+      }),
+
+    setTrackInputGain: (trackId, gainDb) =>
+      set((state) => {
+        const track = state.tracks.get(trackId);
+        if (!track) return state;
+
+        const tracks = new Map(state.tracks);
+        tracks.set(trackId, {
+          ...track,
+          audioSettings: {
+            ...track.audioSettings,
+            inputGain: Math.max(-24, Math.min(24, gainDb)),
+          },
+        });
+        return { tracks };
+      }),
+
+    setTrackMonitoring: (trackId, enabled, volume) =>
+      set((state) => {
+        const track = state.tracks.get(trackId);
+        if (!track) return state;
+
+        const tracks = new Map(state.tracks);
+        tracks.set(trackId, {
+          ...track,
+          audioSettings: {
+            ...track.audioSettings,
+            directMonitoring: enabled,
+            ...(volume !== undefined && { monitoringVolume: volume }),
+          },
+        });
+        return { tracks };
+      }),
+
+    loadPreset: (trackId, presetId) =>
+      set((state) => {
+        const track = state.tracks.get(trackId);
+        if (!track) return state;
+
+        const preset = EFFECT_PRESETS.find((p) => p.id === presetId);
+        if (!preset) return state;
+
+        const tracks = new Map(state.tracks);
+        tracks.set(trackId, {
+          ...track,
+          audioSettings: {
+            ...track.audioSettings,
+            effects: JSON.parse(JSON.stringify(preset.effects)), // Deep clone
+            activePreset: presetId,
+          },
+        });
+        return { tracks };
+      }),
+
     setTrackMuted: (trackId, muted) => get().updateTrack(trackId, { isMuted: muted }),
     setTrackSolo: (trackId, solo) => get().updateTrack(trackId, { isSolo: solo }),
     setTrackVolume: (trackId, volume) => get().updateTrack(trackId, { volume }),
@@ -196,8 +325,68 @@ export const useUserTracksStore = create<UserTracksState>()(
       }
     },
 
+    loadDevicesWithChannels: async () => {
+      try {
+        // Request permission first
+        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        tempStream.getTracks().forEach((t) => t.stop());
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const inputs = devices.filter((d) => d.kind === 'audioinput');
+        const outputs = devices.filter((d) => d.kind === 'audiooutput');
+
+        // Probe each input device for channel count
+        const deviceChannels = new Map<string, number>();
+        const extendedInputs: ExtendedDeviceInfo[] = [];
+
+        for (const device of inputs) {
+          let channelCount = 2; // Default to stereo
+
+          try {
+            // Try to get the actual channel count by opening the device
+            const testStream = await navigator.mediaDevices.getUserMedia({
+              audio: {
+                deviceId: { exact: device.deviceId },
+                channelCount: { ideal: 32 }, // Request max channels
+              },
+            });
+
+            const audioTrack = testStream.getAudioTracks()[0];
+            if (audioTrack) {
+              const settings = audioTrack.getSettings();
+              channelCount = settings.channelCount || 2;
+            }
+            testStream.getTracks().forEach((t) => t.stop());
+          } catch {
+            // Device might not support high channel count, that's ok
+          }
+
+          deviceChannels.set(device.deviceId, channelCount);
+          extendedInputs.push({
+            ...device,
+            channelCount,
+            maxChannels: channelCount,
+          } as ExtendedDeviceInfo);
+        }
+
+        set({
+          inputDevices: extendedInputs,
+          outputDevices: outputs,
+          deviceChannels,
+          devicesLoaded: true,
+        });
+      } catch {
+        set({ devicesLoaded: true });
+      }
+    },
+
     setInputDevices: (devices) => set({ inputDevices: devices }),
     setOutputDevices: (devices) => set({ outputDevices: devices }),
+
+    getDeviceChannelCount: (deviceId) => {
+      const state = get();
+      return state.deviceChannels.get(deviceId) || 2;
+    },
 
     getTracksByUser: (userId) => {
       const state = get();
@@ -244,6 +433,7 @@ export const useUserTracksStore = create<UserTracksState>()(
         tracks: new Map(),
         userTrackOrder: new Map(),
         trackLevels: new Map(),
+        deviceChannels: new Map(),
       });
     },
   }))
