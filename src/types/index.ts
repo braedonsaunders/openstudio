@@ -94,15 +94,6 @@ export interface CloudflareTrack {
   mid?: string;
 }
 
-export interface SunoGenerationRequest {
-  prompt: string;
-  duration?: number;
-  style?: string;
-  tempo?: number;
-  key?: string;
-  continueFromId?: string;
-}
-
 export interface SAMSeparationRequest {
   trackId: string;
   separationType: 'vocals' | 'drums' | 'bass' | 'all';
@@ -433,7 +424,7 @@ export interface TextToSongModification {
 }
 
 // AI Generation Provider Union Type
-export type AIGenerationProvider = 'suno' | 'mureka' | 'musicgen';
+export type AIGenerationProvider = 'mureka' | 'musicgen';
 
 export interface AIGenerationConfig {
   provider: AIGenerationProvider;
@@ -444,6 +435,5 @@ export interface AIGenerationConfig {
   key?: string;
   instrumental?: boolean;
   // Provider-specific options
-  sunoOptions?: Partial<SunoGenerationRequest>;
   murekaOptions?: Partial<MurekaGenerationRequest>;
 }
