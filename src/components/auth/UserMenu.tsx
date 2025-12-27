@@ -83,7 +83,8 @@ export function UserMenu() {
   };
 
   // Show skeleton until auth state is initialized (with timeout fallback)
-  if ((isLoading || !isInitialized) && !initTimeout) {
+  // Also show skeleton when user is logged in but profile is still loading
+  if (((isLoading || !isInitialized) && !initTimeout) || (user && !profile)) {
     return (
       <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-800 animate-pulse" />
     );
