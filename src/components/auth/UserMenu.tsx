@@ -26,9 +26,26 @@ export function UserMenu() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
   const [authTab, setAuthTab] = useState<'login' | 'signup'>('login');
+  const [initTimeout, setInitTimeout] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { user, profile, avatar, signOut, isLoading, isInitialized } = useAuthStore();
+  const { user, profile, avatar, signOut, isLoading, isInitialized, initialize } = useAuthStore();
+
+  // Trigger initialization on mount and set timeout fallback
+  useEffect(() => {
+    if (!isInitialized && !isLoading) {
+      initialize();
+    }
+
+    // Fallback timeout - if still loading after 5 seconds, show login buttons
+    const timeout = setTimeout(() => {
+      if (!isInitialized) {
+        setInitTimeout(true);
+      }
+    }, 5000);
+
+    return () => clearTimeout(timeout);
+  }, [isInitialized, isLoading, initialize]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -58,8 +75,8 @@ export function UserMenu() {
     setShowAuthModal(true);
   };
 
-  // Show skeleton until auth state is initialized
-  if (isLoading || !isInitialized) {
+  // Show skeleton until auth state is initialized (with timeout fallback)
+  if ((isLoading || !isInitialized) && !initTimeout) {
     return (
       <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-800 animate-pulse" />
     );
