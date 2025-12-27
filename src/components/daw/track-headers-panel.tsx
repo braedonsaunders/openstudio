@@ -5,13 +5,9 @@ import { TrackHeader } from './track-header';
 import { UserTrackHeader } from './user-track-header';
 import { InactiveTrackHeader } from './inactive-track-header';
 import { AddTrackModal } from './add-track-modal';
-import { LoopBrowserModal } from '../loops/loop-browser-modal';
-import { LoopTrackHeader } from '../loops/loop-track-header';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
-import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { Plus } from 'lucide-react';
 import type { User } from '@/types';
-import type { LoopDefinition } from '@/types/loops';
 
 interface TrackHeadersPanelProps {
   users: User[];
@@ -51,7 +47,6 @@ export function TrackHeadersPanel({
   roomId,
 }: TrackHeadersPanelProps) {
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
-  const [showLoopBrowser, setShowLoopBrowser] = useState(false);
 
   const {
     getTracksByUser,
@@ -63,38 +58,6 @@ export function TrackHeadersPanel({
     loadDevices,
     devicesLoaded,
   } = useUserTracksStore();
-
-  const {
-    addTrack: addLoopTrack,
-    getTracksByRoom,
-    removeTrack: removeLoopTrack,
-  } = useLoopTracksStore();
-
-  // Get loop tracks for this room
-  const loopTracks = roomId ? getTracksByRoom(roomId) : [];
-
-  // Handler for adding a loop track from the browser
-  const handleAddLoop = useCallback(
-    async (loop: LoopDefinition) => {
-      if (!currentUser || !roomId) return;
-
-      const track = addLoopTrack(roomId, loop, currentUser.id, currentUser.name);
-
-      // Persist to database
-      try {
-        await fetch(`/api/rooms/${roomId}/loop-tracks`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(track),
-        });
-      } catch (err) {
-        console.error('Failed to persist loop track:', err);
-      }
-
-      setShowLoopBrowser(false);
-    },
-    [currentUser, roomId, addLoopTrack]
-  );
 
   // Load devices on mount
   useEffect(() => {
@@ -126,24 +89,7 @@ export function TrackHeadersPanel({
   const getUserColor = (index: number) => TRACK_COLORS[index % TRACK_COLORS.length];
 
   // Count total tracks for display
-  const totalTracks = localTracks.length + remoteUsers.length + inactiveTracks.length + loopTracks.length;
-
-  // Loop track removal handler (master only)
-  const handleRemoveLoopTrack = useCallback(
-    async (trackId: string) => {
-      removeLoopTrack(trackId);
-      if (roomId) {
-        try {
-          await fetch(`/api/rooms/${roomId}/loop-tracks?id=${trackId}`, {
-            method: 'DELETE',
-          });
-        } catch (err) {
-          console.error('Failed to delete loop track:', err);
-        }
-      }
-    },
-    [roomId, removeLoopTrack]
-  );
+  const totalTracks = localTracks.length + remoteUsers.length + inactiveTracks.length;
 
   // Handle claiming an abandoned track
   const handleClaimTrack = async (trackId: string) => {
@@ -225,25 +171,6 @@ export function TrackHeadersPanel({
           </div>
         )}
 
-        {/* Loop Tracks */}
-        {loopTracks.length > 0 && (
-          <div className="border-b border-gray-200 dark:border-white/10">
-            <div className="px-3 py-1.5 bg-gray-100/50 dark:bg-white/[0.02]">
-              <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">
-                Loop Tracks
-              </span>
-            </div>
-            {loopTracks.map((track) => (
-              <LoopTrackHeader
-                key={track.id}
-                track={track}
-                onRemove={() => handleRemoveLoopTrack(track.id)}
-                isMaster={isMaster}
-              />
-            ))}
-          </div>
-        )}
-
         {/* Remote User Tracks */}
         {remoteUsers.length > 0 && (
           <div>
@@ -321,18 +248,6 @@ export function TrackHeadersPanel({
         userId={currentUser?.id || ''}
         userName={currentUser?.name}
         roomId={roomId}
-        onOpenLoopBrowser={() => setShowLoopBrowser(true)}
-        isMaster={isMaster}
-      />
-
-      {/* Loop Browser Modal */}
-      <LoopBrowserModal
-        isOpen={showLoopBrowser}
-        onClose={() => setShowLoopBrowser(false)}
-        roomId={roomId || ''}
-        userId={currentUser?.id || ''}
-        userName={currentUser?.name}
-        onAddLoop={handleAddLoop}
       />
     </div>
   );
