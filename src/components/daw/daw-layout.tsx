@@ -212,7 +212,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, [addTrack, currentUser]);
 
   const handleYouTubeSelect = useCallback(async (video: { id: string; title: string; channelTitle: string; duration?: string }) => {
-    // Parse duration string to seconds
+    // Parse duration string to seconds (fallback for duration)
     const parseDuration = (d?: string): number => {
       if (!d) return 0;
       const parts = d.split(':').map(Number);
@@ -221,20 +221,59 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       return parts[0] || 0;
     };
 
-    // Create track with YouTube ID - playback will use YouTube IFrame API
-    const track: BackingTrack = {
-      id: video.id,
-      name: video.title,
-      artist: video.channelTitle,
-      duration: parseDuration(video.duration),
-      url: '', // No URL needed - YouTube player handles playback
-      uploadedBy: 'youtube',
-      uploadedAt: new Date().toISOString(),
-      youtubeId: video.id,
-    };
+    // Extract audio from YouTube using ytdl-core
+    console.log('Extracting audio from YouTube:', video.id);
 
-    await addTrack(track);
-    setIsYouTubeModalOpen(false);
+    try {
+      const response = await fetch('/api/youtube/extract', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videoId: video.id,
+          title: video.title,
+          artist: video.channelTitle,
+        }),
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.error || 'Failed to extract audio');
+      }
+
+      const { track: extractedTrack } = await response.json();
+      console.log('Audio extracted successfully:', extractedTrack);
+
+      // Create track with the extracted audio URL (no youtubeId - it's a regular track now)
+      const track: BackingTrack = {
+        id: extractedTrack.id,
+        name: extractedTrack.name,
+        artist: extractedTrack.artist,
+        duration: extractedTrack.duration || parseDuration(video.duration),
+        url: extractedTrack.url,
+        uploadedBy: 'youtube',
+        uploadedAt: new Date().toISOString(),
+        // Note: NOT setting youtubeId so it plays through audio engine
+      };
+
+      await addTrack(track);
+      setIsYouTubeModalOpen(false);
+    } catch (error) {
+      console.error('Failed to extract YouTube audio:', error);
+      // Fallback to iframe mode if extraction fails
+      console.log('Falling back to iframe mode');
+      const track: BackingTrack = {
+        id: video.id,
+        name: video.title,
+        artist: video.channelTitle,
+        duration: parseDuration(video.duration),
+        url: '',
+        uploadedBy: 'youtube',
+        uploadedAt: new Date().toISOString(),
+        youtubeId: video.id,
+      };
+      await addTrack(track);
+      setIsYouTubeModalOpen(false);
+    }
   }, [addTrack]);
 
   // YouTube player event handlers
