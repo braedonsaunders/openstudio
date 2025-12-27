@@ -464,7 +464,8 @@ export const useUserTracksStore = create<UserTracksState>()(
     loadDevices: async () => {
       try {
         // Request permission first to get device labels
-        await navigator.mediaDevices.getUserMedia({ audio: true });
+        const tempStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        tempStream.getTracks().forEach((t) => t.stop());
 
         const devices = await navigator.mediaDevices.enumerateDevices();
 

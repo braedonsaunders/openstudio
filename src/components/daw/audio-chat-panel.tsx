@@ -37,6 +37,8 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
   const animationFrameRef = useRef<number | null>(null);
   const speakingTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const remoteAudioRefs = useRef<Map<string, HTMLAudioElement>>(new Map());
+  // Keep reference to original stream for cleanup when using channel splitting
+  const originalStreamRef = useRef<MediaStream | null>(null);
 
   const { users } = useRoomStore();
 
@@ -144,6 +146,9 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
 
+      // Store original stream reference for cleanup
+      originalStreamRef.current = stream;
+
       // Detect number of channels from the audio track
       const audioTrack = stream.getAudioTracks()[0];
       const trackSettings = audioTrack.getSettings();
@@ -235,6 +240,12 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
       speakingTimeoutRef.current = null;
     }
 
+    // Stop the original stream (important when using channel splitting)
+    if (originalStreamRef.current) {
+      originalStreamRef.current.getTracks().forEach((track) => track.stop());
+      originalStreamRef.current = null;
+    }
+
     reset();
   }, [reset]);
 
@@ -262,6 +273,11 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
       }
       if (speakingTimeoutRef.current) {
         clearTimeout(speakingTimeoutRef.current);
+      }
+      // Stop the original stream on unmount
+      if (originalStreamRef.current) {
+        originalStreamRef.current.getTracks().forEach((track) => track.stop());
+        originalStreamRef.current = null;
       }
       if (isConnected) {
         reset();
