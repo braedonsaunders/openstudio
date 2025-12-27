@@ -17,15 +17,9 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
-// Cobalt instance URL (self-hosted preferred, with public fallbacks)
+// Cobalt instance URL (self-hosted) - required
 const COBALT_API_URL = process.env.COBALT_API_URL;
 const COBALT_API_KEY = process.env.COBALT_API_KEY;
-
-// Public fallback instances (may have rate limits or be unavailable)
-const COBALT_FALLBACKS = [
-  'https://api.cobalt.tools',
-  'https://cobalt.api.timelessnesses.me',
-];
 
 interface CobaltResponse {
   status: 'tunnel' | 'redirect' | 'picker' | 'stream' | 'error';
@@ -48,7 +42,7 @@ async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKe
     };
 
     if (apiKey) {
-      headers['Authorization'] = `Api-Key ${apiKey}`;
+      headers['Authorization'] = `Bearer ${apiKey}`;
     }
 
     const response = await fetch(instanceUrl, {
@@ -56,8 +50,8 @@ async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKe
       headers,
       body: JSON.stringify({
         url: videoUrl,
-        downloadMode: 'audio',
         audioFormat: 'mp3',
+        downloadMode: 'audio',
       }),
       signal: AbortSignal.timeout(30000),
     });
@@ -114,52 +108,27 @@ export async function POST(request: NextRequest) {
 
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Build list of Cobalt instances to try
-    const instancesToTry: { url: string; apiKey?: string }[] = [];
-
-    // Add self-hosted instance first if configured
-    if (COBALT_API_URL) {
-      instancesToTry.push({ url: COBALT_API_URL, apiKey: COBALT_API_KEY });
-    }
-
-    // Add public fallbacks
-    for (const fallback of COBALT_FALLBACKS) {
-      instancesToTry.push({ url: fallback });
-    }
-
-    if (instancesToTry.length === 0) {
+    // Check for Cobalt configuration
+    if (!COBALT_API_URL) {
       return NextResponse.json(
         {
-          error: 'No Cobalt instances configured.',
-          hint: 'Set COBALT_API_URL environment variable to your self-hosted Cobalt instance.',
+          error: 'Cobalt instance not configured.',
+          hint: 'Set COBALT_API_URL environment variable to your Railway Cobalt instance.',
         },
         { status: 503 }
       );
     }
 
-    // Try each instance until one works
-    let cobaltResult: ExtractResult | null = null;
-    let lastError = '';
+    // Extract audio using Cobalt
+    console.log(`Using Cobalt instance: ${COBALT_API_URL}`);
+    const cobaltResult = await tryExtractWithCobalt(videoUrl, COBALT_API_URL, COBALT_API_KEY);
 
-    for (const instance of instancesToTry) {
-      console.log(`Trying Cobalt instance: ${instance.url}`);
-      cobaltResult = await tryExtractWithCobalt(videoUrl, instance.url, instance.apiKey);
-
-      if (cobaltResult.success && cobaltResult.data?.url) {
-        console.log(`Success with ${instance.url}`);
-        break;
-      }
-
-      lastError = cobaltResult.error || 'Unknown error';
-      console.log(`Failed with ${instance.url}: ${lastError}`);
-    }
-
-    if (!cobaltResult?.success || !cobaltResult.data?.url) {
+    if (!cobaltResult.success || !cobaltResult.data?.url) {
       return NextResponse.json(
         {
-          error: 'Failed to extract audio from all Cobalt instances.',
-          details: lastError,
-          hint: 'YouTube may be blocking requests. Try a different video or check Cobalt logs.',
+          error: 'Failed to extract audio from Cobalt.',
+          details: cobaltResult.error || 'No audio URL returned',
+          hint: 'Check Cobalt logs in Railway for more details.',
         },
         { status: 503 }
       );
