@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef } from 'react';
 import { AudioEngine } from '@/lib/audio/audio-engine';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
@@ -15,15 +15,14 @@ let globalEngineInitPromise: Promise<AudioEngine> | null = null;
 export function useAudioEngine() {
   const animationFrameRef = useRef<number | null>(null);
 
-  // State for analyser nodes (triggers re-render when engine initializes)
-  const [backingTrackAnalyser, setBackingTrackAnalyser] = useState<AnalyserNode | null>(null);
-  const [masterAnalyser, setMasterAnalyser] = useState<AnalyserNode | null>(null);
-  const [audioContext, setAudioContext] = useState<AudioContext | null>(null);
-
+  // Get analyser nodes from the global store (shared across all hook instances)
   const {
     settings,
     isInitialized,
     isPlaying,
+    audioContext,
+    backingTrackAnalyser,
+    masterAnalyser,
     setInitialized,
     setCapturing,
     setMuted,
@@ -34,6 +33,9 @@ export function useAudioEngine() {
     setPlaying,
     setCurrentTime,
     setDuration,
+    setAudioContext,
+    setBackingTrackAnalyser,
+    setMasterAnalyser,
     setInputDevices,
     setOutputDevices,
   } = useAudioStore();
@@ -122,7 +124,7 @@ export function useAudioEngine() {
     } finally {
       globalEngineInitPromise = null;
     }
-  }, [settings, setInitialized, setAudioLevels, setLocalLevel, setInputDevices, setOutputDevices]);
+  }, [settings, setInitialized, setAudioLevels, setLocalLevel, setInputDevices, setOutputDevices, setAudioContext, setBackingTrackAnalyser, setMasterAnalyser]);
 
   // Capture local audio
   const startCapture = useCallback(async () => {
@@ -369,12 +371,12 @@ export function useAudioEngine() {
       globalEngine = null;
       globalEngineInitPromise = null;
       setInitialized(false);
-      // Clear analyser state
+      // Clear analyser state from the store
       setAudioContext(null);
       setBackingTrackAnalyser(null);
       setMasterAnalyser(null);
     }
-  }, [setInitialized]);
+  }, [setInitialized, setAudioContext, setBackingTrackAnalyser, setMasterAnalyser]);
 
   return {
     isInitialized,
