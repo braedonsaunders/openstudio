@@ -178,6 +178,16 @@ export class RealtimeRoomManager {
     await this.channel?.track({ ...data, id: this.userId });
   }
 
+  getPresenceState(): Record<string, User[]> | undefined {
+    return this.channel?.presenceState() as Record<string, User[]> | undefined;
+  }
+
+  getUserCount(): number {
+    const state = this.getPresenceState();
+    if (!state) return 0;
+    return Object.values(state).flat().length;
+  }
+
   // Event listener management
   on(event: string, callback: (data: unknown) => void): () => void {
     if (!this.listeners.has(event)) {

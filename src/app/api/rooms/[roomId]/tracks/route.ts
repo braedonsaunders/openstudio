@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 
-// Server-side Supabase client with service role for database access
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL || '',
-  process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || ''
-);
+// Lazy initialization of Supabase client to avoid build-time errors
+let supabaseClient: SupabaseClient | null = null;
+
+function getSupabase(): SupabaseClient | null {
+  if (!supabaseClient) {
+    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
+    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
+    if (url && key) {
+      supabaseClient = createClient(url, key);
+    }
+  }
+  return supabaseClient;
+}
 
 interface RouteContext {
   params: Promise<{ roomId: string }>;
@@ -16,8 +24,15 @@ export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
+  const supabase = getSupabase();
+
   try {
     const { roomId } = await context.params;
+
+    // If Supabase is not configured, return empty array
+    if (!supabase) {
+      return NextResponse.json([]);
+    }
 
     const { data: tracks, error } = await supabase
       .from('room_tracks')
@@ -65,9 +80,16 @@ export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
+  const supabase = getSupabase();
+
   try {
     const { roomId } = await context.params;
     const track = await request.json();
+
+    // If Supabase is not configured, just return the track as-is
+    if (!supabase) {
+      return NextResponse.json(track);
+    }
 
     const { data, error } = await supabase
       .from('room_tracks')
@@ -87,10 +109,8 @@ export async function POST(
 
     if (error) {
       console.error('Error saving track:', error);
-      // If table doesn't exist, create it
+      // If table doesn't exist, just return success
       if (error.code === '42P01') {
-        // Table doesn't exist - we'll need to create it
-        // For now, just return success since realtime sync will handle it
         return NextResponse.json(track);
       }
       return NextResponse.json(
@@ -124,6 +144,8 @@ export async function DELETE(
   request: NextRequest,
   context: RouteContext
 ) {
+  const supabase = getSupabase();
+
   try {
     const { roomId } = await context.params;
     const { searchParams } = new URL(request.url);
@@ -134,6 +156,11 @@ export async function DELETE(
         { error: 'trackId is required' },
         { status: 400 }
       );
+    }
+
+    // If Supabase is not configured, just return success
+    if (!supabase) {
+      return NextResponse.json({ success: true });
     }
 
     const { error } = await supabase

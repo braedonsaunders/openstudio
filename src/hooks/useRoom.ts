@@ -88,6 +88,26 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       setCurrentUser(user);
 
+      // Ensure room exists in database (create if needed)
+      try {
+        const roomResponse = await fetch(`/api/rooms?id=${roomId}`);
+        if (!roomResponse.ok) {
+          // Room doesn't exist, create it
+          await fetch('/api/rooms', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: roomId,
+              name: `Room ${roomId}`,
+              createdBy: user.id,
+            }),
+          });
+        }
+      } catch (err) {
+        console.error('Failed to ensure room exists:', err);
+        // Continue anyway - room_tracks may still work
+      }
+
       // Initialize audio engine
       await initialize();
 
@@ -265,14 +285,30 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   // Leave room
   const leave = useCallback(async () => {
+    // Check if we're the last user before disconnecting
+    const userCount = realtimeRef.current?.getUserCount() ?? 0;
+    const isLastUser = userCount <= 1;
+
     await realtimeRef.current?.disconnect();
     await cloudflareRef.current?.leaveRoom();
+
+    // If we were the last user, destroy the room and its tracks
+    if (isLastUser && roomId) {
+      try {
+        await fetch(`/api/rooms?id=${roomId}`, {
+          method: 'DELETE',
+        });
+        console.log('Room destroyed after last user left');
+      } catch (err) {
+        console.error('Failed to destroy room:', err);
+      }
+    }
 
     realtimeRef.current = null;
     cloudflareRef.current = null;
 
     reset();
-  }, [reset]);
+  }, [reset, roomId]);
 
   // Master controls
   const play = useCallback(async () => {
