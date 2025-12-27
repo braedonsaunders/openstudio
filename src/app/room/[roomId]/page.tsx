@@ -99,11 +99,12 @@ export default function RoomPage() {
   });
 
   // Navigate to /rooms when user leaves (isConnected becomes false after joining)
+  // Don't redirect if still joining or if there was an error (user should see the error)
   useEffect(() => {
-    if (hasJoined && !isConnected) {
+    if (hasJoined && !isConnected && !isJoining && !error) {
       router.push('/rooms');
     }
-  }, [hasJoined, isConnected, router]);
+  }, [hasJoined, isConnected, isJoining, error, router]);
 
   // Test audio on mount
   useEffect(() => {
@@ -148,8 +149,10 @@ export default function RoomPage() {
 
   const handleJoin = useCallback(async () => {
     if (!userName.trim()) return;
-    await join(userName.trim(), instrument || undefined);
-    setHasJoined(true);
+    const success = await join(userName.trim(), instrument || undefined);
+    if (success) {
+      setHasJoined(true);
+    }
   }, [userName, instrument, join]);
 
   // Show DAW layout once joined
