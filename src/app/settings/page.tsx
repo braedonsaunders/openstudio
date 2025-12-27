@@ -140,17 +140,17 @@ export default function SettingsPage() {
   ];
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-gray-950/80 backdrop-blur-lg border-b border-gray-800">
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center gap-4">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
           </button>
-          <h1 className="text-xl font-bold text-white">Settings</h1>
+          <h1 className="text-xl font-bold text-gray-900 dark:text-white">Settings</h1>
         </div>
       </header>
 
@@ -165,8 +165,8 @@ export default function SettingsPage() {
                   onClick={() => setActiveTab(tab.id)}
                   className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
                     activeTab === tab.id
-                      ? 'bg-indigo-500/20 text-indigo-400'
-                      : 'text-gray-400 hover:bg-gray-800 hover:text-white'
+                      ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+                      : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
                   }`}
                 >
                   <tab.icon className="w-5 h-5" />
@@ -180,7 +180,7 @@ export default function SettingsPage() {
           <div className="flex-1">
             {activeTab === 'profile' && (
               <Card className="p-6">
-                <h2 className="text-lg font-semibold text-white mb-6">Profile Information</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Profile Information</h2>
                 <div className="space-y-4">
                   <Input
                     label="Display Name"
@@ -189,19 +189,19 @@ export default function SettingsPage() {
                     placeholder="How you want to be called"
                   />
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Bio</label>
+                    <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Bio</label>
                     <textarea
                       value={bio}
                       onChange={(e) => setBio(e.target.value)}
                       placeholder="Tell us about yourself..."
-                      className="w-full h-24 bg-gray-800 border border-gray-700 rounded-lg p-3 text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      className="w-full h-24 bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-700 rounded-lg p-3 text-gray-900 dark:text-white text-sm resize-none focus:outline-none focus:ring-2 focus:ring-indigo-500"
                       maxLength={500}
                     />
                     <p className="text-xs text-gray-500 mt-1">{bio.length}/500</p>
                   </div>
 
-                  <div className="border-t border-gray-800 pt-4 mt-6">
-                    <h3 className="text-sm font-medium text-white mb-4 flex items-center gap-2">
+                  <div className="border-t border-gray-200 dark:border-gray-800 pt-4 mt-6">
+                    <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4 flex items-center gap-2">
                       <Globe className="w-4 h-4" />
                       Social Links
                     </h3>
@@ -248,7 +248,7 @@ export default function SettingsPage() {
 
             {activeTab === 'avatar' && (
               <Card className="p-6">
-                <h2 className="text-lg font-semibold text-white mb-6">Customize Avatar</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Customize Avatar</h2>
                 <AvatarEditor
                   onSave={() => {
                     setSaveSuccess(true);
@@ -260,7 +260,7 @@ export default function SettingsPage() {
 
             {activeTab === 'instruments' && (
               <Card className="p-6">
-                <h2 className="text-lg font-semibold text-white mb-6">Your Instruments</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Your Instruments</h2>
 
                 {/* Current Instruments */}
                 <div className="space-y-3 mb-6">
@@ -270,8 +270,8 @@ export default function SettingsPage() {
                         key={inst.id}
                         className={`flex items-center justify-between p-4 rounded-lg ${
                           inst.isPrimary
-                            ? 'bg-indigo-500/10 border border-indigo-500/20'
-                            : 'bg-gray-800'
+                            ? 'bg-indigo-100 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20'
+                            : 'bg-gray-100 dark:bg-gray-800'
                         }`}
                       >
                         <div className="flex items-center gap-3">
@@ -279,17 +279,17 @@ export default function SettingsPage() {
                             {INSTRUMENTS[inst.instrumentId]?.icon || '🎵'}
                           </span>
                           <div>
-                            <p className="text-white font-medium">
+                            <p className="text-gray-900 dark:text-white font-medium">
                               {INSTRUMENTS[inst.instrumentId]?.name || inst.instrumentId}
                             </p>
-                            <p className="text-sm text-gray-400">
+                            <p className="text-sm text-gray-500 dark:text-gray-400">
                               Level {inst.level} • {Math.round(inst.totalHours)}h played
                             </p>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           {inst.isPrimary ? (
-                            <span className="text-xs text-indigo-400 flex items-center gap-1">
+                            <span className="text-xs text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
                               <Star className="w-3 h-3 fill-current" />
                               Primary
                             </span>
@@ -313,8 +313,8 @@ export default function SettingsPage() {
                 </div>
 
                 {/* Add Instrument */}
-                <div className="border-t border-gray-800 pt-6">
-                  <h3 className="text-sm font-medium text-white mb-4">Add Instrument</h3>
+                <div className="border-t border-gray-200 dark:border-gray-800 pt-6">
+                  <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">Add Instrument</h3>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                     {Object.entries(INSTRUMENTS)
                       .filter(([id]) => !instruments.find((i) => i.instrumentId === id))
@@ -323,10 +323,10 @@ export default function SettingsPage() {
                         <button
                           key={id}
                           onClick={() => handleAddInstrument(id)}
-                          className="flex items-center gap-2 p-3 bg-gray-800 hover:bg-gray-700 rounded-lg transition-colors"
+                          className="flex items-center gap-2 p-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
                         >
                           <span className="text-xl">{inst.icon}</span>
-                          <span className="text-sm text-gray-300">{inst.name}</span>
+                          <span className="text-sm text-gray-700 dark:text-gray-300">{inst.name}</span>
                         </button>
                       ))}
                   </div>
@@ -336,10 +336,10 @@ export default function SettingsPage() {
 
             {activeTab === 'privacy' && (
               <Card className="p-6">
-                <h2 className="text-lg font-semibold text-white mb-6">Privacy Settings</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Privacy Settings</h2>
                 <div className="space-y-6">
                   <div>
-                    <label className="block text-sm text-gray-400 mb-2">Profile Visibility</label>
+                    <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Profile Visibility</label>
                     <div className="grid grid-cols-3 gap-2">
                       {(['public', 'friends', 'private'] as const).map((option) => (
                         <button
@@ -348,7 +348,7 @@ export default function SettingsPage() {
                           className={`px-4 py-3 rounded-lg text-sm font-medium capitalize transition-colors ${
                             profileVisibility === option
                               ? 'bg-indigo-500 text-white'
-                              : 'bg-gray-800 text-gray-400 hover:bg-gray-700'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
                           }`}
                         >
                           {option}
@@ -397,7 +397,7 @@ export default function SettingsPage() {
 
             {activeTab === 'notifications' && (
               <Card className="p-6">
-                <h2 className="text-lg font-semibold text-white mb-6">Notification Settings</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Notification Settings</h2>
                 <div className="space-y-6">
                   <ToggleSetting
                     label="Email Notifications"
@@ -451,13 +451,13 @@ function ToggleSetting({
   return (
     <div className="flex items-center justify-between">
       <div>
-        <p className="text-white font-medium">{label}</p>
-        <p className="text-sm text-gray-400">{description}</p>
+        <p className="text-gray-900 dark:text-white font-medium">{label}</p>
+        <p className="text-sm text-gray-500 dark:text-gray-400">{description}</p>
       </div>
       <button
         onClick={() => onChange(!checked)}
         className={`w-12 h-6 rounded-full transition-colors relative ${
-          checked ? 'bg-indigo-500' : 'bg-gray-700'
+          checked ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-gray-700'
         }`}
       >
         <div

@@ -59,7 +59,7 @@ export function UserMenu() {
 
   if (isLoading) {
     return (
-      <div className="w-10 h-10 rounded-full bg-gray-800 animate-pulse" />
+      <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-800 animate-pulse" />
     );
   }
 
@@ -91,25 +91,25 @@ export function UserMenu() {
       <div className="relative" ref={dropdownRef}>
         <button
           onClick={() => setShowDropdown(!showDropdown)}
-          className="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-800 transition-colors"
+          className="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
           <AvatarDisplay avatar={avatar} size="sm" username={profile.username} />
           <div className="hidden sm:block text-left">
-            <p className="text-sm font-medium text-white">{profile.displayName}</p>
-            <p className="text-xs text-gray-400">Level {profile.level}</p>
+            <p className="text-sm font-medium text-gray-900 dark:text-white">{profile.displayName}</p>
+            <p className="text-xs text-gray-500 dark:text-gray-400">Level {profile.level}</p>
           </div>
-          <ChevronDown className={`w-4 h-4 text-gray-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+          <ChevronDown className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
         </button>
 
         {showDropdown && (
-          <div className="absolute right-0 mt-2 w-72 bg-gray-900 border border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden">
+          <div className="absolute right-0 mt-2 w-72 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden">
             {/* Header */}
-            <div className="p-4 border-b border-gray-800">
+            <div className="p-4 border-b border-gray-200 dark:border-gray-800">
               <div className="flex items-center gap-3">
                 <AvatarDisplay avatar={avatar} size="md" username={profile.username} />
                 <div className="flex-1 min-w-0">
-                  <p className="font-medium text-white truncate">{profile.displayName}</p>
-                  <p className="text-sm text-gray-400">@{profile.username}</p>
+                  <p className="font-medium text-gray-900 dark:text-white truncate">{profile.displayName}</p>
+                  <p className="text-sm text-gray-500 dark:text-gray-400">@{profile.username}</p>
                 </div>
                 {profile.accountType === 'admin' && (
                   <Shield className="w-5 h-5 text-red-500" />
@@ -122,14 +122,14 @@ export function UserMenu() {
               {/* Level & XP */}
               <div className="mt-3">
                 <div className="flex items-center justify-between text-xs mb-1">
-                  <span className="text-indigo-400 font-medium">
+                  <span className="text-indigo-600 dark:text-indigo-400 font-medium">
                     {levelTitle} - Level {profile.level}
                   </span>
                   <span className="text-gray-500">
                     {progress.current.toLocaleString()} / {progress.required.toLocaleString()} XP
                   </span>
                 </div>
-                <div className="h-1.5 bg-gray-800 rounded-full overflow-hidden">
+                <div className="h-1.5 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
                   <div
                     className="h-full bg-gradient-to-r from-indigo-500 to-purple-500 transition-all"
                     style={{ width: `${progress.percentage}%` }}
@@ -191,7 +191,7 @@ export function UserMenu() {
 
               {profile.accountType === 'admin' && (
                 <>
-                  <div className="my-2 border-t border-gray-800" />
+                  <div className="my-2 border-t border-gray-200 dark:border-gray-800" />
                   <MenuItem
                     icon={Shield}
                     label="Admin Panel"
@@ -199,17 +199,17 @@ export function UserMenu() {
                       router.push('/admin');
                       setShowDropdown(false);
                     }}
-                    className="text-red-400"
+                    className="text-red-500 dark:text-red-400"
                   />
                 </>
               )}
 
-              <div className="my-2 border-t border-gray-800" />
+              <div className="my-2 border-t border-gray-200 dark:border-gray-800" />
               <MenuItem
                 icon={LogOut}
                 label="Log Out"
                 onClick={handleSignOut}
-                className="text-gray-400"
+                className="text-gray-500 dark:text-gray-400"
               />
             </div>
           </div>
@@ -239,7 +239,7 @@ function MenuItem({
   return (
     <button
       onClick={onClick}
-      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-white hover:bg-gray-800 transition-colors ${className}`}
+      className={`w-full flex items-center gap-3 px-4 py-2.5 text-sm text-gray-700 dark:text-white hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${className}`}
     >
       <Icon className="w-4 h-4" />
       {label}

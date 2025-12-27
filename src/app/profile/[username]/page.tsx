@@ -96,7 +96,7 @@ export default function ProfilePage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
         <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-indigo-500" />
       </div>
     );
@@ -104,10 +104,10 @@ export default function ProfilePage() {
 
   if (!profile) {
     return (
-      <div className="min-h-screen bg-gray-950 flex items-center justify-center">
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center">
         <Card className="p-8 text-center">
-          <h2 className="text-xl font-bold text-white mb-2">User not found</h2>
-          <p className="text-gray-400 mb-4">The user @{username} does not exist.</p>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">User not found</h2>
+          <p className="text-gray-500 dark:text-gray-400 mb-4">The user @{username} does not exist.</p>
           <Button onClick={() => router.push('/')}>Go Home</Button>
         </Card>
       </div>
@@ -127,13 +127,13 @@ export default function ProfilePage() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
-      <header className="sticky top-0 z-50 bg-gray-950/80 backdrop-blur-lg border-b border-gray-800">
+      <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
           <button
             onClick={() => router.back()}
-            className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
+            className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             <ArrowLeft className="w-5 h-5" />
             <span>Back</span>
@@ -164,7 +164,7 @@ export default function ProfilePage() {
           {/* Info */}
           <div className="flex-1">
             <div className="flex items-center gap-3 mb-2">
-              <h1 className="text-3xl font-bold text-white">{profile.displayName}</h1>
+              <h1 className="text-3xl font-bold text-gray-900 dark:text-white">{profile.displayName}</h1>
               {profile.isVerified && (
                 <span title="Verified Musician">
                   <Crown className="w-6 h-6 text-yellow-500" />
@@ -176,19 +176,19 @@ export default function ProfilePage() {
                 </span>
               )}
             </div>
-            <p className="text-gray-400 mb-3">@{profile.username}</p>
+            <p className="text-gray-500 dark:text-gray-400 mb-3">@{profile.username}</p>
 
             {profile.bio && (
-              <p className="text-gray-300 mb-4 max-w-lg">{profile.bio}</p>
+              <p className="text-gray-700 dark:text-gray-300 mb-4 max-w-lg">{profile.bio}</p>
             )}
 
             {/* Level & XP */}
             <div className="mb-4">
               <div className="flex items-center gap-3 mb-2">
-                <span className="text-lg font-semibold text-indigo-400">{levelTitle}</span>
+                <span className="text-lg font-semibold text-indigo-600 dark:text-indigo-400">{levelTitle}</span>
                 <span className="text-gray-500">Level {profile.level}</span>
               </div>
-              <div className="w-64 h-2 bg-gray-800 rounded-full overflow-hidden">
+              <div className="w-64 h-2 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-gradient-to-r from-indigo-500 to-purple-500"
                   style={{ width: `${progress.percentage}%` }}
@@ -201,13 +201,13 @@ export default function ProfilePage() {
 
             {/* Primary Instrument */}
             {primaryInstrument && (
-              <div className="flex items-center gap-2 text-gray-400 mb-4">
+              <div className="flex items-center gap-2 text-gray-500 dark:text-gray-400 mb-4">
                 <Music className="w-4 h-4" />
                 <span>
                   {INSTRUMENTS[primaryInstrument.instrumentId]?.icon}{' '}
                   {INSTRUMENTS[primaryInstrument.instrumentId]?.name || primaryInstrument.instrumentId}
                 </span>
-                <span className="text-gray-600">Level {primaryInstrument.level}</span>
+                <span className="text-gray-400 dark:text-gray-600">Level {primaryInstrument.level}</span>
               </div>
             )}
 
@@ -219,7 +219,7 @@ export default function ProfilePage() {
                     href={profile.links.website}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-white transition-colors"
+                    className="text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
                   >
                     <Globe className="w-5 h-5" />
                   </a>
@@ -229,7 +229,7 @@ export default function ProfilePage() {
                     href={profile.links.spotify}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-gray-400 hover:text-green-500 transition-colors"
+                    className="text-gray-500 dark:text-gray-400 hover:text-green-500 transition-colors"
                   >
                     <ExternalLink className="w-5 h-5" />
                   </a>
@@ -295,7 +295,7 @@ export default function ProfilePage() {
         <div className="grid md:grid-cols-2 gap-6">
           {/* Instruments */}
           <Card className="p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <Music className="w-5 h-5 text-indigo-500" />
               Instruments
             </h3>
@@ -305,7 +305,7 @@ export default function ProfilePage() {
                   <div
                     key={inst.id}
                     className={`flex items-center justify-between p-3 rounded-lg ${
-                      inst.isPrimary ? 'bg-indigo-500/10 border border-indigo-500/20' : 'bg-gray-800/50'
+                      inst.isPrimary ? 'bg-indigo-100 dark:bg-indigo-500/10 border border-indigo-200 dark:border-indigo-500/20' : 'bg-gray-100 dark:bg-gray-800/50'
                     }`}
                   >
                     <div className="flex items-center gap-3">
@@ -313,13 +313,13 @@ export default function ProfilePage() {
                         {INSTRUMENTS[inst.instrumentId]?.icon || '🎵'}
                       </span>
                       <div>
-                        <p className="text-white font-medium">
+                        <p className="text-gray-900 dark:text-white font-medium">
                           {INSTRUMENTS[inst.instrumentId]?.name || inst.instrumentId}
                           {inst.isPrimary && (
-                            <span className="ml-2 text-xs text-indigo-400">Primary</span>
+                            <span className="ml-2 text-xs text-indigo-600 dark:text-indigo-400">Primary</span>
                           )}
                         </p>
-                        <p className="text-sm text-gray-400">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">
                           Level {inst.level} • {Math.round(inst.totalHours)}h played
                         </p>
                       </div>
@@ -334,7 +334,7 @@ export default function ProfilePage() {
 
           {/* Recent Achievements */}
           <Card className="p-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <Trophy className="w-5 h-5 text-yellow-500" />
               Achievements
               <span className="text-sm text-gray-500 font-normal">({achievements.length})</span>
@@ -343,16 +343,16 @@ export default function ProfilePage() {
               {achievements.slice(0, 5).map((ua) => (
                 <div
                   key={ua.achievementId}
-                  className="flex items-center gap-3 p-3 bg-gray-800/50 rounded-lg"
+                  className="flex items-center gap-3 p-3 bg-gray-100 dark:bg-gray-800/50 rounded-lg"
                 >
                   <div className="w-10 h-10 bg-yellow-500/20 rounded-lg flex items-center justify-center">
                     <Trophy className="w-5 h-5 text-yellow-500" />
                   </div>
                   <div className="flex-1">
-                    <p className="text-white font-medium capitalize">
+                    <p className="text-gray-900 dark:text-white font-medium capitalize">
                       {ua.achievementId.replace(/_/g, ' ')}
                     </p>
-                    <p className="text-xs text-gray-400">
+                    <p className="text-xs text-gray-500 dark:text-gray-400">
                       {new Date(ua.unlockedAt).toLocaleDateString()}
                     </p>
                   </div>
@@ -373,7 +373,7 @@ export default function ProfilePage() {
         {/* Activity Heatmap */}
         {stats && profile.privacy.showActivity && (
           <Card className="p-6 mt-6">
-            <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
               <BarChart3 className="w-5 h-5 text-green-500" />
               Activity
             </h3>
@@ -391,7 +391,7 @@ export default function ProfilePage() {
                       className="absolute bottom-0 w-full bg-green-500 rounded-sm transition-all"
                       style={{ height: `${height}%` }}
                     />
-                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 px-2 py-1 rounded text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap">
+                    <div className="absolute -top-8 left-1/2 -translate-x-1/2 bg-gray-800 px-2 py-1 rounded text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
                       {hour}:00 - {value} sessions
                     </div>
                   </div>
@@ -433,15 +433,15 @@ function StatCard({
     <Card className={`p-4 ${highlight ? 'border-orange-500/50' : ''}`}>
       <div className="flex items-center gap-3">
         <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${
-          highlight ? 'bg-orange-500/20' : 'bg-gray-800'
+          highlight ? 'bg-orange-500/20' : 'bg-gray-100 dark:bg-gray-800'
         }`}>
-          <Icon className={`w-5 h-5 ${highlight ? 'text-orange-500' : 'text-gray-400'}`} />
+          <Icon className={`w-5 h-5 ${highlight ? 'text-orange-500' : 'text-gray-500 dark:text-gray-400'}`} />
         </div>
         <div>
-          <p className={`text-xl font-bold ${highlight ? 'text-orange-500' : 'text-white'}`}>
+          <p className={`text-xl font-bold ${highlight ? 'text-orange-500' : 'text-gray-900 dark:text-white'}`}>
             {value}
           </p>
-          <p className="text-sm text-gray-400">{label}</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">{label}</p>
         </div>
       </div>
     </Card>

@@ -413,9 +413,9 @@ export const useAuthStore = create<AuthState>()(
       }),
       {
         name: 'openstudio-auth',
-        partialize: (state) => ({
-          // Only persist non-sensitive data
-          isInitialized: state.isInitialized,
+        partialize: () => ({
+          // Don't persist anything - always fetch fresh session on load
+          // This ensures the auth state is always in sync with Supabase
         }),
       }
     )
