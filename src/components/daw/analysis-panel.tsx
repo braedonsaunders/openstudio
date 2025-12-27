@@ -6,7 +6,6 @@ import { useAnalysisStore } from '@/stores/analysis-store';
 import { useRoomStore } from '@/stores/room-store';
 import {
   Music,
-  Activity,
   Radio,
   Mic2,
   Volume2,
@@ -38,7 +37,6 @@ const KEY_COLORS: Record<string, string> = {
 export function AnalysisPanel() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const [showSpectrum, setShowSpectrum] = useState(true);
   const [containerWidth, setContainerWidth] = useState(0);
 
   const {
@@ -86,28 +84,29 @@ export function AnalysisPanel() {
 
   // Draw spectrum
   useEffect(() => {
-    if (!showSpectrum || !canvasRef.current || !spectrumData) return;
+    if (!canvasRef.current || !spectrumData || containerWidth === 0) return;
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const dpr = window.devicePixelRatio || 1;
-    const rect = canvas.getBoundingClientRect();
+    const width = containerWidth;
+    const height = 80;
 
-    canvas.width = rect.width * dpr;
-    canvas.height = rect.height * dpr;
+    // Set canvas size for high DPI displays
+    canvas.width = width * dpr;
+    canvas.height = height * dpr;
+    canvas.style.width = `${width}px`;
+    canvas.style.height = `${height}px`;
     ctx.scale(dpr, dpr);
-
-    const width = rect.width;
-    const height = rect.height;
 
     // Clear
     ctx.fillStyle = '#0a0a0f';
     ctx.fillRect(0, 0, width, height);
 
     // Draw spectrum bars
-    const barCount = 64;
+    const barCount = Math.min(128, Math.floor(width / 3));
     const barWidth = width / barCount;
     const step = Math.floor(spectrumData.length / barCount);
 
@@ -116,15 +115,15 @@ export function AnalysisPanel() {
       const normalized = Math.max(0, (value + 100) / 100);
       const barHeight = normalized * height;
 
-      // Gradient based on frequency
-      const hue = (i / barCount) * 240;
-      ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.8)`;
-      ctx.shadowBlur = 8;
-      ctx.shadowColor = `hsla(${hue}, 80%, 60%, 0.5)`;
-      ctx.fillRect(i * barWidth + 1, height - barHeight, barWidth - 2, barHeight);
+      // Gradient based on frequency (purple to cyan)
+      const hue = 280 - (i / barCount) * 100;
+      ctx.fillStyle = `hsla(${hue}, 80%, 60%, 0.9)`;
+      ctx.shadowBlur = 6;
+      ctx.shadowColor = `hsla(${hue}, 80%, 60%, 0.4)`;
+      ctx.fillRect(i * barWidth + 0.5, height - barHeight, barWidth - 1, barHeight);
     }
     ctx.shadowBlur = 0;
-  }, [spectrumData, showSpectrum, containerWidth]);
+  }, [spectrumData, containerWidth]);
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">
@@ -142,20 +141,29 @@ export function AnalysisPanel() {
 
       {/* Key & BPM Display */}
       <div className="p-4 grid grid-cols-2 gap-3">
-        {/* Key */}
+        {/* Key & Scale */}
         <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 text-center">
-          <span className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Key</span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Key & Scale</span>
           <div className="flex items-center justify-center gap-2 mt-2">
             <div
               className="w-4 h-4 rounded-full"
               style={{ backgroundColor: keyColor, boxShadow: `0 0 12px ${keyColor}` }}
             />
-            <span className="text-2xl font-bold text-gray-900 dark:text-white">
-              {displayKey || '--'}
-              <span className="text-lg text-gray-500 dark:text-zinc-400">
-                {displayScale === 'minor' ? 'm' : ''}
+            <div className="flex flex-col items-start">
+              <span className="text-2xl font-bold text-gray-900 dark:text-white leading-tight">
+                {displayKey || '--'}
               </span>
-            </span>
+              {displayScale && (
+                <span className={cn(
+                  'text-xs font-medium px-1.5 py-0.5 rounded',
+                  displayScale === 'minor'
+                    ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+                    : 'bg-amber-100 dark:bg-amber-500/20 text-amber-600 dark:text-amber-400'
+                )}>
+                  {displayScale === 'minor' ? 'Minor' : 'Major'}
+                </span>
+              )}
+            </div>
           </div>
           {localAnalysis?.keyConfidence !== undefined && localAnalysis.keyConfidence > 0 && (
             <div className="mt-2 flex items-center justify-center gap-1">
@@ -210,31 +218,20 @@ export function AnalysisPanel() {
         </div>
       )}
 
-      {/* Spectrum Analyzer */}
+      {/* Spectrum Analyzer - Always Visible */}
       <div className="px-4 pb-3">
-        <button
-          onClick={() => setShowSpectrum(!showSpectrum)}
-          className={cn(
-            'w-full flex items-center justify-center gap-2 p-2 rounded-lg transition-all text-sm',
-            showSpectrum
-              ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
-              : 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10'
-          )}
-        >
-          <Waves className="w-4 h-4" />
-          Spectrum
-        </button>
-
-        {showSpectrum && (
-          <div ref={containerRef} className="mt-2 rounded-xl overflow-hidden bg-gray-900 dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5">
-            <canvas ref={canvasRef} className="w-full h-20" style={{ display: 'block' }} />
-            <div className="flex justify-between px-2 py-1 text-[9px] text-gray-400 dark:text-zinc-600">
-              <span>20Hz</span>
-              <span>1kHz</span>
-              <span>20kHz</span>
-            </div>
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500 mb-2">
+          <Waves className="w-3.5 h-3.5" />
+          <span>Spectrum</span>
+        </div>
+        <div ref={containerRef} className="rounded-xl overflow-hidden bg-gray-900 dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5">
+          <canvas ref={canvasRef} className="w-full h-20" style={{ display: 'block', width: '100%' }} />
+          <div className="flex justify-between px-2 py-1 text-[9px] text-gray-400 dark:text-zinc-600">
+            <span>20Hz</span>
+            <span>1kHz</span>
+            <span>20kHz</span>
           </div>
-        )}
+        </div>
       </div>
 
       {/* Loudness Meter */}
@@ -310,39 +307,89 @@ export function AnalysisPanel() {
           Tuner Mode
         </button>
 
-        {tunerEnabled && localAnalysis?.tunerNote && (
-          <div className="mt-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 text-center">
-            <div className="flex items-center justify-center gap-3 mb-2">
-              <span className="text-3xl font-bold text-gray-900 dark:text-white">{localAnalysis.tunerNote}</span>
-              {localAnalysis.tunerFrequency && (
-                <span className="text-sm text-gray-500 dark:text-zinc-500">
-                  {localAnalysis.tunerFrequency.toFixed(1)} Hz
-                </span>
-              )}
-            </div>
-            {localAnalysis.tunerCents != null && (
+        {tunerEnabled && (
+          <div className="mt-2 bg-gray-900 dark:bg-black border border-gray-700 dark:border-white/10 rounded-xl p-4 text-center">
+            {localAnalysis?.tunerNote ? (
               <>
-                <div className="relative h-4 bg-gray-300 dark:bg-zinc-800 rounded-full overflow-hidden">
-                  <div className="absolute left-1/2 top-0 w-0.5 h-full bg-emerald-500 -translate-x-1/2" />
-                  <div
-                    className={cn(
-                      'absolute top-0.5 w-2 h-3 rounded-full transition-all',
-                      Math.abs(localAnalysis.tunerCents) < 5
-                        ? 'bg-emerald-400'
-                        : Math.abs(localAnalysis.tunerCents) < 15
-                        ? 'bg-yellow-400'
-                        : 'bg-red-400'
+                {/* Note display with stability indicator */}
+                <div className="flex items-center justify-center gap-3 mb-3">
+                  <div className={cn(
+                    'relative',
+                    localAnalysis.tunerIsStable && Math.abs(localAnalysis.tunerCents || 0) < 5 && 'animate-pulse'
+                  )}>
+                    <span className={cn(
+                      'text-4xl font-bold transition-colors',
+                      Math.abs(localAnalysis.tunerCents || 0) < 5
+                        ? 'text-emerald-400'
+                        : Math.abs(localAnalysis.tunerCents || 0) < 15
+                        ? 'text-yellow-400'
+                        : 'text-red-400'
+                    )}>
+                      {localAnalysis.tunerNote}
+                    </span>
+                    {localAnalysis.tunerIsStable && Math.abs(localAnalysis.tunerCents || 0) < 5 && (
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-emerald-400 rounded-full" />
                     )}
-                    style={{
-                      left: `${50 + localAnalysis.tunerCents / 2}%`,
-                      transform: 'translateX(-50%)',
-                    }}
-                  />
+                  </div>
+                  <div className="text-left">
+                    <div className="text-sm text-gray-400">
+                      {localAnalysis.tunerFrequency?.toFixed(1)} Hz
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      {localAnalysis.tunerIsStable ? 'Stable' : 'Detecting...'}
+                    </div>
+                  </div>
                 </div>
-                <div className="mt-1 text-xs text-gray-500 dark:text-zinc-500">
-                  {localAnalysis.tunerCents > 0 ? '+' : ''}{localAnalysis.tunerCents} cents
-                </div>
+
+                {/* Cents meter */}
+                {localAnalysis.tunerCents != null && (
+                  <>
+                    <div className="relative h-6 bg-gray-800 rounded-full overflow-hidden mb-2">
+                      {/* Scale markers */}
+                      <div className="absolute inset-0 flex justify-between px-2 items-center">
+                        <span className="text-[8px] text-gray-600">-50</span>
+                        <span className="text-[8px] text-gray-600">0</span>
+                        <span className="text-[8px] text-gray-600">+50</span>
+                      </div>
+                      {/* Center line (in tune) */}
+                      <div className="absolute left-1/2 top-0 w-1 h-full bg-emerald-500/50 -translate-x-1/2" />
+                      {/* Tolerance zone */}
+                      <div className="absolute left-1/2 top-1 h-4 w-8 bg-emerald-500/20 -translate-x-1/2 rounded" />
+                      {/* Cents indicator */}
+                      <div
+                        className={cn(
+                          'absolute top-1 w-3 h-4 rounded-sm transition-all duration-100',
+                          Math.abs(localAnalysis.tunerCents) < 5
+                            ? 'bg-emerald-400 shadow-lg shadow-emerald-500/50'
+                            : Math.abs(localAnalysis.tunerCents) < 15
+                            ? 'bg-yellow-400 shadow-lg shadow-yellow-500/50'
+                            : 'bg-red-400 shadow-lg shadow-red-500/50'
+                        )}
+                        style={{
+                          left: `${50 + Math.max(-50, Math.min(50, localAnalysis.tunerCents))}%`,
+                          transform: 'translateX(-50%)',
+                        }}
+                      />
+                    </div>
+                    <div className={cn(
+                      'text-lg font-mono font-bold',
+                      Math.abs(localAnalysis.tunerCents) < 5
+                        ? 'text-emerald-400'
+                        : Math.abs(localAnalysis.tunerCents) < 15
+                        ? 'text-yellow-400'
+                        : 'text-red-400'
+                    )}>
+                      {localAnalysis.tunerCents > 0 ? '+' : ''}{localAnalysis.tunerCents} cents
+                    </div>
+                  </>
+                )}
               </>
+            ) : (
+              <div className="py-4">
+                <Target className="w-8 h-8 text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-500">Play a note to tune</p>
+                <p className="text-xs text-gray-600 mt-1">Works best with single notes</p>
+              </div>
             )}
           </div>
         )}
