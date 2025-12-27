@@ -28,7 +28,7 @@ interface MixerViewProps {
   onSeparateTrack?: () => void;
   isSeparating?: boolean;
   separationProgress?: number;
-  users: Map<string, User>;
+  users: User[];
   audioLevels: Map<string, number>;
 }
 

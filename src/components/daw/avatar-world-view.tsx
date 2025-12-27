@@ -10,7 +10,7 @@ import { Music, Mic, Guitar } from 'lucide-react';
 import { Drum, Piano } from '../icons';
 
 interface AvatarWorldViewProps {
-  users: Map<string, User>;
+  users: User[];
   currentUser: User | null;
   audioLevels: Map<string, number>;
 }
@@ -464,13 +464,13 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
       .slice(-5)
       .map((m) => ({
         content: m.content,
-        userName: users.get(m.userId)?.name || 'User',
+        userName: users.find(u => u.id === m.userId)?.name || 'User',
       }));
   }, [messages, users]);
 
   // Calculate positions for users in a semicircle around the campfire
   const userPositions = useMemo(() => {
-    const userList = Array.from(users.values());
+    const userList = users;
     const positions: { x: string; y: string; scale: number }[] = [];
     const totalUsers = userList.length;
 
@@ -505,7 +505,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
 
       {/* User avatars arranged around the campfire */}
       <AnimatePresence>
-        {Array.from(users.values()).map((user, index) => (
+        {users.map((user, index) => (
           <UserAvatar
             key={user.id}
             user={user}
@@ -537,7 +537,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
           transition={{ duration: 1, repeat: Infinity }}
         />
         <span className="text-xs font-medium text-white/90">
-          {users.size} {users.size === 1 ? 'musician' : 'musicians'} jamming
+          {users.length} {users.length === 1 ? 'musician' : 'musicians'} jamming
         </span>
         {totalAudioLevel > 0.3 && (
           <motion.span

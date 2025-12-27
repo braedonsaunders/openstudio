@@ -18,7 +18,7 @@ import { Drum, Piano } from '../icons';
 import type { User } from '@/types';
 
 interface RoomUsersPanelProps {
-  users: Map<string, User>;
+  users: User[];
   currentUser: User | null;
   isMaster: boolean;
   audioLevels: Map<string, number>;
@@ -209,7 +209,7 @@ export function RoomUsersPanel({
 }: RoomUsersPanelProps) {
   // Sort users: current user first, then master, then by name
   const sortedUsers = useMemo(() => {
-    const userList = Array.from(users.values());
+    const userList = users;
     return userList.sort((a, b) => {
       if (a.id === currentUser?.id) return -1;
       if (b.id === currentUser?.id) return 1;
@@ -236,7 +236,7 @@ export function RoomUsersPanel({
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-gray-500 dark:text-zinc-500">
-              {users.size} {users.size === 1 ? 'member' : 'members'}
+              {users.length} {users.length === 1 ? 'member' : 'members'}
             </span>
             {activeUsers.length > 0 && (
               <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20">
@@ -252,7 +252,7 @@ export function RoomUsersPanel({
 
       {/* Users list */}
       <div className="flex-1 overflow-y-auto p-3 space-y-2">
-        {users.size === 0 ? (
+        {users.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
               <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center">
@@ -282,12 +282,12 @@ export function RoomUsersPanel({
       </div>
 
       {/* Quick actions */}
-      {isMaster && users.size > 1 && (
+      {isMaster && users.length > 1 && (
         <div className="p-3 border-t border-gray-200 dark:border-white/5">
           <div className="flex gap-2">
             <button
               onClick={() => {
-                Array.from(users.values()).forEach((u) => {
+                users.forEach((u) => {
                   if (u.id !== currentUser?.id) {
                     onMuteUser?.(u.id, true);
                   }
@@ -299,7 +299,7 @@ export function RoomUsersPanel({
             </button>
             <button
               onClick={() => {
-                Array.from(users.values()).forEach((u) => {
+                users.forEach((u) => {
                   onMuteUser?.(u.id, false);
                 });
               }}

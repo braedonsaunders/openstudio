@@ -31,7 +31,7 @@ interface PanelDockProps {
   userName?: string;
   onSendMessage: (message: string) => void;
   // Room users props
-  users: Map<string, User>;
+  users: User[];
   currentUser: User | null;
   isMaster: boolean;
   audioLevels: Map<string, number>;
