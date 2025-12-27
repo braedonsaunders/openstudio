@@ -106,29 +106,32 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    // Fallback: Get metadata only and indicate iframe should be used
+    // Fallback: Get metadata only from oEmbed
     let title = 'Unknown Title';
     let author = 'Unknown Artist';
 
-    const oembedRes = await fetch(
-      `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`,
-      { signal: AbortSignal.timeout(5000) }
-    );
+    try {
+      const oembedRes = await fetch(
+        `https://www.youtube.com/oembed?url=${encodeURIComponent(`https://www.youtube.com/watch?v=${videoId}`)}&format=json`,
+        { signal: AbortSignal.timeout(5000) }
+      );
 
-    if (oembedRes.ok) {
-      const oembed = await oembedRes.json();
-      title = oembed.title || title;
-      author = oembed.author_name || author;
+      if (oembedRes.ok) {
+        const oembed = await oembedRes.json();
+        title = oembed.title || title;
+        author = oembed.author_name || author;
+      }
+    } catch {
+      // Ignore oEmbed errors
     }
 
-    // Return fallback indicating iframe should be used
+    // Return error - no audio stream available
     return NextResponse.json({
       videoId,
       title,
       author,
       useAudioElement: false,
-      useIframePlayer: true,
-      message: 'Could not extract audio stream. Falling back to IFrame player.',
+      error: 'Could not extract audio stream. Try using the download feature instead.',
     });
   } catch (error) {
     console.error('YouTube audio fetch error:', error);

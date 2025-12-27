@@ -17,14 +17,70 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
-// Cobalt API instance from instances.cobalt.best
-const COBALT_API = 'https://cobalt-backend.canine.tools';
+// Custom Cobalt instance URL (self-hosted) - set this env var for your own instance
+const CUSTOM_COBALT_URL = process.env.COBALT_API_URL;
+const COBALT_API_KEY = process.env.COBALT_API_KEY;
+
+// Fallback public instances (may require auth or be unavailable)
+const COBALT_INSTANCES = [
+  'https://downloadapi.stuff.solutions',  // eu-gb instance
+  'https://cobalt-backend.canine.tools',
+];
 
 interface CobaltResponse {
-  status: 'tunnel' | 'redirect' | 'picker' | 'error';
+  status: 'tunnel' | 'redirect' | 'picker' | 'stream' | 'error';
   url?: string;
   filename?: string;
   error?: { code: string };
+}
+
+async function tryExtractWithCobalt(videoUrl: string, instanceUrl: string, apiKey?: string): Promise<CobaltResponse | null> {
+  try {
+    const headers: Record<string, string> = {
+      'Accept': 'application/json',
+      'Content-Type': 'application/json',
+    };
+
+    if (apiKey) {
+      headers['Authorization'] = `Api-Key ${apiKey}`;
+    }
+
+    const response = await fetch(instanceUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({
+        url: videoUrl,
+        downloadMode: 'audio',
+        audioFormat: 'mp3',
+      }),
+      signal: AbortSignal.timeout(30000),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Cobalt ${instanceUrl} error:`, response.status, errorText);
+
+      // Check for auth errors
+      if (response.status === 401 || response.status === 403) {
+        console.warn(`Cobalt ${instanceUrl} requires authentication`);
+        return null;
+      }
+
+      return null;
+    }
+
+    const data: CobaltResponse = await response.json();
+
+    if (data.status === 'error') {
+      console.error(`Cobalt ${instanceUrl} returned error:`, data.error?.code);
+      return null;
+    }
+
+    return data;
+  } catch (error) {
+    console.error(`Cobalt ${instanceUrl} failed:`, error);
+    return null;
+  }
 }
 
 export async function POST(request: NextRequest) {
@@ -42,61 +98,41 @@ export async function POST(request: NextRequest) {
 
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Use Cobalt API to get audio URL
-    let cobaltResponse: CobaltResponse;
-    try {
-      const response = await fetch(COBALT_API, {
-        method: 'POST',
-        headers: {
-          'Accept': 'application/json',
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          url: videoUrl,
-          downloadMode: 'audio',
-          audioFormat: 'mp3',
-        }),
-      });
+    // Try to extract audio using Cobalt
+    let cobaltResponse: CobaltResponse | null = null;
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error('Cobalt API error:', response.status, errorText);
-        throw new Error(`Cobalt API returned ${response.status}: ${errorText}`);
+    // First try custom instance if configured
+    if (CUSTOM_COBALT_URL) {
+      console.log(`Trying custom Cobalt instance: ${CUSTOM_COBALT_URL}`);
+      cobaltResponse = await tryExtractWithCobalt(videoUrl, CUSTOM_COBALT_URL, COBALT_API_KEY);
+    }
+
+    // Try fallback instances
+    if (!cobaltResponse) {
+      for (const instance of COBALT_INSTANCES) {
+        console.log(`Trying Cobalt instance: ${instance}`);
+        cobaltResponse = await tryExtractWithCobalt(videoUrl, instance);
+        if (cobaltResponse) break;
       }
+    }
 
-      cobaltResponse = await response.json();
-      console.log('Cobalt response:', JSON.stringify(cobaltResponse));
-    } catch (error: unknown) {
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      console.error('Failed to call Cobalt API:', errorMessage);
+    if (!cobaltResponse || !cobaltResponse.url) {
       return NextResponse.json(
-        { error: `Failed to extract audio: ${errorMessage}` },
-        { status: 400 }
+        {
+          error: 'Failed to extract audio. All Cobalt instances unavailable or require authentication.',
+          hint: 'Set COBALT_API_URL and COBALT_API_KEY environment variables for a self-hosted instance.',
+        },
+        { status: 503 }
       );
     }
 
-    // Handle response
-    if (cobaltResponse.status === 'error') {
-      const errorMsg = cobaltResponse.error?.code || 'Unknown error';
-      console.error('Cobalt returned error:', errorMsg);
-      return NextResponse.json(
-        { error: `Cobalt error: ${errorMsg}` },
-        { status: 400 }
-      );
-    }
-
-    const audioUrl = cobaltResponse.url;
-    if (!audioUrl) {
-      return NextResponse.json(
-        { error: 'No audio URL returned from Cobalt' },
-        { status: 400 }
-      );
-    }
-
-    console.log(`Downloading audio from: ${audioUrl}`);
+    console.log(`Downloading audio from: ${cobaltResponse.url}`);
 
     // Download the audio
-    const audioResponse = await fetch(audioUrl);
+    const audioResponse = await fetch(cobaltResponse.url, {
+      signal: AbortSignal.timeout(120000), // 2 min timeout for large files
+    });
+
     if (!audioResponse.ok) {
       return NextResponse.json(
         { error: `Failed to download audio: ${audioResponse.status}` },
