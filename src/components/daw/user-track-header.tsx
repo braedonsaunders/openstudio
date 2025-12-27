@@ -3,7 +3,7 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { cn } from '@/lib/utils';
-import { VerticalMeter } from './vertical-meter';
+import { FullHeightMeter } from './full-height-meter';
 import { Fader } from './fader';
 import { TrackAudioSettingsPopover } from './track-audio-settings';
 import { AdvancedAudioSettingsPopover } from './advanced-audio-settings';
@@ -49,27 +49,22 @@ function PopoverPortal({
     const viewportWidth = window.innerWidth;
     const viewportHeight = window.innerHeight;
 
-    // Position below the anchor
     let top = rect.bottom + 8;
     let left = rect.left;
     let alignRight = false;
 
-    // Check if we have enough space on the right, if not align to right edge
     if (popoverRef.current) {
       const popoverWidth = popoverRef.current.offsetWidth;
       if (left + popoverWidth > viewportWidth - 16) {
         left = rect.right - popoverWidth;
         alignRight = true;
       }
-      // Ensure it doesn't go off the left edge
       if (left < 16) {
         left = 16;
       }
 
-      // Check vertical space
       const popoverHeight = popoverRef.current.offsetHeight;
       if (top + popoverHeight > viewportHeight - 16) {
-        // Position above instead
         top = rect.top - popoverHeight - 8;
         if (top < 16) top = 16;
       }
@@ -81,7 +76,6 @@ function PopoverPortal({
   useEffect(() => {
     if (isOpen) {
       updatePosition();
-      // Use RAF for smoother positioning after render
       requestAnimationFrame(updatePosition);
     }
   }, [isOpen, updatePosition]);
@@ -153,7 +147,7 @@ export function UserTrackHeader({
   userName,
   onRemove,
 }: UserTrackHeaderProps) {
-  const [isExpanded, setIsExpanded] = useState(true);
+  const [isExpanded, setIsExpanded] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showEffects, setShowEffects] = useState(false);
@@ -217,43 +211,45 @@ export function UserTrackHeader({
     }
   };
 
+  const isActive = audioLevel > 0.05 && !track.isMuted;
+
   return (
     <div
       className={cn(
         'border-b border-gray-200 dark:border-white/5 transition-all',
-        audioLevel > 0.1 && !track.isMuted && 'bg-gray-100/50 dark:bg-white/[0.02]'
+        isActive && 'bg-gray-100/50 dark:bg-white/[0.02]'
       )}
       style={{ '--track-color': track.color } as React.CSSProperties}
     >
-      {/* Main Track Row */}
-      <div className="flex items-stretch gap-2 px-2 py-2">
-        {/* Track Color Bar with Recording Indicator */}
-        <div className="relative flex-shrink-0">
-          <div
-            className={cn(
-              'w-1 h-full min-h-[56px] rounded-full transition-all',
-              audioLevel > 0.1 && !track.isMuted && 'shadow-[0_0_8px_var(--track-color)]'
-            )}
-            style={{ backgroundColor: track.color }}
-          />
-          {track.isArmed && (
-            <Circle
-              className={cn(
-                'absolute -top-0.5 -left-0.5 w-2 h-2',
-                track.isRecording ? 'text-red-500 fill-red-500 animate-pulse' : 'text-red-500/50'
-              )}
-            />
-          )}
-        </div>
-
-        {/* Main Content */}
-        <div className="flex-1 min-w-0 flex flex-col gap-1.5">
-          {/* Track Name Row */}
+      {/* Main Row - Fixed height matching the lane */}
+      <div className="h-[80px] flex">
+        {/* Left Content Area */}
+        <div className="flex-1 flex flex-col py-2 pl-2 pr-1">
+          {/* Top: Track Info Row */}
           <div className="flex items-center gap-1.5">
+            {/* Track Color Bar with Recording Indicator */}
+            <div className="relative shrink-0">
+              <div
+                className={cn(
+                  'w-1 h-8 rounded-full transition-all',
+                  isActive && 'shadow-[0_0_8px_var(--track-color)]'
+                )}
+                style={{ backgroundColor: track.color }}
+              />
+              {track.isArmed && (
+                <Circle
+                  className={cn(
+                    'absolute -top-0.5 -left-0.5 w-2 h-2',
+                    track.isRecording ? 'text-red-500 fill-red-500 animate-pulse' : 'text-red-500/50'
+                  )}
+                />
+              )}
+            </div>
+
             {/* Expand/Collapse */}
             <button
               onClick={() => setIsExpanded(!isExpanded)}
-              className="p-0.5 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
+              className="p-0.5 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors shrink-0"
             >
               {isExpanded ? (
                 <ChevronDown className="w-3 h-3" />
@@ -265,8 +261,8 @@ export function UserTrackHeader({
             {/* Input Mode Icon */}
             <div
               className={cn(
-                'w-5 h-5 rounded-full flex items-center justify-center shrink-0',
-                audioLevel > 0.1 && !track.isMuted && 'ring-1 ring-offset-1 ring-offset-[#0d0d14]'
+                'w-5 h-5 rounded-full flex items-center justify-center shrink-0 transition-all',
+                isActive && 'ring-1 ring-offset-1 ring-offset-[#0d0d14]'
               )}
               style={{
                 backgroundColor: track.color,
@@ -316,16 +312,33 @@ export function UserTrackHeader({
                   )}
                 </div>
               )}
+              {/* Input source label */}
+              <div className="flex items-center gap-1 text-gray-500 dark:text-zinc-500">
+                <span className="text-[9px] truncate">
+                  {track.audioSettings.inputMode === 'application'
+                    ? track.audioSettings.applicationName || 'App'
+                    : 'Input'}
+                </span>
+              </div>
             </div>
 
-            {/* Level Meter */}
-            <div className="w-2 h-5 shrink-0">
-              <VerticalMeter level={audioLevel} color={track.color} />
-            </div>
+            {/* More Options */}
+            <button
+              ref={menuButtonRef}
+              onClick={() => {
+                setShowMenu(!showMenu);
+                setShowSettings(false);
+                setShowAdvancedSettings(false);
+                setShowEffects(false);
+              }}
+              className="p-1 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors shrink-0"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </button>
           </div>
 
-          {/* Controls Row - R/M/S + Settings Buttons */}
-          <div className="flex items-center gap-1">
+          {/* Bottom: Controls Row */}
+          <div className="flex items-center gap-1 mt-auto pt-1">
             {/* Record Arm Button */}
             <button
               onClick={() => setTrackArmed(track.id, !track.isArmed)}
@@ -333,7 +346,7 @@ export function UserTrackHeader({
                 'w-5 h-5 rounded flex items-center justify-center transition-all',
                 track.isArmed
                   ? 'bg-red-500/20 text-red-400'
-                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
+                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10'
               )}
               title={track.isArmed ? 'Disarm track' : 'Arm track for recording'}
             >
@@ -347,7 +360,7 @@ export function UserTrackHeader({
                 'w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold transition-all',
                 track.isMuted
                   ? 'bg-red-500/20 text-red-400'
-                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
+                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10'
               )}
             >
               M
@@ -360,7 +373,7 @@ export function UserTrackHeader({
                 'w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold transition-all',
                 track.isSolo
                   ? 'bg-yellow-500/20 text-yellow-400'
-                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10 hover:text-gray-700 dark:hover:text-white'
+                  : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10'
               )}
             >
               S
@@ -368,19 +381,6 @@ export function UserTrackHeader({
 
             {/* Spacer */}
             <div className="flex-1" />
-
-            {/* Input source label */}
-            <div className="flex items-center gap-1 text-gray-500 dark:text-zinc-500 mr-1">
-              {track.audioSettings.inputMode === 'application' ? (
-                <span className="text-[9px] truncate max-w-[60px]">
-                  {track.audioSettings.applicationName || 'App'}
-                </span>
-              ) : (
-                <span className="text-[9px] truncate max-w-[60px]">
-                  Input
-                </span>
-              )}
-            </div>
 
             {/* Effects Rack Button */}
             <button
@@ -401,9 +401,9 @@ export function UserTrackHeader({
               )}
               title="Effects Rack"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3 h-3" />
               {activeEffectsCount > 0 && (
-                <span className="absolute -top-0.5 -right-0.5 w-2.5 h-2.5 bg-purple-500 rounded-full text-[7px] font-bold text-white flex items-center justify-center">
+                <span className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-purple-500 rounded-full text-[6px] font-bold text-white flex items-center justify-center">
                   {activeEffectsCount}
                 </span>
               )}
@@ -426,7 +426,7 @@ export function UserTrackHeader({
               )}
               title="Advanced Audio Settings"
             >
-              <Sliders className="w-3.5 h-3.5" />
+              <Sliders className="w-3 h-3" />
             </button>
 
             {/* Quick Settings Button */}
@@ -446,29 +446,25 @@ export function UserTrackHeader({
               )}
               title="Quick Settings"
             >
-              <Settings2 className="w-3.5 h-3.5" />
-            </button>
-
-            {/* More Options */}
-            <button
-              ref={menuButtonRef}
-              onClick={() => {
-                setShowMenu(!showMenu);
-                setShowSettings(false);
-                setShowAdvancedSettings(false);
-                setShowEffects(false);
-              }}
-              className="p-1 text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300 transition-colors"
-            >
-              <MoreHorizontal className="w-3.5 h-3.5" />
+              <Settings2 className="w-3 h-3" />
             </button>
           </div>
         </div>
+
+        {/* Right: Full Height Level Meter */}
+        <div className="w-6 h-full shrink-0 bg-black/20 border-l border-gray-200 dark:border-white/5">
+          <FullHeightMeter
+            level={audioLevel}
+            color={track.color}
+            showPeak={true}
+            segments={16}
+          />
+        </div>
       </div>
 
-      {/* Expanded Controls - Volume only */}
+      {/* Expanded Controls - Volume */}
       {isExpanded && (
-        <div className="px-3 pb-2">
+        <div className="px-3 pb-2 pt-1 border-t border-gray-200 dark:border-white/5">
           <div className="flex items-center gap-2">
             <Volume2 className="w-3 h-3 text-gray-500 dark:text-zinc-500 shrink-0" />
             <Fader
