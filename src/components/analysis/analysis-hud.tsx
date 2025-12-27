@@ -191,22 +191,20 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
           <div className="flex flex-col items-center justify-center p-4 bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl">
             <span className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-2">Key & Scale</span>
             <div className="flex items-center gap-2">
-              <div className={cn('w-4 h-4 rounded-full', keyColor)} />
-              <div className="flex flex-col items-center">
-                <span className="text-3xl font-bold text-slate-900 leading-tight">
-                  {displayKey || '--'}
-                </span>
+              <div className={cn('w-4 h-4 rounded-full shrink-0', keyColor)} />
+              <span className="text-3xl font-bold text-slate-900 leading-tight">
+                {displayKey || '--'}
                 {displayScale && (
                   <span className={cn(
-                    'text-xs font-medium px-1.5 py-0.5 rounded mt-1',
+                    'text-sm font-medium ml-1',
                     displayScale === 'minor'
-                      ? 'bg-indigo-100 text-indigo-600'
-                      : 'bg-amber-100 text-amber-600'
+                      ? 'text-indigo-500'
+                      : 'text-amber-500'
                   )}>
-                    {displayScale === 'minor' ? 'Minor' : 'Major'}
+                    {displayScale === 'minor' ? 'min' : 'maj'}
                   </span>
                 )}
-              </div>
+              </span>
             </div>
             {localAnalysis?.keyConfidence !== undefined && localAnalysis.keyConfidence > 0 && (
               <div className="mt-2 flex items-center gap-1.5">
