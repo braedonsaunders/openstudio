@@ -25,30 +25,30 @@ export function formatBytes(bytes: number): string {
 export function getConnectionQualityColor(quality: 'excellent' | 'good' | 'fair' | 'poor'): string {
   switch (quality) {
     case 'excellent':
-      return 'text-green-500';
+      return 'text-emerald-500';
     case 'good':
-      return 'text-green-400';
+      return 'text-lime-500';
     case 'fair':
-      return 'text-yellow-500';
+      return 'text-amber-500';
     case 'poor':
       return 'text-red-500';
     default:
-      return 'text-gray-500';
+      return 'text-slate-400';
   }
 }
 
 export function getConnectionQualityBg(quality: 'excellent' | 'good' | 'fair' | 'poor'): string {
   switch (quality) {
     case 'excellent':
-      return 'bg-green-500';
+      return 'bg-emerald-500';
     case 'good':
-      return 'bg-green-400';
+      return 'bg-lime-500';
     case 'fair':
-      return 'bg-yellow-500';
+      return 'bg-amber-500';
     case 'poor':
       return 'bg-red-500';
     default:
-      return 'bg-gray-500';
+      return 'bg-slate-400';
   }
 }
 

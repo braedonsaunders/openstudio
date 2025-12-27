@@ -10,10 +10,10 @@ export function Card({ className, variant = 'default', children, ...props }: Car
   return (
     <div
       className={cn(
-        'rounded-xl p-6',
-        variant === 'default' && 'bg-gray-800/50',
-        variant === 'elevated' && 'bg-gray-800 shadow-xl',
-        variant === 'bordered' && 'bg-gray-800/30 border border-gray-700',
+        'rounded-2xl p-6',
+        variant === 'default' && 'bg-white border border-slate-200',
+        variant === 'elevated' && 'bg-white shadow-lg shadow-slate-200/50 border border-slate-100',
+        variant === 'bordered' && 'bg-slate-50/50 border border-slate-200',
         className
       )}
       {...props}
@@ -27,7 +27,7 @@ interface CardHeaderProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function CardHeader({ className, children, ...props }: CardHeaderProps) {
   return (
-    <div className={cn('space-y-2', className)} {...props}>
+    <div className={cn('space-y-1.5', className)} {...props}>
       {children}
     </div>
   );
@@ -37,7 +37,7 @@ interface CardTitleProps extends React.HTMLAttributes<HTMLHeadingElement> {}
 
 export function CardTitle({ className, children, ...props }: CardTitleProps) {
   return (
-    <h3 className={cn('text-lg font-semibold text-white', className)} {...props}>
+    <h3 className={cn('text-lg font-semibold text-slate-900', className)} {...props}>
       {children}
     </h3>
   );
@@ -47,7 +47,7 @@ interface CardDescriptionProps extends React.HTMLAttributes<HTMLParagraphElement
 
 export function CardDescription({ className, children, ...props }: CardDescriptionProps) {
   return (
-    <p className={cn('text-sm text-gray-400', className)} {...props}>
+    <p className={cn('text-sm text-slate-500 leading-relaxed', className)} {...props}>
       {children}
     </p>
   );
@@ -67,7 +67,7 @@ interface CardFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
 
 export function CardFooter({ className, children, ...props }: CardFooterProps) {
   return (
-    <div className={cn('mt-4 flex items-center gap-4', className)} {...props}>
+    <div className={cn('mt-6 flex items-center gap-4', className)} {...props}>
       {children}
     </div>
   );

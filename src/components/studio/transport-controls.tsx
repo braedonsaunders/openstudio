@@ -39,13 +39,13 @@ export function TransportControls({
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
-    <div className={cn('space-y-4', className)}>
+    <div className={cn('space-y-6', className)}>
       {/* Track info */}
       {currentTrack && (
         <div className="text-center">
-          <h3 className="font-medium text-white truncate">{currentTrack.name}</h3>
+          <h3 className="font-semibold text-slate-900 text-lg truncate">{currentTrack.name}</h3>
           {currentTrack.artist && (
-            <p className="text-sm text-gray-400">{currentTrack.artist}</p>
+            <p className="text-sm text-slate-500 mt-1">{currentTrack.artist}</p>
           )}
         </div>
       )}
@@ -60,7 +60,7 @@ export function TransportControls({
       />
 
       {/* Time display */}
-      <div className="flex items-center justify-between text-sm text-gray-400">
+      <div className="flex items-center justify-between text-sm text-slate-500 font-medium">
         <span>{formatTime(currentTime)}</span>
         <span>{formatTime(duration)}</span>
       </div>
@@ -72,6 +72,7 @@ export function TransportControls({
           size="icon"
           onClick={onPrevious}
           disabled={!isMaster || queue.currentIndex <= 0}
+          className="text-slate-600"
         >
           <SkipBack className="w-5 h-5" />
         </Button>
@@ -81,12 +82,12 @@ export function TransportControls({
           size="lg"
           onClick={isPlaying ? onPause : onPlay}
           disabled={!isMaster || !currentTrack}
-          className="w-14 h-14 rounded-full"
+          className="w-16 h-16 rounded-full shadow-lg shadow-indigo-200"
         >
           {isPlaying ? (
-            <Pause className="w-6 h-6" />
+            <Pause className="w-7 h-7" />
           ) : (
-            <Play className="w-6 h-6 ml-1" />
+            <Play className="w-7 h-7 ml-1" />
           )}
         </Button>
 
@@ -95,6 +96,7 @@ export function TransportControls({
           size="icon"
           onClick={onNext}
           disabled={!isMaster || queue.currentIndex >= queue.tracks.length - 1}
+          className="text-slate-600"
         >
           <SkipForward className="w-5 h-5" />
         </Button>
@@ -102,17 +104,17 @@ export function TransportControls({
 
       {/* Secondary controls */}
       <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="icon" className="w-8 h-8">
+        <div className="flex items-center gap-1">
+          <Button variant="ghost" size="icon" className="w-9 h-9 text-slate-400 hover:text-slate-600">
             <Shuffle className="w-4 h-4" />
           </Button>
-          <Button variant="ghost" size="icon" className="w-8 h-8">
+          <Button variant="ghost" size="icon" className="w-9 h-9 text-slate-400 hover:text-slate-600">
             <Repeat className="w-4 h-4" />
           </Button>
         </div>
 
         <div className="flex items-center gap-2 w-32">
-          <Volume2 className="w-4 h-4 text-gray-400" />
+          <Volume2 className="w-4 h-4 text-slate-400" />
           <Slider
             min={0}
             max={1}
@@ -125,7 +127,7 @@ export function TransportControls({
 
       {/* Non-master notice */}
       {!isMaster && (
-        <p className="text-xs text-gray-500 text-center">
+        <p className="text-xs text-slate-400 text-center">
           Only the room master can control playback
         </p>
       )}

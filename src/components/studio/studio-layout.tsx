@@ -15,7 +15,6 @@ import { AIGenerator } from '../tracks/ai-generator';
 import { UploadModal } from '../tracks/upload-modal';
 import { ConnectionStatus } from '../audio/connection-status';
 import { Button } from '../ui/button';
-import { Card } from '../ui/card';
 import {
   Settings,
   LogOut,
@@ -24,6 +23,9 @@ import {
   Sliders,
   Mic,
   MicOff,
+  Music,
+  Copy,
+  Check,
 } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
 import type { SunoGenerationConfig, SunoGenerationProgress } from '@/lib/ai/suno';
@@ -41,6 +43,7 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
   const [generationProgress, setGenerationProgress] = useState<SunoGenerationProgress | null>(null);
   const [isSeparating, setIsSeparating] = useState(false);
   const [separationProgress, setSeparationProgress] = useState(0);
+  const [copied, setCopied] = useState(false);
 
   const {
     users,
@@ -64,6 +67,12 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
   const { toggleStem, setStemVolume } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted } = useAudioStore();
+
+  const handleCopyRoomId = useCallback(() => {
+    navigator.clipboard.writeText(roomId);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }, [roomId]);
 
   const handleTrackSelect = useCallback(async (track: BackingTrack) => {
     // Load and select track
@@ -207,23 +216,42 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
   }, [setStemVolume, storeStemVolume]);
 
   return (
-    <div className="min-h-screen bg-gray-950">
+    <div className="min-h-screen bg-slate-50">
       {/* Header */}
-      <header className="sticky top-0 z-40 bg-gray-900/80 backdrop-blur-lg border-b border-gray-800">
-        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-lg border-b border-slate-200">
+        <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold text-white">OpenStudio</h1>
-            <div className="h-4 w-px bg-gray-700" />
-            <span className="text-sm text-gray-400">Room: {roomId}</span>
+            <div className="flex items-center gap-3">
+              <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-xl flex items-center justify-center">
+                <Music className="w-5 h-5 text-white" />
+              </div>
+              <span className="text-xl font-semibold text-slate-900">OpenStudio</span>
+            </div>
+            <div className="h-6 w-px bg-slate-200" />
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-500">Room:</span>
+              <button
+                onClick={handleCopyRoomId}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 hover:bg-slate-200 rounded-lg text-sm font-medium text-slate-700 transition-colors"
+              >
+                {roomId}
+                {copied ? (
+                  <Check className="w-3.5 h-3.5 text-emerald-500" />
+                ) : (
+                  <Copy className="w-3.5 h-3.5 text-slate-400" />
+                )}
+              </button>
+            </div>
             <ConnectionStatus />
           </div>
 
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {/* Mute toggle */}
             <Button
-              variant={isMuted ? 'danger' : 'ghost'}
+              variant={isMuted ? 'danger' : 'secondary'}
               size="icon"
               onClick={() => setMuted(!isMuted)}
+              className="relative"
             >
               {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
             </Button>
@@ -233,60 +261,42 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
             </Button>
 
             <Button variant="outline" size="sm" onClick={leave}>
-              <LogOut className="w-4 h-4 mr-2" />
+              <LogOut className="w-4 h-4" />
               Leave
             </Button>
           </div>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
+      <div className="max-w-7xl mx-auto px-6 py-8">
         <div className="grid grid-cols-12 gap-6">
           {/* Left sidebar - Users/Queue/Mixer tabs */}
           <div className="col-span-12 lg:col-span-4 xl:col-span-3">
-            <Card variant="elevated" className="sticky top-24 !p-0 overflow-hidden">
+            <div className="sticky top-24 bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
               {/* Tab buttons */}
-              <div className="flex border-b border-gray-700">
-                <button
+              <div className="flex border-b border-slate-200">
+                <TabButton
+                  active={activeTab === 'users'}
                   onClick={() => setActiveTab('users')}
-                  className={cn(
-                    'flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors',
-                    activeTab === 'users'
-                      ? 'text-indigo-400 border-b-2 border-indigo-400'
-                      : 'text-gray-400 hover:text-white'
-                  )}
-                >
-                  <Users className="w-4 h-4" />
-                  Users ({users.length})
-                </button>
-                <button
+                  icon={Users}
+                  label={`Users (${users.length})`}
+                />
+                <TabButton
+                  active={activeTab === 'queue'}
                   onClick={() => setActiveTab('queue')}
-                  className={cn(
-                    'flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors',
-                    activeTab === 'queue'
-                      ? 'text-indigo-400 border-b-2 border-indigo-400'
-                      : 'text-gray-400 hover:text-white'
-                  )}
-                >
-                  <Music2 className="w-4 h-4" />
-                  Queue
-                </button>
-                <button
+                  icon={Music2}
+                  label="Queue"
+                />
+                <TabButton
+                  active={activeTab === 'mixer'}
                   onClick={() => setActiveTab('mixer')}
-                  className={cn(
-                    'flex-1 flex items-center justify-center gap-2 py-3 text-sm font-medium transition-colors',
-                    activeTab === 'mixer'
-                      ? 'text-indigo-400 border-b-2 border-indigo-400'
-                      : 'text-gray-400 hover:text-white'
-                  )}
-                >
-                  <Sliders className="w-4 h-4" />
-                  Mixer
-                </button>
+                  icon={Sliders}
+                  label="Mixer"
+                />
               </div>
 
               {/* Tab content */}
-              <div className="max-h-[calc(100vh-16rem)] overflow-y-auto p-4">
+              <div className="max-h-[calc(100vh-14rem)] overflow-y-auto p-5">
                 {activeTab === 'users' && (
                   <div className="space-y-3">
                     {/* Local user */}
@@ -334,12 +344,12 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
                   />
                 )}
               </div>
-            </Card>
+            </div>
           </div>
 
           {/* Main content - Transport and waveform */}
-          <div className="col-span-12 lg:col-span-8 xl:col-span-9">
-            <Card variant="elevated" className="p-8">
+          <div className="col-span-12 lg:col-span-8 xl:col-span-9 space-y-6">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8">
               <TransportControls
                 onPlay={play}
                 onPause={pause}
@@ -347,12 +357,12 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
                 onNext={skipToNext}
                 onPrevious={() => {}}
               />
-            </Card>
+            </div>
 
             {/* Connection stats */}
-            <Card variant="bordered" className="mt-6">
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
               <ConnectionStatus showDetails />
-            </Card>
+            </div>
           </div>
         </div>
       </div>
@@ -377,5 +387,32 @@ export function StudioLayout({ roomId }: StudioLayoutProps) {
         onUpload={handleUpload}
       />
     </div>
+  );
+}
+
+function TabButton({
+  active,
+  onClick,
+  icon: Icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ElementType;
+  label: string;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className={cn(
+        'flex-1 flex items-center justify-center gap-2 py-3.5 text-sm font-medium transition-colors',
+        active
+          ? 'text-indigo-600 border-b-2 border-indigo-600 bg-indigo-50/50'
+          : 'text-slate-500 hover:text-slate-900 hover:bg-slate-50'
+      )}
+    >
+      <Icon className="w-4 h-4" />
+      <span className="hidden sm:inline">{label}</span>
+    </button>
   );
 }

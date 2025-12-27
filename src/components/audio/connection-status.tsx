@@ -32,6 +32,13 @@ export function ConnectionStatus({ className, showDetails = false }: ConnectionS
     poor: 'Poor',
   };
 
+  const qualityBadgeStyles = {
+    excellent: 'bg-emerald-50 text-emerald-600',
+    good: 'bg-lime-50 text-lime-600',
+    fair: 'bg-amber-50 text-amber-600',
+    poor: 'bg-red-50 text-red-600',
+  };
+
   if (!showDetails) {
     return (
       <Tooltip
@@ -46,8 +53,8 @@ export function ConnectionStatus({ className, showDetails = false }: ConnectionS
       >
         <div
           className={cn(
-            'flex items-center gap-1 px-2 py-1 rounded-full text-sm',
-            getConnectionQualityColor(connectionQuality),
+            'flex items-center gap-1.5 px-2.5 py-1 rounded-full text-sm font-medium',
+            qualityBadgeStyles[connectionQuality],
             className
           )}
         >
@@ -59,77 +66,78 @@ export function ConnectionStatus({ className, showDetails = false }: ConnectionS
   }
 
   return (
-    <div className={cn('space-y-3 p-4 bg-gray-800/50 rounded-xl', className)}>
+    <div className={cn('space-y-4', className)}>
       <div className="flex items-center justify-between">
-        <span className="text-sm text-gray-400">Connection Quality</span>
-        <div className={cn('flex items-center gap-2', getConnectionQualityColor(connectionQuality))}>
+        <span className="text-sm font-medium text-slate-600">Connection Quality</span>
+        <div className={cn('flex items-center gap-2 px-2.5 py-1 rounded-full text-sm font-medium', qualityBadgeStyles[connectionQuality])}>
           {getIcon()}
-          <span className="font-medium">{qualityLabel[connectionQuality]}</span>
+          <span>{qualityLabel[connectionQuality]}</span>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-4">
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Clock className="w-3 h-3" />
-            Round Trip Time
-          </div>
-          <div className="text-sm font-medium text-white">
-            {formatLatency(jitterStats.roundTripTime)}
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Activity className="w-3 h-3" />
-            Jitter
-          </div>
-          <div className="text-sm font-medium text-white">
-            {formatLatency(jitterStats.averageJitter)}
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            <Server className="w-3 h-3" />
-            Buffer Size
-          </div>
-          <div className="text-sm font-medium text-white">
-            {currentBufferSize} samples
-          </div>
-        </div>
-
-        <div className="space-y-1">
-          <div className="flex items-center gap-2 text-xs text-gray-500">
-            Packet Loss
-          </div>
-          <div className="text-sm font-medium text-white">
-            {(jitterStats.packetLoss * 100).toFixed(2)}%
-          </div>
-        </div>
+        <StatCard
+          icon={Clock}
+          label="Round Trip Time"
+          value={formatLatency(jitterStats.roundTripTime)}
+        />
+        <StatCard
+          icon={Activity}
+          label="Jitter"
+          value={formatLatency(jitterStats.averageJitter)}
+        />
+        <StatCard
+          icon={Server}
+          label="Buffer Size"
+          value={`${currentBufferSize} samples`}
+        />
+        <StatCard
+          label="Packet Loss"
+          value={`${(jitterStats.packetLoss * 100).toFixed(2)}%`}
+        />
       </div>
 
       {/* Buffer indicator */}
-      <div className="space-y-1">
+      <div className="space-y-2">
         <div className="flex items-center justify-between text-xs">
-          <span className="text-gray-500">Buffer Latency</span>
-          <span className="text-gray-300">
+          <span className="text-slate-500 font-medium">Buffer Latency</span>
+          <span className="text-slate-700 font-medium">
             {((currentBufferSize / 48000) * 1000).toFixed(1)}ms
           </span>
         </div>
-        <div className="h-2 bg-gray-700 rounded-full overflow-hidden">
+        <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
           <div
             className={cn('h-full transition-all duration-300', getConnectionQualityBg(connectionQuality))}
             style={{ width: `${(currentBufferSize / 1024) * 100}%` }}
           />
         </div>
-        <div className="flex justify-between text-xs text-gray-600">
+        <div className="flex justify-between text-xs text-slate-400">
           <span>128</span>
           <span>256</span>
           <span>512</span>
           <span>1024</span>
         </div>
       </div>
+    </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+}: {
+  icon?: React.ElementType;
+  label: string;
+  value: string;
+}) {
+  return (
+    <div className="p-3 bg-slate-50 rounded-xl">
+      <div className="flex items-center gap-1.5 text-xs text-slate-500 mb-1">
+        {Icon && <Icon className="w-3 h-3" />}
+        {label}
+      </div>
+      <div className="text-sm font-semibold text-slate-900">{value}</div>
     </div>
   );
 }
