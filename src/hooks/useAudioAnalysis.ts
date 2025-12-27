@@ -37,6 +37,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     setIsAnalyzing,
     setWorkerReady,
     setAnalysisError,
+    setBackingTrackAvailable,
     setSpectrumData,
     setWaveformData,
     setTunerEnabled,
@@ -86,6 +87,11 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
       analyzerRef.current.connectToAudioContext(audioContext);
     }
   }, [audioContext, isWorkerReady]);
+
+  // Update backing track availability (for UI - e.g. enable/disable Track source button)
+  useEffect(() => {
+    setBackingTrackAvailable(!!backingTrackElement);
+  }, [backingTrackElement, setBackingTrackAvailable]);
 
   // Handle analysis data updates
   const handleAnalysisData = useCallback(

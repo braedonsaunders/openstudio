@@ -45,14 +45,18 @@ export function AnalysisPanel() {
     isWorkerReady,
     spectrumData,
     tunerEnabled,
+    backingTrackAvailable,
     setAnalysisSource,
     setTunerEnabled,
   } = useAnalysisStore();
 
   const { currentTrack } = useRoomStore();
 
-  // Check if current track is YouTube (can't analyze YouTube audio - it's in an iframe)
+  // Check if current track is YouTube
   const isYouTubeTrack = !!currentTrack?.youtubeId;
+
+  // Track source is available if we have a backing track element (includes YouTube with audio extraction)
+  const canAnalyzeTrack = backingTrackAvailable || (currentTrack && !isYouTubeTrack);
 
   // Use synced values when available
   const displayKey = syncedAnalysis?.key || localAnalysis?.key;
@@ -315,7 +319,7 @@ export function AnalysisPanel() {
         </div>
         <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
           {[
-            { id: 'backing' as const, icon: Radio, label: 'Track', disabled: isYouTubeTrack },
+            { id: 'backing' as const, icon: Radio, label: 'Track', disabled: !canAnalyzeTrack },
             { id: 'local' as const, icon: Mic2, label: 'Mic', disabled: false },
             { id: 'mixed' as const, icon: Music, label: 'Mix', disabled: false },
           ].map(({ id, icon: Icon, label, disabled }) => (
@@ -323,7 +327,7 @@ export function AnalysisPanel() {
               key={id}
               onClick={() => !disabled && setAnalysisSource(id)}
               disabled={disabled}
-              title={disabled ? 'YouTube audio cannot be analyzed' : undefined}
+              title={disabled ? 'No track available for analysis' : undefined}
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-all',
                 analysisSource === id
@@ -338,12 +342,22 @@ export function AnalysisPanel() {
           ))}
         </div>
 
-        {/* Info message for YouTube tracks */}
-        {isYouTubeTrack && analysisSource === 'backing' && (
-          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-blue-500/10 border border-blue-500/20">
-            <Info className="w-3.5 h-3.5 text-blue-400 shrink-0 mt-0.5" />
-            <span className="text-[11px] text-blue-300">
-              YouTube audio can&apos;t be analyzed. Select &quot;Mic&quot; to analyze your microphone input instead.
+        {/* Info message when YouTube audio element is available */}
+        {isYouTubeTrack && backingTrackAvailable && analysisSource === 'backing' && (
+          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-emerald-500/10 border border-emerald-500/20">
+            <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-emerald-300">
+              YouTube audio stream available for analysis.
+            </span>
+          </div>
+        )}
+
+        {/* Info message when YouTube audio is NOT available */}
+        {isYouTubeTrack && !backingTrackAvailable && (
+          <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
+            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-amber-300">
+              YouTube audio stream unavailable. Using IFrame fallback - select &quot;Mic&quot; to analyze instead.
             </span>
           </div>
         )}

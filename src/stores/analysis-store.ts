@@ -56,6 +56,9 @@ interface AnalysisState {
   isWorkerReady: boolean;
   analysisError: string | null;
 
+  // Backing track availability (for YouTube with audio element)
+  backingTrackAvailable: boolean;
+
   // Visualization data
   spectrumData: Float32Array | null;
   waveformData: Float32Array | null;
@@ -70,6 +73,7 @@ interface AnalysisState {
   setIsAnalyzing: (analyzing: boolean) => void;
   setWorkerReady: (ready: boolean) => void;
   setAnalysisError: (error: string | null) => void;
+  setBackingTrackAvailable: (available: boolean) => void;
   setSpectrumData: (data: Float32Array | null) => void;
   setWaveformData: (data: Float32Array | null) => void;
   setTunerEnabled: (enabled: boolean) => void;
@@ -103,6 +107,7 @@ export const useAnalysisStore = create<AnalysisState>()(
     isAnalyzing: false,
     isWorkerReady: false,
     analysisError: null,
+    backingTrackAvailable: false,
     spectrumData: null,
     waveformData: null,
     tunerEnabled: false,
@@ -119,6 +124,8 @@ export const useAnalysisStore = create<AnalysisState>()(
 
     setAnalysisError: (error) => set({ analysisError: error }),
 
+    setBackingTrackAvailable: (available) => set({ backingTrackAvailable: available }),
+
     setSpectrumData: (data) => set({ spectrumData: data }),
 
     setWaveformData: (data) => set({ waveformData: data }),
@@ -133,6 +140,7 @@ export const useAnalysisStore = create<AnalysisState>()(
         isAnalyzing: false,
         isWorkerReady: false,
         analysisError: null,
+        backingTrackAvailable: false,
         spectrumData: null,
         waveformData: null,
         tunerEnabled: false,

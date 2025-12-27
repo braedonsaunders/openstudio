@@ -92,9 +92,10 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
 
-  // Audio analysis - initialize with audio context
+  // Audio analysis - initialize with audio context and backing track element
   useAudioAnalysis({
     audioContext: getAudioContext(),
+    backingTrackElement: youtubeAudioElement,
     roomId,
     userId: currentUser?.id,
     isMaster,
@@ -102,6 +103,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
+
+  // YouTube audio element for analysis (when using Piped audio extraction)
+  const [youtubeAudioElement, setYoutubeAudioElement] = useState<HTMLAudioElement | null>(null);
 
   // Check if current track is a YouTube track
   const isYouTubeTrack = !!currentTrack?.youtubeId;
@@ -269,6 +273,19 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const handleYouTubeDurationChange = useCallback((duration: number) => {
     if (duration > 0) setDuration(duration);
   }, [setDuration]);
+
+  // Handle YouTube audio element ready (for Web Audio API analysis)
+  const handleYouTubeAudioElementReady = useCallback((audioElement: HTMLAudioElement) => {
+    console.log('YouTube audio element ready for analysis');
+    setYoutubeAudioElement(audioElement);
+  }, []);
+
+  // Clear YouTube audio element when track changes
+  useEffect(() => {
+    if (!isYouTubeTrack) {
+      setYoutubeAudioElement(null);
+    }
+  }, [currentTrack?.id, isYouTubeTrack]);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
     setIsGenerating(true);
@@ -491,6 +508,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                   onStateChange={handleYouTubeStateChange}
                   onTimeUpdate={handleYouTubeTimeUpdate}
                   onDurationChange={handleYouTubeDurationChange}
+                  onAudioElementReady={handleYouTubeAudioElementReady}
                   volume={backingTrackVolume * 100}
                 />
               ) : undefined
