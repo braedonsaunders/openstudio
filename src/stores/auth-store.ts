@@ -81,7 +81,9 @@ export const useAuthStore = create<AuthState>()(
         ...initialState,
 
         initialize: async () => {
-          if (get().isInitialized) return;
+          // Prevent concurrent calls - check both isInitialized and isLoading
+          const state = get();
+          if (state.isInitialized || state.isLoading) return;
 
           set({ isLoading: true });
 
@@ -114,11 +116,15 @@ export const useAuthStore = create<AuthState>()(
                 unlockedAchievements,
                 friends,
                 pendingFriendRequests: pending,
+                isLoading: false,
+                isInitialized: true,
               });
+            } else {
+              // No user session - mark as initialized but not loading
+              set({ isLoading: false, isInitialized: true });
             }
           } catch (error) {
             console.error('Failed to initialize auth:', error);
-          } finally {
             set({ isLoading: false, isInitialized: true });
           }
         },
