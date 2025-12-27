@@ -1332,22 +1332,20 @@ export default function HomePage() {
                 </span>
               </motion.button>
 
-              {user && (
-                <motion.button
-                  onClick={handleBrowseRooms}
-                  initial={{ opacity: 0, scale: 0.9 }}
-                  animate={{ opacity: 1, scale: 1 }}
-                  transition={{ delay: 0.2 }}
-                  className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all ${
-                    isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
-                  }`}
-                  whileHover={{ scale: 1.02 }}
-                  whileTap={{ scale: 0.98 }}
-                >
-                  <FolderOpen className="w-4 h-4" />
-                  <span>Browse</span>
-                </motion.button>
-              )}
+              <motion.button
+                onClick={handleBrowseRooms}
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2 }}
+                className={`flex items-center gap-1.5 px-4 py-2.5 text-sm font-semibold rounded-xl transition-all ${
+                  isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
+                }`}
+                whileHover={{ scale: 1.02 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <FolderOpen className="w-4 h-4" />
+                <span>Browse</span>
+              </motion.button>
 
               {/* Join input inline */}
               <div className="flex items-center gap-1.5">
