@@ -8,6 +8,71 @@ import { AvatarDisplay } from './AvatarDisplay';
 import type { Avatar } from '@/types/user';
 import { Check, ChevronLeft, ChevronRight, Palette, Shirt, Sparkles } from 'lucide-react';
 
+// Default avatar with all required properties
+const DEFAULT_AVATAR: Avatar = {
+  baseStyle: 'human',
+  skinTone: '#f5d0c5',
+  head: {
+    shape: 'oval',
+    hair: { style: 'short', color: '#4a3728' },
+    eyes: { style: 'default', color: '#634e34' },
+    eyebrows: 'default',
+    nose: 'default',
+    mouth: 'default',
+    accessories: [],
+  },
+  body: {
+    type: 'average',
+    outfit: { top: 'tshirt', topColor: '#3b82f6', bottom: 'jeans', bottomColor: '#1e3a5f' },
+  },
+  expression: 'neutral',
+  effects: {},
+  background: { type: 'gradient', colors: ['#6366f1', '#8b5cf6'] },
+};
+
+// Safely merge avatar with defaults to ensure all properties exist
+function safeAvatar(avatar: Avatar | null | undefined): Avatar {
+  if (!avatar || typeof avatar !== 'object') {
+    return { ...DEFAULT_AVATAR };
+  }
+
+  return {
+    baseStyle: avatar.baseStyle || DEFAULT_AVATAR.baseStyle,
+    skinTone: avatar.skinTone || DEFAULT_AVATAR.skinTone,
+    head: {
+      shape: avatar.head?.shape || DEFAULT_AVATAR.head.shape,
+      hair: {
+        style: avatar.head?.hair?.style || DEFAULT_AVATAR.head.hair.style,
+        color: avatar.head?.hair?.color || DEFAULT_AVATAR.head.hair.color,
+      },
+      eyes: {
+        style: avatar.head?.eyes?.style || DEFAULT_AVATAR.head.eyes.style,
+        color: avatar.head?.eyes?.color || DEFAULT_AVATAR.head.eyes.color,
+      },
+      eyebrows: avatar.head?.eyebrows || DEFAULT_AVATAR.head.eyebrows,
+      nose: avatar.head?.nose || DEFAULT_AVATAR.head.nose,
+      mouth: avatar.head?.mouth || DEFAULT_AVATAR.head.mouth,
+      accessories: avatar.head?.accessories || DEFAULT_AVATAR.head.accessories,
+    },
+    body: {
+      type: avatar.body?.type || DEFAULT_AVATAR.body.type,
+      outfit: {
+        top: avatar.body?.outfit?.top || DEFAULT_AVATAR.body.outfit.top,
+        topColor: avatar.body?.outfit?.topColor || DEFAULT_AVATAR.body.outfit.topColor,
+        bottom: avatar.body?.outfit?.bottom || DEFAULT_AVATAR.body.outfit.bottom,
+        bottomColor: avatar.body?.outfit?.bottomColor || DEFAULT_AVATAR.body.outfit.bottomColor,
+      },
+    },
+    expression: avatar.expression || DEFAULT_AVATAR.expression,
+    effects: avatar.effects || DEFAULT_AVATAR.effects,
+    background: {
+      type: avatar.background?.type || DEFAULT_AVATAR.background.type,
+      colors: avatar.background?.colors || DEFAULT_AVATAR.background.colors,
+    },
+    frame: avatar.frame,
+  };
+}
+
 const SKIN_TONES = [
   '#f5d0c5', '#e8beac', '#d4a574', '#c68642', '#8d5524', '#5c3317',
 ];
@@ -76,26 +141,7 @@ interface AvatarEditorProps {
 export function AvatarEditor({ onSave, onCancel }: AvatarEditorProps) {
   const { avatar: currentAvatar, updateAvatar, profile } = useAuthStore();
 
-  const [avatar, setAvatar] = useState<Avatar>(currentAvatar || {
-    baseStyle: 'human',
-    skinTone: '#f5d0c5',
-    head: {
-      shape: 'oval',
-      hair: { style: 'short', color: '#4a3728' },
-      eyes: { style: 'default', color: '#634e34' },
-      eyebrows: 'default',
-      nose: 'default',
-      mouth: 'default',
-      accessories: [],
-    },
-    body: {
-      type: 'average',
-      outfit: { top: 'tshirt', topColor: '#3b82f6', bottom: 'jeans', bottomColor: '#1e3a5f' },
-    },
-    expression: 'neutral',
-    effects: {},
-    background: { type: 'gradient', colors: ['#6366f1', '#8b5cf6'] },
-  });
+  const [avatar, setAvatar] = useState<Avatar>(() => safeAvatar(currentAvatar));
 
   const [activeTab, setActiveTab] = useState<EditorTab>('skin');
   const [isSaving, setIsSaving] = useState(false);
