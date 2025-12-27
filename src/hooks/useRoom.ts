@@ -385,10 +385,17 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const pause = useCallback(async () => {
     if (!isMaster || !currentTrack) return;
 
+    // Get the current playback time before pausing
+    const { currentTime } = useAudioStore.getState();
+
     pauseBackingTrack();
-    realtimeRef.current?.broadcastPause(currentTrack.id, queue.currentTime);
+
+    // Save the current time so we can resume from this position
+    setQueueTime(currentTime);
+
+    realtimeRef.current?.broadcastPause(currentTrack.id, currentTime);
     setQueuePlaying(false);
-  }, [isMaster, currentTrack, pauseBackingTrack, queue.currentTime, setQueuePlaying]);
+  }, [isMaster, currentTrack, pauseBackingTrack, setQueueTime, setQueuePlaying]);
 
   const seek = useCallback(async (time: number) => {
     if (!isMaster || !currentTrack) return;
