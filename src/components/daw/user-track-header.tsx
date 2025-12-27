@@ -377,7 +377,7 @@ export function UserTrackHeader({
                 </span>
               ) : (
                 <span className="text-[9px] truncate max-w-[60px]">
-                  {track.audioSettings.inputDeviceId === 'default' ? 'Mic' : 'Mic'}
+                  Input
                 </span>
               )}
             </div>
