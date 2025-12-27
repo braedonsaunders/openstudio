@@ -276,18 +276,20 @@ export class AudioEngine {
     const now = Date.now();
     const delay = Math.max(0, syncTimestamp - now) / 1000;
 
-    this.backingTrackSource = this.audioContext.createBufferSource();
-    this.backingTrackSource.buffer = this.backingTrackBuffer;
-    this.backingTrackSource.connect(this.backingTrackGain);
+    const source = this.audioContext.createBufferSource();
+    source.buffer = this.backingTrackBuffer;
+    source.connect(this.backingTrackGain);
 
-    // Handle track end
-    this.backingTrackSource.onended = () => {
-      // Only trigger if we were playing and reached the end naturally
-      if (this.isPlaying) {
+    // Handle track end - check if this source is still the active one
+    // to prevent old sources from interfering during seek
+    source.onended = () => {
+      if (this.backingTrackSource === source && this.isPlaying) {
         this.isPlaying = false;
         this.onTrackEnded?.();
       }
     };
+
+    this.backingTrackSource = source;
 
     const startTime = this.audioContext.currentTime + delay;
     console.log('Starting playback at offset:', offset, 'delay:', delay);
@@ -318,9 +320,10 @@ export class AudioEngine {
       source.buffer = buffer;
 
       // Hook track end to the first stem source
+      // Check if this source is still active to prevent old sources from interfering during seek
       if (isFirst) {
         source.onended = () => {
-          if (this.isPlaying) {
+          if (this.stemSources.get(stemType) === source && this.isPlaying) {
             this.isPlaying = false;
             this.onTrackEnded?.();
           }
@@ -348,9 +351,6 @@ export class AudioEngine {
   }
 
   stopBackingTrack(): void {
-    // Set isPlaying false BEFORE stopping to prevent the onended callback
-    // from interfering with subsequent playback (e.g., during seek while playing)
-    this.isPlaying = false;
     if (this.backingTrackSource) {
       try {
         this.backingTrackSource.stop();
@@ -360,12 +360,10 @@ export class AudioEngine {
       this.backingTrackSource.disconnect();
       this.backingTrackSource = null;
     }
+    this.isPlaying = false;
   }
 
   stopStemmedTrack(): void {
-    // Set isPlaying false BEFORE stopping to prevent the onended callback
-    // from interfering with subsequent playback (e.g., during seek while playing)
-    this.isPlaying = false;
     for (const source of this.stemSources.values()) {
       try {
         source.stop();
@@ -375,6 +373,7 @@ export class AudioEngine {
       source.disconnect();
     }
     this.stemSources.clear();
+    this.isPlaying = false;
   }
 
   setStemEnabled(stemType: string, enabled: boolean): void {
