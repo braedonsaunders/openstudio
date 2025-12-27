@@ -36,6 +36,14 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const { resolvedTheme, toggleTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
+  // iOS Safari viewport fix - prevent scroll bounce and ensure full height
+  useEffect(() => {
+    document.documentElement.classList.add('daw-active');
+    return () => {
+      document.documentElement.classList.remove('daw-active');
+    };
+  }, []);
+
   // Panel state
   const [activePanel, setActivePanel] = useState<PanelType>('mixer');
   const [isPanelDockVisible, setIsPanelDockVisible] = useState(true);
@@ -457,7 +465,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   }, [setStemVolume, storeStemVolume]);
 
   return (
-    <div className={`h-screen flex flex-col overflow-hidden transition-colors ${
+    <div className={`h-dvh flex flex-col overflow-hidden transition-colors ${
       isDark
         ? 'daw-theme bg-[#0a0a0f] text-white'
         : 'bg-gray-50 text-gray-900'
