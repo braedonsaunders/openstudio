@@ -58,7 +58,7 @@ export interface UserProfile {
 export interface UserPreferences {
   // Audio Defaults
   defaultSampleRate: 48000 | 44100;
-  defaultBufferSize: 128 | 256 | 512 | 1024;
+  defaultBufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
   autoJitterBuffer: boolean;
   inputDevice?: string;
   outputDevice?: string;
@@ -381,7 +381,7 @@ export interface SavedRoom {
 export interface RoomAudioSettings {
   sampleRate: 48000 | 44100;
   bitDepth: 16 | 24;
-  bufferSize: 128 | 256 | 512 | 1024;
+  bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
   autoJitterBuffer: boolean;
   backingTrackVolume: number;
   masterVolume: number;

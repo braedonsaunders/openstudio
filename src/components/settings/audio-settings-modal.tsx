@@ -34,7 +34,7 @@ export interface AudioSettings {
   outputDeviceId: string;
   inputMode: 'microphone' | 'application';
   sampleRate: 48000 | 44100;
-  bufferSize: 128 | 256 | 512 | 1024;
+  bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
   noiseSuppression: boolean;
   echoCancellation: boolean;
   autoGainControl: boolean;
@@ -268,7 +268,7 @@ export function AudioSettingsModal({
             <select
               value={settings.inputDeviceId}
               onChange={(e) => setSettings({ ...settings, inputDeviceId: e.target.value })}
-              className="w-full h-10 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              className="w-full h-10 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 [&>option]:bg-white dark:[&>option]:bg-gray-800 [&>option]:text-gray-900 dark:[&>option]:text-white"
             >
               <option value="default">System Default</option>
               {inputDevices.map((device) => (
@@ -286,7 +286,7 @@ export function AudioSettingsModal({
           <select
             value={settings.outputDeviceId}
             onChange={(e) => setSettings({ ...settings, outputDeviceId: e.target.value })}
-            className="w-full h-10 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+            className="w-full h-10 px-3 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 [&>option]:bg-white dark:[&>option]:bg-gray-800 [&>option]:text-gray-900 dark:[&>option]:text-white"
           >
             <option value="default">System Default</option>
             {outputDevices.map((device) => (
@@ -332,7 +332,7 @@ export function AudioSettingsModal({
               <select
                 value={settings.sampleRate}
                 onChange={(e) => setSettings({ ...settings, sampleRate: parseInt(e.target.value) as 48000 | 44100 })}
-                className="w-full h-9 px-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white"
+                className="w-full h-9 px-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white [&>option]:bg-white dark:[&>option]:bg-gray-800 [&>option]:text-gray-900 dark:[&>option]:text-white"
               >
                 <option value={48000}>48 kHz</option>
                 <option value={44100}>44.1 kHz</option>
@@ -343,10 +343,12 @@ export function AudioSettingsModal({
               <label className="text-xs text-gray-500 dark:text-gray-400">Buffer Size</label>
               <select
                 value={settings.bufferSize}
-                onChange={(e) => setSettings({ ...settings, bufferSize: parseInt(e.target.value) as 128 | 256 | 512 | 1024 })}
-                className="w-full h-9 px-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white"
+                onChange={(e) => setSettings({ ...settings, bufferSize: parseInt(e.target.value) as 32 | 64 | 128 | 256 | 512 | 1024 })}
+                className="w-full h-9 px-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white [&>option]:bg-white dark:[&>option]:bg-gray-800 [&>option]:text-gray-900 dark:[&>option]:text-white"
               >
-                <option value={128}>128 (lowest latency)</option>
+                <option value={32}>32 (ultra low)</option>
+                <option value={64}>64 (very low)</option>
+                <option value={128}>128 (low latency)</option>
                 <option value={256}>256</option>
                 <option value={512}>512</option>
                 <option value={1024}>1024 (most stable)</option>

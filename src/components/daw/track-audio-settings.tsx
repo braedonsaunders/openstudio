@@ -249,7 +249,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
               <select
                 value={track.audioSettings.inputDeviceId}
                 onChange={(e) => handleSettingChange({ inputDeviceId: e.target.value })}
-                className="w-full h-9 px-3 pr-8 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                className="w-full h-9 px-3 pr-8 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50 [&>option]:bg-gray-100 dark:[&>option]:bg-[#1a1a24] [&>option]:text-gray-900 dark:[&>option]:text-white"
               >
                 <option value="default">System Default</option>
                 {inputDevices.map((device) => (
@@ -346,7 +346,7 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                 <select
                   value={track.audioSettings.sampleRate}
                   onChange={(e) => handleSettingChange({ sampleRate: parseInt(e.target.value) as 48000 | 44100 })}
-                  className="w-full h-7 px-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-[10px] text-gray-900 dark:text-white"
+                  className="w-full h-7 px-2 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded text-[10px] text-gray-900 dark:text-white [&>option]:bg-gray-100 dark:[&>option]:bg-[#1a1a24] [&>option]:text-gray-900 dark:[&>option]:text-white"
                 >
                   <option value={48000}>48 kHz</option>
                   <option value={44100}>44.1 kHz</option>
@@ -356,9 +356,11 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                 <label className="text-[10px] text-gray-500 dark:text-zinc-500">Buffer Size</label>
                 <select
                   value={track.audioSettings.bufferSize}
-                  onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 128 | 256 | 512 | 1024 })}
-                  className="w-full h-7 px-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded text-[10px] text-gray-900 dark:text-white"
+                  onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 32 | 64 | 128 | 256 | 512 | 1024 })}
+                  className="w-full h-7 px-2 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded text-[10px] text-gray-900 dark:text-white [&>option]:bg-gray-100 dark:[&>option]:bg-[#1a1a24] [&>option]:text-gray-900 dark:[&>option]:text-white"
                 >
+                  <option value={32}>32</option>
+                  <option value={64}>64</option>
                   <option value={128}>128</option>
                   <option value={256}>256</option>
                   <option value={512}>512</option>

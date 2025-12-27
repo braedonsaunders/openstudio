@@ -15,7 +15,7 @@ export interface CaptureAudioOptions {
 
 export interface AudioEngineConfig {
   sampleRate: 48000 | 44100;
-  bufferSize: 128 | 256 | 512 | 1024;
+  bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
   autoJitterBuffer: boolean;
   enableProcessing: boolean;
 }

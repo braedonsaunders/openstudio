@@ -603,10 +603,12 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
                 <label className="text-[10px] text-gray-500 dark:text-zinc-500">Buffer Size</label>
                 <select
                   value={track.audioSettings.bufferSize}
-                  onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 128 | 256 | 512 | 1024 })}
+                  onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 32 | 64 | 128 | 256 | 512 | 1024 })}
                   className={selectTinyClassName}
                 >
-                  <option value={128}>128 (lowest latency)</option>
+                  <option value={32}>32 (ultra low)</option>
+                  <option value={64}>64 (very low)</option>
+                  <option value={128}>128 (low latency)</option>
                   <option value={256}>256</option>
                   <option value={512}>512</option>
                   <option value={1024}>1024 (most stable)</option>

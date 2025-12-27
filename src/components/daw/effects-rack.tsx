@@ -105,7 +105,7 @@ function Knob({
           <div className="absolute top-1 left-1/2 -translate-x-1/2 w-0.5 h-1.5 bg-indigo-400 rounded-full" />
         </div>
         {/* Track arc */}
-        <svg className="absolute inset-0 w-full h-full" viewBox="0 0 40 40">
+        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 40 40">
           <circle
             cx="20"
             cy="20"

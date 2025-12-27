@@ -28,7 +28,7 @@ export interface Room {
 export interface RoomSettings {
   sampleRate: 48000 | 44100;
   bitDepth: 16 | 24;
-  bufferSize: 128 | 256 | 512 | 1024;
+  bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
   autoJitterBuffer: boolean;
   backingTrackVolume: number;
   masterVolume: number;
@@ -216,7 +216,7 @@ export interface TrackAudioSettings {
   inputMode: 'microphone' | 'application';
   inputDeviceId: string;
   sampleRate: 48000 | 44100;
-  bufferSize: 128 | 256 | 512 | 1024;
+  bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
   noiseSuppression: boolean;
   echoCancellation: boolean;
   autoGainControl: boolean;
