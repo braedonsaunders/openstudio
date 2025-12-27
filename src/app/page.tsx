@@ -59,8 +59,8 @@ function Campfire() {
         <motion.g>
           {/* Main center flame */}
           <motion.path
-            d="M60 75 Q50 50 55 35 Q60 20 60 15 Q60 20 65 35 Q70 50 60 75"
             fill="url(#flameGradient)"
+            initial={{ d: "M60 75 Q50 50 55 35 Q60 20 60 15 Q60 20 65 35 Q70 50 60 75" }}
             animate={{
               d: [
                 "M60 75 Q50 50 55 35 Q60 20 60 15 Q60 20 65 35 Q70 50 60 75",
@@ -74,8 +74,8 @@ function Campfire() {
 
           {/* Left flame */}
           <motion.path
-            d="M45 75 Q38 58 42 45 Q46 35 45 30 Q44 35 48 45 Q52 58 45 75"
             fill="url(#flameGradient2)"
+            initial={{ d: "M45 75 Q38 58 42 45 Q46 35 45 30 Q44 35 48 45 Q52 58 45 75" }}
             animate={{
               d: [
                 "M45 75 Q38 58 42 45 Q46 35 45 30 Q44 35 48 45 Q52 58 45 75",
@@ -89,8 +89,8 @@ function Campfire() {
 
           {/* Right flame */}
           <motion.path
-            d="M75 75 Q82 58 78 45 Q74 35 75 30 Q76 35 72 45 Q68 58 75 75"
             fill="url(#flameGradient2)"
+            initial={{ d: "M75 75 Q82 58 78 45 Q74 35 75 30 Q76 35 72 45 Q68 58 75 75" }}
             animate={{
               d: [
                 "M75 75 Q82 58 78 45 Q74 35 75 30 Q76 35 72 45 Q68 58 75 75",
