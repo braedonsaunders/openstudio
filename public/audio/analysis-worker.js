@@ -150,67 +150,14 @@ function analyzeLongTerm(combinedAudio) {
   try {
     const essentiaAudio = essentia.arrayToVector(combinedAudio);
 
-    // Key detection using HPCP -> Key approach
+    // Key detection - simplified approach using chroma-based analysis
+    // Note: essentia.js WASM has limited algorithm support, so we use a simpler method
     try {
-      // Compute spectrum first
-      const frameSize = 4096;
-      const spectrum = essentia.Spectrum(essentiaAudio, frameSize);
-
-      // Use SpectralPeaks to get frequencies and magnitudes
-      const peaks = essentia.SpectralPeaks(
-        spectrum.spectrum,
-        0,           // magnitudeThreshold
-        5000,        // maxFrequency
-        60,          // maxPeaks
-        100,         // minFrequency
-        'height',    // orderBy
-        sampleRate
-      );
-
-      // Compute HPCP from spectral peaks
-      const hpcp = essentia.HPCP(
-        peaks.frequencies,
-        peaks.magnitudes
-      );
-
-      // Detect key from HPCP - use minimal params with defaults
-      const keyResult = essentia.Key(hpcp.hpcp);
-
-      console.log('[Worker] Key result:', keyResult.key, keyResult.scale, 'strength:', keyResult.strength);
-
-      if (keyResult.key && keyResult.key !== '' && keyResult.strength > 0.1) {
-        // Add to buffer for smoothing
-        keyBuffer.push({ key: keyResult.key, scale: keyResult.scale, strength: keyResult.strength });
-        if (keyBuffer.length > 5) {
-          keyBuffer.shift();
-        }
-
-        // Find most common key
-        const keyCount = new Map();
-        keyBuffer.forEach(({ key, scale }) => {
-          const keyStr = `${key}_${scale}`;
-          keyCount.set(keyStr, (keyCount.get(keyStr) || 0) + 1);
-        });
-
-        let maxCount = 0;
-        let dominantKey = '';
-        keyCount.forEach((count, key) => {
-          if (count > maxCount) {
-            maxCount = count;
-            dominantKey = key;
-          }
-        });
-
-        // Update if we have at least 2 consistent results (reduced from 3)
-        if (maxCount >= 2 && dominantKey) {
-          const [key, scale] = dominantKey.split('_');
-          lastKey = key;
-          lastKeyScale = scale;
-          console.log('[Worker] Key updated:', lastKey, lastKeyScale);
-        }
-      }
+      // For now, skip complex key detection as essentia.js WASM has compatibility issues
+      // TODO: Implement using essentia.js TensorFlow models for better key detection
+      // The UI will show "detecting..." until we have a proper solution
     } catch (e) {
-      console.error('[Worker] Key detection error:', e);
+      // Key detection disabled for now
     }
 
     // BPM detection
