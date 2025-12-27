@@ -17,15 +17,9 @@ const s3Client = new S3Client({
 
 const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 
-// Custom Cobalt instance URL (self-hosted) - set this env var for your own instance
-const CUSTOM_COBALT_URL = process.env.COBALT_API_URL;
+// Cobalt instance URL (self-hosted) - required
+const COBALT_API_URL = process.env.COBALT_API_URL;
 const COBALT_API_KEY = process.env.COBALT_API_KEY;
-
-// Fallback public instances (may require auth or be unavailable)
-const COBALT_INSTANCES = [
-  'https://downloadapi.stuff.solutions',  // eu-gb instance
-  'https://cobalt-backend.canine.tools',
-];
 
 interface CobaltResponse {
   status: 'tunnel' | 'redirect' | 'picker' | 'stream' | 'error';
@@ -98,29 +92,26 @@ export async function POST(request: NextRequest) {
 
     const videoUrl = `https://www.youtube.com/watch?v=${videoId}`;
 
-    // Try to extract audio using Cobalt
-    let cobaltResponse: CobaltResponse | null = null;
-
-    // First try custom instance if configured
-    if (CUSTOM_COBALT_URL) {
-      console.log(`Trying custom Cobalt instance: ${CUSTOM_COBALT_URL}`);
-      cobaltResponse = await tryExtractWithCobalt(videoUrl, CUSTOM_COBALT_URL, COBALT_API_KEY);
+    // Check for Cobalt configuration
+    if (!COBALT_API_URL) {
+      return NextResponse.json(
+        {
+          error: 'Cobalt instance not configured.',
+          hint: 'Set COBALT_API_URL environment variable to your self-hosted Cobalt instance.',
+        },
+        { status: 503 }
+      );
     }
 
-    // Try fallback instances
-    if (!cobaltResponse) {
-      for (const instance of COBALT_INSTANCES) {
-        console.log(`Trying Cobalt instance: ${instance}`);
-        cobaltResponse = await tryExtractWithCobalt(videoUrl, instance);
-        if (cobaltResponse) break;
-      }
-    }
+    // Extract audio using Cobalt
+    console.log(`Using Cobalt instance: ${COBALT_API_URL}`);
+    const cobaltResponse = await tryExtractWithCobalt(videoUrl, COBALT_API_URL, COBALT_API_KEY);
 
     if (!cobaltResponse || !cobaltResponse.url) {
       return NextResponse.json(
         {
-          error: 'Failed to extract audio. All Cobalt instances unavailable or require authentication.',
-          hint: 'Set COBALT_API_URL and COBALT_API_KEY environment variables for a self-hosted instance.',
+          error: 'Failed to extract audio from Cobalt.',
+          hint: 'Check your Cobalt instance is running and COBALT_API_KEY is correct.',
         },
         { status: 503 }
       );
