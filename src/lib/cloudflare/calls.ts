@@ -6,16 +6,37 @@ import type { CloudflareSession, CloudflareTrack, WebRTCStats } from '@/types';
 const CLOUDFLARE_CALLS_URL = process.env.NEXT_PUBLIC_CLOUDFLARE_CALLS_URL || '';
 const CLOUDFLARE_CALLS_APP_ID = process.env.NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID || '';
 
+// TURN server configuration (optional but recommended for NAT traversal)
+const TURN_SERVER_URL = process.env.NEXT_PUBLIC_TURN_SERVER_URL || '';
+const TURN_USERNAME = process.env.NEXT_PUBLIC_TURN_USERNAME || '';
+const TURN_CREDENTIAL = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || '';
+
 interface CallsConfig {
   iceServers: RTCIceServer[];
   sdpSemantics: 'unified-plan';
   bundlePolicy: 'max-bundle';
 }
 
-const defaultConfig: CallsConfig = {
-  iceServers: [
+function buildIceServers(): RTCIceServer[] {
+  const servers: RTCIceServer[] = [
+    // Cloudflare STUN server (always included)
     { urls: 'stun:stun.cloudflare.com:3478' },
-  ],
+  ];
+
+  // Add TURN server if configured
+  if (TURN_SERVER_URL && TURN_USERNAME && TURN_CREDENTIAL) {
+    servers.push({
+      urls: TURN_SERVER_URL,
+      username: TURN_USERNAME,
+      credential: TURN_CREDENTIAL,
+    });
+  }
+
+  return servers;
+}
+
+const defaultConfig: CallsConfig = {
+  iceServers: buildIceServers(),
   sdpSemantics: 'unified-plan',
   bundlePolicy: 'max-bundle',
 };
