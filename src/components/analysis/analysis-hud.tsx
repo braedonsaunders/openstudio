@@ -15,6 +15,8 @@ import {
   Gauge,
   Target,
   Waves,
+  Zap,
+  Music2,
 } from 'lucide-react';
 
 interface AnalysisHUDProps {
@@ -66,17 +68,40 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
   const displayBPM = syncedAnalysis?.bpm || localAnalysis?.bpm;
   const displayChord = localAnalysis?.currentChord;
 
+  // Track container width for canvas sizing
+  const [containerWidth, setContainerWidth] = useState(0);
+
+  // Use ResizeObserver to track container size changes
+  useEffect(() => {
+    if (!showSpectrum || !canvasContainerRef.current) return;
+
+    const container = canvasContainerRef.current;
+
+    const updateWidth = () => {
+      const width = container.clientWidth;
+      if (width > 0) {
+        setContainerWidth(width);
+      }
+    };
+
+    // Initial measurement after a frame
+    requestAnimationFrame(updateWidth);
+
+    const resizeObserver = new ResizeObserver(updateWidth);
+    resizeObserver.observe(container);
+
+    return () => resizeObserver.disconnect();
+  }, [showSpectrum]);
+
   // Draw spectrum visualization
   useEffect(() => {
-    if (!showSpectrum || !canvasRef.current || !spectrumData || !canvasContainerRef.current) return;
+    if (!showSpectrum || !canvasRef.current || !spectrumData || containerWidth === 0) return;
 
     const canvas = canvasRef.current;
-    const container = canvasContainerRef.current;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     // Resize canvas to match container width
-    const containerWidth = container.clientWidth;
     const dpr = window.devicePixelRatio || 1;
     canvas.width = containerWidth * dpr;
     canvas.height = 80 * dpr;
@@ -107,7 +132,7 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
       ctx.fillStyle = `hsl(${hue}, 80%, 60%)`;
       ctx.fillRect(i * barWidth, height - barHeight, barWidth - 1, barHeight);
     }
-  }, [spectrumData, showSpectrum]);
+  }, [spectrumData, showSpectrum, containerWidth]);
 
   const keyColor = displayKey ? KEY_COLORS[displayKey] || 'bg-slate-500' : 'bg-slate-300';
 
@@ -341,6 +366,43 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
           </div>
         )}
 
+        {/* Additional analysis info */}
+        {localAnalysis && (
+          <div className="grid grid-cols-3 gap-2">
+            {/* Energy */}
+            <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
+              <Zap className="w-3.5 h-3.5 text-amber-500 mb-1" />
+              <span className="text-xs text-slate-500">Energy</span>
+              <span className="text-sm font-semibold text-slate-700">
+                {localAnalysis.energy > 0 ? (localAnalysis.energy * 100).toFixed(0) + '%' : '--'}
+              </span>
+            </div>
+
+            {/* Danceability */}
+            <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
+              <Music2 className="w-3.5 h-3.5 text-pink-500 mb-1" />
+              <span className="text-xs text-slate-500">Dance</span>
+              <span className="text-sm font-semibold text-slate-700">
+                {localAnalysis.danceability > 0 ? (localAnalysis.danceability * 100).toFixed(0) + '%' : '--'}
+              </span>
+            </div>
+
+            {/* Tuning */}
+            <div className="flex flex-col items-center p-2 bg-slate-50 rounded-lg">
+              <Target className="w-3.5 h-3.5 text-cyan-500 mb-1" />
+              <span className="text-xs text-slate-500">Tuning</span>
+              <span className={cn(
+                'text-sm font-semibold',
+                localAnalysis.tuningFrequency && Math.abs(localAnalysis.tuningFrequency - 440) > 2
+                  ? 'text-amber-600'
+                  : 'text-slate-700'
+              )}>
+                {localAnalysis.tuningFrequency ? `${localAnalysis.tuningFrequency.toFixed(1)}Hz` : '440Hz'}
+              </span>
+            </div>
+          </div>
+        )}
+
         {/* Source selection */}
         <div className="flex items-center gap-2">
           <span className="text-xs text-slate-500">Source:</span>
@@ -386,16 +448,27 @@ export function AnalysisHUD({ className, compact = false }: AnalysisHUDProps) {
 
         {/* Tuner toggle */}
         <button
-          onClick={() => setTunerEnabled(!tunerEnabled)}
+          onClick={() => {
+            setTunerEnabled(!tunerEnabled);
+            // Auto-switch to mic source when enabling tuner
+            if (!tunerEnabled) {
+              setAnalysisSource('local');
+            }
+          }}
           className={cn(
-            'w-full flex items-center justify-center gap-2 p-2.5 rounded-lg transition-colors',
+            'w-full flex flex-col items-center justify-center gap-1 p-2.5 rounded-lg transition-colors',
             tunerEnabled
               ? 'bg-slate-900 text-white'
               : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
           )}
         >
-          <Target className="w-4 h-4" />
-          <span className="text-sm font-medium">Tuner Mode</span>
+          <div className="flex items-center gap-2">
+            <Target className="w-4 h-4" />
+            <span className="text-sm font-medium">Tuner Mode</span>
+          </div>
+          {!tunerEnabled && (
+            <span className="text-xs text-slate-400">Uses microphone to tune your instrument</span>
+          )}
         </button>
       </div>
     </div>
