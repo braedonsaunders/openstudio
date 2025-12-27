@@ -137,7 +137,14 @@ export function useAudioEngine() {
       return true; // YouTube tracks don't need audio engine loading
     }
 
+    // Validate track URL exists
+    if (!track.url) {
+      console.error('Track URL is missing:', track.id, track.name);
+      return false;
+    }
+
     try {
+      console.log('Loading track:', track.name, 'URL:', track.url);
       await engineRef.current.loadBackingTrack(track.url);
       // Use actual buffer duration if available, otherwise use track.duration
       const actualDuration = engineRef.current.getDuration() || track.duration;

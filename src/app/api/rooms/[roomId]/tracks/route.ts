@@ -103,6 +103,23 @@ export async function POST(
       return NextResponse.json(track);
     }
 
+    // Ensure room exists before adding track (handles foreign key constraint)
+    const { error: roomError } = await supabase
+      .from('rooms')
+      .upsert({
+        id: roomId,
+        name: `Room ${roomId}`,
+        created_by: track.uploadedBy || 'user',
+        pop_location: 'auto',
+        max_users: 10,
+        is_public: true,
+        settings: {},
+      }, { onConflict: 'id', ignoreDuplicates: true });
+
+    if (roomError && roomError.code !== '42P01') {
+      console.error('Error ensuring room exists:', roomError);
+    }
+
     const { data, error } = await supabase
       .from('room_tracks')
       .insert({
@@ -111,7 +128,7 @@ export async function POST(
         name: track.name,
         artist: track.artist || null,
         duration: track.duration || 0,
-        url: track.url,
+        url: track.url || '',
         uploaded_by: track.uploadedBy || 'user',
         youtube_id: track.youtubeId || null,
         ai_generated: track.aiGenerated || false,
@@ -123,6 +140,10 @@ export async function POST(
       console.error('Error saving track:', error);
       // If table doesn't exist, just return success
       if (error.code === '42P01') {
+        return NextResponse.json(track);
+      }
+      // If duplicate key (track already exists), return success
+      if (error.code === '23505') {
         return NextResponse.json(track);
       }
       return NextResponse.json(

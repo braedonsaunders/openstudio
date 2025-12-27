@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     }
 
     const trackId = uuidv4();
-    const extension = fileName.split('.').pop() || 'mp3';
+    const extension = (fileName.split('.').pop() || 'mp3').toLowerCase();
     const key = `tracks/${trackId}.${extension}`;
 
     const command = new PutObjectCommand({
