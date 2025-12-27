@@ -212,6 +212,99 @@ export class EssentiaAnalyzer {
     this.startAnalysis();
   }
 
+  /**
+   * Analyze audio from an existing AnalyserNode (e.g., from the audio engine).
+   * This is used to analyze whatever audio is flowing through the audio engine
+   * without creating new connections.
+   */
+  analyzeFromAnalyserNode(analyserNode: AnalyserNode): void {
+    if (!this.audioContext) {
+      console.warn('Cannot analyze from node: no audio context');
+      return;
+    }
+    if (!this.isInitialized) {
+      console.warn('Cannot analyze from node: essentia.js not initialized');
+      return;
+    }
+
+    this.stopAnalysis();
+
+    // Use the provided analyser node directly
+    this.analyserNode = analyserNode;
+
+    // Start analysis loop using the external analyser
+    this.startAnalysisFromExternalNode();
+  }
+
+  /**
+   * Start analysis loop reading from an external AnalyserNode.
+   * Uses requestAnimationFrame instead of ScriptProcessor since we're
+   * not intercepting audio, just reading from the analyser.
+   */
+  private analysisAnimationFrame: number | null = null;
+  private audioFrameBuffer: Float32Array[] = [];
+
+  private startAnalysisFromExternalNode(): void {
+    if (!this.audioContext || !this.analyserNode || !this.essentia) return;
+
+    this.isAnalyzing = true;
+    this.audioFrameBuffer = [];
+
+    const frameSize = this.analyserNode.fftSize;
+    const framesForKey = 20; // ~2 seconds of audio for key detection
+    const framesForBPM = 50; // ~5 seconds for BPM
+
+    const analyze = () => {
+      if (!this.isAnalyzing || !this.analyserNode || !this.essentia) return;
+
+      // Get time domain data from the analyser
+      const timeDomainData = new Float32Array(frameSize);
+      this.analyserNode.getFloatTimeDomainData(timeDomainData);
+
+      // Check if there's actual audio (not just silence)
+      const maxAmplitude = Math.max(...timeDomainData.map(Math.abs));
+      if (maxAmplitude < 0.001) {
+        // Audio is silent, skip analysis but keep loop running
+        this.analysisAnimationFrame = requestAnimationFrame(analyze);
+        return;
+      }
+
+      // Add to buffer for long-term analysis
+      this.audioFrameBuffer.push(timeDomainData.slice());
+      if (this.audioFrameBuffer.length > framesForBPM) {
+        this.audioFrameBuffer.shift();
+      }
+
+      // Real-time analysis on current frame
+      const analysisResult = this.analyzeFrame(timeDomainData);
+
+      // Longer-term analysis for BPM and key
+      if (this.audioFrameBuffer.length >= framesForKey) {
+        // Combine frames for key/BPM analysis
+        const combinedLength = this.audioFrameBuffer.length * frameSize;
+        const combinedAudio = new Float32Array(combinedLength);
+        this.audioFrameBuffer.forEach((buf, i) => {
+          combinedAudio.set(buf, i * frameSize);
+        });
+
+        this.analyzeLongTerm(combinedAudio, analysisResult);
+      }
+
+      if (this.onAnalysis && analysisResult) {
+        this.onAnalysis(analysisResult);
+      }
+
+      // Continue analysis loop (throttled to ~30fps to reduce CPU)
+      setTimeout(() => {
+        this.analysisAnimationFrame = requestAnimationFrame(analyze);
+      }, 33);
+    };
+
+    // Start the analysis loop
+    this.analysisAnimationFrame = requestAnimationFrame(analyze);
+    console.log('Started audio analysis from external analyser node');
+  }
+
   private startAnalysis(): void {
     if (!this.audioContext || !this.sourceNode || !this.analyserNode) return;
 
@@ -474,6 +567,11 @@ export class EssentiaAnalyzer {
   stopAnalysis(): void {
     this.isAnalyzing = false;
 
+    if (this.analysisAnimationFrame) {
+      cancelAnimationFrame(this.analysisAnimationFrame);
+      this.analysisAnimationFrame = null;
+    }
+
     if (this.scriptProcessorNode) {
       this.scriptProcessorNode.disconnect();
       this.scriptProcessorNode = null;
@@ -487,6 +585,7 @@ export class EssentiaAnalyzer {
     // Reset buffers
     this.bpmBuffer = [];
     this.keyBuffer = [];
+    this.audioFrameBuffer = [];
   }
 
   dispose(): void {
