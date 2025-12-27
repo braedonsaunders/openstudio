@@ -243,9 +243,9 @@ export function AnalysisPanel() {
           <Waves className="w-3.5 h-3.5" />
           <span>Spectrum</span>
         </div>
-        <div ref={containerRef} className="bg-gray-900 dark:bg-[#0a0a0f]">
+        <div ref={containerRef} className="bg-gray-100 dark:bg-[#0a0a0f]">
           <canvas ref={canvasRef} />
-          <div className="flex justify-between px-3 py-1 text-[9px] text-gray-400 dark:text-zinc-600">
+          <div className="flex justify-between px-3 py-1 text-[9px] text-gray-500 dark:text-zinc-600">
             <span>20Hz</span>
             <span>1kHz</span>
             <span>20kHz</span>
@@ -318,7 +318,7 @@ export function AnalysisPanel() {
           className={cn(
             'w-full flex items-center justify-center gap-2 p-2.5 rounded-lg transition-all text-sm',
             tunerEnabled
-              ? 'bg-gray-900 dark:bg-white text-white dark:text-black'
+              ? 'bg-indigo-500 text-white'
               : 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10'
           )}
         >
@@ -327,7 +327,7 @@ export function AnalysisPanel() {
         </button>
 
         {tunerEnabled && (
-          <div className="mt-2 bg-gray-900 dark:bg-black border border-gray-700 dark:border-white/10 rounded-xl p-4 text-center">
+          <div className="mt-2 bg-gray-100 dark:bg-black border border-gray-200 dark:border-white/10 rounded-xl p-4 text-center">
             {localAnalysis?.tunerNote ? (
               <>
                 {/* Note display with stability indicator */}
@@ -363,12 +363,12 @@ export function AnalysisPanel() {
                 {/* Cents meter */}
                 {localAnalysis.tunerCents != null && (
                   <>
-                    <div className="relative h-6 bg-gray-800 rounded-full overflow-hidden mb-2">
+                    <div className="relative h-6 bg-gray-200 dark:bg-gray-800 rounded-full overflow-hidden mb-2">
                       {/* Scale markers */}
                       <div className="absolute inset-0 flex justify-between px-2 items-center">
-                        <span className="text-[8px] text-gray-600">-50</span>
-                        <span className="text-[8px] text-gray-600">0</span>
-                        <span className="text-[8px] text-gray-600">+50</span>
+                        <span className="text-[8px] text-gray-500 dark:text-gray-600">-50</span>
+                        <span className="text-[8px] text-gray-500 dark:text-gray-600">0</span>
+                        <span className="text-[8px] text-gray-500 dark:text-gray-600">+50</span>
                       </div>
                       {/* Center line (in tune) */}
                       <div className="absolute left-1/2 top-0 w-1 h-full bg-emerald-500/50 -translate-x-1/2" />
@@ -405,9 +405,9 @@ export function AnalysisPanel() {
               </>
             ) : (
               <div className="py-4">
-                <Target className="w-8 h-8 text-gray-600 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">Play a note to tune</p>
-                <p className="text-xs text-gray-600 mt-1">Works best with single notes</p>
+                <Target className="w-8 h-8 text-gray-400 dark:text-gray-600 mx-auto mb-2" />
+                <p className="text-sm text-gray-600 dark:text-gray-500">Play a note to tune</p>
+                <p className="text-xs text-gray-500 dark:text-gray-600 mt-1">Works best with single notes</p>
               </div>
             )}
           </div>
@@ -433,7 +433,7 @@ export function AnalysisPanel() {
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-all',
                 analysisSource === id
-                  ? 'bg-gray-900 dark:bg-white text-white dark:text-black'
+                  ? 'bg-indigo-500 text-white'
                   : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300',
                 disabled && 'opacity-40 cursor-not-allowed hover:text-gray-500 dark:hover:text-zinc-500'
               )}

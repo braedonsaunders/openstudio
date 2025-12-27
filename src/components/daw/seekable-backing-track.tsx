@@ -180,9 +180,9 @@ export function SeekableBackingTrack({
   };
 
   return (
-    <div className="bg-[#0d0d14] border-b border-white/10 shrink-0">
+    <div className="bg-gray-100 dark:bg-[#0d0d14] border-b border-gray-200 dark:border-white/10 shrink-0">
       {/* Header */}
-      <div className="h-10 px-4 flex items-center justify-between border-b border-white/5">
+      <div className="h-10 px-4 flex items-center justify-between border-b border-gray-200 dark:border-white/5">
         <div className="flex items-center gap-3">
           <div className={cn(
             "w-7 h-7 rounded-lg flex items-center justify-center shadow-lg",
@@ -193,9 +193,9 @@ export function SeekableBackingTrack({
             <Music className="w-4 h-4 text-white" />
           </div>
           <div className="flex flex-col">
-            <span className="text-sm font-medium text-white truncate max-w-[200px]">{track.name}</span>
+            <span className="text-sm font-medium text-gray-900 dark:text-white truncate max-w-[200px]">{track.name}</span>
             {track.artist && (
-              <span className="text-[10px] text-zinc-500 truncate max-w-[200px]">{track.artist}</span>
+              <span className="text-[10px] text-gray-500 dark:text-zinc-500 truncate max-w-[200px]">{track.artist}</span>
             )}
           </div>
           <div className={cn(
@@ -212,12 +212,12 @@ export function SeekableBackingTrack({
         </div>
 
         <div className="flex items-center gap-3">
-          <span className="text-xs text-zinc-500">
+          <span className="text-xs text-gray-500 dark:text-zinc-500">
             Click timeline to seek {isMaster ? '' : '(master only)'}
           </span>
           <button
             onClick={() => setIsExpanded(!isExpanded)}
-            className="p-1.5 rounded hover:bg-white/5 text-zinc-400 hover:text-white transition-colors"
+            className="p-1.5 rounded hover:bg-gray-200 dark:hover:bg-white/5 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white transition-colors"
           >
             {isExpanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
           </button>
@@ -281,7 +281,7 @@ export function SeekableBackingTrack({
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
             className={cn(
-              'h-8 relative bg-[#0a0a0f] border-t border-white/5',
+              'h-8 relative bg-gray-50 dark:bg-[#0a0a0f] border-t border-gray-200 dark:border-white/5',
               isMaster ? 'cursor-pointer' : 'cursor-default'
             )}
           >
@@ -310,8 +310,8 @@ export function SeekableBackingTrack({
                       className="absolute flex flex-col items-center"
                       style={{ left: `${percent}%` }}
                     >
-                      <div className="w-px h-2 bg-zinc-600" />
-                      <span className="text-[9px] text-zinc-500 mt-0.5 font-mono">
+                      <div className="w-px h-2 bg-gray-400 dark:bg-zinc-600" />
+                      <span className="text-[9px] text-gray-500 dark:text-zinc-500 mt-0.5 font-mono">
                         {formatTime(time)}
                       </span>
                     </div>
@@ -334,15 +334,15 @@ export function SeekableBackingTrack({
 
             {/* Current time / Duration display */}
             <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs">
-              <span className="font-mono text-white">{formatTime(currentTime)}</span>
-              <span className="text-zinc-500">/</span>
-              <span className="font-mono text-zinc-400">{formatTime(duration)}</span>
+              <span className="font-mono text-gray-900 dark:text-white">{formatTime(currentTime)}</span>
+              <span className="text-gray-400 dark:text-zinc-500">/</span>
+              <span className="font-mono text-gray-500 dark:text-zinc-400">{formatTime(duration)}</span>
             </div>
           </div>
 
           {/* Stem lanes (if available) */}
           {stemsAvailable && (
-            <div className="border-t border-white/5">
+            <div className="border-t border-gray-200 dark:border-white/5">
               {Object.entries(STEM_COLORS).map(([stem, color]) => {
                 const state = stemMixState[stem as keyof typeof stemMixState];
                 if (!state?.enabled) return null;
@@ -443,12 +443,12 @@ function StemMiniLane({
 
   return (
     <div
-      className="h-6 relative border-t border-white/5"
+      className="h-6 relative border-t border-gray-200 dark:border-white/5"
       style={{ opacity: volume }}
     >
       <div className="absolute left-2 top-1/2 -translate-y-1/2 flex items-center gap-1.5 z-10">
         <div className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: color }} />
-        <span className="text-[9px] font-medium text-zinc-500">{stemLabels[stemName]}</span>
+        <span className="text-[9px] font-medium text-gray-500 dark:text-zinc-500">{stemLabels[stemName]}</span>
       </div>
       <canvas
         ref={canvasRef}
