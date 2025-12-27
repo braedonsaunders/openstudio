@@ -56,7 +56,7 @@ const DEFAULT_MIDI_SETTINGS: MidiInputSettings = {
   velocityCurve: 'linear',
 };
 
-export function AddTrackModal({ isOpen, onClose, userId, userName, roomId, onOpenLoopBrowser, isMaster = false }: AddTrackModalProps) {
+export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: AddTrackModalProps) {
   const { inputDevices, devicesLoaded, loadDevices, addTrack, addMidiTrack, getTracksByUser } = useUserTracksStore();
 
   const [trackType, setTrackType] = useState<TrackTypeOption | null>(null);
