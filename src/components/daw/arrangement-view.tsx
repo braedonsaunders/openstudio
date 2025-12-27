@@ -97,7 +97,7 @@ export function ArrangementView({
   }, [playheadPosition, isPlaying]);
 
   return (
-    <div className="flex-1 flex flex-col min-w-0 bg-[#0a0a0f]">
+    <div className="flex-1 flex flex-col min-w-0 bg-white dark:bg-[#0a0a0f]">
       {/* Timeline Ruler */}
       <Timeline
         duration={duration}
@@ -132,7 +132,7 @@ export function ArrangementView({
                   key={i}
                   className={cn(
                     'absolute top-0 bottom-0 w-px',
-                    i % 4 === 0 ? 'bg-white/10' : 'bg-white/5'
+                    i % 4 === 0 ? 'bg-gray-300 dark:bg-white/10' : 'bg-gray-200 dark:bg-white/5'
                   )}
                   style={{ left: x }}
                 />
@@ -174,14 +174,14 @@ export function ArrangementView({
           {/* Empty state */}
           {!currentTrack && users.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <div className="text-center p-8 glass-panel rounded-2xl max-w-md">
+              <div className="text-center p-8 bg-white dark:bg-white/5 border border-gray-200 dark:border-white/10 backdrop-blur-sm rounded-2xl max-w-md">
                 <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center">
                   <svg className="w-8 h-8 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
                   </svg>
                 </div>
-                <h3 className="text-lg font-semibold text-white mb-2">Ready to Jam</h3>
-                <p className="text-sm text-zinc-400">
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">Ready to Jam</h3>
+                <p className="text-sm text-gray-500 dark:text-zinc-400">
                   Add a backing track from the Queue panel to get started, or wait for other musicians to join.
                 </p>
               </div>
@@ -199,9 +199,9 @@ export function ArrangementView({
       </div>
 
       {/* Zoom Control */}
-      <div className="h-8 px-4 flex items-center justify-between border-t border-white/5 bg-[#0d0d14]">
+      <div className="h-8 px-4 flex items-center justify-between border-t border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#0d0d14]">
         <div className="flex items-center gap-2">
-          <span className="text-xs text-zinc-500">Zoom:</span>
+          <span className="text-xs text-gray-500 dark:text-zinc-500">Zoom:</span>
           <input
             type="range"
             min="0.1"
@@ -211,10 +211,10 @@ export function ArrangementView({
             onChange={(e) => setZoom(parseFloat(e.target.value))}
             className="w-24 h-1"
           />
-          <span className="text-xs text-zinc-400 w-12">{zoom.toFixed(1)}x</span>
+          <span className="text-xs text-gray-500 dark:text-zinc-400 w-12">{zoom.toFixed(1)}x</span>
         </div>
 
-        <div className="flex items-center gap-3 text-xs text-zinc-500">
+        <div className="flex items-center gap-3 text-xs text-gray-500 dark:text-zinc-500">
           <span>Ctrl+Scroll to zoom</span>
           {isMaster && <span>Click to seek</span>}
         </div>

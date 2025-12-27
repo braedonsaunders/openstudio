@@ -271,7 +271,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
         </div>
 
         {/* Video Area */}
-        <div className="flex-1 flex flex-col bg-gray-950">
+        <div className="flex-1 flex flex-col bg-gray-100 dark:bg-gray-950">
           {!isConnected ? (
             // Pre-call state
             <div className="flex-1 flex flex-col items-center justify-center gap-4 p-4">
@@ -279,8 +279,8 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
                 <Video className="w-8 h-8 text-indigo-400" />
               </div>
               <div className="text-center">
-                <h3 className="text-sm font-medium text-white mb-1">Start Video Chat</h3>
-                <p className="text-xs text-gray-400 max-w-[200px]">
+                <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">Start Video Chat</h3>
+                <p className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px]">
                   Connect via video with musicians in this room
                 </p>
               </div>
@@ -311,7 +311,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
                   </>
                 )}
               </button>
-              <p className="text-[10px] text-gray-500 text-center">
+              <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center">
                 Video is separate from audio
               </p>
             </div>
@@ -319,7 +319,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
             // In-call state
             <>
               {/* Video display */}
-              <div className="flex-1 relative bg-gray-900 m-2 rounded-xl overflow-hidden">
+              <div className="flex-1 relative bg-gray-200 dark:bg-gray-900 m-2 rounded-xl overflow-hidden">
                 <video
                   ref={localVideoRef}
                   autoPlay
@@ -332,7 +332,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
                 />
                 {!isVideoEnabled && (
                   <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-16 h-16 rounded-full bg-gray-700 flex items-center justify-center text-xl font-bold text-white">
+                    <div className="w-16 h-16 rounded-full bg-gray-300 dark:bg-gray-700 flex items-center justify-center text-xl font-bold text-gray-900 dark:text-white">
                       {currentUser?.name?.charAt(0).toUpperCase() || 'U'}
                     </div>
                   </div>
@@ -353,13 +353,13 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
               </div>
 
               {/* Controls */}
-              <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-white/5">
+              <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-gray-200 dark:border-white/5">
                 <button
                   onClick={toggleAudio}
                   className={cn(
                     'p-3 rounded-full transition-colors',
                     isAudioEnabled
-                      ? 'bg-gray-700 text-white hover:bg-gray-600'
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'
                       : 'bg-red-500 text-white hover:bg-red-600'
                   )}
                   title={isAudioEnabled ? 'Mute' : 'Unmute'}
@@ -372,7 +372,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
                   className={cn(
                     'p-3 rounded-full transition-colors',
                     isVideoEnabled
-                      ? 'bg-gray-700 text-white hover:bg-gray-600'
+                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'
                       : 'bg-red-500 text-white hover:bg-red-600'
                   )}
                   title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}

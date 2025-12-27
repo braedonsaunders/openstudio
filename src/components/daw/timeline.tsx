@@ -66,7 +66,7 @@ export function Timeline({
     <div
       ref={containerRef}
       className={cn(
-        'h-8 bg-[#12121a] border-b border-white/5 relative overflow-hidden shrink-0',
+        'h-8 bg-gray-100 dark:bg-[#12121a] border-b border-gray-200 dark:border-white/5 relative overflow-hidden shrink-0',
         onSeek && 'cursor-pointer',
         className
       )}
@@ -92,12 +92,12 @@ export function Timeline({
               <div
                 className={cn(
                   'w-px',
-                  isMajor ? 'h-3 bg-zinc-500' : 'h-2 bg-zinc-700'
+                  isMajor ? 'h-3 bg-gray-400 dark:bg-zinc-500' : 'h-2 bg-gray-300 dark:bg-zinc-700'
                 )}
               />
               {/* Time label */}
               {isMajor && (
-                <span className="absolute top-3 left-1 text-[10px] text-zinc-500 font-mono whitespace-nowrap">
+                <span className="absolute top-3 left-1 text-[10px] text-gray-500 dark:text-zinc-500 font-mono whitespace-nowrap">
                   {formatTime(time)}
                 </span>
               )}
