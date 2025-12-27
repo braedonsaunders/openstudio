@@ -39,7 +39,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
   const [checkingUsername, setCheckingUsername] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const { signIn, signUp, signInWithGoogle, signInWithDiscord } = useAuthStore();
+  const { user, signIn, signUp, signInWithGoogle, signInWithDiscord } = useAuthStore();
 
   const debounceRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -49,6 +49,14 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
       setTab(defaultTab);
     }
   }, [isOpen, defaultTab]);
+
+  // Auto-close modal when user becomes authenticated
+  useEffect(() => {
+    if (isOpen && user) {
+      setIsSubmitting(false);
+      onClose();
+    }
+  }, [isOpen, user, onClose]);
 
   const handleUsernameChange = useCallback((value: string) => {
     // Only allow valid username characters
@@ -118,8 +126,11 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     setIsSubmitting(true);
     try {
       await signInWithGoogle();
+      // OAuth redirects, so we don't reach here normally
+      // But if it completes without redirect, reset state
     } catch (err) {
       setError((err as Error).message);
+    } finally {
       setIsSubmitting(false);
     }
   };
@@ -129,8 +140,11 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     setIsSubmitting(true);
     try {
       await signInWithDiscord();
+      // OAuth redirects, so we don't reach here normally
+      // But if it completes without redirect, reset state
     } catch (err) {
       setError((err as Error).message);
+    } finally {
       setIsSubmitting(false);
     }
   };
