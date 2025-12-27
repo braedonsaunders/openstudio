@@ -1,7 +1,83 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// This endpoint is deprecated - YouTube playback now uses the IFrame API directly
-// Keeping this for backwards compatibility and metadata lookup
+// List of Piped API instances to try (fallback if one is down)
+const PIPED_INSTANCES = [
+  'https://pipedapi.kavin.rocks',
+  'https://pipedapi.adminforge.de',
+  'https://api.piped.yt',
+  'https://pipedapi.r4fo.com',
+];
+
+interface PipedStream {
+  url: string;
+  format: string;
+  quality: string;
+  mimeType: string;
+  codec: string;
+  bitrate: number;
+  contentLength: number;
+}
+
+interface PipedResponse {
+  title: string;
+  uploader: string;
+  uploaderUrl: string;
+  duration: number;
+  audioStreams: PipedStream[];
+  thumbnailUrl: string;
+}
+
+// Get audio stream URL from Piped API
+async function getAudioStreamFromPiped(videoId: string): Promise<{
+  audioUrl: string;
+  title: string;
+  author: string;
+  duration: number;
+  thumbnailUrl: string;
+} | null> {
+  for (const instance of PIPED_INSTANCES) {
+    try {
+      const response = await fetch(`${instance}/streams/${videoId}`, {
+        signal: AbortSignal.timeout(10000),
+        headers: {
+          'Accept': 'application/json',
+        },
+      });
+
+      if (!response.ok) continue;
+
+      const data: PipedResponse = await response.json();
+
+      if (!data.audioStreams || data.audioStreams.length === 0) {
+        continue;
+      }
+
+      // Find the best audio stream (prefer opus/webm, then m4a)
+      const sortedStreams = data.audioStreams.sort((a, b) => {
+        // Prefer opus codec
+        if (a.codec?.includes('opus') && !b.codec?.includes('opus')) return -1;
+        if (!a.codec?.includes('opus') && b.codec?.includes('opus')) return 1;
+        // Then by bitrate
+        return (b.bitrate || 0) - (a.bitrate || 0);
+      });
+
+      const bestStream = sortedStreams[0];
+
+      return {
+        audioUrl: bestStream.url,
+        title: data.title || 'Unknown Title',
+        author: data.uploader || 'Unknown Artist',
+        duration: data.duration || 0,
+        thumbnailUrl: data.thumbnailUrl || '',
+      };
+    } catch (error) {
+      console.warn(`Piped instance ${instance} failed:`, error);
+      continue;
+    }
+  }
+
+  return null;
+}
 
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
@@ -15,7 +91,22 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Get video metadata from YouTube oEmbed API (doesn't require authentication)
+    // Try to get audio stream from Piped API
+    const streamData = await getAudioStreamFromPiped(videoId);
+
+    if (streamData) {
+      return NextResponse.json({
+        videoId,
+        title: streamData.title,
+        author: streamData.author,
+        duration: streamData.duration,
+        thumbnailUrl: streamData.thumbnailUrl,
+        audioUrl: streamData.audioUrl,
+        useAudioElement: true,
+      });
+    }
+
+    // Fallback: Get metadata only and indicate iframe should be used
     let title = 'Unknown Title';
     let author = 'Unknown Artist';
 
@@ -30,18 +121,19 @@ export async function GET(request: NextRequest) {
       author = oembed.author_name || author;
     }
 
-    // Return info indicating this should use the IFrame player
+    // Return fallback indicating iframe should be used
     return NextResponse.json({
       videoId,
       title,
       author,
+      useAudioElement: false,
       useIframePlayer: true,
-      message: 'YouTube playback uses IFrame API. This endpoint provides metadata only.',
+      message: 'Could not extract audio stream. Falling back to IFrame player.',
     });
   } catch (error) {
-    console.error('YouTube metadata fetch error:', error);
+    console.error('YouTube audio fetch error:', error);
     return NextResponse.json(
-      { error: 'Could not fetch video metadata' },
+      { error: 'Could not fetch video data' },
       { status: 500 }
     );
   }
