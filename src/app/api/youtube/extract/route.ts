@@ -138,8 +138,16 @@ export async function POST(request: NextRequest) {
     const filename = cobaltResult.data.filename;
     console.log(`Downloading audio from: ${audioUrl}`);
 
-    // Download the audio
+    // Download the audio - include auth header for tunnel access
+    const downloadHeaders: Record<string, string> = {
+      'Accept': '*/*',
+    };
+    if (COBALT_API_KEY) {
+      downloadHeaders['Authorization'] = `Bearer ${COBALT_API_KEY}`;
+    }
+
     const audioResponse = await fetch(audioUrl, {
+      headers: downloadHeaders,
       signal: AbortSignal.timeout(120000), // 2 min timeout for large files
       redirect: 'follow',
     });
