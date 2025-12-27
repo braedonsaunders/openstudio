@@ -103,11 +103,11 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
         {messages.length === 0 ? (
           <div className="h-full flex items-center justify-center">
             <div className="text-center">
-              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-white/5 flex items-center justify-center">
-                <MessageSquare className="w-6 h-6 text-zinc-600" />
+              <div className="w-12 h-12 mx-auto mb-3 rounded-full bg-gray-100 dark:bg-white/5 flex items-center justify-center">
+                <MessageSquare className="w-6 h-6 text-gray-400 dark:text-zinc-600" />
               </div>
-              <p className="text-sm text-zinc-500">No messages yet</p>
-              <p className="text-xs text-zinc-600 mt-1">Start the conversation!</p>
+              <p className="text-sm text-gray-500 dark:text-zinc-500">No messages yet</p>
+              <p className="text-xs text-gray-400 dark:text-zinc-600 mt-1">Start the conversation!</p>
             </div>
           </div>
         ) : (
@@ -119,7 +119,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
               if (isSystemMessage) {
                 return (
                   <div key={index} className="text-center">
-                    <span className="text-[11px] text-zinc-600 italic">{msg.content}</span>
+                    <span className="text-[11px] text-gray-400 dark:text-zinc-600 italic">{msg.content}</span>
                   </div>
                 );
               }
@@ -145,11 +145,11 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
                     <div className="flex items-baseline gap-2 mb-0.5">
                       <span className={cn(
                         'text-xs font-medium',
-                        isOwnMessage ? 'text-indigo-400' : 'text-zinc-400'
+                        isOwnMessage ? 'text-indigo-500 dark:text-indigo-400' : 'text-gray-500 dark:text-zinc-400'
                       )}>
                         {isOwnMessage ? 'You' : msg.userName}
                       </span>
-                      <span className="text-[10px] text-zinc-600">
+                      <span className="text-[10px] text-gray-400 dark:text-zinc-600">
                         {formatTime(msg.timestamp)}
                       </span>
                     </div>
@@ -157,8 +157,8 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
                       className={cn(
                         'px-3 py-2 rounded-xl text-sm',
                         isOwnMessage
-                          ? 'bg-indigo-500/20 text-white rounded-tr-sm'
-                          : 'glass-panel text-zinc-200 rounded-tl-sm'
+                          ? 'bg-indigo-500/20 text-gray-900 dark:text-white rounded-tr-sm'
+                          : 'bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-200 rounded-tl-sm'
                       )}
                     >
                       {msg.content}
@@ -173,14 +173,14 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
       </div>
 
       {/* Input */}
-      <form onSubmit={handleSubmit} className="p-3 border-t border-white/5">
+      <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 dark:border-white/5">
         <div className="flex items-center gap-2">
           <input
             type="text"
             value={message}
             onChange={(e) => setMessage(e.target.value)}
             placeholder="Type a message..."
-            className="flex-1 px-3 py-2 bg-white/5 border border-white/10 rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
+            className="flex-1 px-3 py-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
           />
           <button
             type="submit"
@@ -189,7 +189,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
               'p-2.5 rounded-xl transition-all',
               message.trim()
                 ? 'neon-button text-white'
-                : 'bg-white/5 text-zinc-600 cursor-not-allowed'
+                : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-zinc-600 cursor-not-allowed'
             )}
           >
             <Send className="w-4 h-4" />

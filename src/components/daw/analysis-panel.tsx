@@ -111,13 +111,13 @@ export function AnalysisPanel() {
   return (
     <div className="h-full flex flex-col overflow-y-auto">
       {/* Header */}
-      <div className="px-4 py-3 border-b border-white/5 flex items-center justify-between">
+      <div className="px-4 py-3 border-b border-gray-200 dark:border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <Activity className="w-4 h-4 text-indigo-400" />
-          <span className="text-sm font-medium text-white">Analysis</span>
+          <Activity className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+          <span className="text-sm font-medium text-gray-900 dark:text-white">Analysis</span>
           {isAnalyzing && (
-            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/20 rounded text-[10px] text-emerald-400">
-              <span className="w-1.5 h-1.5 bg-emerald-400 rounded-full animate-pulse" />
+            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-emerald-500/20 rounded text-[10px] text-emerald-600 dark:text-emerald-400">
+              <span className="w-1.5 h-1.5 bg-emerald-500 dark:bg-emerald-400 rounded-full animate-pulse" />
               Live
             </span>
           )}
@@ -126,10 +126,10 @@ export function AnalysisPanel() {
 
       {/* Show message when analysis is not available */}
       {!isWorkerReady && (
-        <div className="px-4 py-3 border-b border-white/5">
+        <div className="px-4 py-3 border-b border-gray-200 dark:border-white/5">
           <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
             <AlertCircle className="w-4 h-4 text-amber-500 shrink-0" />
-            <span className="text-xs text-amber-400">
+            <span className="text-xs text-amber-600 dark:text-amber-400">
               Audio analysis unavailable - feature loading failed
             </span>
           </div>
@@ -139,51 +139,51 @@ export function AnalysisPanel() {
       {/* Key & BPM Display */}
       <div className="p-4 grid grid-cols-2 gap-3">
         {/* Key */}
-        <div className="glass-panel rounded-xl p-4 text-center">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Key</span>
+        <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 text-center">
+          <span className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Key</span>
           <div className="flex items-center justify-center gap-2 mt-2">
             <div
               className="w-4 h-4 rounded-full"
               style={{ backgroundColor: keyColor, boxShadow: `0 0 12px ${keyColor}` }}
             />
-            <span className="text-2xl font-bold text-white">
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">
               {displayKey || '--'}
-              <span className="text-lg text-zinc-400">
+              <span className="text-lg text-gray-500 dark:text-zinc-400">
                 {displayScale === 'minor' ? 'm' : ''}
               </span>
             </span>
           </div>
           {localAnalysis?.keyConfidence !== undefined && localAnalysis.keyConfidence > 0 && (
             <div className="mt-2 flex items-center justify-center gap-1">
-              <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+              <div className="w-12 h-1 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-indigo-500 rounded-full"
                   style={{ width: `${localAnalysis.keyConfidence * 100}%` }}
                 />
               </div>
-              <span className="text-[10px] text-zinc-500">{Math.round(localAnalysis.keyConfidence * 100)}%</span>
+              <span className="text-[10px] text-gray-500 dark:text-zinc-500">{Math.round(localAnalysis.keyConfidence * 100)}%</span>
             </div>
           )}
         </div>
 
         {/* BPM */}
-        <div className="glass-panel rounded-xl p-4 text-center">
-          <span className="text-[10px] text-zinc-500 uppercase tracking-wider">Tempo</span>
+        <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 text-center">
+          <span className="text-[10px] text-gray-500 dark:text-zinc-500 uppercase tracking-wider">Tempo</span>
           <div className="flex items-baseline justify-center gap-1 mt-2">
-            <span className="text-2xl font-bold text-white">
+            <span className="text-2xl font-bold text-gray-900 dark:text-white">
               {displayBPM ? Math.round(displayBPM) : '--'}
             </span>
-            <span className="text-sm text-zinc-400">BPM</span>
+            <span className="text-sm text-gray-500 dark:text-zinc-400">BPM</span>
           </div>
           {localAnalysis?.bpmConfidence !== undefined && localAnalysis.bpmConfidence > 0 && (
             <div className="mt-2 flex items-center justify-center gap-1">
-              <div className="w-12 h-1 bg-white/10 rounded-full overflow-hidden">
+              <div className="w-12 h-1 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
                 <div
                   className="h-full bg-indigo-500 rounded-full"
                   style={{ width: `${localAnalysis.bpmConfidence * 100}%` }}
                 />
               </div>
-              <span className="text-[10px] text-zinc-500">{Math.round(localAnalysis.bpmConfidence * 100)}%</span>
+              <span className="text-[10px] text-gray-500 dark:text-zinc-500">{Math.round(localAnalysis.bpmConfidence * 100)}%</span>
             </div>
           )}
         </div>
@@ -192,12 +192,12 @@ export function AnalysisPanel() {
       {/* Current Chord */}
       {displayChord && (
         <div className="px-4 pb-3">
-          <div className="glass-panel rounded-xl p-3 text-center">
+          <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-3 text-center">
             <div className="flex items-center justify-center gap-2">
-              <Music className="w-4 h-4 text-indigo-400" />
-              <span className="text-lg font-semibold text-white">{displayChord}</span>
+              <Music className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+              <span className="text-lg font-semibold text-gray-900 dark:text-white">{displayChord}</span>
               {localAnalysis?.chordConfidence !== undefined && (
-                <span className="text-xs text-zinc-500">
+                <span className="text-xs text-gray-500 dark:text-zinc-500">
                   {Math.round(localAnalysis.chordConfidence * 100)}%
                 </span>
               )}
@@ -213,8 +213,8 @@ export function AnalysisPanel() {
           className={cn(
             'w-full flex items-center justify-center gap-2 p-2 rounded-lg transition-all text-sm',
             showSpectrum
-              ? 'bg-indigo-500/20 text-indigo-400'
-              : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+              ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+              : 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10'
           )}
         >
           <Waves className="w-4 h-4" />
@@ -222,9 +222,9 @@ export function AnalysisPanel() {
         </button>
 
         {showSpectrum && (
-          <div className="mt-2 rounded-xl overflow-hidden bg-[#0a0a0f] border border-white/5">
+          <div className="mt-2 rounded-xl overflow-hidden bg-gray-900 dark:bg-[#0a0a0f] border border-gray-200 dark:border-white/5">
             <canvas ref={canvasRef} className="w-full h-20" />
-            <div className="flex justify-between px-2 py-1 text-[9px] text-zinc-600">
+            <div className="flex justify-between px-2 py-1 text-[9px] text-gray-400 dark:text-zinc-600">
               <span>20Hz</span>
               <span>1kHz</span>
               <span>20kHz</span>
@@ -236,14 +236,14 @@ export function AnalysisPanel() {
       {/* Loudness Meter */}
       {localAnalysis && (
         <div className="px-4 pb-3">
-          <div className="flex items-center justify-between text-xs text-zinc-500 mb-1.5">
+          <div className="flex items-center justify-between text-xs text-gray-500 dark:text-zinc-500 mb-1.5">
             <span className="flex items-center gap-1">
               <Volume2 className="w-3.5 h-3.5" />
               Level
             </span>
             <span>{Math.round(localAnalysis.loudness)}%</span>
           </div>
-          <div className="h-2 bg-white/5 rounded-full overflow-hidden">
+          <div className="h-2 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
             <div
               className={cn(
                 'h-full rounded-full transition-all duration-75',
@@ -266,8 +266,8 @@ export function AnalysisPanel() {
           className={cn(
             'w-full flex items-center justify-center gap-2 p-2.5 rounded-lg transition-all text-sm',
             tunerEnabled
-              ? 'bg-white text-black'
-              : 'bg-white/5 text-zinc-400 hover:bg-white/10'
+              ? 'bg-gray-900 dark:bg-white text-white dark:text-black'
+              : 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10'
           )}
         >
           <Target className="w-4 h-4" />
@@ -275,18 +275,18 @@ export function AnalysisPanel() {
         </button>
 
         {tunerEnabled && localAnalysis?.tunerNote && (
-          <div className="mt-2 glass-panel rounded-xl p-4 text-center">
+          <div className="mt-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4 text-center">
             <div className="flex items-center justify-center gap-3 mb-2">
-              <span className="text-3xl font-bold text-white">{localAnalysis.tunerNote}</span>
+              <span className="text-3xl font-bold text-gray-900 dark:text-white">{localAnalysis.tunerNote}</span>
               {localAnalysis.tunerFrequency && (
-                <span className="text-sm text-zinc-500">
+                <span className="text-sm text-gray-500 dark:text-zinc-500">
                   {localAnalysis.tunerFrequency.toFixed(1)} Hz
                 </span>
               )}
             </div>
             {localAnalysis.tunerCents != null && (
               <>
-                <div className="relative h-4 bg-zinc-800 rounded-full overflow-hidden">
+                <div className="relative h-4 bg-gray-300 dark:bg-zinc-800 rounded-full overflow-hidden">
                   <div className="absolute left-1/2 top-0 w-0.5 h-full bg-emerald-500 -translate-x-1/2" />
                   <div
                     className={cn(
@@ -303,7 +303,7 @@ export function AnalysisPanel() {
                     }}
                   />
                 </div>
-                <div className="mt-1 text-xs text-zinc-500">
+                <div className="mt-1 text-xs text-gray-500 dark:text-zinc-500">
                   {localAnalysis.tunerCents > 0 ? '+' : ''}{localAnalysis.tunerCents} cents
                 </div>
               </>
@@ -314,10 +314,10 @@ export function AnalysisPanel() {
 
       {/* Source Selection */}
       <div className="px-4 pb-4">
-        <div className="flex items-center gap-2 text-xs text-zinc-500 mb-2">
+        <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500 mb-2">
           <span>Source:</span>
         </div>
-        <div className="flex gap-1 p-1 bg-white/5 rounded-lg">
+        <div className="flex gap-1 p-1 bg-gray-100 dark:bg-white/5 rounded-lg">
           {[
             { id: 'backing' as const, icon: Radio, label: 'Track', disabled: !canAnalyzeTrack },
             { id: 'local' as const, icon: Mic2, label: 'Mic', disabled: false },
@@ -331,9 +331,9 @@ export function AnalysisPanel() {
               className={cn(
                 'flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded text-xs font-medium transition-all',
                 analysisSource === id
-                  ? 'bg-white text-black'
-                  : 'text-zinc-500 hover:text-zinc-300',
-                disabled && 'opacity-40 cursor-not-allowed hover:text-zinc-500'
+                  ? 'bg-gray-900 dark:bg-white text-white dark:text-black'
+                  : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300',
+                disabled && 'opacity-40 cursor-not-allowed hover:text-gray-500 dark:hover:text-zinc-500'
               )}
             >
               <Icon className="w-3 h-3" />
@@ -345,8 +345,8 @@ export function AnalysisPanel() {
         {/* Info message when YouTube audio element is available */}
         {isYouTubeTrack && backingTrackAvailable && analysisSource === 'backing' && (
           <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-emerald-500/10 border border-emerald-500/20">
-            <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0 mt-0.5" />
-            <span className="text-[11px] text-emerald-300">
+            <Info className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-emerald-600 dark:text-emerald-300">
               YouTube audio stream available for analysis.
             </span>
           </div>
@@ -355,8 +355,8 @@ export function AnalysisPanel() {
         {/* Info message when YouTube audio is NOT available */}
         {isYouTubeTrack && !backingTrackAvailable && (
           <div className="mt-2 flex items-start gap-2 px-2 py-1.5 rounded bg-amber-500/10 border border-amber-500/20">
-            <Info className="w-3.5 h-3.5 text-amber-400 shrink-0 mt-0.5" />
-            <span className="text-[11px] text-amber-300">
+            <Info className="w-3.5 h-3.5 text-amber-500 dark:text-amber-400 shrink-0 mt-0.5" />
+            <span className="text-[11px] text-amber-600 dark:text-amber-300">
               YouTube audio stream unavailable. Using IFrame fallback - select &quot;Mic&quot; to analyze instead.
             </span>
           </div>

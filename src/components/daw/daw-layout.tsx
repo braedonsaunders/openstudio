@@ -409,19 +409,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         ? 'daw-theme bg-[#0a0a0f] text-white'
         : 'bg-gray-50 text-gray-900'
     }`}>
-      {/* Theme Toggle - Fixed Position */}
-      <button
-        onClick={toggleTheme}
-        className={`fixed top-2 right-4 z-50 p-2 rounded-lg transition-colors ${
-          isDark
-            ? 'bg-white/10 hover:bg-white/20 text-white'
-            : 'bg-gray-900/10 hover:bg-gray-900/20 text-gray-900'
-        }`}
-        aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
-      >
-        {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-      </button>
-
       {/* Desktop Menu Bar */}
       <MenuBar
         onNewSession={() => {}}
