@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
@@ -15,6 +15,7 @@ import { KeyboardShortcuts } from './keyboard-shortcuts';
 import { AIGenerator } from '../tracks/ai-generator';
 import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
+import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { AudioSettingsModal, type AudioSettings } from '../settings/audio-settings-modal';
 import type { BackingTrack, StemType } from '@/types';
 import type { SunoGenerationConfig, SunoGenerationProgress } from '@/lib/ai/suno';
@@ -66,7 +67,26 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
   const { toggleStem, setStemVolume } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
-  const { isMuted, setMuted, isPlaying } = useAudioStore();
+  const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
+
+  // YouTube player ref
+  const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
+
+  // Check if current track is a YouTube track
+  const isYouTubeTrack = !!currentTrack?.youtubeId;
+
+  // YouTube playback controls (defined before keyboard shortcuts that use them)
+  const handleYouTubePlay = useCallback(() => {
+    youtubePlayerRef.current?.play();
+  }, []);
+
+  const handleYouTubePause = useCallback(() => {
+    youtubePlayerRef.current?.pause();
+  }, []);
+
+  const handleYouTubeSeek = useCallback((time: number) => {
+    youtubePlayerRef.current?.seek(time);
+  }, []);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -80,19 +100,33 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         case ' ':
           e.preventDefault();
           if (isMaster) {
-            isPlaying ? pause() : play();
+            if (isYouTubeTrack) {
+              isPlaying ? handleYouTubePause() : handleYouTubePlay();
+            } else {
+              isPlaying ? pause() : play();
+            }
           }
           break;
         case 'ArrowLeft':
           if (isMaster && currentTrack) {
             const { currentTime } = useAudioStore.getState();
-            seek(Math.max(0, currentTime - (e.shiftKey ? 30 : 5)));
+            const newTime = Math.max(0, currentTime - (e.shiftKey ? 30 : 5));
+            if (isYouTubeTrack) {
+              handleYouTubeSeek(newTime);
+            } else {
+              seek(newTime);
+            }
           }
           break;
         case 'ArrowRight':
           if (isMaster && currentTrack) {
             const { currentTime, duration } = useAudioStore.getState();
-            seek(Math.min(duration, currentTime + (e.shiftKey ? 30 : 5)));
+            const newTime = Math.min(duration, currentTime + (e.shiftKey ? 30 : 5));
+            if (isYouTubeTrack) {
+              handleYouTubeSeek(newTime);
+            } else {
+              seek(newTime);
+            }
           }
           break;
         case '[':
@@ -136,7 +170,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious]);
+  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek]);
 
   // Handler functions
   const handleTrackSelect = useCallback(async (track: BackingTrack) => {
@@ -182,6 +216,27 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     await addTrack(track);
     setIsYouTubeModalOpen(false);
   }, [addTrack]);
+
+  // YouTube player event handlers
+  const handleYouTubeReady = useCallback(() => {
+    if (youtubePlayerRef.current) {
+      const duration = youtubePlayerRef.current.getDuration();
+      if (duration > 0) setDuration(duration);
+    }
+  }, [setDuration]);
+
+  const handleYouTubeStateChange = useCallback((playing: boolean) => {
+    setPlaying(playing);
+  }, [setPlaying]);
+
+  const handleYouTubeTimeUpdate = useCallback((time: number, dur: number) => {
+    setCurrentTime(time);
+    if (dur > 0) setDuration(dur);
+  }, [setCurrentTime, setDuration]);
+
+  const handleYouTubeDurationChange = useCallback((duration: number) => {
+    if (duration > 0) setDuration(duration);
+  }, [setDuration]);
 
   const handleAIGenerate = useCallback(async (config: SunoGenerationConfig) => {
     setIsGenerating(true);
@@ -302,9 +357,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       {/* Transport Bar - Fixed Top */}
       <TransportBar
         roomId={roomId}
-        onPlay={play}
-        onPause={pause}
-        onSeek={seek}
+        onPlay={isYouTubeTrack ? handleYouTubePlay : play}
+        onPause={isYouTubeTrack ? handleYouTubePause : pause}
+        onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
         onPrevious={skipToPrevious}
         onNext={skipToNext}
         onMuteToggle={() => setMuted(!isMuted)}
@@ -411,6 +466,21 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         onSettingsChange={handleSettingsChange}
         currentSettings={audioSettings}
       />
+
+      {/* Hidden YouTube Player - renders when YouTube track is selected */}
+      {isYouTubeTrack && currentTrack?.youtubeId && (
+        <div className="fixed bottom-4 left-4 z-50 w-80 glass-panel rounded-xl overflow-hidden shadow-2xl">
+          <YouTubePlayer
+            ref={youtubePlayerRef}
+            videoId={currentTrack.youtubeId}
+            onReady={handleYouTubeReady}
+            onStateChange={handleYouTubeStateChange}
+            onTimeUpdate={handleYouTubeTimeUpdate}
+            onDurationChange={handleYouTubeDurationChange}
+            volume={backingTrackVolume * 100}
+          />
+        </div>
+      )}
     </div>
   );
 }
