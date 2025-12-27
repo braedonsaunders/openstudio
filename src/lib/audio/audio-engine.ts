@@ -39,6 +39,8 @@ export class AudioEngine {
   private localAnalyser: AnalyserNode | null = null;
   private localChannelSplitter: ChannelSplitterNode | null = null;
   private localSourceNode: MediaStreamAudioSourceNode | null = null;
+  private localMonitorGain: GainNode | null = null;
+  private monitoringEnabled: boolean = true;
   private remoteStreams: Map<string, AudioStream> = new Map();
   private backingTrackSource: AudioBufferSourceNode | null = null;
   private backingTrackBuffer: AudioBuffer | null = null;
@@ -165,15 +167,21 @@ export class AudioEngine {
       });
     }
 
-    if (this.audioContext) {
+    if (this.audioContext && this.masterGain) {
       // Clean up existing nodes
       this.localSourceNode?.disconnect();
       this.localChannelSplitter?.disconnect();
       this.localAnalyser?.disconnect();
+      this.localMonitorGain?.disconnect();
 
       this.localSourceNode = this.audioContext.createMediaStreamSource(this.localStream);
       this.localAnalyser = this.audioContext.createAnalyser();
       this.localAnalyser.fftSize = 256;
+
+      // Create monitoring gain node for local audio output
+      this.localMonitorGain = this.audioContext.createGain();
+      this.localMonitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
+      this.localMonitorGain.connect(this.masterGain);
 
       // For mono mode with a specific channel selection, use ChannelSplitter
       // to extract only the desired channel
@@ -189,19 +197,22 @@ export class AudioEngine {
           // Create a channel merger to convert back to mono for the analyser
           const merger = this.audioContext.createChannelMerger(1);
 
-          // Connect: source -> splitter -> specific channel -> merger -> analyser
+          // Connect: source -> splitter -> specific channel -> merger -> analyser + monitor
           this.localSourceNode.connect(this.localChannelSplitter);
           this.localChannelSplitter.connect(merger, channelConfig.leftChannel, 0);
           merger.connect(this.localAnalyser);
+          merger.connect(this.localMonitorGain);
         } else {
           // Requested channel not available, fall back to default
           console.warn('[AudioEngine] Requested channel', channelConfig.leftChannel,
             'not available (device has', actualChannelCount, 'channels). Using default.');
           this.localSourceNode.connect(this.localAnalyser);
+          this.localSourceNode.connect(this.localMonitorGain);
         }
       } else {
-        // Stereo or default: connect directly
+        // Stereo or default: connect directly to both analyser and monitor
         this.localSourceNode.connect(this.localAnalyser);
+        this.localSourceNode.connect(this.localMonitorGain);
       }
     }
 
@@ -255,6 +266,44 @@ export class AudioEngine {
     if (this.backingTrackGain) {
       this.backingTrackGain.gain.value = volume;
     }
+  }
+
+  async setOutputDevice(deviceId: string): Promise<void> {
+    if (!this.audioContext) {
+      console.warn('[AudioEngine] Cannot set output device: audio context not initialized');
+      return;
+    }
+
+    // Use setSinkId if available (modern browsers)
+    if ('setSinkId' in this.audioContext) {
+      try {
+        const sinkId = deviceId === 'default' ? '' : deviceId;
+        await (this.audioContext as AudioContext & { setSinkId: (id: string) => Promise<void> }).setSinkId(sinkId);
+        console.log('[AudioEngine] Output device set to:', deviceId);
+      } catch (error) {
+        console.error('[AudioEngine] Failed to set output device:', error);
+        throw error;
+      }
+    } else {
+      console.warn('[AudioEngine] setSinkId not supported in this browser');
+    }
+  }
+
+  setMonitoringEnabled(enabled: boolean): void {
+    this.monitoringEnabled = enabled;
+    if (this.localMonitorGain) {
+      this.localMonitorGain.gain.value = enabled ? 1 : 0;
+    }
+  }
+
+  setMonitoringVolume(volume: number): void {
+    if (this.localMonitorGain && this.monitoringEnabled) {
+      this.localMonitorGain.gain.value = volume;
+    }
+  }
+
+  isMonitoringEnabled(): boolean {
+    return this.monitoringEnabled;
   }
 
   async loadBackingTrack(url: string): Promise<void> {
@@ -612,6 +661,8 @@ export class AudioEngine {
     this.localChannelSplitter = null;
     this.localAnalyser?.disconnect();
     this.localAnalyser = null;
+    this.localMonitorGain?.disconnect();
+    this.localMonitorGain = null;
 
     this.workletNode?.disconnect();
     this.masterGain?.disconnect();

@@ -1,10 +1,10 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
 import { useAudioStore } from '@/stores/audio-store';
+import { useAudioEngine } from '@/hooks/useAudioEngine';
 import {
   Speaker,
   Volume2,
@@ -25,7 +25,8 @@ interface OutputSettingsModalProps {
 }
 
 export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProps) {
-  const { outputDeviceId, setOutputDevice, masterVolume, setMasterVolume, backingTrackVolume, setBackingTrackVolume } = useAudioStore();
+  const { outputDeviceId, masterVolume, setMasterVolume, backingTrackVolume, setBackingTrackVolume } = useAudioStore();
+  const { setOutputDevice } = useAudioEngine();
 
   const [outputDevices, setOutputDevices] = useState<AudioDevice[]>([]);
   const [selectedOutput, setSelectedOutput] = useState(outputDeviceId || 'default');
@@ -66,8 +67,8 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
     }
   }, [isOpen, loadDevices, outputDeviceId]);
 
-  const handleSave = useCallback(() => {
-    setOutputDevice(selectedOutput);
+  const handleSave = useCallback(async () => {
+    await setOutputDevice(selectedOutput);
     onClose();
   }, [selectedOutput, setOutputDevice, onClose]);
 
@@ -151,13 +152,6 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
             onChange={(e) => setBackingTrackVolume(parseFloat(e.target.value))}
             className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-indigo-500"
           />
-        </div>
-
-        {/* Info about per-track settings */}
-        <div className="p-3 bg-gray-50 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg">
-          <p className="text-xs text-gray-600 dark:text-gray-400">
-            Audio input settings are now configured per-track. Click the settings icon on any track to adjust input device, sample rate, and processing options.
-          </p>
         </div>
 
         {/* Actions */}

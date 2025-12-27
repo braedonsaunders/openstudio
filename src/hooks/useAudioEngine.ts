@@ -210,6 +210,22 @@ export function useAudioEngine() {
     useAudioStore.getState().setBackingTrackVolume(volume);
   }, []);
 
+  // Set output device
+  const setOutputDevice = useCallback(async (deviceId: string) => {
+    await globalEngine?.setOutputDevice(deviceId);
+    useAudioStore.getState().setOutputDevice(deviceId);
+  }, []);
+
+  // Set monitoring enabled/disabled
+  const setMonitoringEnabled = useCallback((enabled: boolean) => {
+    globalEngine?.setMonitoringEnabled(enabled);
+  }, []);
+
+  // Set monitoring volume
+  const setMonitoringVolume = useCallback((volume: number) => {
+    globalEngine?.setMonitoringVolume(volume);
+  }, []);
+
   // Check if backing track audio is available for analysis
   const hasBackingTrackAudio = useCallback((): boolean => {
     return globalEngine?.hasBackingTrackAudio() || false;
@@ -426,6 +442,9 @@ export function useAudioEngine() {
     setRemoteVolume,
     setMasterVolume,
     setBackingTrackVolume,
+    setOutputDevice,
+    setMonitoringEnabled,
+    setMonitoringVolume,
     // Analyser nodes as state (triggers re-render when available)
     audioContext,
     backingTrackAnalyser,
