@@ -11,10 +11,17 @@ export interface YouTubeRelatedResult {
   duration?: string;
 }
 
+export interface YouTubeRelatedResponse {
+  suggestions: YouTubeRelatedResult[];
+  nextPageToken?: string;
+  totalResults: number;
+}
+
 export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const videoId = searchParams.get('videoId');
   const maxResults = searchParams.get('maxResults') || '5';
+  const pageToken = searchParams.get('pageToken');
 
   if (!videoId) {
     return NextResponse.json(
@@ -63,6 +70,11 @@ export async function GET(request: NextRequest) {
     searchUrl.searchParams.set('maxResults', String(parseInt(maxResults) + 1)); // Get one extra to filter out current
     searchUrl.searchParams.set('key', YOUTUBE_API_KEY);
 
+    // Add page token for pagination if provided
+    if (pageToken) {
+      searchUrl.searchParams.set('pageToken', pageToken);
+    }
+
     const searchResponse = await fetch(searchUrl.toString());
     if (!searchResponse.ok) {
       throw new Error('YouTube API search failed');
@@ -106,7 +118,13 @@ export async function GET(request: NextRequest) {
       duration: parseDuration(item.contentDetails.duration),
     }));
 
-    return NextResponse.json({ suggestions });
+    const response: YouTubeRelatedResponse = {
+      suggestions,
+      nextPageToken: searchData.nextPageToken,
+      totalResults: searchData.pageInfo?.totalResults || suggestions.length,
+    };
+
+    return NextResponse.json(response);
   } catch (error) {
     console.error('YouTube related error:', error);
     return NextResponse.json(

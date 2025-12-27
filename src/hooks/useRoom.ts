@@ -63,6 +63,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     pauseBackingTrack,
     seekTo,
     updateFromStats,
+    destroyEngine,
   } = useAudioEngine();
 
   // Join room
@@ -335,21 +336,31 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current = null;
     cloudflareRef.current = null;
 
+    // Clean up the audio engine
+    destroyEngine();
+
     reset();
-  }, [reset, roomId]);
+  }, [reset, roomId, destroyEngine]);
 
   // Master controls
   const play = useCallback(async () => {
-    if (!isMaster || !currentTrack) return;
+    console.log('Play called, isMaster:', isMaster, 'currentTrack:', currentTrack?.id);
+    if (!isMaster || !currentTrack) {
+      console.log('Play aborted: not master or no current track');
+      return;
+    }
 
     // Skip audio engine for YouTube tracks - they use the YouTube player
     if (currentTrack.youtubeId) {
+      console.log('YouTube track, delegating to YouTube player');
       // YouTube playback is handled by YouTubePlayer component
       // Just update state and broadcast
       realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, Date.now() + 100);
       setQueuePlaying(true);
       return;
     }
+
+    console.log('Playing uploaded track:', currentTrack.name, 'URL:', currentTrack.url);
 
     // Ensure audio engine is initialized before attempting playback
     try {
@@ -360,6 +371,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     }
 
     const syncTime = Date.now() + 100; // 100ms in future for sync
+    console.log('Loading backing track...');
     const loadSuccess = await loadBackingTrack(currentTrack);
 
     if (!loadSuccess) {
@@ -367,6 +379,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       return;
     }
 
+    console.log('Playing backing track at offset:', queue.currentTime);
     playBackingTrack(syncTime, queue.currentTime);
 
     realtimeRef.current?.broadcastPlay(currentTrack.id, queue.currentTime, syncTime);
@@ -376,10 +389,17 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const pause = useCallback(async () => {
     if (!isMaster || !currentTrack) return;
 
+    // Get the current playback time before pausing
+    const { currentTime } = useAudioStore.getState();
+
     pauseBackingTrack();
-    realtimeRef.current?.broadcastPause(currentTrack.id, queue.currentTime);
+
+    // Save the current time so we can resume from this position
+    setQueueTime(currentTime);
+
+    realtimeRef.current?.broadcastPause(currentTrack.id, currentTime);
     setQueuePlaying(false);
-  }, [isMaster, currentTrack, pauseBackingTrack, queue.currentTime, setQueuePlaying]);
+  }, [isMaster, currentTrack, pauseBackingTrack, setQueueTime, setQueuePlaying]);
 
   const seek = useCallback(async (time: number) => {
     if (!isMaster || !currentTrack) return;
@@ -391,6 +411,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   // Queue management
   const addTrack = useCallback(async (track: BackingTrack) => {
+    console.log('addTrack called with:', { id: track.id, name: track.name, url: track.url, youtubeId: track.youtubeId });
     addToQueue(track);
 
     const updatedQueue = {
@@ -412,7 +433,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         const errorData = await response.json().catch(() => ({}));
         console.error('Failed to persist track:', response.status, errorData);
       } else {
-        console.log('Track persisted to database:', track.id, track.youtubeId ? '(YouTube)' : '(file upload)');
+        const savedTrack = await response.json();
+        console.log('Track persisted to database:', savedTrack);
       }
     } catch (err) {
       console.error('Failed to persist track:', err);
@@ -420,6 +442,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // If this is the first track, set it as current
     if (queue.tracks.length === 0) {
+      console.log('Setting as current track (first in queue)');
       setCurrentTrack(track);
       setQueue({ ...updatedQueue, currentIndex: 0 });
     }

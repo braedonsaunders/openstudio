@@ -118,6 +118,7 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
       }
 
       const { uploadUrl, publicUrl, trackId } = await presignResponse.json();
+      console.log('Got presigned URL, trackId:', trackId, 'publicUrl:', publicUrl);
 
       // Upload directly to R2 using presigned URL
       const xhr = new XMLHttpRequest();
@@ -146,6 +147,7 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
       });
 
       // Notify parent with track info (no file - already uploaded to R2)
+      console.log('Upload complete, calling onUpload with:', { id: trackId, name: name.trim(), url: publicUrl, duration });
       await onUpload({
         id: trackId,
         name: name.trim(),

@@ -9,14 +9,16 @@ import type { AnalysisData, SyncedAnalysis } from '@/stores/analysis-store';
 interface UseAudioAnalysisOptions {
   audioContext?: AudioContext | null;
   localStream?: MediaStream | null;
-  backingTrackElement?: HTMLAudioElement | null;
+  backingTrackAnalyser?: AnalyserNode | null;
+  masterAnalyser?: AnalyserNode | null;
+  isPlaying?: boolean;
   roomId?: string;
   userId?: string;
   isMaster?: boolean;
 }
 
 export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
-  const { audioContext, localStream, backingTrackElement, roomId, userId, isMaster } = options;
+  const { audioContext, localStream, backingTrackAnalyser, masterAnalyser, isPlaying, roomId, userId, isMaster } = options;
 
   const analyzerRef = useRef(getEssentiaAnalyzer());
   const isInitializedRef = useRef(false);
@@ -90,8 +92,8 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
   // Update backing track availability (for UI - e.g. enable/disable Track source button)
   useEffect(() => {
-    setBackingTrackAvailable(!!backingTrackElement);
-  }, [backingTrackElement, setBackingTrackAvailable]);
+    setBackingTrackAvailable(!!backingTrackAnalyser);
+  }, [backingTrackAnalyser, setBackingTrackAvailable]);
 
   // Handle analysis data updates
   const handleAnalysisData = useCallback(
@@ -142,23 +144,39 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     analyzerRef.current.setOnAnalysis(handleAnalysisData);
   }, [handleAnalysisData]);
 
-  // Start/stop analysis based on source
+  // Start/stop analysis based on source and playback state
+  // Analysis runs automatically when:
+  // - User is master (only master analyzes, results are synced to others)
+  // - Audio is playing
+  // - Analyser is ready
   useEffect(() => {
     if (!isWorkerReady || !audioContext) return;
 
     const startAnalysis = async () => {
       try {
         if (analysisSource === 'local' && localStream) {
+          // Local microphone analysis - always available
           await analyzerRef.current.analyzeStream(localStream);
           setIsAnalyzing(true);
-        } else if (analysisSource === 'backing' && backingTrackElement) {
-          await analyzerRef.current.analyzeElement(backingTrackElement);
-          setIsAnalyzing(true);
-        } else if (analysisSource === 'mixed') {
-          // For mixed mode, analyze local stream (could be enhanced to mix both)
-          if (localStream) {
-            await analyzerRef.current.analyzeStream(localStream);
+        } else if (analysisSource === 'backing' && backingTrackAnalyser) {
+          // Backing track analysis from audio engine
+          // Only analyze when playing and user is master
+          if (isPlaying && isMaster) {
+            analyzerRef.current.analyzeFromAnalyserNode(backingTrackAnalyser);
             setIsAnalyzing(true);
+            console.log('Started backing track analysis (master)');
+          } else if (!isPlaying) {
+            // Stop analysis when not playing
+            analyzerRef.current.stopAnalysis();
+            setIsAnalyzing(false);
+          }
+        } else if (analysisSource === 'mixed' && masterAnalyser) {
+          // Mixed mode: analyze all audio (backing + all users' instruments)
+          // Only analyze when master to avoid duplicate processing
+          if (isMaster) {
+            analyzerRef.current.analyzeFromAnalyserNode(masterAnalyser);
+            setIsAnalyzing(true);
+            console.log('Started mixed audio analysis (master) - analyzing all audio');
           }
         }
       } catch (error) {
@@ -168,10 +186,21 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     };
 
     startAnalysis();
+
+    // Cleanup when dependencies change
+    return () => {
+      if (analysisSource === 'backing' || analysisSource === 'mixed') {
+        analyzerRef.current.stopAnalysis();
+        setIsAnalyzing(false);
+      }
+    };
   }, [
     analysisSource,
     localStream,
-    backingTrackElement,
+    backingTrackAnalyser,
+    masterAnalyser,
+    isPlaying,
+    isMaster,
     audioContext,
     isWorkerReady,
     setIsAnalyzing,
