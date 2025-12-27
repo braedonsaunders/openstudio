@@ -51,6 +51,8 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
     participants,
     audioContext,
     selectedInputDevice,
+    selectedInputChannel,
+    availableChannels,
     setConnected,
     setConnecting,
     setError,
@@ -67,6 +69,8 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
     setAudioContext,
     setGainNode,
     setSelectedInputDevice,
+    setSelectedInputChannel,
+    setAvailableChannels,
     muteAllParticipants,
     unmuteAllParticipants,
     reset,
@@ -120,21 +124,59 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
       const ctx = new AudioContext();
       setAudioContext(ctx);
 
-      // Get local audio stream
+      // Get local audio stream - request all available channels
       const constraints: MediaStreamConstraints = {
         audio: selectedInputDevice
-          ? { deviceId: { exact: selectedInputDevice } }
-          : true,
+          ? {
+              deviceId: { exact: selectedInputDevice },
+              channelCount: { ideal: 8 }, // Request up to 8 channels
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            }
+          : {
+              channelCount: { ideal: 8 },
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+            },
       };
 
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
-      setLocalStream(stream);
 
-      // Set up analyser for local audio
+      // Detect number of channels from the audio track
+      const audioTrack = stream.getAudioTracks()[0];
+      const trackSettings = audioTrack.getSettings();
+      const numChannels = trackSettings.channelCount || 2;
+      setAvailableChannels(numChannels);
+
+      // Set up audio processing based on channel selection
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
-      source.connect(analyser);
+
+      if (selectedInputChannel > 0 && numChannels > 1) {
+        // Split channels and use specific one
+        const splitter = ctx.createChannelSplitter(numChannels);
+        const merger = ctx.createChannelMerger(1);
+
+        source.connect(splitter);
+
+        // Connect the selected channel (1-indexed) to a mono merger
+        const channelIndex = Math.min(selectedInputChannel - 1, numChannels - 1);
+        splitter.connect(merger, channelIndex, 0);
+        merger.connect(analyser);
+
+        // Create a new mono stream from the selected channel for transmission
+        const monoDestination = ctx.createMediaStreamDestination();
+        merger.connect(monoDestination);
+        setLocalStream(monoDestination.stream);
+      } else {
+        // Use all channels (stereo/original)
+        source.connect(analyser);
+        setLocalStream(stream);
+      }
+
       analyserRef.current = analyser;
 
       // Start analyzing audio level
@@ -166,6 +208,7 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
     }
   }, [
     selectedInputDevice,
+    selectedInputChannel,
     userId,
     users,
     setConnecting,
@@ -173,6 +216,7 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
     setAudioContext,
     setLocalStream,
     setConnected,
+    setAvailableChannels,
     addParticipant,
     analyzeAudioLevel,
   ]);
@@ -302,25 +346,55 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
           )}
 
           {/* Device selection */}
-          {inputDevices.length > 1 && (
-            <div className="w-full max-w-[200px]">
+          <div className="w-full max-w-[220px] space-y-3">
+            {inputDevices.length > 0 && (
+              <div>
+                <label className="block text-[10px] font-medium text-gray-500 dark:text-zinc-500 mb-1">
+                  Audio Interface
+                </label>
+                <select
+                  value={selectedInputDevice || ''}
+                  onChange={(e) => setSelectedInputDevice(e.target.value || null)}
+                  className="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white"
+                >
+                  <option value="">Default</option>
+                  {inputDevices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label || `Input ${device.deviceId.slice(0, 8)}`}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            )}
+
+            {/* Channel selection */}
+            <div>
               <label className="block text-[10px] font-medium text-gray-500 dark:text-zinc-500 mb-1">
-                Microphone
+                Input Channel
               </label>
               <select
-                value={selectedInputDevice || ''}
-                onChange={(e) => setSelectedInputDevice(e.target.value || null)}
+                value={selectedInputChannel}
+                onChange={(e) => setSelectedInputChannel(parseInt(e.target.value))}
                 className="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white"
               >
-                <option value="">Default</option>
-                {inputDevices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
-                  </option>
-                ))}
+                <option value={0}>All Channels (Stereo)</option>
+                <option value={1}>Channel 1 (Left/Mono)</option>
+                <option value={2}>Channel 2 (Right)</option>
+                {availableChannels > 2 && (
+                  <>
+                    {Array.from({ length: availableChannels - 2 }, (_, i) => (
+                      <option key={i + 3} value={i + 3}>
+                        Channel {i + 3}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
+              <p className="mt-1 text-[9px] text-gray-400 dark:text-gray-500">
+                Use a specific input for voice chat
+              </p>
             </div>
-          )}
+          </div>
 
           <button
             onClick={joinVoiceChat}

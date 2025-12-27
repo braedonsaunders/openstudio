@@ -33,6 +33,8 @@ interface AudioChatState {
 
   // Device selection
   selectedInputDevice: string | null;
+  selectedInputChannel: number;  // 0 = all/stereo, 1 = left/ch1, 2 = right/ch2, etc.
+  availableChannels: number;     // Number of channels on the selected device
 
   // Actions
   setConnected: (connected: boolean) => void;
@@ -59,6 +61,8 @@ interface AudioChatState {
 
   // Device actions
   setSelectedInputDevice: (deviceId: string | null) => void;
+  setSelectedInputChannel: (channel: number) => void;
+  setAvailableChannels: (channels: number) => void;
 
   // Bulk actions
   muteAllParticipants: () => void;
@@ -80,6 +84,8 @@ export const useAudioChatStore = create<AudioChatState>((set, get) => ({
   audioContext: null,
   gainNodes: new Map(),
   selectedInputDevice: null,
+  selectedInputChannel: 0,
+  availableChannels: 2,
 
   setConnected: (connected) => set({ isConnected: connected }),
   setConnecting: (connecting) => set({ isConnecting: connecting }),
@@ -200,7 +206,9 @@ export const useAudioChatStore = create<AudioChatState>((set, get) => ({
       return { gainNodes };
     }),
 
-  setSelectedInputDevice: (deviceId) => set({ selectedInputDevice: deviceId }),
+  setSelectedInputDevice: (deviceId) => set({ selectedInputDevice: deviceId, selectedInputChannel: 0 }),
+  setSelectedInputChannel: (channel) => set({ selectedInputChannel: channel }),
+  setAvailableChannels: (channels) => set({ availableChannels: channels }),
 
   muteAllParticipants: () => {
     const { participants, gainNodes } = get();
@@ -256,6 +264,8 @@ export const useAudioChatStore = create<AudioChatState>((set, get) => ({
       audioContext: null,
       gainNodes: new Map(),
       selectedInputDevice: null,
+      selectedInputChannel: 0,
+      availableChannels: 2,
     });
   },
 }));
