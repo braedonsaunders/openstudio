@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback } from 'react';
+import { useState, useEffect, useMemo, useCallback, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -293,7 +293,7 @@ function RoomMusician({
   xOffset: number;
   delay: number;
 }) {
-  const instruments: Record<string, JSX.Element> = {
+  const instruments: Record<string, ReactNode> = {
     guitarist: (
       <motion.svg
         width="35"
