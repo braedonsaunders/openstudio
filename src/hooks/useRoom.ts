@@ -7,9 +7,11 @@ import { CloudflareCalls } from '@/lib/cloudflare/calls';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { useAudioEngine } from './useAudioEngine';
 import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
+import type { LoopTrackState } from '@/types/loops';
 
 interface UseRoomOptions {
   onUserJoined?: (user: User) => void;
@@ -174,6 +176,19 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       } catch (err) {
         console.error('Failed to load persisted user tracks:', err);
+      }
+
+      // Load persisted loop tracks
+      try {
+        const loopTracksResponse = await fetch(`/api/rooms/${roomId}/loop-tracks`);
+        if (loopTracksResponse.ok) {
+          const persistedLoopTracks: LoopTrackState[] = await loopTracksResponse.json();
+          const loopTracksState = useLoopTracksStore.getState();
+          loopTracksState.loadTracks(persistedLoopTracks);
+          console.log(`Loaded ${persistedLoopTracks.length} loop tracks from database`);
+        }
+      } catch (err) {
+        console.error('Failed to load loop tracks:', err);
       }
 
       // Create a default track if user has none
@@ -408,6 +423,49 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         if (payload.userId === user.id) return;
         const userTracksStore = useUserTracksStore.getState();
         userTracksStore.updateTrackEffects(payload.trackId, payload.effects);
+      });
+
+      // Loop track broadcast handlers
+      realtime.on('looptrack:add', (data) => {
+        const payload = data as { track: LoopTrackState; userId: string };
+        if (payload.userId === user.id) return;
+        const loopTracksStore = useLoopTracksStore.getState();
+        loopTracksStore.loadTracks([payload.track]);
+      });
+
+      realtime.on('looptrack:remove', (data) => {
+        const payload = data as { trackId: string; userId: string };
+        if (payload.userId === user.id) return;
+        const loopTracksStore = useLoopTracksStore.getState();
+        loopTracksStore.removeTrack(payload.trackId);
+      });
+
+      realtime.on('looptrack:update', (data) => {
+        const payload = data as { trackId: string; updates: Partial<LoopTrackState>; userId: string };
+        if (payload.userId === user.id) return;
+        const loopTracksStore = useLoopTracksStore.getState();
+        loopTracksStore.updateTrack(payload.trackId, payload.updates);
+      });
+
+      realtime.on('looptrack:play', (data) => {
+        const payload = data as { trackId: string; syncTimestamp: number; loopStartBeat: number; userId: string };
+        if (payload.userId === user.id) return;
+        const loopTracksStore = useLoopTracksStore.getState();
+        loopTracksStore.setTrackPlaying(payload.trackId, true, payload.syncTimestamp);
+      });
+
+      realtime.on('looptrack:stop', (data) => {
+        const payload = data as { trackId: string; userId: string };
+        if (payload.userId === user.id) return;
+        const loopTracksStore = useLoopTracksStore.getState();
+        loopTracksStore.setTrackPlaying(payload.trackId, false);
+      });
+
+      realtime.on('looptrack:sync', (data) => {
+        const payload = data as { tracks: LoopTrackState[]; userId: string };
+        if (payload.userId === user.id) return;
+        const loopTracksStore = useLoopTracksStore.getState();
+        loopTracksStore.loadTracks(payload.tracks);
       });
 
       await realtime.connect(user);
@@ -878,6 +936,79 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastVolume(userId, volume);
   }, [updateUser]);
 
+  // Loop track management
+  const addLoopTrack = useCallback(async (track: LoopTrackState) => {
+    const loopTracksStore = useLoopTracksStore.getState();
+    loopTracksStore.loadTracks([track]);
+
+    // Persist to database
+    try {
+      await fetch(`/api/rooms/${roomId}/loop-tracks`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(track),
+      });
+    } catch (err) {
+      console.error('Failed to persist loop track:', err);
+    }
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastLoopTrackAdd(track);
+  }, [roomId]);
+
+  const removeLoopTrack = useCallback(async (trackId: string) => {
+    const loopTracksStore = useLoopTracksStore.getState();
+    loopTracksStore.removeTrack(trackId);
+
+    // Delete from database
+    try {
+      await fetch(`/api/rooms/${roomId}/loop-tracks?trackId=${trackId}`, {
+        method: 'DELETE',
+      });
+    } catch (err) {
+      console.error('Failed to delete loop track:', err);
+    }
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastLoopTrackRemove(trackId);
+  }, [roomId]);
+
+  const updateLoopTrack = useCallback(async (trackId: string, updates: Partial<LoopTrackState>) => {
+    const loopTracksStore = useLoopTracksStore.getState();
+    loopTracksStore.updateTrack(trackId, updates);
+
+    // Persist to database
+    try {
+      await fetch(`/api/rooms/${roomId}/loop-tracks`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ trackId, ...updates }),
+      });
+    } catch (err) {
+      console.error('Failed to update loop track:', err);
+    }
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastLoopTrackUpdate(trackId, updates);
+  }, [roomId]);
+
+  const playLoopTrack = useCallback((trackId: string, syncTimestamp?: number, loopStartBeat?: number) => {
+    const loopTracksStore = useLoopTracksStore.getState();
+    const timestamp = syncTimestamp || Date.now();
+    loopTracksStore.setTrackPlaying(trackId, true, timestamp);
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastLoopTrackPlay(trackId, timestamp, loopStartBeat || 0);
+  }, []);
+
+  const stopLoopTrack = useCallback((trackId: string) => {
+    const loopTracksStore = useLoopTracksStore.getState();
+    loopTracksStore.setTrackPlaying(trackId, false);
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastLoopTrackStop(trackId);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -908,5 +1039,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     sendMessage,
     muteUser,
     setUserVolume,
+    // Loop track controls
+    addLoopTrack,
+    removeLoopTrack,
+    updateLoopTrack,
+    playLoopTrack,
+    stopLoopTrack,
   };
 }

@@ -6,7 +6,9 @@ import { Modal } from '../ui/modal';
 import { Button } from '../ui/button';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { DEFAULT_EFFECTS_CHAIN } from '@/lib/audio/effects/presets';
+import { MidiDeviceSelector } from '../midi/midi-device-selector';
 import type { TrackAudioSettings } from '@/types';
+import type { MidiInputSettings, UserTrackType } from '@/types/loops';
 import {
   Mic,
   Monitor,
@@ -14,7 +16,12 @@ import {
   AlertCircle,
   Volume2,
   Headphones,
+  Piano,
+  Repeat,
+  ArrowLeft,
 } from 'lucide-react';
+
+type TrackTypeOption = 'audio' | 'midi' | 'loop';
 
 interface AddTrackModalProps {
   isOpen: boolean;
@@ -22,6 +29,7 @@ interface AddTrackModalProps {
   userId: string;
   userName?: string;
   roomId?: string;
+  onOpenLoopBrowser?: () => void;
 }
 
 const DEFAULT_SETTINGS: TrackAudioSettings = {
@@ -43,11 +51,21 @@ const DEFAULT_SETTINGS: TrackAudioSettings = {
   monitoringVolume: 1,
 };
 
-export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: AddTrackModalProps) {
+const DEFAULT_MIDI_SETTINGS: MidiInputSettings = {
+  deviceId: null,
+  channel: 'all',
+  soundBank: 'keys',
+  soundPreset: 'keys/synth-pad',
+  velocityCurve: 'linear',
+};
+
+export function AddTrackModal({ isOpen, onClose, userId, userName, roomId, onOpenLoopBrowser }: AddTrackModalProps) {
   const { inputDevices, devicesLoaded, loadDevices, addTrack, getTracksByUser } = useUserTracksStore();
 
+  const [trackType, setTrackType] = useState<TrackTypeOption | null>(null);
   const [trackName, setTrackName] = useState('');
   const [settings, setSettings] = useState<TrackAudioSettings>(DEFAULT_SETTINGS);
+  const [midiSettings, setMidiSettings] = useState<MidiInputSettings>(DEFAULT_MIDI_SETTINGS);
   const [testingInput, setTestingInput] = useState(false);
   const [inputLevel, setInputLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -78,7 +96,9 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
   useEffect(() => {
     if (!isOpen) {
       stopTesting();
+      setTrackType(null);
       setSettings(DEFAULT_SETTINGS);
+      setMidiSettings(DEFAULT_MIDI_SETTINGS);
       setError(null);
     }
   }, [isOpen]);
@@ -191,8 +211,8 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
         stopTesting();
         onClose();
       }}
-      title="Add New Track"
-      description="Configure the audio source for your new track"
+      title={trackType ? `Add ${trackType === 'audio' ? 'Audio' : 'MIDI'} Track` : 'Add New Track'}
+      description={trackType ? 'Configure your new track' : 'Choose the type of track to add'}
       className="max-w-md"
     >
       <div className="space-y-5">
@@ -203,219 +223,341 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
           </div>
         )}
 
-        {/* Track Name */}
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-slate-700">Track Name</label>
-          <input
-            type="text"
-            value={trackName}
-            onChange={(e) => setTrackName(e.target.value)}
-            placeholder="e.g., Guitar, Vocals, Synth"
-            className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-          />
-        </div>
-
-        {/* Input Mode Selection */}
-        <div className="space-y-3">
-          <label className="text-sm font-medium text-slate-700">Audio Source</label>
-          <div className="grid grid-cols-2 gap-3">
-            <button
-              onClick={() => setSettings({ ...settings, inputMode: 'microphone' })}
-              className={cn(
-                'flex items-center gap-3 p-4 rounded-xl border-2 transition-all',
-                settings.inputMode === 'microphone'
-                  ? 'border-indigo-500 bg-indigo-50'
-                  : 'border-slate-200 hover:border-slate-300'
-              )}
-            >
-              <div
-                className={cn(
-                  'w-10 h-10 rounded-full flex items-center justify-center',
-                  settings.inputMode === 'microphone'
-                    ? 'bg-indigo-500 text-white'
-                    : 'bg-slate-100 text-slate-500'
-                )}
+        {/* Track Type Selection */}
+        {!trackType && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-1 gap-3">
+              {/* Audio Input */}
+              <button
+                onClick={() => setTrackType('audio')}
+                className="flex items-center gap-4 p-4 rounded-xl border-2 border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/50 transition-all text-left"
               >
-                <Mic className="w-5 h-5" />
-              </div>
-              <div className="text-left">
-                <div className="font-medium text-slate-900">Microphone</div>
-                <div className="text-xs text-slate-500">Direct audio input</div>
-              </div>
-            </button>
-
-            <button
-              onClick={() =>
-                appCaptureSupported && setSettings({ ...settings, inputMode: 'application' })
-              }
-              disabled={!appCaptureSupported}
-              className={cn(
-                'flex items-center gap-3 p-4 rounded-xl border-2 transition-all',
-                settings.inputMode === 'application'
-                  ? 'border-indigo-500 bg-indigo-50'
-                  : 'border-slate-200 hover:border-slate-300',
-                !appCaptureSupported && 'opacity-50 cursor-not-allowed'
-              )}
-            >
-              <div
-                className={cn(
-                  'w-10 h-10 rounded-full flex items-center justify-center',
-                  settings.inputMode === 'application'
-                    ? 'bg-indigo-500 text-white'
-                    : 'bg-slate-100 text-slate-500'
-                )}
-              >
-                <Monitor className="w-5 h-5" />
-              </div>
-              <div className="text-left">
-                <div className="font-medium text-slate-900">Application</div>
-                <div className="text-xs text-slate-500">
-                  {appCaptureSupported ? 'Capture app audio' : 'Not supported'}
+                <div className="w-12 h-12 rounded-full bg-indigo-100 flex items-center justify-center">
+                  <Mic className="w-6 h-6 text-indigo-600" />
                 </div>
-              </div>
-            </button>
-          </div>
-
-          {settings.inputMode === 'application' && (
-            <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
-              <p className="text-xs text-amber-800">
-                Click &quot;Test Input&quot; to select an application or browser tab with audio.
-                Perfect for amp simulators, DAWs, or any other audio source.
-              </p>
-              {settings.applicationName && (
-                <div className="mt-2 flex items-center gap-2">
-                  <Headphones className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-medium text-amber-700">
-                    {settings.applicationName}
-                  </span>
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-900">Audio Input</div>
+                  <div className="text-sm text-slate-500">
+                    Microphone, instrument, or application audio
+                  </div>
                 </div>
-              )}
-            </div>
-          )}
-        </div>
+              </button>
 
-        {/* Input Device (only for microphone mode) */}
-        {settings.inputMode === 'microphone' && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Input Device</label>
-            <div className="relative">
-              <select
-                value={settings.inputDeviceId}
-                onChange={(e) => setSettings({ ...settings, inputDeviceId: e.target.value })}
-                className="w-full h-10 px-3 pr-10 bg-white border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              {/* MIDI Input */}
+              <button
+                onClick={() => setTrackType('midi')}
+                className="flex items-center gap-4 p-4 rounded-xl border-2 border-slate-200 hover:border-purple-300 hover:bg-purple-50/50 transition-all text-left"
               >
-                <option value="default">System Default</option>
-                {inputDevices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                <div className="w-12 h-12 rounded-full bg-purple-100 flex items-center justify-center">
+                  <Piano className="w-6 h-6 text-purple-600" />
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-900">MIDI Input</div>
+                  <div className="text-sm text-slate-500">
+                    Connect your MIDI controller with virtual instruments
+                  </div>
+                </div>
+              </button>
+
+              {/* Loop Track */}
+              <button
+                onClick={() => {
+                  onClose();
+                  onOpenLoopBrowser?.();
+                }}
+                className="flex items-center gap-4 p-4 rounded-xl border-2 border-slate-200 hover:border-amber-300 hover:bg-amber-50/50 transition-all text-left"
+              >
+                <div className="w-12 h-12 rounded-full bg-amber-100 flex items-center justify-center">
+                  <Repeat className="w-6 h-6 text-amber-600" />
+                </div>
+                <div className="flex-1">
+                  <div className="font-semibold text-slate-900">Loop Track</div>
+                  <div className="text-sm text-slate-500">
+                    Add drum beats, bass lines, and melodic loops
+                  </div>
+                </div>
+              </button>
             </div>
           </div>
         )}
 
-        {/* Input Level Test */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-slate-700">Input Level</label>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={testingInput ? stopTesting : testInput}
-              className="h-7"
-            >
-              {testingInput ? 'Stop' : settings.inputMode === 'application' ? 'Select App' : 'Test Input'}
-            </Button>
-          </div>
-          <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
-            <div
-              className={cn(
-                'h-full transition-all duration-75',
-                inputLevel > 0.8
-                  ? 'bg-red-500'
-                  : inputLevel > 0.5
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-500'
-              )}
-              style={{ width: `${inputLevel * 100}%` }}
-            />
-          </div>
-          {testingInput && (
-            <p className="text-xs text-slate-500">
-              {inputLevel > 0 ? 'Audio detected!' : 'Play or make sound to test...'}
-            </p>
-          )}
-        </div>
-
-        {/* Audio Processing (only for microphone) */}
-        {settings.inputMode === 'microphone' && (
-          <div className="space-y-2">
-            <label className="text-sm font-medium text-slate-700">Audio Processing</label>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() =>
-                  setSettings({ ...settings, echoCancellation: !settings.echoCancellation })
-                }
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                  settings.echoCancellation
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                )}
-              >
-                Echo Cancellation
-              </button>
-              <button
-                onClick={() =>
-                  setSettings({ ...settings, noiseSuppression: !settings.noiseSuppression })
-                }
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                  settings.noiseSuppression
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                )}
-              >
-                Noise Suppression
-              </button>
-              <button
-                onClick={() =>
-                  setSettings({ ...settings, autoGainControl: !settings.autoGainControl })
-                }
-                className={cn(
-                  'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                  settings.autoGainControl
-                    ? 'bg-indigo-100 text-indigo-700'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                )}
-              >
-                Auto Gain
-              </button>
-            </div>
-            <p className="text-xs text-slate-400">
-              Disable all for best quality with a dedicated audio interface
-            </p>
-          </div>
-        )}
-
-        {/* Actions */}
-        <div className="flex gap-3 pt-2">
-          <Button
-            variant="outline"
-            onClick={() => {
-              stopTesting();
-              onClose();
-            }}
-            className="flex-1"
+        {/* Back button when type is selected */}
+        {trackType && (
+          <button
+            onClick={() => setTrackType(null)}
+            className="flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700 transition-colors"
           >
-            Cancel
-          </Button>
-          <Button onClick={handleCreate} className="flex-1">
-            Add Track
-          </Button>
-        </div>
+            <ArrowLeft className="w-4 h-4" />
+            Back to track types
+          </button>
+        )}
+
+        {/* MIDI Track Configuration */}
+        {trackType === 'midi' && (
+          <>
+            {/* Track Name */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Track Name</label>
+              <input
+                type="text"
+                value={trackName}
+                onChange={(e) => setTrackName(e.target.value)}
+                placeholder="e.g., Keys, Synth Lead"
+                className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            {/* MIDI Device Selector */}
+            <MidiDeviceSelector
+              settings={midiSettings}
+              onSettingsChange={(updates) =>
+                setMidiSettings((prev) => ({ ...prev, ...updates }))
+              }
+            />
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  onClose();
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={() => {
+                  // TODO: Create MIDI track
+                  console.log('Create MIDI track:', trackName, midiSettings);
+                  onClose();
+                }}
+                className="flex-1"
+              >
+                Add MIDI Track
+              </Button>
+            </div>
+          </>
+        )}
+
+        {/* Audio Track Configuration */}
+        {trackType === 'audio' && (
+          <>
+            {/* Track Name */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">Track Name</label>
+              <input
+                type="text"
+                value={trackName}
+                onChange={(e) => setTrackName(e.target.value)}
+                placeholder="e.g., Guitar, Vocals, Synth"
+                className="w-full h-10 px-3 bg-white border border-slate-200 rounded-xl text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+              />
+            </div>
+
+            {/* Input Mode Selection */}
+            <div className="space-y-3">
+              <label className="text-sm font-medium text-slate-700">Audio Source</label>
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => setSettings({ ...settings, inputMode: 'microphone' })}
+                  className={cn(
+                    'flex items-center gap-3 p-4 rounded-xl border-2 transition-all',
+                    settings.inputMode === 'microphone'
+                      ? 'border-indigo-500 bg-indigo-50'
+                      : 'border-slate-200 hover:border-slate-300'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-10 h-10 rounded-full flex items-center justify-center',
+                      settings.inputMode === 'microphone'
+                        ? 'bg-indigo-500 text-white'
+                        : 'bg-slate-100 text-slate-500'
+                    )}
+                  >
+                    <Mic className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium text-slate-900">Microphone</div>
+                    <div className="text-xs text-slate-500">Direct audio input</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() =>
+                    appCaptureSupported && setSettings({ ...settings, inputMode: 'application' })
+                  }
+                  disabled={!appCaptureSupported}
+                  className={cn(
+                    'flex items-center gap-3 p-4 rounded-xl border-2 transition-all',
+                    settings.inputMode === 'application'
+                      ? 'border-indigo-500 bg-indigo-50'
+                      : 'border-slate-200 hover:border-slate-300',
+                    !appCaptureSupported && 'opacity-50 cursor-not-allowed'
+                  )}
+                >
+                  <div
+                    className={cn(
+                      'w-10 h-10 rounded-full flex items-center justify-center',
+                      settings.inputMode === 'application'
+                        ? 'bg-indigo-500 text-white'
+                        : 'bg-slate-100 text-slate-500'
+                    )}
+                  >
+                    <Monitor className="w-5 h-5" />
+                  </div>
+                  <div className="text-left">
+                    <div className="font-medium text-slate-900">Application</div>
+                    <div className="text-xs text-slate-500">
+                      {appCaptureSupported ? 'Capture app audio' : 'Not supported'}
+                    </div>
+                  </div>
+                </button>
+              </div>
+
+              {settings.inputMode === 'application' && (
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
+                  <p className="text-xs text-amber-800">
+                    Click &quot;Test Input&quot; to select an application or browser tab with audio.
+                    Perfect for amp simulators, DAWs, or any other audio source.
+                  </p>
+                  {settings.applicationName && (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Headphones className="w-4 h-4 text-amber-600" />
+                      <span className="text-xs font-medium text-amber-700">
+                        {settings.applicationName}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Input Device (only for microphone mode) */}
+            {settings.inputMode === 'microphone' && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Input Device</label>
+                <div className="relative">
+                  <select
+                    value={settings.inputDeviceId}
+                    onChange={(e) => setSettings({ ...settings, inputDeviceId: e.target.value })}
+                    className="w-full h-10 px-3 pr-10 bg-white border border-slate-200 rounded-xl text-slate-900 appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
+                  >
+                    <option value="default">System Default</option>
+                    {inputDevices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+                </div>
+              </div>
+            )}
+
+            {/* Input Level Test */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-slate-700">Input Level</label>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={testingInput ? stopTesting : testInput}
+                  className="h-7"
+                >
+                  {testingInput ? 'Stop' : settings.inputMode === 'application' ? 'Select App' : 'Test Input'}
+                </Button>
+              </div>
+              <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                <div
+                  className={cn(
+                    'h-full transition-all duration-75',
+                    inputLevel > 0.8
+                      ? 'bg-red-500'
+                      : inputLevel > 0.5
+                        ? 'bg-amber-500'
+                        : 'bg-emerald-500'
+                  )}
+                  style={{ width: `${inputLevel * 100}%` }}
+                />
+              </div>
+              {testingInput && (
+                <p className="text-xs text-slate-500">
+                  {inputLevel > 0 ? 'Audio detected!' : 'Play or make sound to test...'}
+                </p>
+              )}
+            </div>
+
+            {/* Audio Processing (only for microphone) */}
+            {settings.inputMode === 'microphone' && (
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-slate-700">Audio Processing</label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() =>
+                      setSettings({ ...settings, echoCancellation: !settings.echoCancellation })
+                    }
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                      settings.echoCancellation
+                        ? 'bg-indigo-100 text-indigo-700'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    )}
+                  >
+                    Echo Cancellation
+                  </button>
+                  <button
+                    onClick={() =>
+                      setSettings({ ...settings, noiseSuppression: !settings.noiseSuppression })
+                    }
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                      settings.noiseSuppression
+                        ? 'bg-indigo-100 text-indigo-700'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    )}
+                  >
+                    Noise Suppression
+                  </button>
+                  <button
+                    onClick={() =>
+                      setSettings({ ...settings, autoGainControl: !settings.autoGainControl })
+                    }
+                    className={cn(
+                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                      settings.autoGainControl
+                        ? 'bg-indigo-100 text-indigo-700'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    )}
+                  >
+                    Auto Gain
+                  </button>
+                </div>
+                <p className="text-xs text-slate-400">
+                  Disable all for best quality with a dedicated audio interface
+                </p>
+              </div>
+            )}
+
+            {/* Actions */}
+            <div className="flex gap-3 pt-2">
+              <Button
+                variant="outline"
+                onClick={() => {
+                  stopTesting();
+                  onClose();
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button onClick={handleCreate} className="flex-1">
+                Add Track
+              </Button>
+            </div>
+          </>
+        )}
       </div>
     </Modal>
   );
