@@ -14,22 +14,118 @@ export interface ProcessedImage {
 }
 
 /**
+ * Check if a pixel is white/near-white
+ */
+function isWhitePixel(r: number, g: number, b: number, threshold: number): boolean {
+  return r >= threshold && g >= threshold && b >= threshold;
+}
+
+/**
+ * Flood fill from edges to mark background pixels
+ * This ensures we only remove white that connects to the image edges
+ */
+function floodFillFromEdges(
+  pixels: Uint8Array,
+  width: number,
+  height: number,
+  threshold: number
+): Set<number> {
+  const background = new Set<number>();
+  const queue: number[] = [];
+
+  // Helper to get pixel index
+  const getIdx = (x: number, y: number) => (y * width + x) * 4;
+
+  // Check if position is valid and pixel is white
+  const canVisit = (x: number, y: number): boolean => {
+    if (x < 0 || x >= width || y < 0 || y >= height) return false;
+    const idx = getIdx(x, y);
+    if (background.has(idx)) return false;
+    const r = pixels[idx];
+    const g = pixels[idx + 1];
+    const b = pixels[idx + 2];
+    return isWhitePixel(r, g, b, threshold);
+  };
+
+  // Seed from all edges
+  for (let x = 0; x < width; x++) {
+    // Top edge
+    if (canVisit(x, 0)) {
+      const idx = getIdx(x, 0);
+      background.add(idx);
+      queue.push(x, 0);
+    }
+    // Bottom edge
+    if (canVisit(x, height - 1)) {
+      const idx = getIdx(x, height - 1);
+      background.add(idx);
+      queue.push(x, height - 1);
+    }
+  }
+  for (let y = 0; y < height; y++) {
+    // Left edge
+    if (canVisit(0, y)) {
+      const idx = getIdx(0, y);
+      background.add(idx);
+      queue.push(0, y);
+    }
+    // Right edge
+    if (canVisit(width - 1, y)) {
+      const idx = getIdx(width - 1, y);
+      background.add(idx);
+      queue.push(width - 1, y);
+    }
+  }
+
+  // Flood fill
+  while (queue.length > 0) {
+    const y = queue.pop()!;
+    const x = queue.pop()!;
+
+    // Check 4-connected neighbors
+    const neighbors = [
+      [x - 1, y],
+      [x + 1, y],
+      [x, y - 1],
+      [x, y + 1],
+    ];
+
+    for (const [nx, ny] of neighbors) {
+      if (canVisit(nx, ny)) {
+        const idx = getIdx(nx, ny);
+        background.add(idx);
+        queue.push(nx, ny);
+      }
+    }
+  }
+
+  return background;
+}
+
+/**
  * Process an avatar component image:
- * 1. Remove white/near-white background (make transparent)
- * 2. Resize to standard canvas size
- * 3. Convert to PNG with alpha channel
+ * 1. Remove white/near-white background using flood fill from edges
+ * 2. Clean up small isolated white specs
+ * 3. Resize to standard canvas size
+ * 4. Convert to PNG with alpha channel
  */
 export async function processAvatarComponent(
   input: Buffer,
   options: {
     removeBackground?: boolean;
     backgroundThreshold?: number; // 0-255, pixels lighter than this become transparent
+    cleanupSpecs?: boolean; // Remove small isolated white regions
+    specSizeThreshold?: number; // Max size of specs to remove
   } = {}
 ): Promise<ProcessedImage> {
-  const { removeBackground = true, backgroundThreshold = 250 } = options;
+  const {
+    removeBackground = true,
+    backgroundThreshold = 240, // Lower threshold for more aggressive removal
+    cleanupSpecs = true,
+    specSizeThreshold = 50, // Remove white specs smaller than this many pixels
+  } = options;
 
   let image = sharp(input);
-  const metadata = await image.metadata();
 
   // Ensure we have an alpha channel
   image = image.ensureAlpha();
@@ -40,16 +136,74 @@ export async function processAvatarComponent(
       .raw()
       .toBuffer({ resolveWithObject: true });
 
-    // Process pixels - make white/near-white transparent
     const pixels = new Uint8Array(data);
-    for (let i = 0; i < pixels.length; i += 4) {
-      const r = pixels[i];
-      const g = pixels[i + 1];
-      const b = pixels[i + 2];
+    const width = info.width;
+    const height = info.height;
 
-      // Check if pixel is white/near-white
-      if (r >= backgroundThreshold && g >= backgroundThreshold && b >= backgroundThreshold) {
-        pixels[i + 3] = 0; // Set alpha to 0 (transparent)
+    // Step 1: Flood fill from edges to find connected background
+    const backgroundPixels = floodFillFromEdges(pixels, width, height, backgroundThreshold);
+
+    // Step 2: Make background pixels transparent
+    for (const idx of backgroundPixels) {
+      pixels[idx + 3] = 0; // Set alpha to 0
+    }
+
+    // Step 3: Clean up small isolated white specs
+    if (cleanupSpecs) {
+      // Find remaining white pixels that aren't transparent
+      const whitePixels = new Set<number>();
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (
+          pixels[i + 3] > 0 && // Not already transparent
+          isWhitePixel(pixels[i], pixels[i + 1], pixels[i + 2], backgroundThreshold)
+        ) {
+          whitePixels.add(i);
+        }
+      }
+
+      // Find connected components of white pixels
+      const visited = new Set<number>();
+      const getIdx = (x: number, y: number) => (y * width + x) * 4;
+      const getCoords = (idx: number) => {
+        const pixelNum = idx / 4;
+        return [pixelNum % width, Math.floor(pixelNum / width)];
+      };
+
+      for (const startIdx of whitePixels) {
+        if (visited.has(startIdx)) continue;
+
+        // BFS to find connected component
+        const component: number[] = [];
+        const queue = [startIdx];
+        visited.add(startIdx);
+
+        while (queue.length > 0) {
+          const idx = queue.shift()!;
+          component.push(idx);
+          const [x, y] = getCoords(idx);
+
+          // Check 8-connected neighbors
+          for (let dx = -1; dx <= 1; dx++) {
+            for (let dy = -1; dy <= 1; dy++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+              const nidx = getIdx(nx, ny);
+              if (!visited.has(nidx) && whitePixels.has(nidx)) {
+                visited.add(nidx);
+                queue.push(nidx);
+              }
+            }
+          }
+        }
+
+        // If component is small enough, make it transparent (it's a spec)
+        if (component.length <= specSizeThreshold) {
+          for (const idx of component) {
+            pixels[idx + 3] = 0;
+          }
+        }
       }
     }
 
