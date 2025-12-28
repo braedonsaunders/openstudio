@@ -79,8 +79,10 @@ export function PermissionModal({ member, onClose, onSave }: PermissionModalProp
   };
 
   const togglePermission = (category: keyof RoomPermissions, permission: string) => {
-    const currentValue = (effectivePermissions[category] as Record<string, boolean>)[permission];
-    const roleDefault = (rolePermissions[category] as Record<string, boolean>)[permission];
+    const categoryPerms = effectivePermissions[category] as unknown as Record<string, boolean>;
+    const rolePerms = rolePermissions[category] as unknown as Record<string, boolean>;
+    const currentValue = categoryPerms[permission];
+    const roleDefault = rolePerms[permission];
     const newValue = !currentValue;
 
     setCustomPermissions((prev) => {
@@ -89,21 +91,21 @@ export function PermissionModal({ member, onClose, onSave }: PermissionModalProp
       // If new value equals role default, remove the override
       if (newValue === roleDefault) {
         if (newCustom[category]) {
-          const categoryPerms = { ...(newCustom[category] as Record<string, boolean>) };
-          delete categoryPerms[permission];
+          const catPerms = { ...(newCustom[category] as unknown as Record<string, boolean>) };
+          delete catPerms[permission];
 
-          if (Object.keys(categoryPerms).length === 0) {
+          if (Object.keys(catPerms).length === 0) {
             delete newCustom[category];
           } else {
-            (newCustom[category] as Record<string, boolean>) = categoryPerms;
+            (newCustom as Record<string, unknown>)[category] = catPerms;
           }
         }
       } else {
         // Add/update the override
         if (!newCustom[category]) {
-          (newCustom[category] as Record<string, boolean>) = {};
+          (newCustom as Record<string, unknown>)[category] = {};
         }
-        (newCustom[category] as Record<string, boolean>)[permission] = newValue;
+        ((newCustom as Record<string, unknown>)[category] as Record<string, boolean>)[permission] = newValue;
       }
 
       return newCustom;
@@ -119,13 +121,13 @@ export function PermissionModal({ member, onClose, onSave }: PermissionModalProp
   };
 
   const countCategoryOverrides = (category: keyof RoomPermissions): number => {
-    const categoryCustom = customPermissions[category] as Record<string, boolean> | undefined;
+    const categoryCustom = customPermissions[category] as unknown as Record<string, boolean> | undefined;
     if (!categoryCustom) return 0;
     return Object.keys(categoryCustom).length;
   };
 
   const countCategoryEnabled = (category: keyof RoomPermissions): { enabled: number; total: number } => {
-    const perms = effectivePermissions[category] as Record<string, boolean>;
+    const perms = effectivePermissions[category] as unknown as Record<string, boolean>;
     const values = Object.values(perms);
     return {
       enabled: values.filter((v) => v).length,
@@ -245,7 +247,7 @@ export function PermissionModal({ member, onClose, onSave }: PermissionModalProp
                       <div className="px-3 pb-3 pt-1 border-t border-gray-200 dark:border-white/5">
                         <div className="grid grid-cols-2 gap-2">
                           {Object.entries(category.permissions).map(([permKey, permLabel]) => {
-                            const isEnabled = (effectivePermissions[categoryKey] as Record<string, boolean>)[permKey];
+                            const isEnabled = (effectivePermissions[categoryKey] as unknown as Record<string, boolean>)[permKey];
                             const isOverridden = isPermissionOverridden(
                               selectedRole,
                               categoryKey,
