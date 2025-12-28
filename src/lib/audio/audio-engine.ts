@@ -55,6 +55,12 @@ export class AudioEngine {
   private stemSources: Map<string, AudioBufferSourceNode> = new Map();
   private stemBuffers: Map<string, AudioBuffer> = new Map();
   private stemGains: Map<string, GainNode> = new Map();
+
+  // WebRTC broadcast support - mixes MIDI audio with mic for streaming
+  private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
+  private broadcastMixerGain: GainNode | null = null;
+  private midiSourceNode: MediaStreamAudioSourceNode | null = null;
+  private midiMixGain: GainNode | null = null;
   private stemMixState: StemMixState = {
     vocals: { enabled: true, volume: 1 },
     drums: { enabled: true, volume: 1 },
@@ -140,12 +146,18 @@ export class AudioEngine {
       ? Math.max(2, (channelConfig.leftChannel || 0) + 1) // Need at least leftChannel+1 channels
       : channelConfig?.channelCount || 2;
 
-    const audioConstraints: MediaTrackConstraints = {
+    // Note: 'latency' is a valid Chrome/Edge constraint for requesting minimum capture latency
+    // but it's not in the standard TypeScript MediaTrackConstraints type definition.
+    // We use a type assertion to include this experimental low-latency hint.
+    const audioConstraints: MediaTrackConstraints & { latency?: number } = {
       echoCancellation,
       noiseSuppression,
       autoGainControl,
       sampleRate,
       channelCount: requestedChannelCount,
+      // Request minimum capture latency for live jamming (Chrome/Edge support)
+      // This hints to the browser to minimize capture buffer size
+      latency: 0,
     };
 
     // Add device constraint if specified
@@ -416,6 +428,58 @@ export class AudioEngine {
   }
 
   /**
+   * Enable or disable "Live Jamming Mode" for ultra-low latency.
+   * This mode activates multiple optimizations:
+   * - Aggressive jitter buffer settings (min latency)
+   * - Effects chain bypass optimization
+   * - Lower buffer targets
+   *
+   * Use this mode for real-time collaborative jamming where
+   * latency is critical. May sacrifice some audio stability
+   * on poor network connections.
+   *
+   * @param enabled Whether to enable live jamming mode
+   */
+  setLiveJammingMode(enabled: boolean): void {
+    // Set jitter buffer mode
+    if (enabled) {
+      this.jitterBuffer.setMode('live-jamming');
+    } else {
+      this.jitterBuffer.setMode('balanced');
+    }
+
+    // Set effects processor low-latency mode
+    if (this.localEffectsProcessor) {
+      this.localEffectsProcessor.setLowLatencyMode(enabled);
+    }
+
+    console.log(`[AudioEngine] Live Jamming Mode: ${enabled ? 'ENABLED' : 'DISABLED'}`);
+    console.log(`[AudioEngine] Estimated latency savings: ${enabled ? '~30-40ms round-trip' : 'none (balanced mode)'}`);
+  }
+
+  /**
+   * Check if live jamming mode is currently enabled
+   */
+  isLiveJammingMode(): boolean {
+    return this.jitterBuffer.getMode() === 'live-jamming';
+  }
+
+  /**
+   * Get the current jitter buffer mode
+   */
+  getJitterBufferMode(): 'live-jamming' | 'balanced' | 'stable' | 'custom' {
+    return this.jitterBuffer.getMode();
+  }
+
+  /**
+   * Set the jitter buffer mode directly
+   * @param mode 'live-jamming' | 'balanced' | 'stable'
+   */
+  setJitterBufferMode(mode: 'live-jamming' | 'balanced' | 'stable'): void {
+    this.jitterBuffer.setMode(mode);
+  }
+
+  /**
    * Get metering data from the local track effects
    */
   getLocalEffectsMetering(): {
@@ -427,6 +491,95 @@ export class AudioEngine {
       return this.localEffectsProcessor.getMeteringData();
     }
     return null;
+  }
+
+  /**
+   * Create a mixed broadcast stream for WebRTC that combines:
+   * - Local mic/instrument input (after effects processing)
+   * - MIDI loop audio (optional)
+   *
+   * This is the stream that should be sent to other participants in a jam session.
+   * @param midiStream Optional MediaStream from SoundEngine.enableBroadcast()
+   * @param micVolume Volume for mic input (0-1)
+   * @param midiVolume Volume for MIDI audio (0-1)
+   * @returns MediaStream containing the mixed audio for WebRTC
+   */
+  createBroadcastStream(midiStream?: MediaStream | null, micVolume: number = 1, midiVolume: number = 0.8): MediaStream | null {
+    if (!this.audioContext) {
+      console.warn('[AudioEngine] Cannot create broadcast stream: audio context not initialized');
+      return null;
+    }
+
+    // Create broadcast destination if not exists
+    if (!this.broadcastDestination) {
+      this.broadcastDestination = this.audioContext.createMediaStreamDestination();
+      this.broadcastMixerGain = this.audioContext.createGain();
+      this.broadcastMixerGain.connect(this.broadcastDestination);
+    }
+
+    // Connect local effects output to broadcast mixer
+    // The signal flow: effectsProcessor -> muteGain -> broadcastMixerGain -> broadcastDestination
+    if (this.localMuteGain && this.broadcastMixerGain) {
+      // Create a separate gain for mic volume in broadcast mix
+      const micBroadcastGain = this.audioContext.createGain();
+      micBroadcastGain.gain.value = micVolume;
+      this.localMuteGain.connect(micBroadcastGain);
+      micBroadcastGain.connect(this.broadcastMixerGain);
+    }
+
+    // Connect MIDI stream to broadcast mixer if provided
+    if (midiStream && this.broadcastMixerGain) {
+      // Clean up previous MIDI source if exists
+      if (this.midiSourceNode) {
+        this.midiSourceNode.disconnect();
+      }
+      if (this.midiMixGain) {
+        this.midiMixGain.disconnect();
+      }
+
+      this.midiSourceNode = this.audioContext.createMediaStreamSource(midiStream);
+      this.midiMixGain = this.audioContext.createGain();
+      this.midiMixGain.gain.value = midiVolume;
+
+      this.midiSourceNode.connect(this.midiMixGain);
+      this.midiMixGain.connect(this.broadcastMixerGain);
+
+      console.log('[AudioEngine] MIDI stream connected to broadcast mix');
+    }
+
+    console.log('[AudioEngine] Broadcast stream created');
+    return this.broadcastDestination.stream;
+  }
+
+  /**
+   * Update the MIDI volume in the broadcast mix
+   */
+  setBroadcastMidiVolume(volume: number): void {
+    if (this.midiMixGain) {
+      this.midiMixGain.gain.value = Math.max(0, Math.min(1, volume));
+    }
+  }
+
+  /**
+   * Get the broadcast stream if it has been created
+   */
+  getBroadcastStream(): MediaStream | null {
+    return this.broadcastDestination?.stream || null;
+  }
+
+  /**
+   * Disconnect MIDI from broadcast (e.g., when stopping loops)
+   */
+  disconnectMidiFromBroadcast(): void {
+    if (this.midiSourceNode) {
+      this.midiSourceNode.disconnect();
+      this.midiSourceNode = null;
+    }
+    if (this.midiMixGain) {
+      this.midiMixGain.disconnect();
+      this.midiMixGain = null;
+    }
+    console.log('[AudioEngine] MIDI disconnected from broadcast');
   }
 
   async loadBackingTrack(url: string): Promise<void> {
@@ -848,6 +1001,12 @@ export class AudioEngine {
       this.localStream.getTracks().forEach((track) => track.stop());
       this.localStream = null;
     }
+
+    // Clean up broadcast resources
+    this.disconnectMidiFromBroadcast();
+    this.broadcastMixerGain?.disconnect();
+    this.broadcastMixerGain = null;
+    this.broadcastDestination = null;
 
     this.localSourceNode?.disconnect();
     this.localSourceNode = null;

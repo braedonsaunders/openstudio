@@ -188,6 +188,10 @@ export class UnifiedEffectsProcessor {
   private settings: UnifiedEffectsChain;
   private onSettingsChange?: (settings: UnifiedEffectsChain) => void;
 
+  // Low-latency mode optimization
+  private lowLatencyMode: boolean = false;
+  private directBypassNode: GainNode | null = null;
+
   constructor(
     audioContext: AudioContext,
     initialSettings?: Partial<UnifiedEffectsChain>,
@@ -430,13 +434,140 @@ export class UnifiedEffectsProcessor {
     this.updateSettings(DEFAULT_UNIFIED_EFFECTS);
   }
 
+  /**
+   * Enable low-latency mode for live jamming.
+   * In this mode, when no effects are enabled (except limiter),
+   * audio bypasses the entire effects chain for ~1-2ms latency savings.
+   *
+   * The signal flow becomes: input -> limiter -> output
+   * instead of: input -> 15 effect nodes -> output
+   */
+  setLowLatencyMode(enabled: boolean): void {
+    if (this.lowLatencyMode === enabled) return;
+
+    this.lowLatencyMode = enabled;
+    console.log(`[UnifiedEffectsProcessor] Low-latency mode: ${enabled ? 'ON' : 'OFF'}`);
+
+    this.optimizeSignalChain();
+  }
+
+  /**
+   * Check if low-latency mode is enabled
+   */
+  isLowLatencyMode(): boolean {
+    return this.lowLatencyMode;
+  }
+
+  /**
+   * Optimize the signal chain based on which effects are enabled.
+   * In low-latency mode, if no effects are enabled (except limiter),
+   * creates a direct bypass path to minimize node traversal.
+   */
+  private optimizeSignalChain(): void {
+    if (!this.lowLatencyMode) {
+      // Disable bypass and use normal signal chain
+      this.disableDirectBypass();
+      return;
+    }
+
+    // Check if any effects (except limiter) are enabled
+    const anyEffectEnabled =
+      this.settings.wah.enabled ||
+      this.settings.overdrive.enabled ||
+      this.settings.distortion.enabled ||
+      this.settings.ampSimulator.enabled ||
+      this.settings.cabinet.enabled ||
+      this.settings.noiseGate.enabled ||
+      this.settings.eq.enabled ||
+      this.settings.compressor.enabled ||
+      this.settings.chorus.enabled ||
+      this.settings.flanger.enabled ||
+      this.settings.phaser.enabled ||
+      this.settings.delay.enabled ||
+      this.settings.tremolo.enabled ||
+      this.settings.reverb.enabled;
+
+    if (!anyEffectEnabled) {
+      // All effects are disabled - create direct bypass to limiter
+      this.enableDirectBypass();
+    } else {
+      // Some effects are enabled - use normal signal chain
+      this.disableDirectBypass();
+    }
+  }
+
+  /**
+   * Create direct bypass path: input -> limiter -> output
+   * Saves latency by skipping disabled effect nodes
+   */
+  private enableDirectBypass(): void {
+    if (this.directBypassNode) return; // Already enabled
+
+    // Create a direct bypass gain node
+    this.directBypassNode = this.audioContext.createGain();
+    this.directBypassNode.gain.value = 1;
+
+    // Disconnect normal signal chain from input
+    this.inputGain.disconnect();
+
+    // Connect input directly to limiter via bypass node
+    this.inputGain.connect(this.directBypassNode);
+    this.directBypassNode.connect(this.limiter.getInputNode());
+
+    console.log('[UnifiedEffectsProcessor] Direct bypass enabled (all effects off)');
+  }
+
+  /**
+   * Disable direct bypass and restore normal signal chain
+   */
+  private disableDirectBypass(): void {
+    if (!this.directBypassNode) return; // Already disabled
+
+    // Disconnect bypass
+    this.inputGain.disconnect();
+    this.directBypassNode.disconnect();
+    this.directBypassNode = null;
+
+    // Restore normal signal chain
+    this.inputGain.connect(this.wah.getInputNode());
+
+    console.log('[UnifiedEffectsProcessor] Direct bypass disabled (using effects chain)');
+  }
+
+  /**
+   * Get the estimated latency added by the effects chain in milliseconds.
+   * This is a rough estimate based on the number of active nodes.
+   */
+  getEstimatedLatency(): number {
+    if (this.lowLatencyMode && !this.directBypassNode) {
+      // All effects bypassed via direct path
+      return 0.1; // Just limiter
+    }
+
+    // Count enabled effects (each adds ~0.1-0.2ms of processing latency)
+    const enabledCount = this.getEnabledEffects().length;
+    return enabledCount * 0.15; // Rough estimate
+  }
+
   private notifySettingsChange(): void {
     this.onSettingsChange?.(this.getSettings());
+
+    // Re-optimize signal chain when settings change
+    if (this.lowLatencyMode) {
+      this.optimizeSignalChain();
+    }
   }
 
   // Clean up resources
   dispose(): void {
     this.disconnect();
+
+    // Clean up bypass node if exists
+    if (this.directBypassNode) {
+      this.directBypassNode.disconnect();
+      this.directBypassNode = null;
+    }
+
     this.wah.dispose();
     this.overdrive.dispose();
     this.distortion.dispose();
