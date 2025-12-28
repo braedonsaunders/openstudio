@@ -33,6 +33,7 @@ import {
   Sun,
   Moon,
   Palette,
+  Music,
 } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import {
@@ -42,8 +43,16 @@ import {
   UnlockRuleEditor,
 } from '@/components/admin/avatar';
 import type { AvatarCategory, AvatarUnlockRule } from '@/types/avatar';
+import {
+  LoopLibrary,
+  LoopCategoryManager,
+  InstrumentLibrary,
+  InstantBandManager,
+} from '@/components/admin/loops';
+import type { LoopDefinition, LoopCategoryInfo, InstantBandPreset } from '@/types/loops';
+import type { InstrumentDefinition, InstrumentCategory } from '@/lib/audio/instrument-registry';
 
-type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics' | 'avatars';
+type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics' | 'avatars' | 'loops';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -179,6 +188,12 @@ export default function AdminPage() {
               active={activeTab === 'avatars'}
               onClick={() => setActiveTab('avatars')}
             />
+            <NavItem
+              icon={Music}
+              label="Loops & Instruments"
+              active={activeTab === 'loops'}
+              onClick={() => setActiveTab('loops')}
+            />
           </div>
         </nav>
 
@@ -190,6 +205,7 @@ export default function AdminPage() {
           {activeTab === 'reports' && <ReportsTab />}
           {activeTab === 'analytics' && <AnalyticsTab />}
           {activeTab === 'avatars' && <AvatarsTab />}
+          {activeTab === 'loops' && <LoopsTab />}
         </main>
       </div>
     </div>
@@ -976,6 +992,118 @@ function AvatarsTab() {
         />
       )}
       {subTab === 'unlocks' && <UnlockRuleEditor onRefresh={loadData} />}
+    </div>
+  );
+}
+
+type LoopSubTab = 'library' | 'categories' | 'instruments' | 'presets';
+
+function LoopsTab() {
+  const [subTab, setSubTab] = useState<LoopSubTab>('library');
+  const [loopCategories, setLoopCategories] = useState<LoopCategoryInfo[]>([]);
+  const [loops, setLoops] = useState<LoopDefinition[]>([]);
+  const [instrumentCategories, setInstrumentCategories] = useState<InstrumentCategory[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [catRes, loopsRes, instCatRes] = await Promise.all([
+        adminGet('/api/admin/loops/categories'),
+        adminGet('/api/admin/loops'),
+        adminGet('/api/admin/instruments/categories'),
+      ]);
+
+      if (catRes.ok) {
+        const cats = await catRes.json();
+        setLoopCategories(cats);
+      }
+      if (loopsRes.ok) {
+        const loopsData = await loopsRes.json();
+        setLoops(loopsData);
+      }
+      if (instCatRes.ok) {
+        const instCats = await instCatRes.json();
+        setInstrumentCategories(instCats);
+      }
+    } catch (error) {
+      console.error('Failed to load loop data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const subTabItems = [
+    { id: 'library' as const, label: 'Loop Library', icon: Music },
+    { id: 'categories' as const, label: 'Categories', icon: BarChart3 },
+    { id: 'instruments' as const, label: 'Instruments', icon: Palette },
+    { id: 'presets' as const, label: 'Instant Bands', icon: Users },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-8 h-8 text-gray-400 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Loops & Instruments</h2>
+        <Button variant="ghost" size="sm" onClick={loadData}>
+          <RefreshCw className="w-4 h-4" />
+        </Button>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-800">
+        {subTabItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setSubTab(item.id)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              subTab === item.id
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <item.icon className="w-4 h-4" />
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Sub-tab content */}
+      {subTab === 'library' && (
+        <LoopLibrary
+          categories={loopCategories}
+          onRefresh={loadData}
+        />
+      )}
+      {subTab === 'categories' && (
+        <LoopCategoryManager
+          categories={loopCategories}
+          onRefresh={loadData}
+        />
+      )}
+      {subTab === 'instruments' && (
+        <InstrumentLibrary
+          categories={instrumentCategories}
+          onRefresh={loadData}
+        />
+      )}
+      {subTab === 'presets' && (
+        <InstantBandManager
+          loops={loops}
+          onRefresh={loadData}
+        />
+      )}
     </div>
   );
 }

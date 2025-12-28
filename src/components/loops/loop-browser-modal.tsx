@@ -7,13 +7,11 @@ import { Button } from '../ui/button';
 import { Slider } from '../ui/slider';
 import { useContextMenu } from '../ui/context-menu';
 import {
-  LOOP_LIBRARY,
-  LOOP_CATEGORIES,
+  useLoopLibrary,
   getLoopsByCategory,
   getLoopsBySubcategory,
-  filterLoops,
-  INSTANT_BAND_PRESETS,
-} from '@/lib/audio/loop-library';
+  getLoopById,
+} from '@/hooks/use-loop-library';
 import { SoundEngine } from '@/lib/audio/sound-engine';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useCustomLoopsStore } from '@/stores/custom-loops-store';
@@ -57,6 +55,9 @@ export function LoopBrowserModal({
   const { previewingLoopId, setPreviewingLoop, masterTempo } = useLoopTracksStore();
   const { getAllLoops: getAllCustomLoops, deleteLoop: deleteCustomLoop, createLoop: createCustomLoop, setUserId, syncFromServer } = useCustomLoopsStore();
   const { showContextMenu, ContextMenuComponent } = useContextMenu();
+
+  // Fetch loop library from API (with fallback to hardcoded data)
+  const { categories: LOOP_CATEGORIES, loops: LOOP_LIBRARY, presets: INSTANT_BAND_PRESETS, isLoading: libraryLoading } = useLoopLibrary();
 
   // Dark mode detection
   const [isDark, setIsDark] = useState(false);
@@ -123,14 +124,14 @@ export function LoopBrowserModal({
     if (selectedCategory === 'my-loops') {
       loops = customLoops;
     } else if (selectedCategory) {
-      loops = getLoopsByCategory(selectedCategory);
+      loops = getLoopsByCategory(LOOP_LIBRARY, selectedCategory);
     } else {
       loops = LOOP_LIBRARY;
     }
 
     // Apply subcategory filter (skip for custom loops)
     if (selectedSubcategory && selectedCategory !== 'my-loops') {
-      loops = getLoopsBySubcategory(selectedSubcategory);
+      loops = getLoopsBySubcategory(LOOP_LIBRARY, selectedSubcategory);
     }
 
     // Apply search
@@ -152,7 +153,7 @@ export function LoopBrowserModal({
     }
 
     return loops;
-  }, [selectedCategory, selectedSubcategory, searchQuery, bpmRange, intensityFilter, customLoops]);
+  }, [selectedCategory, selectedSubcategory, searchQuery, bpmRange, intensityFilter, customLoops, LOOP_LIBRARY]);
 
   // Preview a loop
   const playPreview = useCallback(
@@ -423,7 +424,7 @@ export function LoopBrowserModal({
                   onClick={() => {
                     // Add all loops from preset
                     for (const loopId of preset.loops) {
-                      const loop = LOOP_LIBRARY.find((l) => l.id === loopId);
+                      const loop = getLoopById(LOOP_LIBRARY, loopId);
                       if (loop) {
                         handleAddLoop(loop);
                       }
@@ -564,6 +565,7 @@ export function LoopBrowserModal({
                       isPlaying={previewingLoopId === loop.id}
                       isDark={isDark}
                       isCustom={isCustom}
+                      categories={LOOP_CATEGORIES}
                       onPlay={() => {
                         if (previewingLoopId === loop.id) {
                           stopPreview();
@@ -630,6 +632,7 @@ interface LoopCardProps {
   isPlaying: boolean;
   isDark: boolean;
   isCustom?: boolean;
+  categories: { id: string; icon: string }[];
   onPlay: () => void;
   onAdd: () => void;
   onEdit?: () => void;
@@ -637,9 +640,9 @@ interface LoopCardProps {
   onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-function LoopCard({ loop, isPlaying, isDark, isCustom, onPlay, onAdd, onEdit, onDelete, onContextMenu }: LoopCardProps) {
+function LoopCard({ loop, isPlaying, isDark, isCustom, categories, onPlay, onAdd, onEdit, onDelete, onContextMenu }: LoopCardProps) {
   const categoryIcon =
-    LOOP_CATEGORIES.find((c) => c.id === loop.category)?.icon || '🎵';
+    categories.find((c) => c.id === loop.category)?.icon || '🎵';
 
   return (
     <div
