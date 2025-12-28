@@ -6,6 +6,7 @@ import {
   updateInstrumentCategory,
   deleteInstrumentCategory,
 } from '@/lib/loops/supabase';
+import { getAllCategories } from '@/lib/audio/instrument-registry';
 
 // GET /api/admin/instruments/categories - List all instrument categories
 export async function GET(req: NextRequest) {
@@ -16,13 +17,17 @@ export async function GET(req: NextRequest) {
     }
 
     const categories = await getAllInstrumentCategories();
+
+    // Fall back to hardcoded data if database is empty
+    if (categories.length === 0) {
+      return NextResponse.json(getAllCategories());
+    }
+
     return NextResponse.json(categories);
   } catch (error) {
     console.error('Failed to get instrument categories:', error);
-    return NextResponse.json(
-      { error: 'Failed to get instrument categories' },
-      { status: 500 }
-    );
+    // Return hardcoded data as fallback on error
+    return NextResponse.json(getAllCategories());
   }
 }
 
