@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { cn, formatLatency } from '@/lib/utils';
 import { useAudioStore } from '@/stores/audio-store';
 import { Tooltip } from '@/components/ui/tooltip';
@@ -29,11 +29,324 @@ import {
   Lock,
   Music2,
   Hand,
+  ChevronDown,
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { MetronomeInline } from '@/components/daw/metronome-controls';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
+
+// =============================================================================
+// BPM Badge Component - Inline editable with mode switching
+// =============================================================================
+function BpmBadge() {
+  const [isEditing, setIsEditing] = useState(false);
+  const [showModeMenu, setShowModeMenu] = useState(false);
+  const [editValue, setEditValue] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const tempo = useSessionTempoStore(selectTempo);
+  const source = useSessionTempoStore(selectSource);
+  const trackTempo = useSessionTempoStore((s) => s.trackTempo);
+  const analyzerTempo = useSessionTempoStore((s) => s.analyzerTempo);
+  const setSource = useSessionTempoStore((s) => s.setSource);
+  const setManualTempo = useSessionTempoStore((s) => s.setManualTempo);
+
+  const sourceIcons: Record<TempoSource, typeof Lock> = {
+    manual: Lock,
+    track: Music2,
+    analyzer: Activity,
+    tap: Hand,
+  };
+
+  const SourceIcon = sourceIcons[source];
+
+  // Close menus on outside click
+  useEffect(() => {
+    if (!showModeMenu && !isEditing) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowModeMenu(false);
+        setIsEditing(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showModeMenu, isEditing]);
+
+  // Focus input when editing starts
+  useEffect(() => {
+    if (isEditing && inputRef.current) {
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [isEditing]);
+
+  const handleValueClick = () => {
+    if (source === 'manual' || source === 'tap') {
+      setEditValue(Math.round(tempo).toString());
+      setIsEditing(true);
+    }
+  };
+
+  const handleSubmit = () => {
+    const value = parseInt(editValue);
+    if (!isNaN(value) && value >= 40 && value <= 240) {
+      setManualTempo(value);
+    }
+    setIsEditing(false);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Enter') {
+      handleSubmit();
+    } else if (e.key === 'Escape') {
+      setIsEditing(false);
+    }
+  };
+
+  const cycleSource = () => {
+    const sources: TempoSource[] = ['manual', 'track', 'analyzer', 'tap'];
+    const availableSources = sources.filter((s) => {
+      if (s === 'track') return trackTempo !== null;
+      if (s === 'analyzer') return analyzerTempo !== null;
+      return true;
+    });
+    const currentIndex = availableSources.indexOf(source);
+    const nextIndex = (currentIndex + 1) % availableSources.length;
+    setSource(availableSources[nextIndex]);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="flex items-center gap-0.5">
+        {/* Source icon - clickable to cycle modes */}
+        <Tooltip content={`Mode: ${source === 'manual' ? 'Manual' : source === 'track' ? 'Track' : source === 'analyzer' ? 'Auto' : 'Tap'} (click to change)`}>
+          <button
+            onClick={cycleSource}
+            className={cn(
+              'p-1.5 rounded-l-lg border border-r-0 transition-all',
+              'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+              'hover:bg-gray-200 dark:hover:bg-white/10'
+            )}
+          >
+            <SourceIcon className={cn(
+              'w-3.5 h-3.5 transition-colors',
+              source === 'analyzer' ? 'text-indigo-500 dark:text-indigo-400' :
+              source === 'track' ? 'text-emerald-500 dark:text-emerald-400' :
+              source === 'tap' ? 'text-orange-500 dark:text-orange-400' :
+              'text-gray-400 dark:text-zinc-500'
+            )} />
+          </button>
+        </Tooltip>
+
+        {/* Value display/input */}
+        <div
+          onClick={handleValueClick}
+          className={cn(
+            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border transition-all',
+            'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+            (source === 'manual' || source === 'tap') && 'cursor-text hover:bg-gray-200 dark:hover:bg-white/10'
+          )}
+        >
+          {isEditing ? (
+            <input
+              ref={inputRef}
+              type="number"
+              value={editValue}
+              onChange={(e) => setEditValue(e.target.value)}
+              onBlur={handleSubmit}
+              onKeyDown={handleKeyDown}
+              className="w-10 bg-transparent text-sm font-semibold text-gray-900 dark:text-white outline-none text-center"
+              min={40}
+              max={240}
+            />
+          ) : (
+            <span className={cn(
+              'text-sm font-semibold',
+              source === 'analyzer' ? 'text-indigo-600 dark:text-indigo-400' :
+              source === 'track' ? 'text-emerald-600 dark:text-emerald-400' :
+              'text-gray-900 dark:text-white'
+            )}>
+              {Math.round(tempo)}
+            </span>
+          )}
+          <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// =============================================================================
+// Key Badge Component - Inline editable with mode switching
+// =============================================================================
+function KeyBadge() {
+  const [showKeyMenu, setShowKeyMenu] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const { key: sessionKey, scale: sessionKeyScale } = useSessionTempoStore(useShallow(selectKey));
+  const keySource = useSessionTempoStore((s) => s.keySource);
+  const trackKey = useSessionTempoStore((s) => s.trackKey);
+  const analyzerKey = useSessionTempoStore((s) => s.analyzerKey);
+  const setKeySource = useSessionTempoStore((s) => s.setKeySource);
+  const setManualKey = useSessionTempoStore((s) => s.setManualKey);
+
+  type KeySource = 'manual' | 'track' | 'analyzer';
+  const sourceIcons: Record<KeySource, typeof Lock> = {
+    manual: Lock,
+    track: Music2,
+    analyzer: Activity,
+  };
+
+  const SourceIcon = sourceIcons[keySource];
+
+  const keyColors: Record<string, string> = {
+    'C': 'bg-red-500',
+    'C#': 'bg-red-600', 'Db': 'bg-red-600',
+    'D': 'bg-orange-500',
+    'D#': 'bg-orange-600', 'Eb': 'bg-orange-600',
+    'E': 'bg-yellow-500',
+    'F': 'bg-lime-500',
+    'F#': 'bg-green-500', 'Gb': 'bg-green-500',
+    'G': 'bg-emerald-500',
+    'G#': 'bg-teal-500', 'Ab': 'bg-teal-500',
+    'A': 'bg-cyan-500',
+    'A#': 'bg-blue-500', 'Bb': 'bg-blue-500',
+    'B': 'bg-purple-500',
+  };
+
+  const allKeys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const keyColor = sessionKey ? keyColors[sessionKey] || 'bg-zinc-500' : 'bg-zinc-600';
+
+  // Close menu on outside click
+  useEffect(() => {
+    if (!showKeyMenu) return;
+    const handleClick = (e: MouseEvent) => {
+      if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowKeyMenu(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [showKeyMenu]);
+
+  const cycleSource = () => {
+    const sources: KeySource[] = ['manual', 'track', 'analyzer'];
+    const availableSources = sources.filter((s) => {
+      if (s === 'track') return trackKey !== null;
+      if (s === 'analyzer') return analyzerKey !== null;
+      return true;
+    });
+    const currentIndex = availableSources.indexOf(keySource);
+    const nextIndex = (currentIndex + 1) % availableSources.length;
+    setKeySource(availableSources[nextIndex]);
+  };
+
+  const handleKeySelect = (key: string, scale: 'major' | 'minor') => {
+    setManualKey(key, scale);
+    setShowKeyMenu(false);
+  };
+
+  return (
+    <div ref={containerRef} className="relative">
+      <div className="flex items-center gap-0.5">
+        {/* Source icon - clickable to cycle modes */}
+        <Tooltip content={`Mode: ${keySource === 'manual' ? 'Manual' : keySource === 'track' ? 'Track' : 'Auto'} (click to change)`}>
+          <button
+            onClick={cycleSource}
+            className={cn(
+              'p-1.5 rounded-l-lg border border-r-0 transition-all',
+              'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+              'hover:bg-gray-200 dark:hover:bg-white/10'
+            )}
+          >
+            <SourceIcon className={cn(
+              'w-3.5 h-3.5 transition-colors',
+              keySource === 'analyzer' ? 'text-indigo-500 dark:text-indigo-400' :
+              keySource === 'track' ? 'text-emerald-500 dark:text-emerald-400' :
+              'text-gray-400 dark:text-zinc-500'
+            )} />
+          </button>
+        </Tooltip>
+
+        {/* Value display - clickable to open key picker (manual mode only) */}
+        <button
+          onClick={() => keySource === 'manual' && setShowKeyMenu(!showKeyMenu)}
+          className={cn(
+            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border transition-all',
+            'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+            keySource === 'manual' && 'hover:bg-gray-200 dark:hover:bg-white/10'
+          )}
+        >
+          {sessionKey ? (
+            <>
+              <div className={cn('w-2.5 h-2.5 rounded-full', keyColor)} />
+              <span className={cn(
+                'text-sm font-semibold',
+                keySource === 'analyzer' ? 'text-indigo-600 dark:text-indigo-400' :
+                keySource === 'track' ? 'text-emerald-600 dark:text-emerald-400' :
+                'text-gray-900 dark:text-white'
+              )}>
+                {sessionKey}
+                <span className="text-gray-500 dark:text-zinc-400">{sessionKeyScale === 'minor' ? 'm' : ''}</span>
+              </span>
+            </>
+          ) : (
+            <span className="text-sm text-gray-400 dark:text-zinc-500">Key</span>
+          )}
+          {keySource === 'manual' && (
+            <ChevronDown className={cn(
+              'w-3 h-3 text-gray-400 dark:text-zinc-500 transition-transform',
+              showKeyMenu && 'rotate-180'
+            )} />
+          )}
+        </button>
+      </div>
+
+      {/* Key picker dropdown */}
+      {showKeyMenu && (
+        <div className="absolute top-full right-0 mt-1 p-2 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[180px]">
+          <div className="text-[10px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wide mb-2 px-1">Major</div>
+          <div className="grid grid-cols-4 gap-1 mb-2">
+            {allKeys.map((k) => (
+              <button
+                key={`${k}-major`}
+                onClick={() => handleKeySelect(k, 'major')}
+                className={cn(
+                  'px-2 py-1 rounded text-xs font-medium transition-all',
+                  sessionKey === k && sessionKeyScale === 'major'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/10'
+                )}
+              >
+                {k}
+              </button>
+            ))}
+          </div>
+          <div className="text-[10px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wide mb-2 px-1">Minor</div>
+          <div className="grid grid-cols-4 gap-1">
+            {allKeys.map((k) => (
+              <button
+                key={`${k}-minor`}
+                onClick={() => handleKeySelect(k, 'minor')}
+                className={cn(
+                  'px-2 py-1 rounded text-xs font-medium transition-all',
+                  sessionKey === k && sessionKeyScale === 'minor'
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-gray-100 dark:bg-white/5 text-gray-700 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/10'
+                )}
+              >
+                {k}m
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
 
 interface TransportBarProps {
   roomId: string;
@@ -78,12 +391,6 @@ export function TransportBar({
   const getTracksByUser = useUserTracksStore((s) => s.getTracksByUser);
   const currentSong = useSongsStore((s) => s.getCurrentSong());
 
-  // Session tempo store - single source of truth for BPM and Key
-  const sessionTempo = useSessionTempoStore(selectTempo);
-  const tempoSource = useSessionTempoStore(selectSource);
-  const { key: sessionKey, scale: sessionKeyScale } = useSessionTempoStore(useShallow(selectKey));
-  const keySource = useSessionTempoStore((s) => s.keySource);
-
   // Check if there's something to play - either legacy queue track or song with tracks
   const hasPlayableContent = currentTrack || (currentSong && currentSong.tracks.length > 0);
 
@@ -96,14 +403,6 @@ export function TransportBar({
     const audioTrack = userTracks.find((t) => t.type !== 'midi');
     return audioTrack?.audioSettings.bufferSize ?? settings.bufferSize;
   }, [currentUser, getTracksByUser, settings.bufferSize]);
-
-  // Source icons mapping
-  const sourceIcons: Record<TempoSource | 'manual' | 'track' | 'analyzer', typeof Lock> = {
-    manual: Lock,
-    track: Music2,
-    analyzer: Activity,
-    tap: Hand,
-  };
 
   const handleCopyRoomId = useCallback(() => {
     navigator.clipboard.writeText(roomId);
@@ -123,26 +422,6 @@ export function TransportBar({
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
-
-  // Key color mapping
-  const keyColors: Record<string, string> = {
-    'C': 'bg-red-500',
-    'C#': 'bg-red-600', 'Db': 'bg-red-600',
-    'D': 'bg-orange-500',
-    'D#': 'bg-orange-600', 'Eb': 'bg-orange-600',
-    'E': 'bg-yellow-500',
-    'F': 'bg-lime-500',
-    'F#': 'bg-green-500', 'Gb': 'bg-green-500',
-    'G': 'bg-emerald-500',
-    'G#': 'bg-teal-500', 'Ab': 'bg-teal-500',
-    'A': 'bg-cyan-500',
-    'A#': 'bg-blue-500', 'Bb': 'bg-blue-500',
-    'B': 'bg-purple-500',
-  };
-
-  const keyColor = sessionKey ? keyColors[sessionKey] || 'bg-zinc-500' : 'bg-zinc-600';
-  const TempoSourceIcon = sourceIcons[tempoSource];
-  const KeySourceIcon = sourceIcons[keySource];
 
   return (
     <header className="h-14 bg-white dark:bg-[#12121a] border-b border-gray-200 dark:border-white/5 flex items-center px-4 gap-4 z-40 shrink-0">
@@ -383,62 +662,12 @@ export function TransportBar({
             masterGain={masterGain}
           />
         ) : (
-          /* BPM Badge (always visible - shows session tempo with source indicator) */
-          <Tooltip
-            content={
-              <div className="text-xs">
-                <div className="font-medium mb-1">Session Tempo</div>
-                <div className="text-zinc-400">
-                  Source: {tempoSource === 'manual' ? 'Manual' : tempoSource === 'track' ? 'Track' : tempoSource === 'analyzer' ? 'Auto-Detect' : 'Tap'}
-                </div>
-              </div>
-            }
-          >
-            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
-              <TempoSourceIcon className={cn(
-                'w-3.5 h-3.5',
-                tempoSource === 'analyzer' ? 'text-indigo-500 dark:text-indigo-400' :
-                tempoSource === 'track' ? 'text-emerald-500 dark:text-emerald-400' :
-                'text-gray-400 dark:text-zinc-500'
-              )} />
-              <span className="text-sm font-semibold text-gray-900 dark:text-white">{Math.round(sessionTempo)}</span>
-              <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
-            </div>
-          </Tooltip>
+          /* BPM Badge - Interactive with mode switching */
+          <BpmBadge />
         )}
 
-        {/* Key Badge (always visible - shows session key with source indicator) */}
-        <Tooltip
-          content={
-            <div className="text-xs">
-              <div className="font-medium mb-1">Session Key</div>
-              <div className="text-zinc-400">
-                Source: {keySource === 'manual' ? 'Manual' : keySource === 'track' ? 'Track' : 'Auto-Detect'}
-              </div>
-              {!sessionKey && <div className="text-zinc-500 mt-1">No key detected</div>}
-            </div>
-          }
-        >
-          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
-            <KeySourceIcon className={cn(
-              'w-3.5 h-3.5',
-              keySource === 'analyzer' ? 'text-indigo-500 dark:text-indigo-400' :
-              keySource === 'track' ? 'text-emerald-500 dark:text-emerald-400' :
-              'text-gray-400 dark:text-zinc-500'
-            )} />
-            {sessionKey ? (
-              <>
-                <div className={cn('w-2.5 h-2.5 rounded-full', keyColor)} />
-                <span className="text-sm font-semibold text-gray-900 dark:text-white">
-                  {sessionKey}
-                  <span className="text-gray-500 dark:text-zinc-400">{sessionKeyScale === 'minor' ? 'm' : ''}</span>
-                </span>
-              </>
-            ) : (
-              <span className="text-sm text-gray-400 dark:text-zinc-500">Key</span>
-            )}
-          </div>
-        </Tooltip>
+        {/* Key Badge - Interactive with mode switching and key picker */}
+        <KeyBadge />
 
         <div className="h-5 w-px bg-gray-200 dark:bg-white/10" />
 
