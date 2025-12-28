@@ -212,7 +212,7 @@ export interface GenerateImageRequest {
   prompt: string;
   negativePrompt?: string;
   presetId?: string;
-  model?: 'flux-schnell' | 'flux-dev' | 'sdxl';
+  model?: 'cf-flux-schnell' | 'cf-sdxl-lightning' | 'cf-sdxl-base' | 'replicate-flux-schnell' | 'replicate-sdxl' | string;
   count?: number;
   seed?: number;
 }
