@@ -8,6 +8,7 @@ import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { useTrackPersistence } from '@/hooks/useTrackPersistence';
 import { useTrackAudioSync } from '@/hooks/useTrackAudioSync';
 import { useSessionTempoSync } from '@/hooks/use-session-tempo-sync';
+import { useLoopPlayback } from '@/hooks/useLoopPlayback';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
@@ -199,6 +200,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   // Sync session tempo from track/analyzer to loop scheduler
   useSessionTempoSync();
 
+  // Loop playback - connects loop scheduler to sound engine
+  const { initialize: initLoopPlayback, startLoop, stopLoop: stopLoopAudio } = useLoopPlayback();
+
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
 
@@ -276,11 +280,12 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       setDuration(songDuration);
     }
 
-    // Ensure audio engine is initialized
+    // Initialize audio systems
     try {
       await initialize();
+      await initLoopPlayback();
     } catch (err) {
-      console.error('Failed to initialize audio engine for Song playback:', err);
+      console.error('Failed to initialize audio for Song playback:', err);
       return;
     }
 
@@ -308,20 +313,21 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       }
     }
 
-    // Play all loop tracks in the Song
+    // Play all loop tracks in the Song - this sets state which triggers useLoopPlayback
     for (const track of songTracks) {
       if (track.type === 'loop' && track.loopTrack && !track.ref.muted) {
         // Check if this loop should be playing at current time
         const trackEndTime = track.ref.startOffset + track.duration;
         if (playbackOffset < trackEndTime) {
           console.log('Playing loop track:', track.name);
+          // This sets isPlaying=true in the store, which useLoopPlayback listens to
           playLoopTrack(track.loopTrack.id, syncTime, 0);
         }
       }
     }
 
     setPlaying(true);
-  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, loadBackingTrack, playBackingTrack, playLoopTrack, setDuration, setPlaying]);
+  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setDuration, setPlaying]);
 
   const handleSongPause = useCallback(() => {
     console.log('Pausing Song playback');
