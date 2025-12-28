@@ -33,6 +33,8 @@ function transformCategory(data: Record<string, unknown>): AvatarCategory {
     maxSelections: data.max_selections as number,
     supportsColorVariants: data.supports_color_variants as boolean,
     defaultColorPalette: data.default_color_palette as string | undefined,
+    positionHint: data.position_hint as string | undefined,
+    promptHint: data.prompt_hint as string | undefined,
     isActive: data.is_active as boolean,
     createdAt: data.created_at as string,
     updatedAt: data.updated_at as string,
