@@ -251,10 +251,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         );
       });
 
-      cloudflare.setOnParticipantPerformanceUpdate((userId, info) => {
-        const perfStore = usePerformanceSyncStore.getState();
-        perfStore.updateParticipantPerformance(userId, info);
-      });
+      // Note: BroadcastPerformanceInfo is handled internally by CloudflareCalls
+      // for latency compensation. Full UserPerformanceInfo updates come through
+      // the latency sync engine when available.
 
       cloudflare.setOnJamCompatibilityChange((compatibility) => {
         const perfStore = usePerformanceSyncStore.getState();

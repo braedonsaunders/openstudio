@@ -3,12 +3,44 @@
 
 import type {
   WebRTCStats,
-  AudioTrackInfo,
   UserPerformanceInfo,
   LatencyBreakdown,
   JamCompatibility,
   QualityPresetName,
 } from '@/types';
+
+/**
+ * Audio track info stored locally in CloudflareCalls
+ */
+interface AudioTrackInfo {
+  trackId: string;
+  userId: string;
+  type: string;
+  label: string;
+  enabled: boolean;
+  mid?: string;
+}
+
+/**
+ * Extended WebRTC stats with additional fields we track internally
+ */
+interface ExtendedWebRTCStats extends WebRTCStats {
+  bitrate?: number;
+  jitterBufferDelay?: number;
+}
+
+/**
+ * Simplified performance info for internal broadcasts
+ * This is what we send over the data channel
+ */
+interface BroadcastPerformanceInfo {
+  rtt: number;
+  jitter: number;
+  packetLoss: number;
+  bufferSize: number;
+  qualityScore: number;
+  connectionQuality: 'excellent' | 'good' | 'fair' | 'poor';
+}
 import {
   MasterClockSync,
   LatencyCompensator,
@@ -229,15 +261,15 @@ export class CloudflareCalls {
   private clockSyncInterval: ReturnType<typeof setInterval> | null = null;
   private performanceBroadcastInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Performance tracking
-  private participantPerformance: Map<string, UserPerformanceInfo> = new Map();
+  // Performance tracking (broadcast format for data channel)
+  private participantPerformanceData: Map<string, BroadcastPerformanceInfo> = new Map();
 
   // Current quality preset
   private activePreset: QualityPresetName = 'low-latency';
 
   // Callbacks for sync system
   private onClockSync?: (offset: number, rtt: number) => void;
-  private onParticipantPerformanceUpdate?: (userId: string, info: UserPerformanceInfo) => void;
+  private onParticipantPerformanceUpdate?: (userId: string, info: BroadcastPerformanceInfo) => void;
   private onJamCompatibilityChange?: (compatibility: JamCompatibility) => void;
   private onMasterChange?: (masterId: string, isSelf: boolean) => void;
 
@@ -860,7 +892,8 @@ export class CloudflareCalls {
 
         case 'clock_ack':
           if (this.isMaster) {
-            this.clockSync.processClockAck(message);
+            const ackReceiveTime = performance.now();
+            this.clockSync.processClockAck(message, ackReceiveTime);
           }
           break;
 
@@ -885,7 +918,7 @@ export class CloudflareCalls {
 
         case 'pong':
           const rtt = performance.now() - message.timestamp;
-          this.onClockSync?.(this.clockSync.getClockOffset(), rtt);
+          this.onClockSync?.(this.clockSync.getOffset(), rtt);
           break;
       }
     } catch (error) {
@@ -893,8 +926,11 @@ export class CloudflareCalls {
     }
   }
 
-  private handlePerformanceInfo(userId: string, info: UserPerformanceInfo): void {
-    this.participantPerformance.set(userId, info);
+  private handlePerformanceInfo(userId: string, info: BroadcastPerformanceInfo): void {
+    // Store performance data for this participant
+    this.participantPerformanceData.set(userId, info);
+
+    // Notify callback
     this.onParticipantPerformanceUpdate?.(userId, info);
 
     // Update latency compensator with new info
@@ -964,7 +1000,7 @@ export class CloudflareCalls {
       const stats = this.getLatestStats();
       if (!stats) return;
 
-      const info: UserPerformanceInfo = {
+      const info: BroadcastPerformanceInfo = {
         rtt: stats.roundTripTime,
         jitter: stats.jitter,
         packetLoss: stats.packetsLost,
@@ -973,7 +1009,7 @@ export class CloudflareCalls {
           stats.roundTripTime,
           stats.jitter,
           stats.packetsLost,
-          stats.bitrate
+          stats.bitrate || 128
         ),
         connectionQuality: assessConnectionQuality(
           stats.roundTripTime,
@@ -997,9 +1033,9 @@ export class CloudflareCalls {
     }
   }
 
-  private latestStats: WebRTCStats | null = null;
+  private latestStats: ExtendedWebRTCStats | null = null;
 
-  private getLatestStats(): WebRTCStats | null {
+  private getLatestStats(): ExtendedWebRTCStats | null {
     return this.latestStats;
   }
 
@@ -1078,11 +1114,15 @@ export class CloudflareCalls {
 
       try {
         const stats = await this.peerConnection.getStats();
-        let audioStats: WebRTCStats = {
-          bitrate: 0,
+        let audioStats: ExtendedWebRTCStats = {
+          bytesReceived: 0,
+          bytesSent: 0,
           packetsLost: 0,
           jitter: 0,
           roundTripTime: 0,
+          timestamp: Date.now(),
+          bitrate: 0,
+          jitterBufferDelay: 0,
         };
 
         stats.forEach((report) => {
@@ -1092,8 +1132,8 @@ export class CloudflareCalls {
             audioStats.jitterBufferDelay = report.jitterBufferDelay || 0;
           }
           if (report.type === 'outbound-rtp' && report.kind === 'audio') {
-            // @ts-expect-error - bitrate may not be in types
-            audioStats.bitrate = report.bitrate || 0;
+            // Bitrate may come from different properties depending on browser
+            audioStats.bitrate = (report as { bitrate?: number }).bitrate || 0;
           }
           if (report.type === 'candidate-pair' && report.state === 'succeeded') {
             audioStats.roundTripTime = (report.currentRoundTripTime || 0) * 1000; // Convert to ms
@@ -1105,7 +1145,7 @@ export class CloudflareCalls {
 
         // Update network trend analyzer
         if (audioStats.roundTripTime > 0) {
-          this.networkTrend.addMeasurement(
+          this.networkTrend.addSample(
             audioStats.roundTripTime,
             audioStats.jitter,
             audioStats.packetsLost
@@ -1126,17 +1166,17 @@ export class CloudflareCalls {
   }
 
   /**
-   * Get all participant performance info
+   * Get all participant performance info (broadcast format)
    */
-  getParticipantPerformance(): Map<string, UserPerformanceInfo> {
-    return new Map(this.participantPerformance);
+  getParticipantPerformanceData(): Map<string, BroadcastPerformanceInfo> {
+    return new Map(this.participantPerformanceData);
   }
 
   /**
-   * Get performance info for a specific user
+   * Get performance info for a specific user (broadcast format)
    */
-  getUserPerformance(userId: string): UserPerformanceInfo | undefined {
-    return this.participantPerformance.get(userId);
+  getUserPerformanceData(userId: string): BroadcastPerformanceInfo | undefined {
+    return this.participantPerformanceData.get(userId);
   }
 
   /**
@@ -1189,7 +1229,7 @@ export class CloudflareCalls {
     this.onClockSync = callback;
   }
 
-  setOnParticipantPerformanceUpdate(callback: (userId: string, info: UserPerformanceInfo) => void): void {
+  setOnParticipantPerformanceUpdate(callback: (userId: string, info: BroadcastPerformanceInfo) => void): void {
     this.onParticipantPerformanceUpdate = callback;
   }
 
@@ -1200,6 +1240,14 @@ export class CloudflareCalls {
 
   setOnMasterChange(callback: (masterId: string, isSelf: boolean) => void): void {
     this.onMasterChange = callback;
+  }
+
+  /**
+   * Leave the room and disconnect all connections.
+   * Alias for disconnect() for API compatibility.
+   */
+  async leaveRoom(): Promise<void> {
+    return this.disconnect();
   }
 
   async disconnect(): Promise<void> {
@@ -1253,7 +1301,7 @@ export class CloudflareCalls {
     this.sessionId = null;
     this.remoteStreams.clear();
     this.remoteTracks.clear();
-    this.participantPerformance.clear();
+    this.participantPerformanceData.clear();
   }
 }
 
