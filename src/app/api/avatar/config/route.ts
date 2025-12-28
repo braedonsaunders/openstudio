@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser } from '@/lib/supabase/auth';
+import { getUserFromRequest } from '@/lib/supabase/server';
 import { getUserAvatarConfig, saveUserAvatarConfig, getUserUnlockedComponents } from '@/lib/avatar/supabase';
 
 // GET /api/avatar/config - Get current user's avatar config
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    const user = await getUser();
+    const user = await getUserFromRequest(req);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -31,7 +31,7 @@ export async function GET() {
 // PUT /api/avatar/config - Update current user's avatar config
 export async function PUT(req: NextRequest) {
   try {
-    const user = await getUser();
+    const user = await getUserFromRequest(req);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }

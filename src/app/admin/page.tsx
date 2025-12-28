@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { supabaseAuth, getAdminStats, getAllUsers, searchUsers, banUser, unbanUser, setUserAdmin, logAdminAction } from '@/lib/supabase/auth';
+import { adminGet } from '@/lib/api/admin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -883,9 +884,9 @@ function AvatarsTab() {
     setIsLoading(true);
     try {
       const [catRes, rulesRes, configRes] = await Promise.all([
-        fetch('/api/admin/avatar/categories'),
-        fetch('/api/admin/avatar/unlock-rules'),
-        fetch('/api/avatar/config'),
+        adminGet('/api/admin/avatar/categories'),
+        adminGet('/api/admin/avatar/unlock-rules'),
+        adminGet('/api/avatar/config'),
       ]);
 
       if (catRes.ok) {
