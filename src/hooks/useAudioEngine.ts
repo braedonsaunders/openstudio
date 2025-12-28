@@ -171,13 +171,12 @@ export function useAudioEngine() {
     }
 
     // Build capture options from track settings
+    // Note: echoCancellation, noiseSuppression, autoGainControl are always disabled
+    // in the audio engine for lowest latency
     const captureOptions: CaptureAudioOptions = trackSettings ? {
       deviceId: trackSettings.inputDeviceId,
       channelConfig: trackSettings.channelConfig,
       sampleRate: trackSettings.sampleRate,
-      echoCancellation: trackSettings.echoCancellation,
-      noiseSuppression: trackSettings.noiseSuppression,
-      autoGainControl: trackSettings.autoGainControl,
     } : {};
 
     const stream = await globalEngine!.captureLocalAudio(captureOptions);
