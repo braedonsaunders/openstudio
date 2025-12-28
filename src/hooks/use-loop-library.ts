@@ -144,15 +144,13 @@ export function invalidateLoopLibraryCache(): void {
 
 /**
  * Get a loop by ID from the cached library data.
- * This searches the database-fetched loops (cached) and falls back to hardcoded loops.
+ * This searches the database-fetched loops (cached).
  * Can be called from anywhere without needing React hooks.
  */
 export function getCachedLoopById(id: string): LoopDefinition | undefined {
-  // First check the cached data from the API (includes database loops)
+  // Check the cached data from the API (includes database loops)
   if (cachedData?.loops) {
-    const found = cachedData.loops.find((loop) => loop.id === id);
-    if (found) return found;
+    return cachedData.loops.find((loop) => loop.id === id);
   }
-  // Fall back to hardcoded library
-  return LOOP_LIBRARY.find((loop) => loop.id === id);
+  return undefined;
 }
