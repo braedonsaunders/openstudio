@@ -239,9 +239,9 @@ export function getAvailableModels(): Array<{ id: AIModel; name: string; provide
   ];
 }
 
-// Default requirements for avatar asset generation
-const ASSET_PROMPT_SUFFIX = ', isolated object on plain white background, front-facing view, centered composition, no shadows, product photography style, single item only';
-const ASSET_NEGATIVE_PROMPT = 'person, human, character, body, face, background scenery, complex background, shadows, multiple objects, side view, angled view, perspective distortion';
+// Default requirements for avatar asset generation - stylized/animated look
+const ASSET_PROMPT_SUFFIX = ', isolated object on plain white background, front-facing view, centered composition, no shadows, clean flat colors, game asset style, single item only, 2D illustration';
+const ASSET_NEGATIVE_PROMPT = 'photorealistic, photograph, photo, realistic, hyperrealistic, 3D render, CGI, person, human, character, body, face, background scenery, complex background, shadows, multiple objects, side view, angled view, perspective distortion, depth of field, bokeh, film grain';
 
 /**
  * Build a full prompt from a preset template
@@ -300,23 +300,26 @@ export async function generateVariedPrompts(
     return { prompts: [], error: 'Cloudflare credentials not configured' };
   }
 
-  const systemPrompt = `You are an asset generation assistant for an avatar customization system.
+  const systemPrompt = `You are an asset generation assistant for a 2D avatar customization system.
 You generate SHORT, SPECIFIC image prompts for individual avatar components/accessories.
 Each prompt should describe a SINGLE isolated item - NOT a person wearing it.
 Focus on variety in style, color, material, and design.
-The items will be rendered on white backgrounds as product images.`;
+All items should be stylized, cartoon, anime, or pixel art style - NEVER photorealistic.
+The items will be rendered on white backgrounds as 2D game assets.`;
 
   const userPrompt = `Generate exactly ${count} unique image prompts for "${categoryName}" avatar components with the theme: "${theme}"
 
 Requirements:
-- Each prompt is for ONE isolated item only (e.g., "a red baseball cap with white stitching" not "a person wearing a cap")
-- Include variety in colors, materials, patterns, and styles
+- Each prompt is for ONE isolated item only (e.g., "a red baseball cap, cartoon style" not "a person wearing a cap")
+- Include variety in colors, materials, patterns, and visual styles (anime, cartoon, pixel art, chibi, flat design, vector, cel-shaded)
 - Keep each prompt to 1-2 sentences max
 - Make them specific and descriptive
+- ALWAYS include an art style keyword (anime, cartoon, pixel art, flat design, vector, cel-shaded, chibi, etc.)
+- NEVER use photorealistic or 3D rendered styles
 ${styleSuffix ? `- Apply this style to all: ${styleSuffix}` : ''}
 
 Return ONLY a JSON array of prompt strings, no other text. Example:
-["a red baseball cap with white stitching, sporty design", "an elegant black top hat with silk ribbon band"]`;
+["a red baseball cap with white stitching, cartoon flat design style", "an elegant black top hat with silk ribbon, anime cel-shaded style", "a cute bunny ear headband, chibi kawaii style"]`;
 
   try {
     const response = await fetch(
