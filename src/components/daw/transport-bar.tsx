@@ -248,7 +248,7 @@ export function TransportBar({
           }
         >
           <div className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded-lg cursor-default transition-colors',
+            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-default transition-colors',
             connectionQuality === 'excellent' && 'bg-emerald-500/10',
             connectionQuality === 'good' && 'bg-emerald-500/10',
             connectionQuality === 'fair' && 'bg-yellow-500/10',
