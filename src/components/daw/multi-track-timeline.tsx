@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import type { SongTrackReference } from '@/types/songs';
 import type { MidiNote, LoopDefinition } from '@/types/loops';
+import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 
 // Context menu state
 interface ContextMenuState {
@@ -156,6 +157,9 @@ interface MultiTrackTimelineProps {
   onSeek?: (time: number) => void;
   onPlay?: () => void;
   onStop?: () => void;
+  // View switcher props
+  activeView?: MainViewType;
+  onViewChange?: (view: MainViewType) => void;
 }
 
 // MIDI note range for display (C1 to C6 = notes 24-84)
@@ -294,6 +298,8 @@ export function MultiTrackTimeline({
   onSeek,
   onPlay,
   onStop,
+  activeView,
+  onViewChange,
 }: MultiTrackTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(10); // pixels per second - start zoomed out
@@ -1040,19 +1046,28 @@ export function MultiTrackTimeline({
     <div className="h-full flex flex-col bg-white dark:bg-[#0a0a0f] border-b border-gray-200 dark:border-white/5">
       {/* Header */}
       <div className="h-8 px-3 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
-        <div className="flex items-center gap-2">
-          <Layers className="w-3.5 h-3.5 text-indigo-500" />
-          <span className="text-xs font-medium text-gray-900 dark:text-white">
-            {currentSong?.name || 'No Song Selected'}
-          </span>
-          <span className="text-[10px] text-gray-500 dark:text-zinc-500">
-            {trackRows.length} track{trackRows.length !== 1 ? 's' : ''}, {unifiedTracks.length} clip{unifiedTracks.length !== 1 ? 's' : ''}
-          </span>
-          {currentSong && (
-            <span className="text-[10px] text-gray-400 dark:text-zinc-600">
-              {currentSong.bpm} BPM
-            </span>
+        <div className="flex items-center gap-3">
+          {/* View Switcher */}
+          {activeView && onViewChange && (
+            <MainViewSwitcher
+              activeView={activeView}
+              onViewChange={onViewChange}
+              isMaster={true}
+            />
           )}
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-medium text-gray-900 dark:text-white">
+              {currentSong?.name || 'No Song Selected'}
+            </span>
+            <span className="text-[10px] text-gray-500 dark:text-zinc-500">
+              {trackRows.length} track{trackRows.length !== 1 ? 's' : ''}, {unifiedTracks.length} clip{unifiedTracks.length !== 1 ? 's' : ''}
+            </span>
+            {currentSong && (
+              <span className="text-[10px] text-gray-400 dark:text-zinc-600">
+                {currentSong.bpm} BPM
+              </span>
+            )}
+          </div>
         </div>
 
         <div className="flex items-center gap-2">

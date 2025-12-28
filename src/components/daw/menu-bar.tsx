@@ -50,8 +50,11 @@ import {
   ChevronRight,
   Sun,
   Moon,
+  Layers,
+  Users2,
 } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import type { MainViewType } from './main-view-switcher';
 
 interface MenuItem {
   label: string;
@@ -102,6 +105,9 @@ interface MenuBarProps {
   isMaster?: boolean;
   loopEnabled?: boolean;
   activePanel?: string;
+  // Main view props
+  mainView?: MainViewType;
+  onViewChange?: (view: MainViewType) => void;
 }
 
 export function MenuBar({
@@ -143,6 +149,8 @@ export function MenuBar({
   isMaster = false,
   loopEnabled = false,
   activePanel = 'mixer',
+  mainView = 'timeline',
+  onViewChange,
 }: MenuBarProps) {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
   const menuBarRef = useRef<HTMLDivElement>(null);
@@ -204,8 +212,10 @@ export function MenuBar({
     {
       label: 'View',
       items: [
-        { label: 'Mixer Panel', shortcut: 'M', icon: <Sliders className="w-3.5 h-3.5" />, action: () => onTogglePanel?.('mixer') },
-        { label: 'Queue Panel', shortcut: 'Q', icon: <ListMusic className="w-3.5 h-3.5" />, action: () => onTogglePanel?.('queue') },
+        { label: mainView === 'timeline' ? '✓ Timeline' : '  Timeline', shortcut: '1', icon: <Layers className="w-3.5 h-3.5" />, action: () => onViewChange?.('timeline') },
+        { label: mainView === 'mixer' ? '✓ Mixer' : '  Mixer', shortcut: '2', icon: <Sliders className="w-3.5 h-3.5" />, action: () => onViewChange?.('mixer') },
+        { label: mainView === 'avatar-world' ? '✓ World' : '  World', shortcut: '3', icon: <Users2 className="w-3.5 h-3.5" />, action: () => onViewChange?.('avatar-world') },
+        { label: 'divider', divider: true },
         { label: 'Analysis Panel', shortcut: 'A', icon: <Activity className="w-3.5 h-3.5" />, action: () => onTogglePanel?.('analysis') },
         { label: 'Chat Panel', shortcut: 'C', icon: <MessageSquare className="w-3.5 h-3.5" />, action: () => onTogglePanel?.('chat') },
         { label: 'AI Panel', shortcut: 'I', icon: <Sparkles className="w-3.5 h-3.5" />, action: () => onTogglePanel?.('ai') },
@@ -213,8 +223,6 @@ export function MenuBar({
         { label: 'Zoom In', shortcut: '⌘+', icon: <ZoomIn className="w-3.5 h-3.5" />, action: onZoomIn },
         { label: 'Zoom Out', shortcut: '⌘-', icon: <ZoomOut className="w-3.5 h-3.5" />, action: onZoomOut },
         { label: 'Reset Zoom', shortcut: '⌘0', icon: <Maximize2 className="w-3.5 h-3.5" />, action: onResetZoom },
-        { label: 'divider', divider: true },
-        { label: 'Show Grid', icon: <Grid3X3 className="w-3.5 h-3.5" />, disabled: true },
       ],
     },
     {
