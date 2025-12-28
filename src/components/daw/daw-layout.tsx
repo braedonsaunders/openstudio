@@ -526,17 +526,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const hasLoopTracks = useMemo(() => songTracks.some((t) => t.type === 'loop'), [songTracks]);
 
   useEffect(() => {
-    console.log('[LoopTimeUpdate] Effect running:', {
-      isPlaying,
-      hasLoopTracks,
-      hasAudioTracks,
-      songDuration,
-    });
-
     // Only run for loop-only playback (no audio tracks to drive time)
     if (!isPlaying || !hasLoopTracks || hasAudioTracks) {
-      console.log('[LoopTimeUpdate] Conditions not met for loop time tracking');
-      // Not in loop-only mode - cleanup
       playStartTimeRef.current = null;
       if (loopTimeAnimationRef.current) {
         cancelAnimationFrame(loopTimeAnimationRef.current);
@@ -545,37 +536,22 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       return;
     }
 
-    console.log('[LoopTimeUpdate] Starting loop-only time tracking');
-
     // Start time tracking for loop-only playback
-    // Use getState() to get current time without adding to dependencies
     const startPosition = useAudioStore.getState().currentTime;
     playStartTimeRef.current = performance.now();
     playStartPositionRef.current = startPosition;
 
-    let frameCount = 0;
     const updateLoopTime = () => {
-      if (playStartTimeRef.current === null) {
-        console.log('[LoopTimeUpdate] playStartTimeRef is null, stopping');
-        return;
-      }
+      if (playStartTimeRef.current === null) return;
 
       const elapsed = (performance.now() - playStartTimeRef.current) / 1000;
       const newTime = playStartPositionRef.current + elapsed;
 
-      // Log every 60 frames (roughly once per second)
-      frameCount++;
-      if (frameCount % 60 === 0) {
-        console.log('[LoopTimeUpdate] Updating time:', newTime.toFixed(2), 'duration:', songDuration);
-      }
-
-      // Update time if we haven't exceeded song duration
       if (newTime < songDuration) {
         useAudioStore.getState().setCurrentTime(newTime);
         loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
       } else {
         // Song ended - loop back to start
-        console.log('[LoopTimeUpdate] Looping back to start');
         useAudioStore.getState().setCurrentTime(0);
         playStartTimeRef.current = performance.now();
         playStartPositionRef.current = 0;
@@ -584,10 +560,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     };
 
     loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
-    console.log('[LoopTimeUpdate] Started animation frame loop');
 
     return () => {
-      console.log('[LoopTimeUpdate] Cleanup - stopping animation');
       if (loopTimeAnimationRef.current) {
         cancelAnimationFrame(loopTimeAnimationRef.current);
         loopTimeAnimationRef.current = null;

@@ -137,20 +137,6 @@ export class LoopScheduler {
     // Get MIDI data (possibly with humanization)
     let midiData = trackState.customMidiData || loopDef.midiData;
 
-    if (loop.iteration === 0 && loop.scheduledNotes.length === 0) {
-      console.log('[LoopScheduler] First scheduling call:', {
-        trackId: loop.trackId,
-        loopDuration,
-        loopStartTime: loop.nextLoopTime.toFixed(3),
-        currentTime: currentTime.toFixed(3),
-        lookaheadEnd: lookaheadEnd.toFixed(3),
-        midiNotes: midiData?.length,
-        preset: soundPreset,
-        muted: trackState.muted,
-        contextState: this.context.state,
-      });
-    }
-
     // Apply humanization if enabled (only on first pass of each iteration)
     if (trackState.humanizeEnabled) {
       midiData = this.humanizeMidi(midiData, trackState.humanizeTiming, trackState.humanizeVelocity);
@@ -225,10 +211,6 @@ export class LoopScheduler {
       loop.scheduledNotes = loop.scheduledNotes.filter(
         (sn) => sn.startTime >= currentTime - 0.5
       );
-    }
-
-    if (scheduledCount > 0) {
-      console.log('[LoopScheduler] Scheduled', scheduledCount, 'notes, total scheduled:', loop.scheduledNotes.length);
     }
 
     // Set up next scheduling check - always check at regular intervals
