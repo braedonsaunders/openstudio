@@ -22,8 +22,8 @@ export function MainViewSwitcher({
   onViewChange,
 }: MainViewSwitcherProps) {
   return (
-    <div className="flex items-center gap-0.5 p-0.5 bg-gray-100 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
-      {views.map(({ id, icon: Icon, label, description, shortcut }) => (
+    <div className="flex items-center gap-0.5 px-1 py-1 bg-gray-100 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+      {views.map(({ id, icon: Icon, label, shortcut }) => (
         <button
           key={id}
           onClick={() => onViewChange(id)}
