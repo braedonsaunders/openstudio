@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -17,9 +17,10 @@ import {
   Crown,
   Filter,
   Save,
-  ZoomIn,
   Settings2,
-  RotateCcw,
+  Eraser,
+  Undo2,
+  Paintbrush,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Slider } from '@/components/ui/slider';
@@ -46,6 +47,22 @@ const rarityColors: Record<ComponentRarity, string> = {
   legendary: 'border-yellow-500',
 };
 
+type BackgroundType = 'checkerboard' | 'black' | 'white' | 'gray' | 'magenta';
+
+const backgroundStyles: Record<BackgroundType, React.CSSProperties> = {
+  checkerboard: {
+    backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
+    backgroundSize: '16px 16px',
+    backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
+  },
+  black: { backgroundColor: '#000' },
+  white: { backgroundColor: '#fff' },
+  gray: { backgroundColor: '#808080' },
+  magenta: { backgroundColor: '#ff00ff' },
+};
+
+type EditTab = 'info' | 'image';
+
 export function ComponentLibrary({ categories, unlockRules, onRefresh }: ComponentLibraryProps) {
   const [components, setComponents] = useState<AvatarComponent[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -56,6 +73,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
 
   // Edit modal
   const [editingComponent, setEditingComponent] = useState<AvatarComponent | null>(null);
+  const [editTab, setEditTab] = useState<EditTab>('info');
   const [editId, setEditId] = useState('');
   const [editName, setEditName] = useState('');
   const [editTags, setEditTags] = useState('');
@@ -63,18 +81,31 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
   const [editRuleIds, setEditRuleIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Image editor state
+  const [bgThreshold, setBgThreshold] = useState(220);
+  const [specThreshold, setSpecThreshold] = useState(100);
+  const [cleanupSpecs, setCleanupSpecs] = useState(true);
+  const [feathering, setFeathering] = useState(0);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isSavingImage, setIsSavingImage] = useState(false);
+  const [bgType, setBgType] = useState<BackgroundType>('checkerboard');
+
+  // Eraser state
+  const [isErasing, setIsErasing] = useState(false);
+  const [brushSize, setBrushSize] = useState(20);
+  const [eraserMask, setEraserMask] = useState<string | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const maskCanvasRef = useRef<HTMLCanvasElement>(null);
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [canvasReady, setCanvasReady] = useState(false);
+
   // Delete modal
   const [deletingComponent, setDeletingComponent] = useState<AvatarComponent | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Image editor modal
-  const [editingImage, setEditingImage] = useState<AvatarComponent | null>(null);
-  const [bgThreshold, setBgThreshold] = useState(240);
-  const [specThreshold, setSpecThreshold] = useState(50);
-  const [cleanupSpecs, setCleanupSpecs] = useState(true);
-  const [previewImage, setPreviewImage] = useState<string | null>(null);
-  const [isProcessing, setIsProcessing] = useState(false);
-  const [isSavingImage, setIsSavingImage] = useState(false);
+  // Debounce timer for real-time preview
+  const previewTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     loadComponents();
@@ -125,11 +156,29 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
 
   const handleEdit = (component: AvatarComponent) => {
     setEditingComponent(component);
+    setEditTab('info');
     setEditId(component.id);
     setEditName(component.name);
     setEditTags(component.tags.join(', '));
     setEditRarity(component.rarity);
-    setEditRuleIds([]); // TODO: Load existing rules
+    setEditRuleIds([]);
+    // Reset image editor state
+    setBgThreshold(220);
+    setSpecThreshold(100);
+    setCleanupSpecs(true);
+    setFeathering(0);
+    setPreviewImage(null);
+    setEraserMask(null);
+    setIsErasing(false);
+    setCanvasReady(false);
+  };
+
+  const handleCloseEdit = () => {
+    setEditingComponent(null);
+    setPreviewImage(null);
+    setEraserMask(null);
+    setIsErasing(false);
+    setCanvasReady(false);
   };
 
   const handleSaveEdit = async () => {
@@ -147,7 +196,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
       });
 
       if (response.ok) {
-        setEditingComponent(null);
+        handleCloseEdit();
         loadComponents();
         onRefresh();
         toast.success('Component updated successfully');
@@ -197,25 +246,40 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     }
   };
 
-  // Image editor handlers
-  const handleOpenImageEditor = (component: AvatarComponent) => {
-    setEditingImage(component);
-    setBgThreshold(240);
-    setSpecThreshold(50);
-    setCleanupSpecs(true);
-    setPreviewImage(null);
-  };
+  // Real-time preview with debouncing
+  const triggerPreview = useCallback(() => {
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+    }
+    previewTimerRef.current = setTimeout(() => {
+      handlePreviewProcessing();
+    }, 500);
+  }, []);
+
+  // Auto-preview when sliders change
+  useEffect(() => {
+    if (editTab === 'image' && editingComponent) {
+      triggerPreview();
+    }
+    return () => {
+      if (previewTimerRef.current) {
+        clearTimeout(previewTimerRef.current);
+      }
+    };
+  }, [bgThreshold, specThreshold, cleanupSpecs, feathering, editTab, editingComponent]);
 
   const handlePreviewProcessing = async () => {
-    if (!editingImage) return;
+    if (!editingComponent) return;
     setIsProcessing(true);
 
     try {
       const response = await adminPost('/api/admin/avatar/reprocess', {
-        componentId: editingImage.id,
+        componentId: editingComponent.id,
         backgroundThreshold: bgThreshold,
         specSizeThreshold: specThreshold,
         cleanupSpecs,
+        feathering,
+        eraserMask,
         previewOnly: true,
       });
 
@@ -235,23 +299,30 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
   };
 
   const handleSaveProcessedImage = async () => {
-    if (!editingImage) return;
+    if (!editingComponent) return;
     setIsSavingImage(true);
 
     try {
       const response = await adminPost('/api/admin/avatar/reprocess', {
-        componentId: editingImage.id,
+        componentId: editingComponent.id,
         backgroundThreshold: bgThreshold,
         specSizeThreshold: specThreshold,
         cleanupSpecs,
+        feathering,
+        eraserMask,
         previewOnly: false,
       });
 
       if (response.ok) {
         toast.success('Image updated successfully');
-        setEditingImage(null);
         setPreviewImage(null);
+        setEraserMask(null);
         loadComponents();
+        // Update the editing component with new image
+        const updatedComponent = await response.json();
+        if (updatedComponent.imageUrl) {
+          setEditingComponent(prev => prev ? { ...prev, imageUrl: updatedComponent.imageUrl } : null);
+        }
       } else {
         const error = await response.json();
         toast.error(`Failed to save: ${error.error}`);
@@ -262,6 +333,102 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     } finally {
       setIsSavingImage(false);
     }
+  };
+
+  // Initialize eraser canvas
+  const initCanvas = useCallback(() => {
+    if (!canvasRef.current || !maskCanvasRef.current || !editingComponent) return;
+
+    const canvas = canvasRef.current;
+    const maskCanvas = maskCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const maskCtx = maskCanvas.getContext('2d');
+
+    if (!ctx || !maskCtx) return;
+
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      maskCanvas.width = img.width;
+      maskCanvas.height = img.height;
+
+      ctx.drawImage(img, 0, 0);
+      maskCtx.fillStyle = 'black';
+      maskCtx.fillRect(0, 0, maskCanvas.width, maskCanvas.height);
+
+      setCanvasReady(true);
+    };
+    img.src = previewImage || editingComponent.imageUrl;
+  }, [editingComponent, previewImage]);
+
+  useEffect(() => {
+    if (isErasing && editingComponent) {
+      initCanvas();
+    }
+  }, [isErasing, editingComponent, initCanvas]);
+
+  const handleMouseDown = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isErasing) return;
+    setIsDrawing(true);
+    draw(e);
+  };
+
+  const handleMouseMove = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!isDrawing || !isErasing) return;
+    draw(e);
+  };
+
+  const handleMouseUp = () => {
+    if (isDrawing) {
+      setIsDrawing(false);
+      // Save mask as base64
+      if (maskCanvasRef.current) {
+        setEraserMask(maskCanvasRef.current.toDataURL('image/png'));
+      }
+    }
+  };
+
+  const draw = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!canvasRef.current || !maskCanvasRef.current) return;
+
+    const canvas = canvasRef.current;
+    const maskCanvas = maskCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const maskCtx = maskCanvas.getContext('2d');
+
+    if (!ctx || !maskCtx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+
+    // Draw on visible canvas (show erased area)
+    ctx.globalCompositeOperation = 'destination-out';
+    ctx.beginPath();
+    ctx.arc(x, y, brushSize * scaleX, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw on mask canvas (white = erase)
+    maskCtx.fillStyle = 'white';
+    maskCtx.beginPath();
+    maskCtx.arc(x, y, brushSize * scaleX, 0, Math.PI * 2);
+    maskCtx.fill();
+  };
+
+  const clearEraserMask = () => {
+    if (maskCanvasRef.current) {
+      const maskCtx = maskCanvasRef.current.getContext('2d');
+      if (maskCtx) {
+        maskCtx.fillStyle = 'black';
+        maskCtx.fillRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+      }
+    }
+    setEraserMask(null);
+    initCanvas();
   };
 
   if (isLoading) {
@@ -383,16 +550,9 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
                     </p>
                     <div className="flex gap-1">
                       <button
-                        onClick={() => handleOpenImageEditor(component)}
-                        className="p-1 bg-white/20 rounded hover:bg-white/40"
-                        title="View & Edit Image"
-                      >
-                        <ZoomIn className="w-3 h-3 text-white" />
-                      </button>
-                      <button
                         onClick={() => handleEdit(component)}
                         className="p-1 bg-white/20 rounded hover:bg-white/40"
-                        title="Edit Details"
+                        title="Edit Component"
                       >
                         <Edit2 className="w-3 h-3 text-white" />
                       </button>
@@ -429,111 +589,337 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
         </Card>
       )}
 
-      {/* Edit Modal */}
+      {/* Combined Edit Modal */}
       <Modal
         isOpen={!!editingComponent}
-        onClose={() => setEditingComponent(null)}
+        onClose={handleCloseEdit}
         title={`Edit: ${editingComponent?.name}`}
       >
         <div className="space-y-4">
-          <div className="flex justify-center">
-            <img
-              src={editingComponent?.imageUrl}
-              alt={editingComponent?.name}
-              className="w-32 h-32 object-cover rounded-lg"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Component ID (slug)
-            </label>
-            <Input
-              value={editId}
-              onChange={(e) => setEditId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))}
-              placeholder="e.g., hair_spiky_01"
-            />
-            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-              Lowercase letters, numbers, underscores and hyphens only
-            </p>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Display Name
-            </label>
-            <Input
-              value={editName}
-              onChange={(e) => setEditName(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Tags (comma-separated)
-            </label>
-            <Input
-              value={editTags}
-              onChange={(e) => setEditTags(e.target.value)}
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Rarity
-            </label>
-            <select
-              value={editRarity}
-              onChange={(e) => setEditRarity(e.target.value as ComponentRarity)}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+          {/* Tabs */}
+          <div className="flex gap-2 border-b border-gray-200 dark:border-gray-700">
+            <button
+              onClick={() => setEditTab('info')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                editTab === 'info'
+                  ? 'border-purple-500 text-purple-600 dark:text-purple-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
             >
-              <option value="common">Common</option>
-              <option value="rare">Rare</option>
-              <option value="epic">Epic</option>
-              <option value="legendary">Legendary</option>
-            </select>
+              Info
+            </button>
+            <button
+              onClick={() => setEditTab('image')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                editTab === 'image'
+                  ? 'border-purple-500 text-purple-600 dark:text-purple-400'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+              }`}
+            >
+              Image Editor
+            </button>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Unlock Rules
-            </label>
-            <div className="space-y-2 max-h-32 overflow-y-auto">
-              {unlockRules.map((rule) => (
-                <label key={rule.id} className="flex items-center gap-2">
-                  <input
-                    type="checkbox"
-                    checked={editRuleIds.includes(rule.id)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        setEditRuleIds([...editRuleIds, rule.id]);
-                      } else {
-                        setEditRuleIds(editRuleIds.filter((id) => id !== rule.id));
-                      }
-                    }}
-                    className="rounded"
-                  />
-                  <span className="text-sm text-gray-700 dark:text-gray-300">
-                    {rule.displayName}
-                  </span>
+          {/* Info Tab */}
+          {editTab === 'info' && (
+            <div className="space-y-4">
+              <div className="flex justify-center">
+                <img
+                  src={editingComponent?.imageUrl}
+                  alt={editingComponent?.name}
+                  className="w-32 h-32 object-cover rounded-lg"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Component ID (slug)
                 </label>
-              ))}
-            </div>
-          </div>
+                <Input
+                  value={editId}
+                  onChange={(e) => setEditId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))}
+                  placeholder="e.g., hair_spiky_01"
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Lowercase letters, numbers, underscores and hyphens only
+                </p>
+              </div>
 
-          <div className="flex justify-end gap-3">
-            <Button variant="ghost" onClick={() => setEditingComponent(null)}>
-              Cancel
-            </Button>
-            <Button onClick={handleSaveEdit} disabled={isSaving}>
-              {isSaving ? (
-                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-              ) : (
-                <Save className="w-4 h-4 mr-2" />
-              )}
-              Save Changes
-            </Button>
-          </div>
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Display Name
+                </label>
+                <Input
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Tags (comma-separated)
+                </label>
+                <Input
+                  value={editTags}
+                  onChange={(e) => setEditTags(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Rarity
+                </label>
+                <select
+                  value={editRarity}
+                  onChange={(e) => setEditRarity(e.target.value as ComponentRarity)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                >
+                  <option value="common">Common</option>
+                  <option value="rare">Rare</option>
+                  <option value="epic">Epic</option>
+                  <option value="legendary">Legendary</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Unlock Rules
+                </label>
+                <div className="space-y-2 max-h-32 overflow-y-auto">
+                  {unlockRules.map((rule) => (
+                    <label key={rule.id} className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={editRuleIds.includes(rule.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setEditRuleIds([...editRuleIds, rule.id]);
+                          } else {
+                            setEditRuleIds(editRuleIds.filter((id) => id !== rule.id));
+                          }
+                        }}
+                        className="rounded"
+                      />
+                      <span className="text-sm text-gray-700 dark:text-gray-300">
+                        {rule.displayName}
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <Button variant="ghost" onClick={handleCloseEdit}>
+                  Cancel
+                </Button>
+                <Button onClick={handleSaveEdit} disabled={isSaving}>
+                  {isSaving ? (
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  ) : (
+                    <Save className="w-4 h-4 mr-2" />
+                  )}
+                  Save Info
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Image Editor Tab */}
+          {editTab === 'image' && (
+            <div className="space-y-4">
+              {/* Background selector */}
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 dark:text-gray-400">Background:</span>
+                {(Object.keys(backgroundStyles) as BackgroundType[]).map((type) => (
+                  <button
+                    key={type}
+                    onClick={() => setBgType(type)}
+                    className={`w-6 h-6 rounded border-2 ${
+                      bgType === type ? 'border-purple-500' : 'border-gray-300 dark:border-gray-600'
+                    }`}
+                    style={backgroundStyles[type]}
+                    title={type.charAt(0).toUpperCase() + type.slice(1)}
+                  />
+                ))}
+              </div>
+
+              {/* Image preview area */}
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 text-center">
+                    Original
+                  </p>
+                  <div
+                    className="aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
+                    style={backgroundStyles[bgType]}
+                  >
+                    <img
+                      src={editingComponent?.imageUrl}
+                      alt="Original"
+                      className="w-full h-full object-contain"
+                    />
+                  </div>
+                </div>
+                <div>
+                  <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 text-center">
+                    {isErasing ? 'Eraser Mode' : 'Preview'} {isProcessing && '(processing...)'}
+                  </p>
+                  <div
+                    className="aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700 relative"
+                    style={backgroundStyles[bgType]}
+                  >
+                    {isErasing && canvasReady ? (
+                      <canvas
+                        ref={canvasRef}
+                        onMouseDown={handleMouseDown}
+                        onMouseMove={handleMouseMove}
+                        onMouseUp={handleMouseUp}
+                        onMouseLeave={handleMouseUp}
+                        className="w-full h-full object-contain cursor-crosshair"
+                        style={{ imageRendering: 'pixelated' }}
+                      />
+                    ) : previewImage ? (
+                      <img
+                        src={previewImage}
+                        alt="Preview"
+                        className="w-full h-full object-contain"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-100 dark:bg-gray-800">
+                        <Settings2 className="w-8 h-8" />
+                      </div>
+                    )}
+                    <canvas ref={maskCanvasRef} className="hidden" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Eraser controls */}
+              <div className="flex items-center gap-3 p-3 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                <Button
+                  variant={isErasing ? 'primary' : 'outline'}
+                  size="sm"
+                  onClick={() => setIsErasing(!isErasing)}
+                  className={isErasing ? 'bg-orange-500 hover:bg-orange-600' : ''}
+                >
+                  <Eraser className="w-4 h-4 mr-1" />
+                  {isErasing ? 'Erasing' : 'Eraser'}
+                </Button>
+                {isErasing && (
+                  <>
+                    <div className="flex-1">
+                      <Slider
+                        label="Brush"
+                        showValue
+                        min={5}
+                        max={100}
+                        value={brushSize}
+                        onChange={(e) => setBrushSize(parseInt(e.target.value))}
+                        formatValue={(v) => `${v}px`}
+                      />
+                    </div>
+                    <Button variant="ghost" size="sm" onClick={clearEraserMask}>
+                      <Undo2 className="w-4 h-4 mr-1" />
+                      Reset
+                    </Button>
+                  </>
+                )}
+              </div>
+
+              {/* Background Removal Settings */}
+              <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
+                <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                  <Paintbrush className="w-4 h-4" />
+                  Auto Background Removal
+                </h4>
+
+                <div>
+                  <Slider
+                    label="White Threshold"
+                    showValue
+                    min={150}
+                    max={255}
+                    value={bgThreshold}
+                    onChange={(e) => setBgThreshold(parseInt(e.target.value))}
+                    formatValue={(v) => `${v}`}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Lower = more aggressive. Removes pixels brighter than this.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-3">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={cleanupSpecs}
+                      onChange={(e) => setCleanupSpecs(e.target.checked)}
+                      className="rounded"
+                    />
+                    <span className="text-sm text-gray-700 dark:text-gray-300">
+                      Remove white specs
+                    </span>
+                  </label>
+                </div>
+
+                {cleanupSpecs && (
+                  <div>
+                    <Slider
+                      label="Max Spec Size"
+                      showValue
+                      min={10}
+                      max={500}
+                      value={specThreshold}
+                      onChange={(e) => setSpecThreshold(parseInt(e.target.value))}
+                      formatValue={(v) => `${v}px`}
+                    />
+                    <p className="text-xs text-gray-500 mt-1">
+                      Remove isolated white areas smaller than this.
+                    </p>
+                  </div>
+                )}
+
+                <div>
+                  <Slider
+                    label="Edge Feathering"
+                    showValue
+                    min={0}
+                    max={10}
+                    value={feathering}
+                    onChange={(e) => setFeathering(parseInt(e.target.value))}
+                    formatValue={(v) => `${v}px`}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Soften edges for smoother transparency.
+                  </p>
+                </div>
+              </div>
+
+              {/* Actions */}
+              <div className="flex justify-end gap-3">
+                <Button variant="ghost" onClick={handleCloseEdit}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSaveProcessedImage}
+                  disabled={isSavingImage || (!previewImage && !eraserMask)}
+                  className="bg-green-500 hover:bg-green-600"
+                >
+                  {isSavingImage ? (
+                    <>
+                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                      Saving...
+                    </>
+                  ) : (
+                    <>
+                      <Save className="w-4 h-4 mr-2" />
+                      Save Image
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       </Modal>
 
@@ -570,169 +956,6 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
                 <Trash2 className="w-4 h-4 mr-2" />
               )}
               Delete
-            </Button>
-          </div>
-        </div>
-      </Modal>
-
-      {/* Image Editor Modal */}
-      <Modal
-        isOpen={!!editingImage}
-        onClose={() => {
-          setEditingImage(null);
-          setPreviewImage(null);
-        }}
-        title={`Edit Image: ${editingImage?.name}`}
-      >
-        <div className="space-y-6">
-          {/* Image comparison */}
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 text-center">
-                Original
-              </p>
-              <div
-                className="aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
-                style={{
-                  backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
-                  backgroundSize: '16px 16px',
-                  backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
-                }}
-              >
-                <img
-                  src={editingImage?.imageUrl}
-                  alt="Original"
-                  className="w-full h-full object-contain"
-                />
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-medium text-gray-500 dark:text-gray-400 mb-2 text-center">
-                Preview
-              </p>
-              <div
-                className="aspect-square rounded-lg overflow-hidden border border-gray-200 dark:border-gray-700"
-                style={{
-                  backgroundImage: 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)',
-                  backgroundSize: '16px 16px',
-                  backgroundPosition: '0 0, 0 8px, 8px -8px, -8px 0px',
-                }}
-              >
-                {previewImage ? (
-                  <img
-                    src={previewImage}
-                    alt="Preview"
-                    className="w-full h-full object-contain"
-                  />
-                ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400 bg-gray-100 dark:bg-gray-800">
-                    <Settings2 className="w-8 h-8" />
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Background Removal Settings */}
-          <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-            <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-              <Settings2 className="w-4 h-4" />
-              Background Removal Settings
-            </h4>
-
-            <div>
-              <Slider
-                label="Background Threshold"
-                showValue
-                min={200}
-                max={255}
-                value={bgThreshold}
-                onChange={(e) => setBgThreshold(parseInt(e.target.value))}
-                formatValue={(v) => `${v}`}
-              />
-              <p className="text-xs text-gray-500 mt-1">
-                Higher = only remove pure white. Lower = remove off-white too.
-              </p>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={cleanupSpecs}
-                  onChange={(e) => setCleanupSpecs(e.target.checked)}
-                  className="rounded"
-                />
-                <span className="text-sm text-gray-700 dark:text-gray-300">
-                  Clean up white specs
-                </span>
-              </label>
-            </div>
-
-            {cleanupSpecs && (
-              <div>
-                <Slider
-                  label="Spec Size Threshold"
-                  showValue
-                  min={10}
-                  max={200}
-                  value={specThreshold}
-                  onChange={(e) => setSpecThreshold(parseInt(e.target.value))}
-                  formatValue={(v) => `${v}px`}
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Remove isolated white regions smaller than this (in pixels).
-                </p>
-              </div>
-            )}
-
-            <Button
-              onClick={handlePreviewProcessing}
-              disabled={isProcessing}
-              variant="outline"
-              className="w-full"
-            >
-              {isProcessing ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                <>
-                  <RotateCcw className="w-4 h-4 mr-2" />
-                  Preview Changes
-                </>
-              )}
-            </Button>
-          </div>
-
-          {/* Actions */}
-          <div className="flex justify-end gap-3">
-            <Button
-              variant="ghost"
-              onClick={() => {
-                setEditingImage(null);
-                setPreviewImage(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              onClick={handleSaveProcessedImage}
-              disabled={isSavingImage || !previewImage}
-              className="bg-green-500 hover:bg-green-600"
-            >
-              {isSavingImage ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Saving...
-                </>
-              ) : (
-                <>
-                  <Save className="w-4 h-4 mr-2" />
-                  Save & Update
-                </>
-              )}
             </Button>
           </div>
         </div>
