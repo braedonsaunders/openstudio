@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useRef, useCallback } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useMetronomeStore } from '@/stores/metronome-store';
 import { useSessionTempoStore, selectTempo, selectTimeSignature } from '@/stores/session-tempo-store';
 import { useAudioStore } from '@/stores/audio-store';
@@ -57,9 +58,9 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     isPlaying,
   } = useMetronomeStore();
 
-  // Session tempo store
+  // Session tempo store - use shallow for object selectors
   const tempo = useSessionTempoStore(selectTempo);
-  const { beatsPerBar, beatUnit } = useSessionTempoStore(selectTimeSignature);
+  const { beatsPerBar, beatUnit } = useSessionTempoStore(useShallow(selectTimeSignature));
 
   // Audio store for playback sync
   const audioIsPlaying = useAudioStore((s) => s.isPlaying);
