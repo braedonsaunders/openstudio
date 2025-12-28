@@ -137,6 +137,34 @@ export interface AvatarUploadResult {
 }
 
 /**
+ * Download an avatar component image from R2
+ */
+export async function downloadAvatarComponent(key: string): Promise<Buffer> {
+  const response = await s3Client.send(
+    new GetObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+    })
+  );
+
+  if (!response.Body) {
+    throw new Error('No body in response');
+  }
+
+  // Convert stream to buffer
+  const chunks: Uint8Array[] = [];
+  const reader = response.Body.transformToWebStream().getReader();
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value) chunks.push(value);
+  }
+
+  return Buffer.concat(chunks);
+}
+
+/**
  * Upload an avatar component image
  */
 export async function uploadAvatarComponent(

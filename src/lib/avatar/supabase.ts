@@ -318,6 +318,20 @@ export async function getComponentsByCategory(categoryId: string): Promise<Avata
   return (data || []).map(transformComponent);
 }
 
+export async function getComponentById(id: string): Promise<AvatarComponent | null> {
+  const { data, error } = await supabaseAuth
+    .from('avatar_components')
+    .select('*')
+    .eq('id', id)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // Not found
+    throw error;
+  }
+  return data ? transformComponent(data) : null;
+}
+
 export async function createComponent(
   request: CreateComponentRequest,
   createdBy: string
