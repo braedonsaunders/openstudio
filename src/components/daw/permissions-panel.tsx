@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRoomPermissions } from '@/hooks/useRoomPermissions';
 import {
@@ -48,8 +48,17 @@ export function PermissionsPanel({ roomId, users, currentUser }: PermissionsPane
   const [showRolePresets, setShowRolePresets] = useState(false);
   const [openRoleDropdown, setOpenRoleDropdown] = useState<string | null>(null);
 
+  // Build complete user list including current user (who may not be in users array)
+  const allUsers = useMemo(() => {
+    const userList = [...users];
+    if (currentUser && !userList.some(u => u.id === currentUser.id)) {
+      userList.unshift(currentUser);
+    }
+    return userList;
+  }, [users, currentUser]);
+
   // Combine connected users with member data
-  const connectedMembers = users.map((user) => {
+  const connectedMembers = allUsers.map((user) => {
     const memberData = members.find((m: RoomMember) => m.oduserId === user.id);
     return {
       user,
