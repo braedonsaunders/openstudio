@@ -513,10 +513,22 @@ export class DrumKitSampler {
 
   trigger(noteNumber: number, velocity: number, time?: number): void {
     const sample = this.samples.get(noteNumber);
-    if (!sample) return;
+    if (!sample) {
+      console.warn('[DrumKitSampler] No sample for note:', noteNumber, 'available:', Array.from(this.samples.keys()));
+      return;
+    }
 
     const startTime = time ?? this.context.currentTime;
     const velocityGain = (velocity / 127) * 0.9;
+
+    // Check if the scheduled time is in the past
+    if (startTime < this.context.currentTime) {
+      console.warn('[DrumKitSampler] Scheduled time is in the past:', {
+        startTime,
+        currentTime: this.context.currentTime,
+        delta: this.context.currentTime - startTime
+      });
+    }
 
     const source = this.context.createBufferSource();
     source.buffer = sample;
@@ -528,6 +540,7 @@ export class DrumKitSampler {
     gain.connect(this.masterGain);
 
     source.start(startTime);
+    console.log('[DrumKitSampler] Triggered note:', noteNumber, 'at:', startTime.toFixed(3), 'velocity:', velocity);
 
     const voice: SamplerVoice = {
       source,
@@ -634,6 +647,7 @@ export class SoundEngine {
     if (category === 'drums') {
       // Use synchronous access for pre-loaded kits (critical for timing)
       const kit = this.getDrumKitSync(preset);
+      console.log('[SoundEngine] playNote drums:', { preset, hasKit: !!kit, noteNumber, velocity, time });
       if (kit) {
         kit.trigger(noteNumber, velocity, time);
       } else {

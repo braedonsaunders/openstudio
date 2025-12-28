@@ -346,6 +346,9 @@ export function MultiTrackTimeline({
   // Waveform data cache by track URL
   const [waveformDataCache, setWaveformDataCache] = useState<Map<string, number[]>>(new Map());
 
+  // Container width for responsive timeline
+  const [containerWidth, setContainerWidth] = useState(800);
+
   const { getCurrentSong } = useSongsStore();
   const { queue, setCurrentTrack } = useRoomStore();
   const { getTracksByRoom } = useLoopTracksStore();
@@ -471,29 +474,58 @@ export function MultiTrackTimeline({
     });
   }, [unifiedTracks, waveformDataCache]);
 
-  // Auto-zoom to fit content when tracks are first added
+  // Track container size with ResizeObserver
   useEffect(() => {
-    if (!containerRef.current || hasSetInitialZoom.current) return;
+    if (!containerRef.current) return;
 
-    // If we have tracks, zoom to fit the content
-    if (unifiedTracks.length > 0) {
-      const containerWidth = containerRef.current.clientWidth - 96; // Account for track labels
-      // Calculate max end time
-      let maxEndTime = 0;
-      unifiedTracks.forEach((track) => {
-        const endTime = track.ref.startOffset + track.duration;
-        maxEndTime = Math.max(maxEndTime, endTime);
-      });
-
-      if (maxEndTime > 0) {
-        // Zoom to fit content with some padding
-        const idealZoom = containerWidth / (maxEndTime * 1.2);
-        // Clamp zoom to reasonable range
-        setZoom(Math.min(100, Math.max(10, idealZoom)));
-        hasSetInitialZoom.current = true;
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
+        const width = entry.contentRect.width - 96; // Account for track labels
+        setContainerWidth(Math.max(400, width));
       }
+    });
+
+    observer.observe(containerRef.current);
+    // Set initial width
+    setContainerWidth(Math.max(400, containerRef.current.clientWidth - 96));
+
+    return () => observer.disconnect();
+  }, []);
+
+  // Track count for auto-zoom detection
+  const prevTrackCountRef = useRef(0);
+
+  // Auto-zoom to fit content when tracks are added
+  useEffect(() => {
+    if (!containerRef.current) return;
+
+    const trackCount = unifiedTracks.length;
+    const prevCount = prevTrackCountRef.current;
+    prevTrackCountRef.current = trackCount;
+
+    // Zoom to fit when:
+    // 1. First track is added (hasSetInitialZoom is false)
+    // 2. New tracks are added (count increased)
+    const shouldZoom = !hasSetInitialZoom.current || (trackCount > prevCount && trackCount > 0);
+
+    if (!shouldZoom || trackCount === 0) return;
+
+    // Calculate max end time
+    let maxEndTime = 0;
+    unifiedTracks.forEach((track) => {
+      const endTime = track.ref.startOffset + track.duration;
+      maxEndTime = Math.max(maxEndTime, endTime);
+    });
+
+    if (maxEndTime > 0) {
+      // Zoom to fit content with some padding
+      const idealZoom = containerWidth / (maxEndTime * 1.1);
+      // Clamp zoom to reasonable range (10-200 pixels per second)
+      const newZoom = Math.min(200, Math.max(10, idealZoom));
+      setZoom(newZoom);
+      hasSetInitialZoom.current = true;
     }
-  }, [unifiedTracks]);
+  }, [unifiedTracks, containerWidth]);
 
   // Calculate total song duration
   const songDuration = useMemo(() => {
@@ -508,7 +540,8 @@ export function MultiTrackTimeline({
     return maxDuration || duration || 60;
   }, [unifiedTracks, duration]);
 
-  const timelineWidth = Math.max(songDuration * zoom, 800);
+  // Timeline width should be at least the container width or the content width
+  const timelineWidth = Math.max(songDuration * zoom, containerWidth + 96, 800);
 
   // Get track icon
   const getTrackIcon = (track: typeof unifiedTracks[0]) => {
