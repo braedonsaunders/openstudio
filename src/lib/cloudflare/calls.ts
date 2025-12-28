@@ -20,9 +20,37 @@
 import type { CloudflareSession, WebRTCStats } from '@/types';
 
 /**
- * Track types supported by the multi-track system
+ * Track type - can be any string identifier for the audio source.
+ * Common examples: 'mic', 'guitar', 'bass', 'keys', 'drums', 'violin', 'sax', 'synth', 'loop', etc.
+ * This is intentionally flexible to support any instrument or audio source.
  */
-export type AudioTrackType = 'mic' | 'guitar' | 'bass' | 'piano' | 'drums' | 'midi' | 'synth' | 'other';
+export type AudioTrackType = string;
+
+/**
+ * Common track type constants for convenience (not exhaustive)
+ */
+export const TrackTypes = {
+  MIC: 'mic',
+  VOICE: 'voice',
+  GUITAR: 'guitar',
+  BASS: 'bass',
+  KEYS: 'keys',
+  PIANO: 'piano',
+  DRUMS: 'drums',
+  PERCUSSION: 'percussion',
+  SYNTH: 'synth',
+  MIDI: 'midi',
+  LOOP: 'loop',
+  BACKING: 'backing',
+  VIOLIN: 'violin',
+  CELLO: 'cello',
+  SAX: 'sax',
+  TRUMPET: 'trumpet',
+  FLUTE: 'flute',
+  DJ: 'dj',
+  FX: 'fx',
+  OTHER: 'other',
+} as const;
 
 /**
  * Information about an audio track
@@ -30,7 +58,12 @@ export type AudioTrackType = 'mic' | 'guitar' | 'bass' | 'piano' | 'drums' | 'mi
 export interface AudioTrackInfo {
   trackId: string;
   userId: string;
+  /**
+   * Type of audio source - can be any string (e.g., 'guitar', 'vocals', 'synth-pad', 'loop-drums', etc.)
+   * Use TrackTypes constants for common types, or any custom string for specialized sources.
+   */
   type: AudioTrackType;
+  /** Human-readable label for display (e.g., "Lead Guitar", "Backing Vocals", "808 Beat") */
   label: string;
   stream: MediaStream;
   transceiver: RTCRtpTransceiver | null;
@@ -174,42 +207,61 @@ export class CloudflareCalls {
         const trackLabel = event.track.label || event.track.id;
         console.log('Received remote track:', trackLabel);
 
-        // Try to parse multi-track format: "type-userId-instanceId" or "type-userId"
-        const multiTrackMatch = trackLabel.match(/^(mic|guitar|bass|piano|drums|midi|synth|other)-([^-]+)(?:-(.+))?$/);
+        // Parse track format: "{type}-{userId}" or "{type}-{userId}-{instanceId}"
+        // Type can be any alphanumeric string (guitar, synth-pad, 808-drums, etc.)
+        // Legacy format "audio-{userId}" is also supported
+        const parts = trackLabel.split('-');
 
-        if (multiTrackMatch) {
-          // Multi-track format
-          const [, type, userId, instanceId] = multiTrackMatch;
-          const trackId = trackLabel;
+        if (parts.length >= 2) {
+          // Check for legacy "audio-{userId}" format
+          if (parts[0] === 'audio' && parts.length === 2) {
+            const remoteUserId = parts[1];
+            const trackInfo: AudioTrackInfo = {
+              trackId: trackLabel,
+              userId: remoteUserId,
+              type: 'audio',
+              label: 'Audio',
+              stream,
+              transceiver: event.transceiver || null,
+              enabled: true,
+              volume: 1,
+            };
 
-          const trackInfo: AudioTrackInfo = {
-            trackId,
-            userId,
-            type: type as AudioTrackType,
-            label: instanceId ? `${type} (${instanceId})` : type,
-            stream,
-            transceiver: event.transceiver || null,
-            enabled: true,
-            volume: 1,
-          };
+            this.remoteTracks.set(trackLabel, trackInfo);
+            this.onRemoteTrackAdded?.(trackInfo);
+            this.remoteStreams.set(remoteUserId, stream);
+            this.onRemoteStream?.(remoteUserId, stream);
+          } else {
+            // Multi-track format: "{type}-{userId}" or "{type}-{userId}-{instanceId}"
+            const type = parts[0];
+            const userId = parts[1];
+            const instanceId = parts.length > 2 ? parts.slice(2).join('-') : undefined;
 
-          this.remoteTracks.set(trackId, trackInfo);
-          this.onRemoteTrackAdded?.(trackInfo);
+            const trackInfo: AudioTrackInfo = {
+              trackId: trackLabel,
+              userId,
+              type,
+              label: instanceId ? `${type} (${instanceId})` : type,
+              stream,
+              transceiver: event.transceiver || null,
+              enabled: true,
+              volume: 1,
+            };
 
-          // Also call legacy callback for backwards compatibility
-          this.remoteStreams.set(trackId, stream);
-          this.onRemoteStream?.(userId, stream);
+            this.remoteTracks.set(trackLabel, trackInfo);
+            this.onRemoteTrackAdded?.(trackInfo);
+
+            // Also call legacy callback for backwards compatibility
+            this.remoteStreams.set(trackLabel, stream);
+            this.onRemoteStream?.(userId, stream);
+          }
         } else {
-          // Legacy format: "audio-{userId}"
-          const legacyMatch = trackLabel.match(/audio-(.+)/);
-          const remoteUserId = legacyMatch ? legacyMatch[1] : trackLabel;
-
-          // Create legacy track info
+          // Unknown format - use entire label as trackId
           const trackInfo: AudioTrackInfo = {
             trackId: trackLabel,
-            userId: remoteUserId,
-            type: 'other',
-            label: 'Audio',
+            userId: 'unknown',
+            type: 'unknown',
+            label: trackLabel,
             stream,
             transceiver: event.transceiver || null,
             enabled: true,
@@ -218,9 +270,7 @@ export class CloudflareCalls {
 
           this.remoteTracks.set(trackLabel, trackInfo);
           this.onRemoteTrackAdded?.(trackInfo);
-
-          this.remoteStreams.set(remoteUserId, stream);
-          this.onRemoteStream?.(remoteUserId, stream);
+          this.remoteStreams.set(trackLabel, stream);
         }
       }
     };
@@ -242,14 +292,14 @@ export class CloudflareCalls {
    * For multi-track support, use addTrack() after joining to add additional tracks.
    *
    * @param stream Optional initial MediaStream (for backwards compatibility)
-   * @param trackType Type of the initial track (defaults to 'mic')
-   * @param trackLabel Label for the initial track (defaults to 'Primary Audio')
+   * @param trackType Type of the initial track - any string (e.g., 'mic', 'guitar', 'synth-lead')
+   * @param trackLabel Human-readable label for the initial track (e.g., "Lead Vocals", "Rhythm Guitar")
    * @returns Session info including session ID and initial track list
    */
   async joinRoom(
     stream?: MediaStream,
-    trackType: AudioTrackType = 'mic',
-    trackLabel: string = 'Primary Audio'
+    trackType: AudioTrackType = 'audio',
+    trackLabel: string = 'Audio'
   ): Promise<CloudflareSession> {
     if (!this.peerConnection) {
       throw new Error('PeerConnection not initialized');
@@ -516,7 +566,7 @@ export class CloudflareCalls {
    */
   getLocalTrackName(): string {
     const firstTrack = this.localTracks.values().next().value;
-    return firstTrack?.trackId || `mic-${this.userId}`;
+    return firstTrack?.trackId || `audio-${this.userId}`;
   }
 
   setOnRemoteStream(callback: (userId: string, stream: MediaStream) => void): void {
@@ -867,17 +917,27 @@ export class CloudflareCalls {
 /**
  * Summary of Multi-Track Synchronized Architecture:
  *
+ * FLEXIBLE TRACK TYPES:
+ * =====================
+ * Track types are flexible strings - use any identifier that makes sense:
+ * - Common: 'mic', 'guitar', 'bass', 'keys', 'drums', 'synth', 'loop'
+ * - Specific: 'lead-guitar', 'rhythm-guitar', '808-drums', 'synth-pad'
+ * - Custom: 'my-custom-source', 'fx-chain-1', 'ambient-layer'
+ *
+ * Use TrackTypes constants for common types, or any string for custom sources.
+ *
  * SENDING TRACKS:
  * ===============
- * 1. Use addTrack() to add audio sources:
- *    - await calls.addTrack(micStream, 'mic', 'Voice Chat');
- *    - await calls.addTrack(guitarStream, 'guitar', 'Guitar Input');
- *    - await calls.addTrack(midiStream, 'midi', 'Synth 1', 'synth1');
+ * 1. Use addTrack() to add ANY audio source:
+ *    - await calls.addTrack(micStream, 'vocals', 'Lead Vocals');
+ *    - await calls.addTrack(guitarStream, 'guitar', 'Rhythm Guitar');
+ *    - await calls.addTrack(synthStream, 'synth-pad', 'Ambient Pad', 'layer1');
+ *    - await calls.addTrack(drumStream, '808-drums', 'Beat Machine');
  *
  * 2. Each track is sent independently with:
  *    - High priority transport hints
  *    - 10ms Opus frames for low latency
- *    - Unique track ID for identification
+ *    - Unique track ID: "{type}-{userId}-{instanceId}"
  *
  * RECEIVING TRACKS:
  * =================
@@ -886,9 +946,10 @@ export class CloudflareCalls {
  *    - calls.setOnRemoteTrackRemoved((trackId) => { ... });
  *
  * 2. Each remote track includes:
- *    - trackId: Unique identifier
+ *    - trackId: Unique identifier (e.g., "guitar-user123")
  *    - userId: Who sent this track
- *    - type: What kind of instrument/source
+ *    - type: Source type string (flexible, any value)
+ *    - label: Human-readable display name
  *    - stream: MediaStream to play/process
  *
  * SYNCHRONIZATION:
