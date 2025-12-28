@@ -464,7 +464,7 @@ export function LoopCreatorModal({
         )}>
           <div className="flex items-center gap-2">
             <Button
-              variant={isPlaying ? 'default' : 'outline'}
+              variant={isPlaying ? 'primary' : 'outline'}
               onClick={togglePlayback}
               disabled={notes.length === 0}
             >
