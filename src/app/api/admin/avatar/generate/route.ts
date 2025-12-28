@@ -18,6 +18,7 @@ export async function GET(req: NextRequest) {
       hasApiToken: !!process.env.CLOUDFLARE_API_TOKEN,
       hasR2AccessKey: !!process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
       hasReplicate: !!process.env.REPLICATE_API_TOKEN,
+      hasGemini: !!process.env.GOOGLE_GEMINI_API_KEY,
       accountIdLength: process.env.CLOUDFLARE_R2_ACCOUNT_ID?.length || 0,
       apiTokenLength: process.env.CLOUDFLARE_API_TOKEN?.length || 0,
       r2AccessKeyLength: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID?.length || 0,
@@ -32,6 +33,7 @@ export async function GET(req: NextRequest) {
     const models = getAvailableModels().filter((model) => {
       if (model.provider === 'Cloudflare') return providers.cloudflare;
       if (model.provider === 'Replicate') return providers.replicate;
+      if (model.provider === 'Google') return providers.gemini;
       return false;
     });
 

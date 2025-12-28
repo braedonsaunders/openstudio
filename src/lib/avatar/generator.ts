@@ -1,14 +1,22 @@
 // AI image generation for avatar components
-// Supports Cloudflare Workers AI (primary) and Replicate (fallback)
+// Supports Cloudflare Workers AI, Replicate, and Google Gemini/Imagen
 // Also supports text generation for varied prompt creation
 
 import type { GenerateImageRequest, GenerateImageResponse } from '@/types/avatar';
 
-// Cloudflare text generation model
+// Text generation models
 const CF_TEXT_MODEL = '@cf/meta/llama-3.1-8b-instruct';
+const GEMINI_TEXT_MODEL = 'gemini-2.0-flash';
 
-// Available models
-export type AIModel = 'cf-sdxl-lightning' | 'cf-sdxl-base' | 'cf-flux-schnell' | 'replicate-flux-schnell' | 'replicate-sdxl';
+// Available models - now includes Gemini Nano Banana
+export type AIModel =
+  | 'cf-sdxl-lightning'
+  | 'cf-sdxl-base'
+  | 'cf-flux-schnell'
+  | 'replicate-flux-schnell'
+  | 'replicate-sdxl'
+  | 'gemini-nano-banana'
+  | 'gemini-nano-banana-pro';
 
 // Server-side only - this file should only be imported in API routes
 export async function generateAvatarImages(
@@ -21,6 +29,8 @@ export async function generateAvatarImages(
     return generateWithCloudflare(request, model);
   } else if (model.startsWith('replicate-')) {
     return generateWithReplicate(request, model);
+  } else if (model.startsWith('gemini-')) {
+    return generateWithGemini(request, model);
   }
 
   throw new Error(`Unknown model: ${model}`);
@@ -227,10 +237,130 @@ async function generateWithReplicate(
 }
 
 /**
+ * Generate images using Google Gemini Nano Banana
+ * Uses Gemini's native image generation capabilities:
+ * - gemini-2.5-flash-image (Nano Banana): Fast and efficient
+ * - gemini-3-pro-image-preview (Nano Banana Pro): Professional asset production with advanced reasoning
+ */
+async function generateWithGemini(
+  request: GenerateImageRequest,
+  model: string
+): Promise<GenerateImageResponse> {
+  const apiKey = process.env.GOOGLE_GEMINI_API_KEY;
+
+  if (!apiKey) {
+    throw new Error('GOOGLE_GEMINI_API_KEY is not configured');
+  }
+
+  // Map model names to Gemini model IDs
+  const modelMap: Record<string, string> = {
+    'gemini-nano-banana': 'gemini-2.5-flash-preview-05-20',
+    'gemini-nano-banana-pro': 'gemini-2.5-pro-preview-06-05',
+  };
+
+  const geminiModel = modelMap[model];
+  if (!geminiModel) {
+    throw new Error(`Unknown Gemini model: ${model}`);
+  }
+
+  const seed = request.seed || Math.floor(Math.random() * 2147483647);
+  const count = request.count || 4;
+
+  // Build prompt - include negative prompt as instructions
+  let prompt = request.prompt;
+  if (request.negativePrompt) {
+    prompt = `${prompt}\n\nIMPORTANT: Do NOT include any of the following: ${request.negativePrompt}`;
+  }
+
+  // Gemini generateContent API endpoint
+  const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${geminiModel}:generateContent?key=${apiKey}`;
+
+  // Generate images one at a time (Gemini returns one image per request)
+  const allImages: string[] = [];
+
+  for (let i = 0; i < count; i++) {
+    try {
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                {
+                  text: `Generate an image: ${prompt}\n\nThis should be a square 1:1 aspect ratio image. Variation seed: ${seed + i}`,
+                },
+              ],
+            },
+          ],
+          generationConfig: {
+            responseModalities: ['image', 'text'],
+            temperature: 1.0,
+          },
+        }),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error('Gemini Nano Banana error response:', errorText);
+        // Continue to try other images even if one fails
+        continue;
+      }
+
+      const result = await response.json() as {
+        candidates?: Array<{
+          content?: {
+            parts?: Array<{
+              text?: string;
+              inlineData?: {
+                mimeType: string;
+                data: string;
+              };
+            }>;
+          };
+        }>;
+        error?: { message: string };
+      };
+
+      if (result.error) {
+        console.error('Gemini error:', result.error.message);
+        continue;
+      }
+
+      // Extract images from response parts
+      const parts = result.candidates?.[0]?.content?.parts || [];
+      for (const part of parts) {
+        if (part.inlineData) {
+          const { mimeType, data } = part.inlineData;
+          allImages.push(`data:${mimeType};base64,${data}`);
+        }
+      }
+    } catch (error) {
+      console.warn(`Failed to generate image ${i + 1}:`, error);
+      // Continue with other images
+    }
+  }
+
+  if (allImages.length === 0) {
+    throw new Error('Gemini Nano Banana returned no images');
+  }
+
+  return {
+    images: allImages,
+    seed,
+    model,
+  };
+}
+
+/**
  * Get available AI models
  */
 export function getAvailableModels(): Array<{ id: AIModel; name: string; provider: string; speed: string; cost: string }> {
   return [
+    { id: 'gemini-nano-banana', name: 'Nano Banana (2.5 Flash)', provider: 'Google', speed: 'Fast', cost: 'Low' },
+    { id: 'gemini-nano-banana-pro', name: 'Nano Banana Pro (2.5 Pro)', provider: 'Google', speed: 'Medium', cost: 'Medium' },
     { id: 'cf-flux-schnell', name: 'FLUX Schnell', provider: 'Cloudflare', speed: 'Fast', cost: 'Very Low' },
     { id: 'cf-sdxl-lightning', name: 'SDXL Lightning', provider: 'Cloudflare', speed: 'Very Fast', cost: 'Very Low' },
     { id: 'cf-sdxl-base', name: 'SDXL Base', provider: 'Cloudflare', speed: 'Medium', cost: 'Very Low' },
@@ -278,16 +408,18 @@ export function buildPromptFromPreset(
 /**
  * Check which AI providers are configured
  */
-export function getConfiguredProviders(): { cloudflare: boolean; replicate: boolean } {
+export function getConfiguredProviders(): { cloudflare: boolean; replicate: boolean; gemini: boolean } {
   const hasCloudflareToken = !!(process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID);
   return {
     cloudflare: !!(process.env.CLOUDFLARE_R2_ACCOUNT_ID && hasCloudflareToken),
     replicate: !!process.env.REPLICATE_API_TOKEN,
+    gemini: !!process.env.GOOGLE_GEMINI_API_KEY,
   };
 }
 
 /**
- * Generate varied prompts for a theme/category using Cloudflare LLM
+ * Generate varied prompts for a theme/category using Gemini or Cloudflare LLM
+ * Prefers Gemini when available for better prompt quality
  * @param categoryPromptAddition - Optional category-specific prompt rules/guidelines
  */
 export async function generateVariedPrompts(
@@ -297,11 +429,25 @@ export async function generateVariedPrompts(
   styleSuffix?: string,
   categoryPromptAddition?: string
 ): Promise<{ prompts: string[]; error?: string }> {
+  // Prefer Gemini for text generation when available
+  const geminiApiKey = process.env.GOOGLE_GEMINI_API_KEY;
+  if (geminiApiKey) {
+    return generateVariedPromptsWithGemini(
+      theme,
+      categoryName,
+      count,
+      styleSuffix,
+      categoryPromptAddition,
+      geminiApiKey
+    );
+  }
+
+  // Fallback to Cloudflare
   const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID;
   const apiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
 
   if (!accountId || !apiToken) {
-    return { prompts: [], error: 'Cloudflare credentials not configured' };
+    return { prompts: [], error: 'No AI text provider configured (need GOOGLE_GEMINI_API_KEY or Cloudflare)' };
   }
 
   const systemPrompt = `You are a professional 2D game asset prompt engineer. You create EXTREMELY UNIFORM and CONSISTENT image generation prompts for avatar customization items.
@@ -384,6 +530,114 @@ Return ONLY a valid JSON array of prompt strings. Example format:
     return { prompts: prompts.slice(0, count) };
   } catch (error) {
     return { prompts: [], error: error instanceof Error ? error.message : 'Failed to generate prompts' };
+  }
+}
+
+/**
+ * Generate varied prompts using Google Gemini
+ * Uses Gemini 2.0 Flash for fast, high-quality prompt generation
+ */
+async function generateVariedPromptsWithGemini(
+  theme: string,
+  categoryName: string,
+  count: number,
+  styleSuffix: string | undefined,
+  categoryPromptAddition: string | undefined,
+  apiKey: string
+): Promise<{ prompts: string[]; error?: string }> {
+  const systemPrompt = `You are a professional 2D game asset prompt engineer. You create EXTREMELY UNIFORM and CONSISTENT image generation prompts for avatar customization items.
+
+CRITICAL UNIFORMITY RULES - ALL prompts MUST follow these EXACTLY:
+1. Every item is a SINGLE ISOLATED OBJECT - never a person, never worn/held
+2. PURE WHITE BACKGROUND (#FFFFFF) - no exceptions, no gradients, no textures
+3. PERFECTLY CENTERED - object fills 70-80% of frame, equal margins
+4. FRONT-FACING SYMMETRIC VIEW - no angles, no 3/4 views, no perspective
+5. FLAT SOLID COLORS - no gradients, no shading, no highlights, no shadows
+6. CLEAN VECTOR STYLE - crisp edges, no anti-aliasing artifacts, professional quality
+7. CONSISTENT ART STYLE - all items look like they belong in the same game
+8. 2D ILLUSTRATION ONLY - never 3D, never photorealistic, never rendered
+
+You generate prompts that will create assets looking like professional mobile game UI elements.`;
+
+  const userPrompt = `Generate exactly ${count} unique image prompts for "${categoryName}" avatar components with theme: "${theme}"
+
+MANDATORY FORMAT for EVERY prompt:
+- Start with "a" or "an" + the item name
+- Include 1-2 distinctive visual features (color, pattern, material)
+- End with "flat vector illustration style" or "clean 2D game art style"
+- Keep under 20 words total
+
+UNIFORMITY REQUIREMENTS:
+- All prompts describe the ISOLATED ITEM ONLY (e.g., "a red cap" NOT "person wearing cap")
+- Vary colors, patterns, and details - but maintain the SAME art style across all
+- Use flat, solid colors - no gradients or shading descriptions
+- Describe simple, clean designs suitable for small avatar display
+${styleSuffix ? `- Apply this visual style to all: ${styleSuffix}` : ''}
+${categoryPromptAddition ? `\nCATEGORY-SPECIFIC RULES:\n${categoryPromptAddition}` : ''}
+
+Return ONLY a valid JSON array of prompt strings. Example format:
+["a bright red baseball cap with white stitching, flat vector illustration style", "an elegant black top hat with gold band, clean 2D game art style", "a cozy purple beanie with pom-pom, flat vector illustration style"]`;
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_TEXT_MODEL}:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [
+            {
+              parts: [
+                { text: systemPrompt + '\n\n' + userPrompt },
+              ],
+            },
+          ],
+          generationConfig: {
+            temperature: 0.8,
+            maxOutputTokens: 2048,
+            responseMimeType: 'application/json',
+          },
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Gemini text generation error:', error);
+      return { prompts: [], error: `Gemini AI error: ${response.status}` };
+    }
+
+    const result = await response.json() as {
+      candidates?: Array<{
+        content?: {
+          parts?: Array<{ text?: string }>;
+        };
+      }>;
+      error?: { message: string };
+    };
+
+    if (result.error) {
+      return { prompts: [], error: `Gemini error: ${result.error.message}` };
+    }
+
+    const responseText = result.candidates?.[0]?.content?.parts?.[0]?.text?.trim();
+    if (!responseText) {
+      return { prompts: [], error: 'Gemini returned no response' };
+    }
+
+    // Parse JSON array from response
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return { prompts: [], error: 'Failed to parse prompts from Gemini response' };
+    }
+
+    const prompts = JSON.parse(jsonMatch[0]) as string[];
+    return { prompts: prompts.slice(0, count) };
+  } catch (error) {
+    console.error('Gemini text generation failed:', error);
+    return { prompts: [], error: error instanceof Error ? error.message : 'Failed to generate prompts with Gemini' };
   }
 }
 
