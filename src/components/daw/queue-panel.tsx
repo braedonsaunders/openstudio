@@ -6,6 +6,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { LoopBrowserModal } from '../loops/loop-browser-modal';
+import { LoopCreatorModal } from '../loops/loop-creator-modal';
 import { getLoopById } from '@/lib/audio/loop-library';
 import {
   Upload,
@@ -17,6 +18,7 @@ import {
   Repeat,
   Volume2,
   VolumeX,
+  Edit3,
 } from 'lucide-react';
 import type { BackingTrack } from '@/types';
 import type { LoopDefinition } from '@/types/loops';
@@ -55,9 +57,17 @@ export function QueuePanel({
   } = useLoopTracksStore();
 
   const [showLoopBrowser, setShowLoopBrowser] = useState(false);
+  const [showLoopEditor, setShowLoopEditor] = useState(false);
+  const [editingLoopId, setEditingLoopId] = useState<string | undefined>(undefined);
 
   // Get loop tracks for this room
   const loopTracks = getTracksByRoom(roomId);
+
+  // Handle editing a custom loop
+  const handleEditLoop = useCallback((loopId: string) => {
+    setEditingLoopId(loopId);
+    setShowLoopEditor(true);
+  }, []);
 
   // Handler for adding a loop track from the browser
   const handleAddLoop = useCallback(
@@ -316,6 +326,17 @@ export function QueuePanel({
                     </div>
                   </div>
 
+                  {/* Edit Button - only for custom loops */}
+                  {loopDef && 'isCustom' in loopDef && (loopDef as { isCustom?: boolean }).isCustom === true && (
+                    <button
+                      onClick={() => handleEditLoop(track.loopId)}
+                      className="p-1.5 rounded text-gray-400 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-500/10 opacity-0 group-hover:opacity-100 transition-all"
+                      title="Edit loop"
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+
                   {/* Mute Button */}
                   <button
                     onClick={() => setTrackMuted(track.id, !track.muted)}
@@ -367,6 +388,16 @@ export function QueuePanel({
         userId={userId}
         userName={userName}
         onAddLoop={handleAddLoop}
+      />
+
+      {/* Loop Editor Modal */}
+      <LoopCreatorModal
+        isOpen={showLoopEditor}
+        onClose={() => {
+          setShowLoopEditor(false);
+          setEditingLoopId(undefined);
+        }}
+        editingLoopId={editingLoopId}
       />
     </div>
   );
