@@ -496,7 +496,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
             className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
           >
             <option value="">All Categories</option>
-            {categories.map((cat) => (
+            {[...categories].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((cat) => (
               <option key={cat.id} value={cat.id}>
                 {cat.displayName}
               </option>
@@ -539,7 +539,8 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
       </div>
 
       {/* Components by Category */}
-      {categories
+      {[...categories]
+        .sort((a, b) => a.displayName.localeCompare(b.displayName))
         .filter((cat) => componentsByCategory[cat.id]?.length > 0)
         .map((category) => (
           <Card key={category.id} className="p-4">

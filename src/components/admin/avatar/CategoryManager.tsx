@@ -228,22 +228,24 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
 
       {/* Categories List */}
       <Card className="divide-y divide-gray-200 dark:divide-gray-700">
-        {orderedCategories.map((category, index) => (
+        {[...orderedCategories].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((category) => {
+          const actualIndex = orderedCategories.findIndex(c => c.id === category.id);
+          return (
           <div
             key={category.id}
             draggable
-            onDragStart={() => handleDragStart(index)}
-            onDragOver={(e) => handleDragOver(e, index)}
+            onDragStart={() => handleDragStart(actualIndex)}
+            onDragOver={(e) => handleDragOver(e, actualIndex)}
             onDragEnd={handleDragEnd}
             className={`flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-move ${
-              draggedIndex === index ? 'opacity-50 bg-indigo-50 dark:bg-indigo-900/20' : ''
+              draggedIndex === actualIndex ? 'opacity-50 bg-indigo-50 dark:bg-indigo-900/20' : ''
             }`}
           >
             <GripVertical className="w-5 h-5 text-gray-400" />
 
             <div className="w-12 text-center">
               <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300">
-                {index}
+                {category.layerOrder}
               </span>
             </div>
 
@@ -282,7 +284,8 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
               </Button>
             </div>
           </div>
-        ))}
+        );
+        })}
       </Card>
 
       {/* Add/Edit Modal */}
@@ -342,7 +345,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="">None</option>
-                {Object.keys(colorPalettes).map((paletteId) => (
+                {Object.keys(colorPalettes).sort((a, b) => a.localeCompare(b)).map((paletteId) => (
                   <option key={paletteId} value={paletteId}>
                     {paletteId}
                   </option>
