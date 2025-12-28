@@ -86,6 +86,7 @@ export interface AudioStream {
   analyser?: AnalyserNode;
   gainNode?: GainNode;
   level: number;
+  preMuteVolume?: number; // Store volume before muting so it can be restored
 }
 
 export interface CloudflareSession {
