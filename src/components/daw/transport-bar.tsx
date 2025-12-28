@@ -1,11 +1,12 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { cn, formatLatency } from '@/lib/utils';
 import { useAudioStore } from '@/stores/audio-store';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useRoomStore } from '@/stores/room-store';
 import { useAnalysisStore } from '@/stores/analysis-store';
+import { useUserTracksStore } from '@/stores/user-tracks-store';
 import {
   Play,
   Pause,
@@ -61,8 +62,19 @@ export function TransportBar({
   const [copied, setCopied] = useState(false);
 
   const { isPlaying, currentTime, duration, isMuted, jitterStats, webrtcStats, connectionQuality, currentBufferSize, performanceMetrics, settings } = useAudioStore();
-  const { currentTrack, isMaster } = useRoomStore();
+  const { currentTrack, isMaster, currentUser } = useRoomStore();
   const { syncedAnalysis, localAnalysis } = useAnalysisStore();
+  const getTracksByUser = useUserTracksStore((s) => s.getTracksByUser);
+
+  // Get the buffer size from the user's track settings (not global settings)
+  const userBufferSize = useMemo(() => {
+    if (!currentUser) return settings.bufferSize;
+    const userTracks = getTracksByUser(currentUser.id);
+    if (userTracks.length === 0) return settings.bufferSize;
+    // Use the first audio track's buffer setting
+    const audioTrack = userTracks.find((t) => t.type !== 'midi');
+    return audioTrack?.audioSettings.bufferSize ?? settings.bufferSize;
+  }, [currentUser, getTracksByUser, settings.bufferSize]);
 
   const displayKey = syncedAnalysis?.key || localAnalysis?.key;
   const displayScale = syncedAnalysis?.keyScale || localAnalysis?.keyScale;
@@ -158,7 +170,7 @@ export function TransportBar({
                 <div className="flex items-center justify-between">
                   <span className="text-xs text-zinc-400">Buffer Setting</span>
                   <span className="text-xs font-medium text-white">
-                    {settings.bufferSize} samples ({((settings.bufferSize / settings.sampleRate) * 1000).toFixed(1)}ms)
+                    {userBufferSize} samples ({((userBufferSize / settings.sampleRate) * 1000).toFixed(1)}ms)
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
