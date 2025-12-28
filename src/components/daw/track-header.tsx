@@ -61,20 +61,12 @@ export function TrackHeader({
   return (
     <div
       className={cn(
-        'border-b border-white/5 transition-all relative',
+        'border-b border-white/5 transition-all',
         isActive && 'bg-white/[0.02]',
         isGlobalMuted && 'opacity-50'
       )}
       style={{ '--track-color': trackColor } as React.CSSProperties}
     >
-      {/* Global mute overlay */}
-      {isGlobalMuted && (
-        <div className="absolute inset-0 bg-red-500/5 pointer-events-none z-10 flex items-center justify-center">
-          <div className="absolute top-1 right-8 bg-red-500/20 text-red-400 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">
-            Muted
-          </div>
-        </div>
-      )}
       {/* Main Row - Fixed height matching the lane */}
       <div className="h-[80px] flex">
         {/* Left Content Area */}
