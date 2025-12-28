@@ -4,10 +4,12 @@ import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { Button } from '../ui/button';
 import { Slider } from '../ui/slider';
+import { useContextMenu } from '../ui/context-menu';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 import { getLoopById } from '@/lib/audio/loop-library';
 import { AVAILABLE_SOUND_PRESETS } from '@/lib/audio/sound-engine';
-import type { LoopTrackState } from '@/types/loops';
+import type { LoopTrackState, LoopDefinition } from '@/types/loops';
 import {
   Volume2,
   VolumeX,
@@ -19,6 +21,7 @@ import {
   Music,
   Zap,
   Edit3,
+  Copy,
 } from 'lucide-react';
 
 interface LoopTrackHeaderProps {
@@ -41,6 +44,8 @@ export function LoopTrackHeader({
     setTrackSoundPreset,
     setTrackHumanize,
   } = useLoopTracksStore();
+  const { createLoop: createCustomLoop } = useCustomLoopsStore();
+  const { showContextMenu, ContextMenuComponent } = useContextMenu();
 
   const [showSettings, setShowSettings] = useState(false);
 
@@ -49,6 +54,69 @@ export function LoopTrackHeader({
 
   // Check if this is a custom loop (editable)
   const isCustomLoop = loopDef && 'isCustom' in loopDef && loopDef.isCustom === true;
+
+  // Duplicate a loop as a custom loop for editing
+  const handleDuplicateAsCustom = useCallback(
+    async (loop: LoopDefinition) => {
+      const newLoop = await createCustomLoop({
+        name: `${loop.name} (Copy)`,
+        category: loop.category,
+        subcategory: 'custom',
+        bars: loop.bars,
+        bpm: loop.bpm,
+        timeSignature: loop.timeSignature,
+        midiData: [...loop.midiData],
+        soundPreset: loop.soundPreset,
+        tags: ['custom', ...loop.tags],
+        intensity: loop.intensity,
+        complexity: loop.complexity,
+        key: loop.key,
+      });
+      onEditLoop?.(newLoop.id);
+    },
+    [createCustomLoop, onEditLoop]
+  );
+
+  // Handle right-click context menu
+  const handleContextMenu = useCallback(
+    (e: React.MouseEvent) => {
+      if (!loopDef) return;
+
+      const items = [];
+
+      if (isCustomLoop) {
+        items.push({
+          label: 'Edit Loop',
+          icon: <Edit3 className="w-4 h-4" />,
+          onClick: () => onEditLoop?.(track.loopId),
+        });
+        items.push({
+          label: 'Duplicate',
+          icon: <Copy className="w-4 h-4" />,
+          onClick: () => handleDuplicateAsCustom(loopDef),
+        });
+      } else {
+        items.push({
+          label: 'Duplicate & Edit',
+          icon: <Copy className="w-4 h-4" />,
+          onClick: () => handleDuplicateAsCustom(loopDef),
+        });
+      }
+
+      if (isMaster) {
+        items.push({ divider: true, label: '', onClick: () => {} });
+        items.push({
+          label: 'Remove Track',
+          icon: <Trash2 className="w-4 h-4" />,
+          danger: true,
+          onClick: onRemove,
+        });
+      }
+
+      showContextMenu(e, items);
+    },
+    [loopDef, isCustomLoop, isMaster, showContextMenu, onEditLoop, handleDuplicateAsCustom, onRemove, track.loopId]
+  );
 
   // Get category icon
   const getCategoryIcon = () => {
@@ -76,9 +144,11 @@ export function LoopTrackHeader({
   );
 
   return (
+    <>
     <div
       className="flex flex-col h-24 bg-slate-900 border-b border-slate-700"
       style={{ borderLeftColor: track.color, borderLeftWidth: '3px' }}
+      onContextMenu={handleContextMenu}
     >
       {/* Top Row - Name and Controls */}
       <div className="flex items-center gap-2 px-2 py-1.5 min-w-0">
@@ -210,6 +280,8 @@ export function LoopTrackHeader({
         />
       )}
     </div>
+    {ContextMenuComponent}
+    </>
   );
 }
 

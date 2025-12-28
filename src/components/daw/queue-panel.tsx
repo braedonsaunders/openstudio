@@ -5,8 +5,10 @@ import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 import { LoopBrowserModal } from '../loops/loop-browser-modal';
 import { LoopCreatorModal } from '../loops/loop-creator-modal';
+import { useContextMenu } from '../ui/context-menu';
 import { getLoopById } from '@/lib/audio/loop-library';
 import {
   Upload,
@@ -19,9 +21,11 @@ import {
   Volume2,
   VolumeX,
   Edit3,
+  Copy,
+  Trash2,
 } from 'lucide-react';
 import type { BackingTrack } from '@/types';
-import type { LoopDefinition } from '@/types/loops';
+import type { LoopDefinition, LoopTrackState } from '@/types/loops';
 
 interface QueuePanelProps {
   onTrackSelect: (track: BackingTrack) => void;
@@ -55,6 +59,8 @@ export function QueuePanel({
     setTrackMuted,
     setTrackVolume,
   } = useLoopTracksStore();
+  const { createLoop: createCustomLoop } = useCustomLoopsStore();
+  const { showContextMenu, ContextMenuComponent } = useContextMenu();
 
   const [showLoopBrowser, setShowLoopBrowser] = useState(false);
   const [showLoopEditor, setShowLoopEditor] = useState(false);
@@ -68,6 +74,72 @@ export function QueuePanel({
     setEditingLoopId(loopId);
     setShowLoopEditor(true);
   }, []);
+
+  // Duplicate a loop as a custom loop for editing
+  const handleDuplicateAsCustom = useCallback(
+    async (loop: LoopDefinition) => {
+      const newLoop = await createCustomLoop({
+        name: `${loop.name} (Copy)`,
+        category: loop.category,
+        subcategory: 'custom',
+        bars: loop.bars,
+        bpm: loop.bpm,
+        timeSignature: loop.timeSignature,
+        midiData: [...loop.midiData],
+        soundPreset: loop.soundPreset,
+        tags: ['custom', ...loop.tags],
+        intensity: loop.intensity,
+        complexity: loop.complexity,
+        key: loop.key,
+      });
+      setEditingLoopId(newLoop.id);
+      setShowLoopEditor(true);
+    },
+    [createCustomLoop]
+  );
+
+  // Handle right-click on a loop track
+  const handleLoopTrackContextMenu = useCallback(
+    (e: React.MouseEvent, track: LoopTrackState) => {
+      const loopDef = getLoopById(track.loopId);
+      if (!loopDef) return;
+
+      const isCustom = 'isCustom' in loopDef && loopDef.isCustom === true;
+      const items = [];
+
+      if (isCustom) {
+        items.push({
+          label: 'Edit Loop',
+          icon: <Edit3 className="w-4 h-4" />,
+          onClick: () => handleEditLoop(track.loopId),
+        });
+        items.push({
+          label: 'Duplicate',
+          icon: <Copy className="w-4 h-4" />,
+          onClick: () => handleDuplicateAsCustom(loopDef),
+        });
+      } else {
+        items.push({
+          label: 'Duplicate & Edit',
+          icon: <Copy className="w-4 h-4" />,
+          onClick: () => handleDuplicateAsCustom(loopDef),
+        });
+      }
+
+      if (isMaster) {
+        items.push({ divider: true, label: '', onClick: () => {} });
+        items.push({
+          label: 'Remove from Session',
+          icon: <Trash2 className="w-4 h-4" />,
+          danger: true,
+          onClick: () => handleRemoveLoopTrack(track.id),
+        });
+      }
+
+      showContextMenu(e, items);
+    },
+    [showContextMenu, handleEditLoop, handleDuplicateAsCustom, handleRemoveLoopTrack, isMaster]
+  );
 
   // Handler for adding a loop track from the browser
   const handleAddLoop = useCallback(
@@ -306,7 +378,8 @@ export function QueuePanel({
               return (
                 <div
                   key={track.id}
-                  className="group flex items-center gap-3 px-4 py-2 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors"
+                  className="group flex items-center gap-3 px-4 py-2 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+                  onContextMenu={(e) => handleLoopTrackContextMenu(e, track)}
                 >
                   {/* Loop Icon */}
                   <div
@@ -399,6 +472,9 @@ export function QueuePanel({
         }}
         editingLoopId={editingLoopId}
       />
+
+      {/* Context Menu */}
+      {ContextMenuComponent}
     </div>
   );
 }
