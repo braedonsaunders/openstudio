@@ -31,11 +31,11 @@ async function generateWithCloudflare(
 ): Promise<GenerateImageResponse> {
   // Use the same account ID as R2
   const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID;
-  // For Workers AI, use the R2 access key as the API token (if it has AI permissions)
-  const apiToken = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+  // For Workers AI, prefer CLOUDFLARE_API_TOKEN, fallback to CLOUDFLARE_R2_ACCESS_KEY_ID (if it has AI permissions)
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
 
   if (!accountId || !apiToken) {
-    throw new Error('Cloudflare credentials not configured. Ensure CLOUDFLARE_R2_ACCOUNT_ID and CLOUDFLARE_R2_ACCESS_KEY_ID are set with Workers AI permissions.');
+    throw new Error('Cloudflare credentials not configured. Ensure CLOUDFLARE_R2_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (or CLOUDFLARE_R2_ACCESS_KEY_ID with AI permissions) are set.');
   }
 
   // Map model names to Cloudflare model IDs
@@ -245,8 +245,9 @@ export function buildPromptFromPreset(
  * Check which AI providers are configured
  */
 export function getConfiguredProviders(): { cloudflare: boolean; replicate: boolean } {
+  const hasCloudflareToken = !!(process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID);
   return {
-    cloudflare: !!(process.env.CLOUDFLARE_R2_ACCOUNT_ID && process.env.CLOUDFLARE_R2_ACCESS_KEY_ID),
+    cloudflare: !!(process.env.CLOUDFLARE_R2_ACCOUNT_ID && hasCloudflareToken),
     replicate: !!process.env.REPLICATE_API_TOKEN,
   };
 }
