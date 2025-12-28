@@ -2,8 +2,8 @@
 // Manages all audio processing, routing, and playback
 
 import { AdaptiveJitterBuffer } from './jitter-buffer';
-import { TrackEffectsProcessor } from './effects/track-effects-processor';
-import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, TrackEffectsChain } from '@/types';
+import { ExtendedTrackEffectsProcessor } from './effects/extended-track-effects-processor';
+import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, TrackEffectsChain, GuitarEffectsChain } from '@/types';
 
 export interface CaptureAudioOptions {
   deviceId?: string;
@@ -43,7 +43,7 @@ export class AudioEngine {
   private localMonitorGain: GainNode | null = null;
   private localInputGain: GainNode | null = null;
   private localMuteGain: GainNode | null = null;
-  private localEffectsProcessor: TrackEffectsProcessor | null = null;
+  private localEffectsProcessor: ExtendedTrackEffectsProcessor | null = null;
   private monitoringEnabled: boolean = true;
   private localTrackMuted: boolean = false;
   private localTrackVolume: number = 1;
@@ -258,8 +258,8 @@ export class AudioEngine {
       this.localInputGain.connect(this.localAnalyser);
 
       // Create effects processor if we have effects settings
-      // Connect: inputGain -> effectsProcessor -> muteGain -> monitorGain -> masterGain
-      this.localEffectsProcessor = new TrackEffectsProcessor(this.audioContext);
+      // Connect: inputGain -> effectsProcessor (guitar + standard) -> muteGain -> monitorGain -> masterGain
+      this.localEffectsProcessor = new ExtendedTrackEffectsProcessor(this.audioContext);
       this.localInputGain.connect(this.localEffectsProcessor.getInputNode());
       this.localEffectsProcessor.connect(this.localMuteGain);
       this.localMuteGain.connect(this.localMonitorGain);
@@ -377,18 +377,43 @@ export class AudioEngine {
   }
 
   /**
-   * Update the local track effects
+   * Update the local track effects (standard effects like compressor, reverb, etc.)
    */
   updateLocalTrackEffects(effects: Partial<TrackEffectsChain>): void {
     if (this.localEffectsProcessor) {
-      this.localEffectsProcessor.updateSettings(effects);
+      this.localEffectsProcessor.updateStandardEffects(effects);
     }
+  }
+
+  /**
+   * Update the local guitar effects (distortion, overdrive, chorus, etc.)
+   */
+  updateLocalGuitarEffects(effects: Partial<GuitarEffectsChain>): void {
+    if (this.localEffectsProcessor) {
+      this.localEffectsProcessor.updateGuitarEffects(effects);
+    }
+  }
+
+  /**
+   * Enable/disable guitar effects mode
+   */
+  setGuitarMode(enabled: boolean): void {
+    if (this.localEffectsProcessor) {
+      this.localEffectsProcessor.setGuitarMode(enabled);
+    }
+  }
+
+  /**
+   * Get current guitar mode state
+   */
+  getGuitarMode(): boolean {
+    return this.localEffectsProcessor?.getGuitarMode() ?? false;
   }
 
   /**
    * Get the local effects processor (for direct manipulation)
    */
-  getLocalEffectsProcessor(): TrackEffectsProcessor | null {
+  getLocalEffectsProcessor(): ExtendedTrackEffectsProcessor | null {
     return this.localEffectsProcessor;
   }
 
@@ -401,7 +426,8 @@ export class AudioEngine {
     limiterReduction: number;
   } | null {
     if (this.localEffectsProcessor) {
-      return this.localEffectsProcessor.getMeteringData();
+      const metering = this.localEffectsProcessor.getMeteringData();
+      return metering.standard;
     }
     return null;
   }
