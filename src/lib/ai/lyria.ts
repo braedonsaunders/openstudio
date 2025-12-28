@@ -239,10 +239,12 @@ export class LyriaSession {
     // If already playing, send new prompts immediately for smooth transition
     if (this.state === 'playing' && this.ws?.readyState === WebSocket.OPEN) {
       this.sendMessage({
-        weighted_prompts: this.prompts.map(p => ({
-          text: p.text,
-          weight: p.weight,
-        })),
+        client_content: {
+          weighted_prompts: this.prompts.map(p => ({
+            text: p.text,
+            weight: p.weight,
+          })),
+        },
       });
     }
   }
@@ -351,7 +353,7 @@ export class LyriaSession {
   resetContext(): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendMessage({
-        playback_control: { action: 'RESET_CONTEXT' },
+        playback_control: { reset_context: true },
       });
     }
   }
@@ -375,17 +377,19 @@ export class LyriaSession {
         this.prompts = [{ text: 'instrumental music', weight: 1.0 }];
       }
 
-      // Send weighted prompts first (this is the Lyria format, NOT Gemini's client_content format)
+      // Send prompts via client_content (BidiGenerateMusicClientContent)
       this.sendMessage({
-        weighted_prompts: this.prompts.map(p => ({
-          text: p.text,
-          weight: p.weight,
-        })),
+        client_content: {
+          weighted_prompts: this.prompts.map(p => ({
+            text: p.text,
+            weight: p.weight,
+          })),
+        },
       });
 
-      // Send play command via playback_control
+      // Send play command
       this.sendMessage({
-        playback_control: { action: 'PLAY' },
+        playback_control: {},
       });
 
       this.setState('playing');
@@ -398,10 +402,10 @@ export class LyriaSession {
   pause(): void {
     if (this.state !== 'playing') return;
 
-    // Send pause command to Lyria
+    // Send pause command
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendMessage({
-        playback_control: { action: 'PAUSE' },
+        playback_control: { pause: true },
       });
     }
 
@@ -417,10 +421,10 @@ export class LyriaSession {
    * Stop music playback
    */
   stop(): void {
-    // Send stop command to Lyria
+    // Send stop command
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendMessage({
-        playback_control: { action: 'STOP' },
+        playback_control: { stop: true },
       });
     }
 
