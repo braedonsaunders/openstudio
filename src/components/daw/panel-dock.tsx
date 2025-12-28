@@ -10,6 +10,7 @@ import { PermissionsPanel } from './permissions-panel';
 import { usePermissions } from '@/hooks/usePermissions';
 import type { PanelType } from './daw-layout';
 import type { StemType, User, QualityPresetName, OpusEncodingSettings } from '@/types';
+import type { CloudflareCalls } from '@/lib/cloudflare/calls';
 import {
   Users,
   Activity,
@@ -48,6 +49,8 @@ interface PanelDockProps {
   onDismissOptimization?: (type: string) => void;
   // Layout props
   width?: number;
+  // WebRTC for AI audio sharing
+  getCloudflareRef?: () => CloudflareCalls | null;
 }
 
 const basePanels: { id: PanelType; icon: typeof Users; label: string; requiresPermission?: boolean }[] = [
@@ -82,6 +85,7 @@ export function PanelDock({
   onAcceptOptimization,
   onDismissOptimization,
   width,
+  getCloudflareRef,
 }: PanelDockProps) {
   const { canManageRoom } = usePermissions();
 
@@ -162,7 +166,7 @@ export function PanelDock({
         )}
 
         {validPanel === 'ai' && (
-          <AIPanel />
+          <AIPanel getCloudflareRef={getCloudflareRef} />
         )}
 
         {validPanel === 'permissions' && (
