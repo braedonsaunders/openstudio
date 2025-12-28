@@ -41,6 +41,7 @@ export interface BackingTrack {
   duration: number;
   url: string;
   waveformUrl?: string;
+  waveformData?: number[]; // Pre-computed waveform peaks (0-1 normalized)
   uploadedBy: string;
   uploadedAt: string;
   stems?: AudioStems;
