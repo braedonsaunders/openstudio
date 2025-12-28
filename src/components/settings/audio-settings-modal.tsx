@@ -138,9 +138,9 @@ export function AudioSettingsModal({
           audio: {
             deviceId: settings.inputDeviceId !== 'default' ? { exact: settings.inputDeviceId } : undefined,
             sampleRate: settings.sampleRate,
-            echoCancellation: settings.echoCancellation,
-            noiseSuppression: settings.noiseSuppression,
-            autoGainControl: settings.autoGainControl,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
           },
         });
       }
@@ -356,49 +356,6 @@ export function AudioSettingsModal({
             </div>
           </div>
 
-          {settings.inputMode === 'microphone' && (
-            <div className="space-y-2">
-              <label className="text-xs text-gray-500 dark:text-gray-400">Audio Processing</label>
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={() => setSettings({ ...settings, echoCancellation: !settings.echoCancellation })}
-                  className={cn(
-                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                    settings.echoCancellation
-                      ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  )}
-                >
-                  Echo Cancellation
-                </button>
-                <button
-                  onClick={() => setSettings({ ...settings, noiseSuppression: !settings.noiseSuppression })}
-                  className={cn(
-                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                    settings.noiseSuppression
-                      ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  )}
-                >
-                  Noise Suppression
-                </button>
-                <button
-                  onClick={() => setSettings({ ...settings, autoGainControl: !settings.autoGainControl })}
-                  className={cn(
-                    'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                    settings.autoGainControl
-                      ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-400'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'
-                  )}
-                >
-                  Auto Gain
-                </button>
-              </div>
-              <p className="text-xs text-gray-400">
-                Disable all for best quality with a dedicated audio interface
-              </p>
-            </div>
-          )}
         </div>
 
         {/* Actions */}

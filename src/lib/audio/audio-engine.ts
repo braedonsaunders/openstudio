@@ -10,9 +10,6 @@ export interface CaptureAudioOptions {
   deviceId?: string;
   channelConfig?: InputChannelConfig;
   sampleRate?: number;
-  echoCancellation?: boolean;
-  noiseSuppression?: boolean;
-  autoGainControl?: boolean;
 }
 
 export interface AudioEngineConfig {
@@ -86,9 +83,10 @@ export class AudioEngine {
 
   async initialize(): Promise<void> {
     // Create audio context with optimal settings for low latency
+    // Using latencyHint: 0 requests the absolute minimum latency the system can provide
     this.audioContext = new AudioContext({
       sampleRate: this.config.sampleRate,
-      latencyHint: 'interactive',
+      latencyHint: 0,
     });
 
     // Create master gain node
@@ -141,9 +139,6 @@ export class AudioEngine {
       deviceId,
       channelConfig,
       sampleRate = this.config.sampleRate,
-      echoCancellation = false,
-      noiseSuppression = false,
-      autoGainControl = false,
     } = options;
 
     // Determine the channel count to request from the device
@@ -156,10 +151,12 @@ export class AudioEngine {
     // Note: 'latency' is a valid Chrome/Edge constraint for requesting minimum capture latency
     // but it's not in the standard TypeScript MediaTrackConstraints type definition.
     // We use a type assertion to include this experimental low-latency hint.
+    // Audio processing (echo cancellation, noise suppression, auto gain) is always disabled
+    // for lowest latency - these add significant processing delay.
     const audioConstraints: MediaTrackConstraints & { latency?: number } = {
-      echoCancellation,
-      noiseSuppression,
-      autoGainControl,
+      echoCancellation: false,
+      noiseSuppression: false,
+      autoGainControl: false,
       sampleRate,
       channelCount: requestedChannelCount,
       // Request minimum capture latency for live jamming (Chrome/Edge support)
