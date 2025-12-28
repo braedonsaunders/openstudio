@@ -44,12 +44,15 @@ interface LoopCopyDialogState {
   copyCount: number;
 }
 
-// Drag state for moving track clips
+// Drag state for moving track clips (horizontal and vertical)
 interface DragState {
   isDragging: boolean;
   trackRefId: string | null;
   startX: number;
+  startY: number;
   originalOffset: number;
+  originalPosition: number; // Track row position
+  currentTargetRow: number | null; // Row being hovered over during drag
 }
 
 // Snap settings
@@ -298,12 +301,18 @@ export function MultiTrackTimeline({
     isDragging: false,
     trackRefId: null,
     startX: 0,
+    startY: 0,
     originalOffset: 0,
+    originalPosition: 0,
+    currentTargetRow: null,
   });
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const dragOffsetRef = useRef<number | null>(null);
   const isProgrammaticScroll = useRef(false);
   const [snapType, setSnapType] = useState<'beat' | 'bar' | 'track-end' | null>(null);
+
+  // Track row height constant
+  const trackHeight = 48;
   const [loopCopyDialog, setLoopCopyDialog] = useState<LoopCopyDialogState>({
     isOpen: false,
     trackRef: null,
@@ -376,11 +385,36 @@ export function MultiTrackTimeline({
           muted: trackRef.muted || false,
           youtubeId: audioTrack?.youtubeId,
           aiGenerated: audioTrack?.aiGenerated,
-          waveformData: undefined,
+          waveformData: undefined as number[] | undefined, // TODO: Store per-track waveform data
         };
       }
     });
   }, [currentSong, loopTracks, queue.tracks, getLoopDuration]);
+
+  // Group tracks by position (track row) for rendering multiple clips on same row
+  const trackRows = useMemo(() => {
+    const rows = new Map<number, typeof unifiedTracks>();
+
+    unifiedTracks.forEach((track) => {
+      const position = track.ref.position;
+      if (!rows.has(position)) {
+        rows.set(position, []);
+      }
+      rows.get(position)!.push(track);
+    });
+
+    // Sort rows by position and return as array
+    return Array.from(rows.entries())
+      .sort((a, b) => a[0] - b[0])
+      .map(([position, clips]) => ({
+        position,
+        clips,
+        // Use first clip's properties for row metadata
+        name: clips[0]?.name || 'Track',
+        color: clips[0]?.color || '#6366f1',
+        type: clips[0]?.type || 'audio',
+      }));
+  }, [unifiedTracks]);
 
   // Auto-zoom to fit content when tracks are first added
   useEffect(() => {
@@ -551,27 +585,46 @@ export function MultiTrackTimeline({
     closeContextMenu();
   }, [contextMenu.trackRef, closeContextMenu]);
 
-  // Duplicate track handler
+  // Duplicate track handler - keeps clip on same track row
   const handleDuplicateTrack = useCallback(() => {
     if (!contextMenu.trackRef) return;
 
     // Get current song from store state to avoid stale closures
-    const { getCurrentSong, addTrackToSong } = useSongsStore.getState();
+    const { getCurrentSong, updateSong } = useSongsStore.getState();
     const song = getCurrentSong();
     if (!song) return;
 
     const trackRef = contextMenu.trackRef;
 
-    addTrackToSong(song.id, {
+    // Find the duration of this track
+    let trackDuration = 0;
+    if (trackRef.type === 'loop') {
+      const loopTrack = loopTracks.find((t) => t.id === trackRef.trackId);
+      const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+      trackDuration = getLoopDuration(loopDef);
+    } else {
+      const audioTrack = queue.tracks.find((t) => t.id === trackRef.trackId);
+      trackDuration = audioTrack?.duration || 0;
+    }
+
+    // Place duplicate immediately after the original
+    const newTrack: SongTrackReference = {
+      id: crypto.randomUUID(),
       type: trackRef.type,
       trackId: trackRef.trackId,
-      startOffset: trackRef.startOffset + 1, // Offset slightly
+      position: trackRef.position, // SAME track row
+      startOffset: trackRef.startOffset + trackDuration, // Place after original
       muted: trackRef.muted,
       volume: trackRef.volume,
+    };
+
+    // Add to song tracks directly to preserve position
+    updateSong(song.id, {
+      tracks: [...song.tracks, newTrack],
     });
 
     closeContextMenu();
-  }, [contextMenu.trackRef, closeContextMenu]);
+  }, [contextMenu.trackRef, loopTracks, queue.tracks, getLoopDuration, closeContextMenu]);
 
   // Open loop copy dialog
   const handleOpenLoopCopyDialog = useCallback(() => {
@@ -599,11 +652,11 @@ export function MultiTrackTimeline({
     closeContextMenu();
   }, [contextMenu.trackRef, loopTracks, queue.tracks, getLoopDuration, closeContextMenu]);
 
-  // Execute loop copy
+  // Execute loop copy - keeps clips on same track row
   const handleExecuteLoopCopy = useCallback(() => {
     if (!loopCopyDialog.trackRef || loopCopyDialog.copyCount < 1) return;
 
-    const { getCurrentSong, addTrackToSong } = useSongsStore.getState();
+    const { getCurrentSong, updateSong } = useSongsStore.getState();
     const song = getCurrentSong();
     if (!song) return;
 
@@ -611,16 +664,24 @@ export function MultiTrackTimeline({
     const duration = loopCopyDialog.trackDuration;
     const endOfOriginal = trackRef.startOffset + duration;
 
-    // Create copies placed back-to-back after the original
+    // Create copies placed back-to-back after the original - same track row
+    const newTracks: SongTrackReference[] = [];
     for (let i = 0; i < loopCopyDialog.copyCount; i++) {
-      addTrackToSong(song.id, {
+      newTracks.push({
+        id: crypto.randomUUID(),
         type: trackRef.type,
         trackId: trackRef.trackId,
+        position: trackRef.position, // SAME track row
         startOffset: endOfOriginal + (i * duration),
         muted: trackRef.muted,
         volume: trackRef.volume,
       });
     }
+
+    // Add to song tracks directly to preserve position
+    updateSong(song.id, {
+      tracks: [...song.tracks, ...newTracks],
+    });
 
     setLoopCopyDialog({
       isOpen: false,
@@ -630,7 +691,7 @@ export function MultiTrackTimeline({
     });
   }, [loopCopyDialog]);
 
-  // Drag handlers for moving clips along timeline
+  // Drag handlers for moving clips along timeline and between track rows
   const handleDragStart = useCallback(
     (e: React.MouseEvent, trackRef: SongTrackReference) => {
       e.preventDefault();
@@ -639,7 +700,10 @@ export function MultiTrackTimeline({
         isDragging: true,
         trackRefId: trackRef.id,
         startX: e.clientX,
+        startY: e.clientY,
         originalOffset: trackRef.startOffset,
+        originalPosition: trackRef.position,
+        currentTargetRow: trackRef.position,
       });
       setDragOffset(trackRef.startOffset);
       dragOffsetRef.current = trackRef.startOffset;
@@ -661,6 +725,7 @@ export function MultiTrackTimeline({
     if (!dragState.isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      // Horizontal dragging
       const deltaX = e.clientX - dragState.startX;
       const deltaTime = deltaX / zoom;
       const rawOffset = Math.max(0, dragState.originalOffset + deltaTime);
@@ -694,25 +759,49 @@ export function MultiTrackTimeline({
         dragOffsetRef.current = rawOffset;
         setSnapType(null);
       }
+
+      // Vertical dragging - calculate target row
+      const deltaY = e.clientY - dragState.startY;
+      const rowDelta = Math.round(deltaY / trackHeight);
+      const newTargetRow = Math.max(0, dragState.originalPosition + rowDelta);
+
+      if (newTargetRow !== dragState.currentTargetRow) {
+        setDragState((prev) => ({
+          ...prev,
+          currentTargetRow: newTargetRow,
+        }));
+      }
     };
 
     const handleMouseUp = () => {
       const finalOffset = dragOffsetRef.current;
+      const finalRow = dragState.currentTargetRow;
+
       // Get current song from store state to avoid stale closure
       const { getCurrentSong, updateTrackInSong: updateTrack } = useSongsStore.getState();
       const song = getCurrentSong();
 
       if (dragState.trackRefId && song && finalOffset !== null) {
-        // Update the track's start offset (already snapped, just round for precision)
-        updateTrack(song.id, dragState.trackRefId, {
+        // Update the track's start offset and position (row)
+        const updates: { startOffset?: number; position?: number } = {
           startOffset: Math.round(finalOffset * 1000) / 1000, // Round to 0.001s
-        });
+        };
+
+        // Only update position if it changed
+        if (finalRow !== null && finalRow !== dragState.originalPosition) {
+          updates.position = finalRow;
+        }
+
+        updateTrack(song.id, dragState.trackRefId, updates);
       }
       setDragState({
         isDragging: false,
         trackRefId: null,
         startX: 0,
+        startY: 0,
         originalOffset: 0,
+        originalPosition: 0,
+        currentTargetRow: null,
       });
       setDragOffset(null);
       dragOffsetRef.current = null;
@@ -726,7 +815,7 @@ export function MultiTrackTimeline({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, zoom, trackInfoForSnap]);
+  }, [dragState, zoom, trackInfoForSnap, trackHeight]);
 
   // Handle drag over for drop zone
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -821,8 +910,6 @@ export function MultiTrackTimeline({
     }
   }, [currentTime, zoom, isPlaying]);
 
-  const trackHeight = 48;
-
   return (
     <div className="h-full flex flex-col bg-white dark:bg-[#0a0a0f] border-b border-gray-200 dark:border-white/5">
       {/* Header */}
@@ -833,7 +920,7 @@ export function MultiTrackTimeline({
             {currentSong?.name || 'No Song Selected'}
           </span>
           <span className="text-[10px] text-gray-500 dark:text-zinc-500">
-            {unifiedTracks.length} track{unifiedTracks.length !== 1 ? 's' : ''}
+            {trackRows.length} track{trackRows.length !== 1 ? 's' : ''}, {unifiedTracks.length} clip{unifiedTracks.length !== 1 ? 's' : ''}
           </span>
           {currentSong && (
             <span className="text-[10px] text-gray-400 dark:text-zinc-600">
@@ -918,7 +1005,7 @@ export function MultiTrackTimeline({
 
           {/* Track Lanes */}
           <div className="relative">
-            {unifiedTracks.length === 0 ? (
+            {trackRows.length === 0 ? (
               <div className={cn(
                 'h-32 flex items-center justify-center border-2 border-dashed rounded-lg m-2 transition-colors',
                 isDragOver
@@ -942,86 +1029,93 @@ export function MultiTrackTimeline({
                 </div>
               </div>
             ) : (
-              unifiedTracks.map((track) => {
-                const clipWidth = Math.max(track.duration * zoom, 40);
-                // Use drag offset if this track is being dragged
-                const isDraggingThis = dragState.isDragging && dragState.trackRefId === track.ref.id;
-                const displayOffset = isDraggingThis && dragOffset !== null ? dragOffset : track.ref.startOffset;
-                const clipLeft = displayOffset * zoom;
-
-                return (
-                  <div
-                    key={track.ref.id}
-                    className="relative border-b border-gray-100 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02]"
-                    style={{ height: trackHeight }}
-                  >
-                    {/* Track label on left */}
-                    <div className="absolute left-0 top-0 bottom-0 w-24 flex items-center gap-1.5 px-2 bg-gray-50/80 dark:bg-[#0d0d14]/80 border-r border-gray-100 dark:border-white/5 z-10">
-                      <div
-                        className="w-4 h-4 rounded flex items-center justify-center shrink-0"
-                        style={{ backgroundColor: track.color, color: 'white' }}
-                      >
-                        {getTrackIcon(track)}
-                      </div>
-                      <span className="text-[10px] font-medium text-gray-700 dark:text-zinc-300 truncate">
-                        {track.name}
-                      </span>
-                    </div>
-
-                    {/* Track clip */}
+              trackRows.map((row) => (
+                <div
+                  key={`row-${row.position}`}
+                  className="relative border-b border-gray-100 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02]"
+                  style={{ height: trackHeight }}
+                >
+                  {/* Track label on left */}
+                  <div className="absolute left-0 top-0 bottom-0 w-24 flex items-center gap-1.5 px-2 bg-gray-50/80 dark:bg-[#0d0d14]/80 border-r border-gray-100 dark:border-white/5 z-10">
                     <div
-                      data-track-clip
-                      className={cn(
-                        'absolute top-1 bottom-1 rounded-md overflow-hidden transition-opacity cursor-grab hover:ring-1 hover:ring-white/20',
-                        track.muted ? 'opacity-40' : 'opacity-100',
-                        isDraggingThis && 'cursor-grabbing z-20',
-                        isDraggingThis && snapType === 'track-end' && 'ring-2 ring-green-500 shadow-lg shadow-green-500/30',
-                        isDraggingThis && snapType === 'bar' && 'ring-2 ring-amber-500 shadow-lg shadow-amber-500/30',
-                        isDraggingThis && snapType === 'beat' && 'ring-2 ring-indigo-400 shadow-lg shadow-indigo-400/20',
-                        isDraggingThis && !snapType && 'ring-2 ring-indigo-500'
-                      )}
-                      style={{
-                        left: clipLeft + 96,
-                        width: clipWidth,
-                        backgroundColor: `${track.color}20`,
-                        borderLeft: `3px solid ${track.color}`,
-                      }}
-                      onMouseDown={(e) => handleDragStart(e, track.ref)}
-                      onContextMenu={(e) => handleContextMenu(e, track)}
+                      className="w-4 h-4 rounded flex items-center justify-center shrink-0"
+                      style={{ backgroundColor: row.color, color: 'white' }}
                     >
-                      {/* Snap indicator */}
-                      {isDraggingThis && snapType && (
-                        <div className={cn(
-                          'absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap',
-                          snapType === 'track-end' && 'bg-green-500 text-white',
-                          snapType === 'bar' && 'bg-amber-500 text-white',
-                          snapType === 'beat' && 'bg-indigo-400 text-white'
-                        )}>
-                          {snapType === 'track-end' ? 'Snap to track' : snapType === 'bar' ? 'Snap to bar' : 'Snap to beat'}
-                        </div>
-                      )}
-
-                      {/* Content visualization */}
-                      {track.type === 'loop' && track.loopDef ? (
-                        <MidiNoteVisualization
-                          notes={track.midiNotes}
-                          loopDef={track.loopDef}
-                          width={clipWidth - 3}
-                          height={trackHeight - 8}
-                          color={track.color}
-                        />
-                      ) : (
-                        <WaveformVisualization
-                          width={clipWidth - 3}
-                          height={trackHeight - 8}
-                          color={track.color}
-                          waveformData={track.waveformData}
-                        />
-                      )}
+                      {getTrackIcon(row.clips[0])}
                     </div>
+                    <span className="text-[10px] font-medium text-gray-700 dark:text-zinc-300 truncate">
+                      {row.name}
+                    </span>
+                    {row.clips.length > 1 && (
+                      <span className="text-[9px] text-gray-400 dark:text-zinc-500">
+                        ×{row.clips.length}
+                      </span>
+                    )}
                   </div>
-                );
-              })
+
+                  {/* All clips on this row */}
+                  {row.clips.map((track) => {
+                    const clipWidth = Math.max(track.duration * zoom, 40);
+                    const isDraggingThis = dragState.isDragging && dragState.trackRefId === track.ref.id;
+                    const displayOffset = isDraggingThis && dragOffset !== null ? dragOffset : track.ref.startOffset;
+                    const clipLeft = displayOffset * zoom;
+
+                    return (
+                      <div
+                        key={track.ref.id}
+                        data-track-clip
+                        className={cn(
+                          'absolute top-1 bottom-1 rounded-md overflow-hidden transition-opacity cursor-grab hover:ring-1 hover:ring-white/20',
+                          track.muted ? 'opacity-40' : 'opacity-100',
+                          isDraggingThis && 'cursor-grabbing z-20',
+                          isDraggingThis && snapType === 'track-end' && 'ring-2 ring-green-500 shadow-lg shadow-green-500/30',
+                          isDraggingThis && snapType === 'bar' && 'ring-2 ring-amber-500 shadow-lg shadow-amber-500/30',
+                          isDraggingThis && snapType === 'beat' && 'ring-2 ring-indigo-400 shadow-lg shadow-indigo-400/20',
+                          isDraggingThis && !snapType && 'ring-2 ring-indigo-500'
+                        )}
+                        style={{
+                          left: clipLeft + 96,
+                          width: clipWidth,
+                          backgroundColor: `${track.color}20`,
+                          borderLeft: `3px solid ${track.color}`,
+                        }}
+                        onMouseDown={(e) => handleDragStart(e, track.ref)}
+                        onContextMenu={(e) => handleContextMenu(e, track)}
+                      >
+                        {/* Snap indicator */}
+                        {isDraggingThis && snapType && (
+                          <div className={cn(
+                            'absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap z-30',
+                            snapType === 'track-end' && 'bg-green-500 text-white',
+                            snapType === 'bar' && 'bg-amber-500 text-white',
+                            snapType === 'beat' && 'bg-indigo-400 text-white'
+                          )}>
+                            {snapType === 'track-end' ? 'Snap to track' : snapType === 'bar' ? 'Snap to bar' : 'Snap to beat'}
+                          </div>
+                        )}
+
+                        {/* Content visualization */}
+                        {track.type === 'loop' && track.loopDef ? (
+                          <MidiNoteVisualization
+                            notes={track.midiNotes}
+                            loopDef={track.loopDef}
+                            width={clipWidth - 3}
+                            height={trackHeight - 8}
+                            color={track.color}
+                          />
+                        ) : (
+                          <WaveformVisualization
+                            width={clipWidth - 3}
+                            height={trackHeight - 8}
+                            color={track.color}
+                            waveformData={track.waveformData}
+                          />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ))
             )}
           </div>
 
