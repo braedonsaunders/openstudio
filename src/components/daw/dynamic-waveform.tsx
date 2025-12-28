@@ -1,6 +1,7 @@
 'use client';
 
 import { useRef, useEffect, useCallback } from 'react';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 interface DynamicWaveformProps {
   audioLevel: number;
@@ -99,8 +100,14 @@ export function DynamicWaveform({
   const energyRef = useRef<number>(0);
   const phaseRef = useRef<number>(0);
 
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
   const maxSamples = historySeconds * SAMPLE_RATE;
   const baseColor = parseColor(trackColor);
+
+  // Theme-aware background colors
+  const bgColor = isDark ? { r: 10, g: 10, b: 15 } : { r: 249, g: 250, b: 251 }; // dark: #0a0a0f, light: #f9fafb (gray-50)
 
   // Sample audio level at fixed interval
   useEffect(() => {
@@ -143,7 +150,7 @@ export function DynamicWaveform({
       const buffer = waveformBufferRef.current;
 
       // Clear with fade for trail effect
-      ctx.fillStyle = 'rgba(10, 10, 15, 0.15)';
+      ctx.fillStyle = `rgba(${bgColor.r}, ${bgColor.g}, ${bgColor.b}, 0.15)`;
       ctx.fillRect(0, 0, width, height);
 
       // Smooth the current level for animations
@@ -423,8 +430,8 @@ export function DynamicWaveform({
 
       // Left edge fade gradient
       const fadeGradient = ctx.createLinearGradient(0, 0, 40, 0);
-      fadeGradient.addColorStop(0, 'rgba(10, 10, 15, 1)');
-      fadeGradient.addColorStop(1, 'rgba(10, 10, 15, 0)');
+      fadeGradient.addColorStop(0, `rgba(${bgColor.r}, ${bgColor.g}, ${bgColor.b}, 1)`);
+      fadeGradient.addColorStop(1, `rgba(${bgColor.r}, ${bgColor.g}, ${bgColor.b}, 0)`);
       ctx.fillStyle = fadeGradient;
       ctx.fillRect(0, 0, 40, height);
 
@@ -438,10 +445,15 @@ export function DynamicWaveform({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [trackColor, zoom, isMuted, isArmed, audioLevel, baseColor, historySeconds, maxSamples]);
+  }, [trackColor, zoom, isMuted, isArmed, audioLevel, baseColor, historySeconds, maxSamples, bgColor, isDark]);
 
   // Calculate opacity: muted or not armed = dimmed
   const opacity = isMuted ? 0.3 : !isArmed ? 0.4 : 1;
+
+  // Theme-aware background gradient for canvas
+  const canvasBg = isDark
+    ? 'linear-gradient(to right, rgba(10,10,15,1), rgba(10,10,15,0.95))'
+    : 'linear-gradient(to right, rgba(249,250,251,1), rgba(249,250,251,0.95))';
 
   return (
     <canvas
@@ -449,7 +461,7 @@ export function DynamicWaveform({
       className="absolute inset-0 w-full h-full"
       style={{
         opacity,
-        background: 'linear-gradient(to right, rgba(10,10,15,1), rgba(10,10,15,0.95))'
+        background: canvasBg
       }}
     />
   );
