@@ -24,6 +24,7 @@ interface UnlockRuleEditorProps {
 }
 
 const unlockTypeIcons: Record<UnlockType, React.ReactNode> = {
+  none: null,
   level: <BarChart3 className="w-4 h-4 text-blue-500" />,
   achievement: <Trophy className="w-4 h-4 text-yellow-500" />,
   statistic: <Sparkles className="w-4 h-4 text-purple-500" />,
@@ -31,6 +32,7 @@ const unlockTypeIcons: Record<UnlockType, React.ReactNode> = {
 };
 
 const unlockTypeLabels: Record<UnlockType, string> = {
+  none: 'No Unlock Required',
   level: 'Level Requirement',
   achievement: 'Achievement',
   statistic: 'Statistic Threshold',
