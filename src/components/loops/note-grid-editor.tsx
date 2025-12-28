@@ -616,8 +616,6 @@ export function NoteGridEditor({
                 key={col}
                 className={cn(
                   'flex items-center justify-center text-xs font-medium border-r border-b',
-                  // Left border for first column (start of bar 1)
-                  col === 0 && (isDark ? 'border-l-2 border-l-indigo-500/70' : 'border-l-2 border-l-indigo-400'),
                   // Right border: strong at bar END, medium at downbeat, light otherwise
                   header.isBarEnd
                     ? isDark ? 'border-r-2 border-r-indigo-500/70' : 'border-r-2 border-r-indigo-400'
@@ -718,8 +716,6 @@ export function NoteGridEditor({
                       key={col}
                       className={cn(
                         'relative border-r border-b cursor-crosshair transition-colors',
-                        // Left border for first column (start of bar 1)
-                        col === 0 && (isDark ? 'border-l-2 border-l-indigo-500/50' : 'border-l-2 border-l-indigo-300'),
                         // Right border: strong at bar END, medium at downbeat, light otherwise
                         isBarEnd
                           ? isDark ? 'border-r-2 border-r-indigo-500/50' : 'border-r-2 border-r-indigo-300'
