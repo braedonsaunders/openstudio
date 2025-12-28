@@ -112,35 +112,19 @@ export function TracksPanel({
     // Only create default song after we've loaded from DB and confirmed none exist
     if (hasLoadedSongs && !songsLoading && songs.length === 0 && userId && !isCreatingSong) {
       setIsCreatingSong(true);
-      const defaultSong = createSong(roomId, 'Song 1', userId, userName);
-      // Persist to database
-      fetch(`/api/rooms/${roomId}/songs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(defaultSong),
-      })
-        .catch(console.error)
-        .finally(() => setIsCreatingSong(false));
+      // createSong already persists to server via createSongOnServer
+      createSong(roomId, 'Song 1', userId, userName);
+      setIsCreatingSong(false);
     }
   }, [hasLoadedSongs, songsLoading, songs.length, roomId, userId, userName, createSong, isCreatingSong]);
 
   // Handler for creating a new song
-  const handleCreateSong = useCallback(async () => {
+  const handleCreateSong = useCallback(() => {
     if (!newSongName.trim()) return;
-    setIsCreatingSong(true);
-    const song = createSong(roomId, newSongName.trim(), userId, userName);
-    try {
-      await fetch(`/api/rooms/${roomId}/songs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(song),
-      });
-    } catch (err) {
-      console.error('Failed to create song:', err);
-    }
+    // createSong already persists to server via createSongOnServer
+    createSong(roomId, newSongName.trim(), userId, userName);
     setNewSongName('');
     setShowSongDropdown(false);
-    setIsCreatingSong(false);
   }, [newSongName, roomId, userId, userName, createSong]);
 
   // Handler for adding a loop to current song
