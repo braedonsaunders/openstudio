@@ -327,7 +327,7 @@ export function QueuePanel({
                   </div>
 
                   {/* Edit Button - only for custom loops */}
-                  {loopDef && 'isCustom' in loopDef && loopDef.isCustom && (
+                  {loopDef && 'isCustom' in loopDef && (loopDef as { isCustom?: boolean }).isCustom === true && (
                     <button
                       onClick={() => handleEditLoop(track.loopId)}
                       className="p-1.5 rounded text-gray-400 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-500/10 opacity-0 group-hover:opacity-100 transition-all"
