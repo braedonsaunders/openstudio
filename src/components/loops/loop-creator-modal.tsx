@@ -10,19 +10,15 @@ import {
   getAllInstruments,
   getAllCategories,
   getInstrument,
-  type InstrumentDefinition,
 } from '@/lib/audio/instrument-registry';
 import { SoundEngine } from '@/lib/audio/sound-engine';
 import type { MidiNote, LoopCategory } from '@/types/loops';
 import {
-  Music,
   Play,
   Square,
   Save,
   Trash2,
-  Settings,
   ChevronLeft,
-  ChevronRight,
   Plus,
   Minus,
 } from 'lucide-react';
@@ -62,7 +58,7 @@ export function LoopCreatorModal({
   const [timeSignature, setTimeSignature] = useState<[number, number]>([4, 4]);
   const [notes, setNotes] = useState<MidiNote[]>([]);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  const [playbackPosition, setPlaybackPosition] = useState(0);
 
   // Dark mode detection
   const [isDark, setIsDark] = useState(false);
@@ -75,6 +71,8 @@ export function LoopCreatorModal({
   const audioContextRef = useRef<AudioContext | null>(null);
   const soundEngineRef = useRef<SoundEngine | null>(null);
   const playbackIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const animationFrameRef = useRef<number | null>(null);
+  const loopStartTimeRef = useRef<number>(0);
 
   // Initialize if editing
   useEffect(() => {
@@ -98,6 +96,7 @@ export function LoopCreatorModal({
       setBpm(120);
       setTimeSignature([4, 4]);
       setNotes([]);
+      setPlaybackPosition(0);
     }
   }, [isOpen, editingLoopId, getLoop]);
 
@@ -132,7 +131,7 @@ export function LoopCreatorModal({
     }
   }, []);
 
-  // Playback
+  // Playback with playhead
   const startPlayback = useCallback(async () => {
     if (!selectedInstrument || notes.length === 0) return;
 
@@ -147,26 +146,43 @@ export function LoopCreatorModal({
     const beatDuration = 60 / bpm;
     const loopDuration = totalBeats * beatDuration;
 
-    let loopStartTime = context.currentTime;
+    loopStartTimeRef.current = context.currentTime;
 
     const scheduleLoop = () => {
       const now = context.currentTime;
+      const elapsed = now - loopStartTimeRef.current;
+      const loopPosition = (elapsed % loopDuration) / loopDuration;
 
       for (const note of notes) {
-        const noteTime = loopStartTime + note.t * loopDuration;
+        const noteTime = loopStartTimeRef.current + (Math.floor(elapsed / loopDuration) * loopDuration) + note.t * loopDuration;
         if (noteTime >= now && noteTime < now + 0.1) {
           const noteDuration = note.d * loopDuration;
           engine.playNote(selectedInstrument, note.n, note.v, noteTime, noteDuration);
         }
       }
 
-      if (now >= loopStartTime + loopDuration) {
-        loopStartTime = now;
+      // Reset loop start time when loop completes
+      if (elapsed >= loopDuration) {
+        const completedLoops = Math.floor(elapsed / loopDuration);
+        loopStartTimeRef.current = context.currentTime - (elapsed - completedLoops * loopDuration);
       }
+    };
+
+    // Animation frame for smooth playhead
+    const updatePlayhead = () => {
+      if (!audioContextRef.current) return;
+
+      const now = audioContextRef.current.currentTime;
+      const elapsed = now - loopStartTimeRef.current;
+      const loopPosition = (elapsed % loopDuration) / loopDuration;
+      setPlaybackPosition(loopPosition);
+
+      animationFrameRef.current = requestAnimationFrame(updatePlayhead);
     };
 
     playbackIntervalRef.current = setInterval(scheduleLoop, 25);
     scheduleLoop();
+    animationFrameRef.current = requestAnimationFrame(updatePlayhead);
   }, [selectedInstrument, notes, bars, timeSignature, bpm, initAudio]);
 
   const stopPlayback = useCallback(() => {
@@ -174,8 +190,14 @@ export function LoopCreatorModal({
       clearInterval(playbackIntervalRef.current);
       playbackIntervalRef.current = null;
     }
-    soundEngineRef.current?.allNotesOff();
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+      animationFrameRef.current = null;
+    }
+    // Use killAll for immediate stop - this is the key fix!
+    soundEngineRef.current?.killAll();
     setIsPlaying(false);
+    setPlaybackPosition(0);
   }, []);
 
   const togglePlayback = useCallback(() => {
@@ -204,6 +226,30 @@ export function LoopCreatorModal({
       }
     }
     setStep('editor');
+  };
+
+  // Handle bar changes - scale existing notes
+  const handleBarsChange = (newBars: number) => {
+    if (newBars === bars) return;
+
+    // When reducing bars, remove notes that would be outside
+    if (newBars < bars) {
+      const maxT = newBars / bars;
+      setNotes(notes.filter(n => n.t < maxT).map(n => ({
+        ...n,
+        t: n.t * (bars / newBars), // Scale time to new range
+        d: n.d * (bars / newBars), // Scale duration
+      })));
+    } else {
+      // When adding bars, scale notes to occupy same relative positions
+      setNotes(notes.map(n => ({
+        ...n,
+        t: n.t * (bars / newBars),
+        d: n.d * (bars / newBars),
+      })));
+    }
+
+    setBars(newBars);
   };
 
   // Handle save
@@ -306,12 +352,15 @@ export function LoopCreatorModal({
 
     return (
       <div className="space-y-4">
-        {/* Header with back button and loop name */}
-        <div className="flex items-center gap-3">
+        {/* Header with back button, loop name, and inline settings */}
+        <div className="flex items-center gap-3 flex-wrap">
           <Button
             variant="ghost"
             size="icon"
-            onClick={() => setStep('instrument')}
+            onClick={() => {
+              stopPlayback();
+              setStep('instrument');
+            }}
             className={isDark ? 'text-gray-400 hover:text-white' : ''}
           >
             <ChevronLeft className="w-5 h-5" />
@@ -324,129 +373,113 @@ export function LoopCreatorModal({
               value={loopName}
               onChange={(e) => setLoopName(e.target.value)}
               className={cn(
-                'text-lg font-semibold bg-transparent border-b-2 border-transparent focus:border-indigo-500 outline-none px-1',
+                'text-lg font-semibold bg-transparent border-b-2 border-transparent focus:border-indigo-500 outline-none px-1 w-40',
                 isDark ? 'text-white' : 'text-slate-900'
               )}
               placeholder="Loop name..."
             />
           </div>
 
-          <div className="ml-auto flex items-center gap-2">
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => setShowSettings(!showSettings)}
-              className={cn(
-                showSettings ? 'bg-indigo-100 text-indigo-600 dark:bg-indigo-900/30 dark:text-indigo-400' : ''
-              )}
-            >
-              <Settings className="w-4 h-4" />
-            </Button>
+          {/* Inline settings - no cogwheel! */}
+          <div className={cn(
+            'flex items-center gap-3 ml-auto px-3 py-1.5 rounded-lg',
+            isDark ? 'bg-gray-800' : 'bg-slate-100'
+          )}>
+            {/* BPM */}
+            <div className="flex items-center gap-1">
+              <span className={cn('text-xs font-medium', isDark ? 'text-gray-400' : 'text-slate-500')}>
+                BPM
+              </span>
+              <button
+                onClick={() => setBpm(Math.max(40, bpm - 5))}
+                className={cn(
+                  'w-5 h-5 flex items-center justify-center rounded text-xs',
+                  isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-slate-200 text-slate-600'
+                )}
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <input
+                type="number"
+                value={bpm}
+                onChange={(e) => setBpm(Math.max(40, Math.min(240, parseInt(e.target.value) || 120)))}
+                className={cn(
+                  'w-12 h-6 text-center rounded border text-xs font-medium',
+                  isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'
+                )}
+              />
+              <button
+                onClick={() => setBpm(Math.min(240, bpm + 5))}
+                className={cn(
+                  'w-5 h-5 flex items-center justify-center rounded text-xs',
+                  isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-slate-200 text-slate-600'
+                )}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+
+            <div className={cn('w-px h-4', isDark ? 'bg-gray-600' : 'bg-slate-300')} />
+
+            {/* Bars */}
+            <div className="flex items-center gap-1">
+              <span className={cn('text-xs font-medium', isDark ? 'text-gray-400' : 'text-slate-500')}>
+                Bars
+              </span>
+              <button
+                onClick={() => handleBarsChange(Math.max(1, bars - 1))}
+                className={cn(
+                  'w-5 h-5 flex items-center justify-center rounded text-xs',
+                  isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-slate-200 text-slate-600'
+                )}
+              >
+                <Minus className="w-3 h-3" />
+              </button>
+              <span className={cn(
+                'w-6 h-6 flex items-center justify-center rounded border text-xs font-medium',
+                isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'
+              )}>
+                {bars}
+              </span>
+              <button
+                onClick={() => handleBarsChange(Math.min(8, bars + 1))}
+                className={cn(
+                  'w-5 h-5 flex items-center justify-center rounded text-xs',
+                  isDark ? 'hover:bg-gray-700 text-gray-400' : 'hover:bg-slate-200 text-slate-600'
+                )}
+              >
+                <Plus className="w-3 h-3" />
+              </button>
+            </div>
+
+            <div className={cn('w-px h-4', isDark ? 'bg-gray-600' : 'bg-slate-300')} />
+
+            {/* Time Signature */}
+            <div className="flex items-center gap-1">
+              <span className={cn('text-xs font-medium', isDark ? 'text-gray-400' : 'text-slate-500')}>
+                Time
+              </span>
+              <select
+                value={`${timeSignature[0]}/${timeSignature[1]}`}
+                onChange={(e) => {
+                  const [num, denom] = e.target.value.split('/').map(Number);
+                  setTimeSignature([num, denom]);
+                }}
+                className={cn(
+                  'h-6 rounded border text-xs px-1 font-medium',
+                  isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'
+                )}
+              >
+                <option value="4/4">4/4</option>
+                <option value="3/4">3/4</option>
+                <option value="6/8">6/8</option>
+                <option value="2/4">2/4</option>
+              </select>
+            </div>
           </div>
         </div>
 
-        {/* Settings panel */}
-        {showSettings && (
-          <div className={cn(
-            'p-4 rounded-lg border space-y-4',
-            isDark ? 'bg-gray-800 border-gray-700' : 'bg-slate-50 border-slate-200'
-          )}>
-            <div className="grid grid-cols-3 gap-4">
-              {/* BPM */}
-              <div>
-                <label className={cn('block text-xs font-medium mb-1', isDark ? 'text-gray-400' : 'text-slate-600')}>
-                  BPM
-                </label>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-7 h-7"
-                    onClick={() => setBpm(Math.max(40, bpm - 5))}
-                  >
-                    <Minus className="w-3 h-3" />
-                  </Button>
-                  <input
-                    type="number"
-                    value={bpm}
-                    onChange={(e) => setBpm(Math.max(40, Math.min(240, parseInt(e.target.value) || 120)))}
-                    className={cn(
-                      'w-16 h-8 text-center rounded border text-sm',
-                      isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'
-                    )}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-7 h-7"
-                    onClick={() => setBpm(Math.min(240, bpm + 5))}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Bars */}
-              <div>
-                <label className={cn('block text-xs font-medium mb-1', isDark ? 'text-gray-400' : 'text-slate-600')}>
-                  Bars
-                </label>
-                <div className="flex items-center gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-7 h-7"
-                    onClick={() => setBars(Math.max(1, bars - 1))}
-                  >
-                    <Minus className="w-3 h-3" />
-                  </Button>
-                  <input
-                    type="number"
-                    value={bars}
-                    onChange={(e) => setBars(Math.max(1, Math.min(8, parseInt(e.target.value) || 2)))}
-                    className={cn(
-                      'w-12 h-8 text-center rounded border text-sm',
-                      isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'
-                    )}
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="w-7 h-7"
-                    onClick={() => setBars(Math.min(8, bars + 1))}
-                  >
-                    <Plus className="w-3 h-3" />
-                  </Button>
-                </div>
-              </div>
-
-              {/* Time Signature */}
-              <div>
-                <label className={cn('block text-xs font-medium mb-1', isDark ? 'text-gray-400' : 'text-slate-600')}>
-                  Time Sig
-                </label>
-                <select
-                  value={`${timeSignature[0]}/${timeSignature[1]}`}
-                  onChange={(e) => {
-                    const [num, denom] = e.target.value.split('/').map(Number);
-                    setTimeSignature([num, denom]);
-                  }}
-                  className={cn(
-                    'w-full h-8 rounded border text-sm px-2',
-                    isDark ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-slate-200'
-                  )}
-                >
-                  <option value="4/4">4/4</option>
-                  <option value="3/4">3/4</option>
-                  <option value="6/8">6/8</option>
-                  <option value="2/4">2/4</option>
-                </select>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Note Grid Editor */}
+        {/* Note Grid Editor with playhead */}
         <NoteGridEditor
           instrumentId={selectedInstrument || ''}
           notes={notes}
@@ -454,6 +487,8 @@ export function LoopCreatorModal({
           timeSignature={timeSignature}
           bpm={bpm}
           onChange={setNotes}
+          isPlaying={isPlaying}
+          playbackPosition={playbackPosition}
           isDark={isDark}
         />
 
