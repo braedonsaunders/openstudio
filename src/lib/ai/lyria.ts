@@ -266,8 +266,6 @@ export class LyriaSession {
           brightness: this.config.brightness,
           guidance: this.config.guidance,
           temperature: this.config.temperature,
-          drums: this.config.drums,
-          bass: this.config.bass,
           top_k: this.config.topK,
           seed: this.config.seed,
         },
@@ -313,19 +311,21 @@ export class LyriaSession {
   }
 
   /**
-   * Set drums level (smooth transition)
+   * Set drums level - UI placeholder only
+   * Note: Lyria API doesn't currently support drums parameter
    */
   setDrums(level: number): void {
     this.config.drums = Math.max(0, Math.min(1, level));
-    this.sendConfigUpdate();
+    // Drums not supported by Lyria API - stored locally only
   }
 
   /**
-   * Set bass level (smooth transition)
+   * Set bass level - UI placeholder only
+   * Note: Lyria API doesn't currently support bass parameter
    */
   setBass(level: number): void {
     this.config.bass = Math.max(0, Math.min(1, level));
-    this.sendConfigUpdate();
+    // Bass not supported by Lyria API - stored locally only
   }
 
   /**
@@ -433,14 +433,13 @@ export class LyriaSession {
 
   private sendConfigUpdate(): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      // Note: drums/bass are UI-only - Lyria API doesn't support them
       this.sendMessage({
         music_generation_config: {
           density: this.config.density,
           brightness: this.config.brightness,
           guidance: this.config.guidance,
           temperature: this.config.temperature,
-          drums: this.config.drums,
-          bass: this.config.bass,
         },
       });
     }
