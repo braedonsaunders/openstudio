@@ -558,14 +558,14 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isMaster, isPlaying, isMuted, activePanel, handlePlay, handlePause, handleSeek, setMuted, skipToNext, skipToPrevious, hasSongTracks, setMainView]);
 
-  // Real-time sync of audio track mute/solo state with backing track volume
-  // This allows mute/solo buttons to work during playback
-  useEffect(() => {
-    if (!isPlaying || !hasAudioTracks) return;
+  // Calculate effective volume for audio track (mute/solo logic)
+  // This is memoized to prevent unnecessary effect triggers
+  const audioTrackEffectiveVolume = useMemo(() => {
+    if (!isPlaying || !hasAudioTracks) return null;
 
     // Find the currently playing audio track
     const playingAudioTrack = songTracks.find(t => t.type === 'audio' && t.audioTrack);
-    if (!playingAudioTrack) return;
+    if (!playingAudioTrack) return null;
 
     // Check if ANY track has solo enabled (across all track types)
     const hasSoloTrack = songTracks.some(t => t.ref.solo);
@@ -573,10 +573,24 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     // Calculate if this audio track should be muted
     const isEffectivelyMuted = playingAudioTrack.ref.muted || (hasSoloTrack && !playingAudioTrack.ref.solo);
 
-    // Apply volume (0 = muted, track volume = normal)
-    const effectiveVolume = isEffectivelyMuted ? 0 : (playingAudioTrack.ref.volume ?? 1);
-    setBackingTrackVolume(effectiveVolume);
-  }, [isPlaying, hasAudioTracks, songTracks, setBackingTrackVolume]);
+    // Return effective volume (0 = muted, track volume = normal)
+    return isEffectivelyMuted ? 0 : (playingAudioTrack.ref.volume ?? 1);
+  }, [isPlaying, hasAudioTracks, songTracks]);
+
+  // Track the last applied volume to prevent redundant updates
+  const lastAppliedVolumeRef = useRef<number | null>(null);
+
+  // Real-time sync of audio track mute/solo state with backing track volume
+  // This allows mute/solo buttons to work during playback
+  useEffect(() => {
+    if (audioTrackEffectiveVolume === null) return;
+
+    // Only update if volume actually changed
+    if (lastAppliedVolumeRef.current !== audioTrackEffectiveVolume) {
+      lastAppliedVolumeRef.current = audioTrackEffectiveVolume;
+      setBackingTrackVolume(audioTrackEffectiveVolume);
+    }
+  }, [audioTrackEffectiveVolume, setBackingTrackVolume]);
 
   // Time update for loop-only playback (when no audio tracks are driving the time)
   const playStartTimeRef = useRef<number | null>(null);
