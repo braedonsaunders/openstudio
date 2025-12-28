@@ -139,12 +139,14 @@ export class LoopScheduler {
       console.log('[LoopScheduler] First iteration:', {
         trackId: loop.trackId,
         loopDuration,
-        nextLoopTime,
-        currentTime: this.context.currentTime,
+        nextLoopTime: nextLoopTime.toFixed(3),
+        currentTime: this.context.currentTime.toFixed(3),
+        delta: (nextLoopTime - this.context.currentTime).toFixed(3),
         lookahead: this.lookaheadTime,
         midiNotes: midiData?.length,
         preset: soundPreset,
         muted: trackState.muted,
+        contextState: this.context.state,
       });
     }
 
