@@ -34,7 +34,7 @@ export class LoopScheduler {
   private context: AudioContext;
   private soundEngine: SoundEngine;
   private activeLoops: Map<string, ActiveLoop> = new Map();
-  private lookaheadTime = 0.1; // 100ms lookahead
+  private lookaheadTime = 0.15; // 150ms lookahead (increased from 100ms)
   private scheduleInterval = 25; // 25ms schedule interval
   private masterTempo = 120; // BPM
   private masterKey?: string;
@@ -163,8 +163,8 @@ export class LoopScheduler {
       const noteTime = nextLoopTime + note.t * loopDuration;
       const noteDuration = note.d * loopDuration;
 
-      // Only schedule notes within the lookahead window
-      if (noteTime < this.context.currentTime + this.lookaheadTime) {
+      // Only schedule notes within the lookahead window (use <= for edge case)
+      if (noteTime <= this.context.currentTime + this.lookaheadTime) {
         // Apply volume
         const velocity = Math.round(note.v * trackState.volume);
 
