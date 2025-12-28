@@ -315,7 +315,7 @@ export default function RoomPage() {
                         <InstrumentIcon
                           instrumentId={preset.instrumentId}
                           size="md"
-                          style={{ color: preset.color }}
+                          className="opacity-80"
                         />
                       </div>
                       <div className="flex-1 min-w-0">

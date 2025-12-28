@@ -206,7 +206,7 @@ export const useSavedTracksStore = create<SavedTracksState>()(
         volume: track.volume,
         isMuted: track.isMuted,
         isSolo: track.isSolo,
-        effects: track.audioSettings.effects as Record<string, unknown>,
+        effects: track.audioSettings.effects as unknown as Record<string, unknown>,
         activeEffectPreset: track.audioSettings.activePreset,
         isDefault: false,
       };
@@ -348,7 +348,7 @@ export function presetToTrackSettings(preset: SavedTrackPreset) {
         autoGainControl: preset.audioSettings.autoGainControl,
         channelConfig: preset.audioSettings.channelConfig,
         inputGain: preset.audioSettings.inputGain,
-        effects: preset.effects as UnifiedEffectsChain || DEFAULT_UNIFIED_EFFECTS,
+        effects: (preset.effects as unknown as UnifiedEffectsChain) || DEFAULT_UNIFIED_EFFECTS,
         activePreset: preset.activeEffectPreset,
         directMonitoring: preset.audioSettings.directMonitoring,
         monitoringVolume: preset.audioSettings.monitoringVolume,

@@ -119,7 +119,6 @@ export function SavedTrackCard({
                   instrumentId={preset.instrumentId}
                   size="lg"
                   className="opacity-80"
-                  style={{ color: preset.color }}
                 />
               </div>
               <div className="min-w-0">
@@ -264,7 +263,7 @@ export function SavedTrackCard({
               Cancel
             </Button>
             <Button
-              variant="destructive"
+              variant="danger"
               onClick={handleDelete}
               loading={isDeleting}
             >
@@ -379,7 +378,6 @@ export function SavedTrackEditor({
       isOpen={isOpen}
       onClose={onClose}
       title={preset ? 'Edit Track Preset' : 'Create Track Preset'}
-      size="lg"
     >
       <div className="space-y-6">
         <Input
