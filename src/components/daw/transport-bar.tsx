@@ -137,7 +137,7 @@ function BpmBadge() {
         <div
           onClick={handleValueClick}
           className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
+            'flex items-center gap-1.5 px-2 py-1.5 rounded-r-lg border border-l-0 transition-all',
             'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
             (source === 'manual' || source === 'tap') && 'cursor-text hover:bg-gray-200 dark:hover:bg-white/10'
           )}
@@ -304,7 +304,7 @@ function KeyBadge() {
             }
           }}
           className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
+            'flex items-center gap-1.5 px-2 py-1.5 rounded-r-lg border border-l-0 transition-all',
             'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
             keySource === 'manual' && 'hover:bg-gray-200 dark:hover:bg-white/10'
           )}
