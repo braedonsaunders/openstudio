@@ -53,14 +53,14 @@ function BpmBadge() {
   const setSource = useSessionTempoStore((s) => s.setSource);
   const setManualTempo = useSessionTempoStore((s) => s.setManualTempo);
 
-  const sourceIcons: Record<TempoSource, typeof Lock> = {
-    manual: Lock,
-    track: Music2,
-    analyzer: Activity,
-    tap: Hand,
+  const sourceConfig: Record<TempoSource, { icon: typeof Lock; label: string; color: string }> = {
+    manual: { icon: Lock, label: 'Manual', color: 'text-gray-400 dark:text-zinc-500' },
+    track: { icon: Music2, label: 'Track', color: 'text-emerald-500 dark:text-emerald-400' },
+    analyzer: { icon: Activity, label: 'Auto', color: 'text-indigo-500 dark:text-indigo-400' },
+    tap: { icon: Hand, label: 'Tap', color: 'text-orange-500 dark:text-orange-400' },
   };
 
-  const SourceIcon = sourceIcons[source];
+  const SourceIcon = sourceConfig[source].icon;
 
   // Close menus on outside click
   useEffect(() => {
@@ -106,46 +106,38 @@ function BpmBadge() {
     }
   };
 
-  const cycleSource = () => {
-    const sources: TempoSource[] = ['manual', 'track', 'analyzer', 'tap'];
-    const availableSources = sources.filter((s) => {
-      if (s === 'track') return trackTempo !== null;
-      if (s === 'analyzer') return analyzerTempo !== null;
-      return true;
-    });
-    const currentIndex = availableSources.indexOf(source);
-    const nextIndex = (currentIndex + 1) % availableSources.length;
-    setSource(availableSources[nextIndex]);
+  const handleSourceSelect = (newSource: TempoSource) => {
+    setSource(newSource);
+    setShowModeMenu(false);
+  };
+
+  const isSourceAvailable = (s: TempoSource) => {
+    if (s === 'track') return trackTempo !== null;
+    if (s === 'analyzer') return analyzerTempo !== null;
+    return true;
   };
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex items-center gap-0.5">
-        {/* Source icon - clickable to cycle modes */}
-        <Tooltip content={`Mode: ${source === 'manual' ? 'Manual' : source === 'track' ? 'Track' : source === 'analyzer' ? 'Auto' : 'Tap'} (click to change)`}>
-          <button
-            onClick={cycleSource}
-            className={cn(
-              'p-1.5 rounded-l-lg border border-r-0 transition-all',
-              'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
-              'hover:bg-gray-200 dark:hover:bg-white/10'
-            )}
-          >
-            <SourceIcon className={cn(
-              'w-3.5 h-3.5 transition-colors',
-              source === 'analyzer' ? 'text-indigo-500 dark:text-indigo-400' :
-              source === 'track' ? 'text-emerald-500 dark:text-emerald-400' :
-              source === 'tap' ? 'text-orange-500 dark:text-orange-400' :
-              'text-gray-400 dark:text-zinc-500'
-            )} />
-          </button>
-        </Tooltip>
+      <div className="flex items-center">
+        {/* Source icon - clickable to show mode dropdown */}
+        <button
+          onClick={() => setShowModeMenu(!showModeMenu)}
+          className={cn(
+            'p-1.5 rounded-l-lg border border-r-0 transition-all',
+            'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+            'hover:bg-gray-200 dark:hover:bg-white/10',
+            showModeMenu && 'bg-gray-200 dark:bg-white/10'
+          )}
+        >
+          <SourceIcon className={cn('w-3.5 h-3.5 transition-colors', sourceConfig[source].color)} />
+        </button>
 
         {/* Value display/input */}
         <div
           onClick={handleValueClick}
           className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border transition-all',
+            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
             'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
             (source === 'manual' || source === 'tap') && 'cursor-text hover:bg-gray-200 dark:hover:bg-white/10'
           )}
@@ -175,6 +167,43 @@ function BpmBadge() {
           <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
         </div>
       </div>
+
+      {/* Mode dropdown */}
+      {showModeMenu && (
+        <div className="absolute top-full left-0 mt-1 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[140px]">
+          {(Object.keys(sourceConfig) as TempoSource[]).map((s) => {
+            const { icon: Icon, label, color } = sourceConfig[s];
+            const available = isSourceAvailable(s);
+            const isActive = source === s;
+            return (
+              <button
+                key={s}
+                onClick={() => available && handleSourceSelect(s)}
+                disabled={!available}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-1.5 text-left transition-all',
+                  isActive && 'bg-gray-100 dark:bg-white/10',
+                  available ? 'hover:bg-gray-50 dark:hover:bg-white/5' : 'opacity-40 cursor-not-allowed'
+                )}
+              >
+                <Icon className={cn('w-3.5 h-3.5', isActive ? color : 'text-gray-400 dark:text-zinc-500')} />
+                <span className={cn(
+                  'text-xs font-medium',
+                  isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-zinc-400'
+                )}>
+                  {label}
+                </span>
+                {s === 'track' && trackTempo && (
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto">{trackTempo}</span>
+                )}
+                {s === 'analyzer' && analyzerTempo && (
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto">{Math.round(analyzerTempo)}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -183,6 +212,7 @@ function BpmBadge() {
 // Key Badge Component - Inline editable with mode switching
 // =============================================================================
 function KeyBadge() {
+  const [showModeMenu, setShowModeMenu] = useState(false);
   const [showKeyMenu, setShowKeyMenu] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -194,13 +224,13 @@ function KeyBadge() {
   const setManualKey = useSessionTempoStore((s) => s.setManualKey);
 
   type KeySource = 'manual' | 'track' | 'analyzer';
-  const sourceIcons: Record<KeySource, typeof Lock> = {
-    manual: Lock,
-    track: Music2,
-    analyzer: Activity,
+  const sourceConfig: Record<KeySource, { icon: typeof Lock; label: string; color: string }> = {
+    manual: { icon: Lock, label: 'Manual', color: 'text-gray-400 dark:text-zinc-500' },
+    track: { icon: Music2, label: 'Track', color: 'text-emerald-500 dark:text-emerald-400' },
+    analyzer: { icon: Activity, label: 'Auto', color: 'text-indigo-500 dark:text-indigo-400' },
   };
 
-  const SourceIcon = sourceIcons[keySource];
+  const SourceIcon = sourceConfig[keySource].icon;
 
   const keyColors: Record<string, string> = {
     'C': 'bg-red-500',
@@ -220,28 +250,22 @@ function KeyBadge() {
   const allKeys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const keyColor = sessionKey ? keyColors[sessionKey] || 'bg-zinc-500' : 'bg-zinc-600';
 
-  // Close menu on outside click
+  // Close menus on outside click
   useEffect(() => {
-    if (!showKeyMenu) return;
+    if (!showModeMenu && !showKeyMenu) return;
     const handleClick = (e: MouseEvent) => {
       if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+        setShowModeMenu(false);
         setShowKeyMenu(false);
       }
     };
     document.addEventListener('mousedown', handleClick);
     return () => document.removeEventListener('mousedown', handleClick);
-  }, [showKeyMenu]);
+  }, [showModeMenu, showKeyMenu]);
 
-  const cycleSource = () => {
-    const sources: KeySource[] = ['manual', 'track', 'analyzer'];
-    const availableSources = sources.filter((s) => {
-      if (s === 'track') return trackKey !== null;
-      if (s === 'analyzer') return analyzerKey !== null;
-      return true;
-    });
-    const currentIndex = availableSources.indexOf(keySource);
-    const nextIndex = (currentIndex + 1) % availableSources.length;
-    setKeySource(availableSources[nextIndex]);
+  const handleSourceSelect = (newSource: KeySource) => {
+    setKeySource(newSource);
+    setShowModeMenu(false);
   };
 
   const handleKeySelect = (key: string, scale: 'major' | 'minor') => {
@@ -249,33 +273,38 @@ function KeyBadge() {
     setShowKeyMenu(false);
   };
 
+  const isSourceAvailable = (s: KeySource) => {
+    if (s === 'track') return trackKey !== null;
+    if (s === 'analyzer') return analyzerKey !== null;
+    return true;
+  };
+
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex items-center gap-0.5">
-        {/* Source icon - clickable to cycle modes */}
-        <Tooltip content={`Mode: ${keySource === 'manual' ? 'Manual' : keySource === 'track' ? 'Track' : 'Auto'} (click to change)`}>
-          <button
-            onClick={cycleSource}
-            className={cn(
-              'p-1.5 rounded-l-lg border border-r-0 transition-all',
-              'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
-              'hover:bg-gray-200 dark:hover:bg-white/10'
-            )}
-          >
-            <SourceIcon className={cn(
-              'w-3.5 h-3.5 transition-colors',
-              keySource === 'analyzer' ? 'text-indigo-500 dark:text-indigo-400' :
-              keySource === 'track' ? 'text-emerald-500 dark:text-emerald-400' :
-              'text-gray-400 dark:text-zinc-500'
-            )} />
-          </button>
-        </Tooltip>
+      <div className="flex items-center">
+        {/* Source icon - clickable to show mode dropdown */}
+        <button
+          onClick={() => { setShowModeMenu(!showModeMenu); setShowKeyMenu(false); }}
+          className={cn(
+            'p-1.5 rounded-l-lg border border-r-0 transition-all',
+            'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+            'hover:bg-gray-200 dark:hover:bg-white/10',
+            showModeMenu && 'bg-gray-200 dark:bg-white/10'
+          )}
+        >
+          <SourceIcon className={cn('w-3.5 h-3.5 transition-colors', sourceConfig[keySource].color)} />
+        </button>
 
         {/* Value display - clickable to open key picker (manual mode only) */}
         <button
-          onClick={() => keySource === 'manual' && setShowKeyMenu(!showKeyMenu)}
+          onClick={() => {
+            if (keySource === 'manual') {
+              setShowKeyMenu(!showKeyMenu);
+              setShowModeMenu(false);
+            }
+          }}
           className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border transition-all',
+            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
             'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
             keySource === 'manual' && 'hover:bg-gray-200 dark:hover:bg-white/10'
           )}
@@ -304,6 +333,43 @@ function KeyBadge() {
           )}
         </button>
       </div>
+
+      {/* Mode dropdown */}
+      {showModeMenu && (
+        <div className="absolute top-full left-0 mt-1 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[140px]">
+          {(Object.keys(sourceConfig) as KeySource[]).map((s) => {
+            const { icon: Icon, label, color } = sourceConfig[s];
+            const available = isSourceAvailable(s);
+            const isActive = keySource === s;
+            return (
+              <button
+                key={s}
+                onClick={() => available && handleSourceSelect(s)}
+                disabled={!available}
+                className={cn(
+                  'w-full flex items-center gap-2 px-3 py-1.5 text-left transition-all',
+                  isActive && 'bg-gray-100 dark:bg-white/10',
+                  available ? 'hover:bg-gray-50 dark:hover:bg-white/5' : 'opacity-40 cursor-not-allowed'
+                )}
+              >
+                <Icon className={cn('w-3.5 h-3.5', isActive ? color : 'text-gray-400 dark:text-zinc-500')} />
+                <span className={cn(
+                  'text-xs font-medium',
+                  isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-zinc-400'
+                )}>
+                  {label}
+                </span>
+                {s === 'track' && trackKey && (
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto">{trackKey}</span>
+                )}
+                {s === 'analyzer' && analyzerKey && (
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto">{analyzerKey}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
 
       {/* Key picker dropdown */}
       {showKeyMenu && (
