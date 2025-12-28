@@ -22,8 +22,8 @@ export default function AuthCallbackPage() {
           await initialize();
         }
 
-        // Redirect to rooms after successful auth
-        router.push('/rooms');
+        // Redirect to lobby after successful auth
+        router.push('/lobby');
       } catch (error) {
         console.error('Auth callback error:', error);
         router.push('/?error=auth_failed');

@@ -56,7 +56,7 @@ export function AuthModal({ isOpen, onClose, defaultTab = 'login' }: AuthModalPr
     if (isOpen && user && profile) {
       setIsSubmitting(false);
       onClose();
-      router.push('/rooms');
+      router.push('/lobby');
     }
   }, [isOpen, user, profile, onClose, router]);
 

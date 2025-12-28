@@ -1173,7 +1173,7 @@ export default function HomePage() {
   }, [router, roomCode]);
 
   const handleBrowseRooms = useCallback(() => {
-    router.push('/rooms');
+    router.push('/lobby');
   }, [router]);
 
   if (!mounted) {

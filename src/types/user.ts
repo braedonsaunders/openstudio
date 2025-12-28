@@ -666,13 +666,15 @@ export const XP_ACTIVITIES = {
 } as const;
 
 // Calculate level from XP
+// Level 1: 0-99 XP, Level 2: 100-399 XP, Level 3: 400-899 XP, etc.
 export function calculateLevel(xp: number): number {
-  return Math.max(1, Math.floor(Math.sqrt(xp / 100)));
+  return Math.max(1, Math.floor(Math.sqrt(xp / 100)) + 1);
 }
 
-// Calculate XP needed for a level
+// Calculate XP needed to START a level (XP threshold)
 export function xpForLevel(level: number): number {
-  return level * level * 100;
+  // Level 1 starts at 0 XP, level 2 at 100 XP, level 3 at 400 XP, etc.
+  return (level - 1) * (level - 1) * 100;
 }
 
 // Calculate XP progress in current level

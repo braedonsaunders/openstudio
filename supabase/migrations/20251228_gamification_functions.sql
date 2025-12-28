@@ -46,8 +46,9 @@ BEGIN
   -- Calculate new XP
   v_new_xp := v_current_xp + p_amount;
 
-  -- Calculate new level: level = floor(sqrt(xp / 100))
-  v_new_level := GREATEST(1, FLOOR(SQRT(v_new_xp / 100.0))::INTEGER);
+  -- Calculate new level: level = floor(sqrt(xp / 100)) + 1
+  -- Level 1: 0-99 XP, Level 2: 100-399 XP, Level 3: 400-899 XP, etc.
+  v_new_level := GREATEST(1, FLOOR(SQRT(v_new_xp / 100.0))::INTEGER + 1);
 
   -- Check if leveled up
   v_leveled_up := v_new_level > v_current_level;
