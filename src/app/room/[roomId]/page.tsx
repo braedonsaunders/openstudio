@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { DAWLayout } from '@/components/daw';
+import { RoomExitAnimation } from '@/components/daw/room-exit-animation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '@/components/ui/card';
@@ -62,6 +63,7 @@ export default function RoomPage() {
   const { addTrack, addMidiTrack } = useUserTracksStore();
 
   const [hasJoined, setHasJoined] = useState(false);
+  const [isExiting, setIsExiting] = useState(false);
   const [userName, setUserName] = useState('');
   const [instrument, setInstrument] = useState('');
   const [showSavedTracks, setShowSavedTracks] = useState(false);
@@ -95,7 +97,7 @@ export default function RoomPage() {
     }
   }, [userInstruments, instrument]);
 
-  const { join, isJoining, error, isConnected } = useRoom(roomId, {
+  const { join, leave, isJoining, error, isConnected } = useRoom(roomId, {
     onUserJoined: (user) => {
       console.log('User joined:', user.name);
     },
@@ -108,12 +110,23 @@ export default function RoomPage() {
   });
 
   // Navigate to /lobby when user leaves (isConnected becomes false after joining)
-  // Don't redirect if still joining or if there was an error (user should see the error)
+  // Don't redirect if still joining, if there was an error, or if we're handling animated exit
   useEffect(() => {
-    if (hasJoined && !isConnected && !isJoining && !error) {
+    if (hasJoined && !isConnected && !isJoining && !error && !isExiting) {
       router.push('/lobby');
     }
-  }, [hasJoined, isConnected, isJoining, error, router]);
+  }, [hasJoined, isConnected, isJoining, error, isExiting, router]);
+
+  // Handle animated room exit
+  const handleLeaveRoom = useCallback(() => {
+    setIsExiting(true);
+  }, []);
+
+  // Called when exit animation completes
+  const handleExitAnimationComplete = useCallback(async () => {
+    await leave();
+    router.push('/lobby');
+  }, [leave, router]);
 
   const handleJoin = useCallback(async () => {
     if (!userName.trim()) return;
@@ -145,9 +158,16 @@ export default function RoomPage() {
     }
   }, [userName, instrument, join, getSelectedPresets, addTrack, addMidiTrack, user?.id, incrementUseCount]);
 
-  // Show DAW layout once joined
-  if (hasJoined && isConnected) {
-    return <DAWLayout roomId={roomId} />;
+  // Show DAW layout once joined, with exit animation wrapper
+  if (hasJoined && (isConnected || isExiting)) {
+    return (
+      <RoomExitAnimation
+        isExiting={isExiting}
+        onAnimationComplete={handleExitAnimationComplete}
+      >
+        <DAWLayout roomId={roomId} onLeaveRoom={handleLeaveRoom} />
+      </RoomExitAnimation>
+    );
   }
 
   return (

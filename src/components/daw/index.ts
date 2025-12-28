@@ -43,3 +43,6 @@ export { Fader, Knob } from './fader';
 
 // Overlays
 export { KeyboardShortcuts } from './keyboard-shortcuts';
+
+// Animations
+export { RoomExitAnimation } from './room-exit-animation';

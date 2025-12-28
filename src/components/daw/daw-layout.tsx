@@ -39,11 +39,12 @@ import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
 
 interface DAWLayoutProps {
   roomId: string;
+  onLeaveRoom?: () => void;
 }
 
 export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' kept for backwards compat
 
-export function DAWLayout({ roomId }: DAWLayoutProps) {
+export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   // Theme
   const { resolvedTheme, toggleTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -850,7 +851,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         onGenerateTrack={handleOpenAIPanel}
         onSeparateStems={handleSeparateTrack}
         onRoomSettings={() => setIsSettingsModalOpen(true)}
-        onLeaveRoom={leave}
+        onLeaveRoom={onLeaveRoom || leave}
         onShowShortcuts={() => setShowShortcuts(true)}
         isPlaying={isPlaying}
         isMaster={isMaster}
@@ -870,7 +871,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         onNext={skipToNext}
         onMuteToggle={() => setMuted(!isMuted)}
         onSettingsClick={() => setIsSettingsModalOpen(true)}
-        onLeave={leave}
+        onLeave={onLeaveRoom || leave}
         loopEnabled={loopEnabled}
         onLoopToggle={() => setLoopEnabled(!loopEnabled)}
         activeView={mainView}
