@@ -362,8 +362,8 @@ export function isPermissionOverridden(
     return false;
   }
 
-  const baseValue = (ROLE_PERMISSIONS[role][category] as Record<string, boolean>)[permission];
-  const customValue = (customPermissions[category] as Record<string, boolean>)[permission];
+  const baseValue = (ROLE_PERMISSIONS[role][category] as unknown as Record<string, boolean>)[permission];
+  const customValue = (customPermissions[category] as unknown as Record<string, boolean>)[permission];
 
   return customValue !== undefined && customValue !== baseValue;
 }
