@@ -717,6 +717,7 @@ export interface SavedTrackPreset {
       channelCount: 1 | 2;
       leftChannel: number;
       rightChannel?: number;
+      deviceChannelCount?: number; // Number of channels available on the device (UI helper)
     };
     inputGain: number; // dB (-24 to 24)
     directMonitoring: boolean;

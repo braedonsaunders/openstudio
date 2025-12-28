@@ -907,6 +907,11 @@ export function SavedTrackEditor({
   const [echoCancellation, setEchoCancellation] = useState(preset?.audioSettings?.echoCancellation ?? false);
   const [autoGainControl, setAutoGainControl] = useState(preset?.audioSettings?.autoGainControl ?? false);
   const [channelCount, setChannelCount] = useState(preset?.audioSettings?.channelConfig?.channelCount || 2);
+  const [leftChannel, setLeftChannel] = useState(preset?.audioSettings?.channelConfig?.leftChannel ?? 0);
+  const [rightChannel, setRightChannel] = useState(preset?.audioSettings?.channelConfig?.rightChannel ?? 1);
+  const [deviceChannelCount, setDeviceChannelCount] = useState(
+    preset?.audioSettings?.channelConfig?.deviceChannelCount ?? 2
+  ); // Number of channels available on the selected device
   const [directMonitoring, setDirectMonitoring] = useState(preset?.audioSettings?.directMonitoring ?? true);
   const [monitoringVolume, setMonitoringVolume] = useState(preset?.audioSettings?.monitoringVolume ?? 1);
 
@@ -958,6 +963,42 @@ export function SavedTrackEditor({
     };
   }, [isOpen]);
 
+  // Detect channel count of selected device
+  useEffect(() => {
+    if (!isOpen || inputMode !== 'microphone' || inputDeviceId === 'default') {
+      setDeviceChannelCount(2); // Default to stereo
+      return;
+    }
+
+    const detectChannels = async () => {
+      try {
+        // Try to get the device's capabilities
+        const stream = await navigator.mediaDevices.getUserMedia({
+          audio: {
+            deviceId: { exact: inputDeviceId },
+            // Request maximum channels to detect device capabilities
+          },
+        });
+
+        const track = stream.getAudioTracks()[0];
+        const settings = track.getSettings();
+        const channelCount = settings.channelCount || 2;
+
+        // Many professional interfaces report higher channel counts
+        // Common values: 2 (stereo), 4, 8, 16, 18, 24
+        setDeviceChannelCount(Math.max(2, channelCount));
+
+        // Clean up
+        stream.getTracks().forEach(t => t.stop());
+      } catch (err) {
+        console.warn('Failed to detect device channels:', err);
+        setDeviceChannelCount(2);
+      }
+    };
+
+    detectChannels();
+  }, [isOpen, inputDeviceId, inputMode]);
+
   // Reset state when preset changes
   useEffect(() => {
     if (isOpen) {
@@ -977,6 +1018,9 @@ export function SavedTrackEditor({
       setEchoCancellation(preset?.audioSettings?.echoCancellation ?? false);
       setAutoGainControl(preset?.audioSettings?.autoGainControl ?? false);
       setChannelCount(preset?.audioSettings?.channelConfig?.channelCount || 2);
+      setLeftChannel(preset?.audioSettings?.channelConfig?.leftChannel ?? 0);
+      setRightChannel(preset?.audioSettings?.channelConfig?.rightChannel ?? 1);
+      setDeviceChannelCount(preset?.audioSettings?.channelConfig?.deviceChannelCount ?? 2);
       setDirectMonitoring(preset?.audioSettings?.directMonitoring ?? true);
       setMonitoringVolume(preset?.audioSettings?.monitoringVolume ?? 1);
       setActiveEffectPreset(preset?.activeEffectPreset || '');
@@ -1108,8 +1152,9 @@ export function SavedTrackEditor({
           autoGainControl,
           channelConfig: {
             channelCount,
-            leftChannel: 0,
-            rightChannel: 1,
+            leftChannel,
+            rightChannel,
+            deviceChannelCount, // Remember the device's channel count for UI
           },
           inputGain,
           directMonitoring,
@@ -1336,10 +1381,14 @@ export function SavedTrackEditor({
 
               {/* Channel Config */}
               <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Channels</label>
+                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Channel Mode</label>
                 <div className="grid grid-cols-2 gap-2">
                   <button
-                    onClick={() => setChannelCount(1)}
+                    onClick={() => {
+                      setChannelCount(1);
+                      // Reset to first channel when switching to mono
+                      setRightChannel(leftChannel);
+                    }}
                     className={cn(
                       'p-2 rounded-lg border text-sm font-medium transition-all',
                       channelCount === 1
@@ -1350,7 +1399,11 @@ export function SavedTrackEditor({
                     Mono
                   </button>
                   <button
-                    onClick={() => setChannelCount(2)}
+                    onClick={() => {
+                      setChannelCount(2);
+                      // Set stereo pair when switching to stereo
+                      setRightChannel(leftChannel + 1);
+                    }}
                     className={cn(
                       'p-2 rounded-lg border text-sm font-medium transition-all',
                       channelCount === 2
@@ -1362,6 +1415,111 @@ export function SavedTrackEditor({
                   </button>
                 </div>
               </div>
+
+              {/* Channel Selection */}
+              {inputMode === 'microphone' && (
+                <div>
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">
+                    {channelCount === 1 ? 'Input Channel' : 'Input Channels'}
+                  </label>
+                  {channelCount === 1 ? (
+                    // Mono: Single channel selector
+                    <select
+                      value={leftChannel}
+                      onChange={(e) => {
+                        const ch = parseInt(e.target.value);
+                        setLeftChannel(ch);
+                        setRightChannel(ch); // Same channel for mono
+                      }}
+                      className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
+                    >
+                      {Array.from({ length: Math.max(deviceChannelCount, 8) }, (_, i) => (
+                        <option key={i} value={i}>
+                          Channel {i + 1}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    // Stereo: Channel pair selector
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Left Channel</label>
+                        <select
+                          value={leftChannel}
+                          onChange={(e) => setLeftChannel(parseInt(e.target.value))}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
+                        >
+                          {Array.from({ length: Math.max(deviceChannelCount, 8) }, (_, i) => (
+                            <option key={i} value={i}>
+                              Channel {i + 1}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs text-gray-400 mb-1">Right Channel</label>
+                        <select
+                          value={rightChannel}
+                          onChange={(e) => setRightChannel(parseInt(e.target.value))}
+                          className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
+                        >
+                          {Array.from({ length: Math.max(deviceChannelCount, 8) }, (_, i) => (
+                            <option key={i} value={i}>
+                              Channel {i + 1}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    </div>
+                  )}
+                  {/* Quick stereo pair presets */}
+                  {channelCount === 2 && deviceChannelCount > 2 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      <span className="text-xs text-gray-500 mr-1">Quick pairs:</span>
+                      {Array.from({ length: Math.floor(Math.max(deviceChannelCount, 8) / 2) }, (_, i) => (
+                        <button
+                          key={i}
+                          onClick={() => {
+                            setLeftChannel(i * 2);
+                            setRightChannel(i * 2 + 1);
+                          }}
+                          className={cn(
+                            'px-2 py-0.5 text-xs rounded transition-colors',
+                            leftChannel === i * 2 && rightChannel === i * 2 + 1
+                              ? 'bg-indigo-500/20 text-indigo-400'
+                              : 'bg-gray-100 dark:bg-gray-800 text-gray-500 hover:text-gray-700 dark:hover:text-gray-300'
+                          )}
+                        >
+                          {i * 2 + 1}/{i * 2 + 2}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="mt-2 flex items-center justify-between">
+                    <p className="text-xs text-gray-500">
+                      {deviceChannelCount > 2
+                        ? `Device reports ${deviceChannelCount} channels`
+                        : 'Standard stereo device detected'}
+                    </p>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-400">Override:</label>
+                      <select
+                        value={deviceChannelCount}
+                        onChange={(e) => setDeviceChannelCount(parseInt(e.target.value))}
+                        className="px-2 py-1 text-xs bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded"
+                      >
+                        <option value={2}>2 ch</option>
+                        <option value={4}>4 ch</option>
+                        <option value={8}>8 ch</option>
+                        <option value={16}>16 ch</option>
+                        <option value={18}>18 ch</option>
+                        <option value={24}>24 ch</option>
+                        <option value={32}>32 ch</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Sample Rate & Buffer */}
               <div className="grid grid-cols-2 gap-4">
