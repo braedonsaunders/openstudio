@@ -87,6 +87,8 @@ export interface AudioTrackInfo {
   transceiver: RTCRtpTransceiver | null;
   enabled: boolean;
   volume: number;
+  /** Number of audio channels: 1 for mono, 2 for stereo */
+  channelCount: 1 | 2;
 }
 
 // TURN server configuration (optional but recommended for NAT traversal)
@@ -125,50 +127,73 @@ const defaultConfig: CallsConfig = {
 };
 
 /**
- * Modify SDP to use 10ms Opus frames for lower latency.
- * Default browser Opus frame size is 20ms, which adds significant latency
- * for real-time jamming. Using 10ms frames saves ~10ms per direction (~20ms round-trip).
+ * SDP optimization options
+ */
+interface SdpOptimizationOptions {
+  /** Use 10ms Opus frames instead of 20ms (default: true) */
+  lowLatency?: boolean;
+  /** Enable stereo encoding for this track (default: false for mono) */
+  stereo?: boolean;
+}
+
+/**
+ * Modify SDP for optimal audio transmission.
  *
- * This modifies the fmtp line for Opus to set:
- * - ptime=10: Preferred packet time of 10ms
+ * Low-latency mode (default):
+ * - ptime=10: Preferred packet time of 10ms (saves ~10ms per direction)
  * - maxptime=10: Maximum packet time of 10ms
  * - minptime=10: Minimum packet time of 10ms
+ *
+ * Stereo mode:
+ * - stereo=1: Enable stereo encoding
+ * - sprop-stereo=1: Indicate stereo will be sent
+ *
+ * Mono mode (default):
+ * - stereo=0: Mono encoding (lower bandwidth, better for voice)
  */
-function optimizeSdpForLowLatency(sdp: string): string {
+function optimizeSdpForAudio(sdp: string, options: SdpOptimizationOptions = {}): string {
+  const { lowLatency = true, stereo = false } = options;
   let optimizedSdp = sdp;
 
-  // Find the Opus codec line and add latency parameters
+  // Find the Opus codec line and add parameters
   // Look for patterns like "a=fmtp:111 minptime=10;useinbandfec=1"
-  // or "a=fmtp:111 useinbandfec=1"
+  optimizedSdp = optimizedSdp.replace(
+    /a=fmtp:(\d+)\s+(.*)/g,
+    (match, payloadType, params) => {
+      // Only modify Opus lines (identified by useinbandfec or minptime)
+      if (params.includes('useinbandfec') || params.includes('minptime')) {
+        // Remove any existing parameters we're going to set
+        let cleanParams = params
+          .replace(/ptime=\d+;?/g, '')
+          .replace(/maxptime=\d+;?/g, '')
+          .replace(/stereo=\d+;?/g, '')
+          .replace(/sprop-stereo=\d+;?/g, '')
+          .replace(/;;/g, ';')
+          .replace(/;$/g, '');
 
-  // First, check if ptime is already set
-  if (!optimizedSdp.includes('ptime=10')) {
-    // Add ptime and maxptime to the Opus fmtp line
-    // Match a=fmtp:NNN followed by any existing parameters
-    optimizedSdp = optimizedSdp.replace(
-      /a=fmtp:(\d+)\s+(.*)/g,
-      (match, payloadType, params) => {
-        // Only modify Opus lines (typically payload type 111, but we check by context)
-        // We identify Opus by looking for useinbandfec or minptime in the same line
-        if (params.includes('useinbandfec') || params.includes('minptime')) {
-          // Remove any existing ptime/maxptime values first
-          let cleanParams = params
-            .replace(/ptime=\d+;?/g, '')
-            .replace(/maxptime=\d+;?/g, '')
-            .replace(/;;/g, ';')
-            .replace(/;$/g, '');
+        // Build new parameter string
+        const newParams: string[] = [];
 
-          // Add our low-latency parameters
-          return `a=fmtp:${payloadType} ptime=10;maxptime=10;minptime=10;${cleanParams}`;
+        // Add low-latency parameters
+        if (lowLatency) {
+          newParams.push('ptime=10', 'maxptime=10', 'minptime=10');
         }
-        return match;
-      }
-    );
-  }
 
-  // Also add a=ptime:10 attribute if not present (some browsers prefer this)
-  if (!optimizedSdp.includes('a=ptime:')) {
-    // Add after the m=audio line
+        // Add stereo parameters
+        if (stereo) {
+          newParams.push('stereo=1', 'sprop-stereo=1');
+        } else {
+          newParams.push('stereo=0');
+        }
+
+        return `a=fmtp:${payloadType} ${newParams.join(';')};${cleanParams}`;
+      }
+      return match;
+    }
+  );
+
+  // Also add a=ptime:10 attribute if not present and low latency enabled
+  if (lowLatency && !optimizedSdp.includes('a=ptime:')) {
     optimizedSdp = optimizedSdp.replace(
       /(m=audio.*\r?\n)/,
       '$1a=ptime:10\r\n'
@@ -176,6 +201,14 @@ function optimizeSdpForLowLatency(sdp: string): string {
   }
 
   return optimizedSdp;
+}
+
+/**
+ * Legacy wrapper for backwards compatibility
+ * @deprecated Use optimizeSdpForAudio instead
+ */
+function optimizeSdpForLowLatency(sdp: string): string {
+  return optimizeSdpForAudio(sdp, { lowLatency: true, stereo: false });
 }
 
 export class CloudflareCalls {
@@ -281,6 +314,10 @@ export class CloudflareCalls {
         const parts = trackLabel.split('-');
 
         if (parts.length >= 2) {
+          // Detect channel count from the incoming track (default to mono if not available)
+          const audioTrackSettings = event.track.getSettings?.();
+          const detectedChannelCount = (audioTrackSettings?.channelCount === 2 ? 2 : 1) as 1 | 2;
+
           // Check for legacy "audio-{userId}" format
           if (parts[0] === 'audio' && parts.length === 2) {
             const remoteUserId = parts[1];
@@ -293,6 +330,7 @@ export class CloudflareCalls {
               transceiver: event.transceiver || null,
               enabled: true,
               volume: 1,
+              channelCount: detectedChannelCount,
             };
 
             this.remoteTracks.set(trackLabel, trackInfo);
@@ -314,6 +352,7 @@ export class CloudflareCalls {
               transceiver: event.transceiver || null,
               enabled: true,
               volume: 1,
+              channelCount: detectedChannelCount,
             };
 
             this.remoteTracks.set(trackLabel, trackInfo);
@@ -325,6 +364,10 @@ export class CloudflareCalls {
           }
         } else {
           // Unknown format - use entire label as trackId
+          // Detect channel count from the incoming track
+          const audioTrackSettings = event.track.getSettings?.();
+          const detectedChannelCount = (audioTrackSettings?.channelCount === 2 ? 2 : 1) as 1 | 2;
+
           const trackInfo: AudioTrackInfo = {
             trackId: trackLabel,
             userId: 'unknown',
@@ -334,6 +377,7 @@ export class CloudflareCalls {
             transceiver: event.transceiver || null,
             enabled: true,
             volume: 1,
+            channelCount: detectedChannelCount,
           };
 
           this.remoteTracks.set(trackLabel, trackInfo);
@@ -362,12 +406,14 @@ export class CloudflareCalls {
    * @param stream Optional initial MediaStream (for backwards compatibility)
    * @param trackType Type of the initial track - any string (e.g., 'mic', 'guitar', 'synth-lead')
    * @param trackLabel Human-readable label for the initial track (e.g., "Lead Vocals", "Rhythm Guitar")
+   * @param channelCount Number of audio channels: 1 for mono (default), 2 for stereo
    * @returns Session info including session ID and initial track list
    */
   async joinRoom(
     stream?: MediaStream,
     trackType: AudioTrackType = 'audio',
-    trackLabel: string = 'Audio'
+    trackLabel: string = 'Audio',
+    channelCount: 1 | 2 = 1
   ): Promise<CloudflareSession> {
     if (!this.peerConnection) {
       throw new Error('PeerConnection not initialized');
@@ -415,9 +461,13 @@ export class CloudflareCalls {
       // Create offer with local tracks
       const offer = await this.peerConnection.createOffer();
 
-      // Optimize SDP for low latency (10ms Opus frames instead of default 20ms)
-      const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '');
-      console.log('[CloudflareCalls] Optimized SDP for low latency (10ms Opus frames)');
+      // Optimize SDP for low latency and stereo/mono configuration
+      const isStereo = channelCount === 2;
+      const optimizedSdp = optimizeSdpForAudio(offer.sdp || '', {
+        lowLatency: true,
+        stereo: isStereo
+      });
+      console.log(`[CloudflareCalls] Optimized SDP: 10ms Opus frames, ${isStereo ? 'stereo' : 'mono'}`);
 
       await this.peerConnection.setLocalDescription({
         type: offer.type,
@@ -447,6 +497,7 @@ export class CloudflareCalls {
             userId: this.userId,
             type: trackType,
             label: trackLabel,
+            channelCount,
             timestamp: Date.now(),
           },
         }),
@@ -478,10 +529,11 @@ export class CloudflareCalls {
         transceiver,
         enabled: true,
         volume: 1,
+        channelCount,
       };
 
       this.localTracks.set(trackId, trackInfo);
-      console.log(`[CloudflareCalls] Added initial track: ${trackId} (${trackLabel})`);
+      console.log(`[CloudflareCalls] Added initial track: ${trackId} (${trackLabel}, ${channelCount === 2 ? 'stereo' : 'mono'})`);
 
       return {
         sessionId: this.sessionId!,
@@ -660,15 +712,18 @@ export class CloudflareCalls {
    * @param stream MediaStream containing the audio track
    * @param type Type of track (mic, guitar, bass, piano, drums, midi, synth, other)
    * @param label Human-readable label for the track
-   * @param instanceId Optional instance ID for multiple tracks of same type (e.g., "synth1", "synth2")
+   * @param options Optional track configuration
+   * @param options.instanceId Instance ID for multiple tracks of same type (e.g., "synth1", "synth2")
+   * @param options.channelCount Number of channels: 1 for mono (default), 2 for stereo
    * @returns Track ID that can be used to remove/update the track
    */
   async addTrack(
     stream: MediaStream,
     type: AudioTrackType,
     label: string,
-    instanceId?: string
+    options?: { instanceId?: string; channelCount?: 1 | 2 }
   ): Promise<string> {
+    const { instanceId, channelCount = 1 } = options || {};
     if (!this.peerConnection || !this.sessionId) {
       throw new Error('Must join room before adding tracks');
     }
@@ -697,7 +752,11 @@ export class CloudflareCalls {
 
     // Create offer with the new track
     const offer = await this.peerConnection.createOffer();
-    const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '');
+    const isStereo = channelCount === 2;
+    const optimizedSdp = optimizeSdpForAudio(offer.sdp || '', {
+      lowLatency: true,
+      stereo: isStereo
+    });
 
     await this.peerConnection.setLocalDescription({
       type: offer.type,
@@ -727,6 +786,7 @@ export class CloudflareCalls {
           userId: this.userId,
           type,
           label,
+          channelCount,
           timestamp: Date.now(),
         },
       }),
@@ -757,10 +817,11 @@ export class CloudflareCalls {
       transceiver,
       enabled: true,
       volume: 1,
+      channelCount,
     };
 
     this.localTracks.set(trackId, trackInfo);
-    console.log(`[CloudflareCalls] Added track: ${trackId} (${label})`);
+    console.log(`[CloudflareCalls] Added track: ${trackId} (${label}, ${channelCount === 2 ? 'stereo' : 'mono'})`);
 
     return trackId;
   }
