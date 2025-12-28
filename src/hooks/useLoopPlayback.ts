@@ -149,7 +149,8 @@ export function useLoopPlayback() {
   }, []);
 
   // Helper to calculate loop duration in seconds
-  const getLoopDuration = useCallback((loopId: string): number => {
+  // Uses session tempo (matching the visual timeline) unless track is tempo-locked
+  const getLoopDuration = useCallback((loopId: string, tempoLocked: boolean = false): number => {
     // Check cached library first (includes database-fetched loops)
     let loopDef = getCachedLoopById(loopId);
     if (!loopDef) {
@@ -159,9 +160,13 @@ export function useLoopPlayback() {
     }
     if (!loopDef) return 0;
 
+    // Use session tempo unless tempo-locked (same logic as timeline visual)
+    const sessionTempo = useSessionTempoStore.getState().tempo;
+    const effectiveBpm = tempoLocked ? loopDef.bpm : sessionTempo;
+
     const beatsPerBar = loopDef.timeSignature[0];
     const totalBeats = loopDef.bars * beatsPerBar;
-    return (totalBeats / loopDef.bpm) * 60;
+    return (totalBeats / effectiveBpm) * 60;
   }, []);
 
   // Sync playback state with song tracks
@@ -188,8 +193,9 @@ export function useLoopPlayback() {
     const currentLoopTracks = song.tracks.filter(t => t.type === 'loop');
     const currentLoopTrackIds = new Set(currentLoopTracks.map(t => t.trackId));
 
-    // Check for any solo'd tracks
-    const hasSoloTrack = currentLoopTracks.some(t => t.solo);
+    // Check for any solo'd tracks across ALL track types (loops and audio)
+    // This ensures solo works consistently - if any track is solo'd, non-solo tracks are muted
+    const hasSoloTrack = song.tracks.some(t => t.solo);
 
     // Stop loops that are no longer in the song
     for (const scheduledId of scheduledLoopsRef.current) {
@@ -208,7 +214,7 @@ export function useLoopPlayback() {
 
       // Calculate if the loop is within the current playback time range
       const startOffset = songTrack.startOffset ?? 0;
-      const loopDuration = getLoopDuration(loopTrack.loopId);
+      const loopDuration = getLoopDuration(loopTrack.loopId, loopTrack.tempoLocked);
       const endTime = startOffset + loopDuration;
 
       // Check if current time is within this loop's range
