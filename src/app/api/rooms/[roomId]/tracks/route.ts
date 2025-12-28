@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { deleteTrackByUrl } from '@/lib/storage/r2';
 
 // Lazy initialization of Supabase client to avoid build-time errors
 let supabaseClient: SupabaseClient | null = null;
@@ -197,6 +198,36 @@ export async function DELETE(
       return NextResponse.json({ success: true });
     }
 
+    // First, fetch the track to get its URL for R2 cleanup
+    const { data: track, error: fetchError } = await supabase
+      .from('room_tracks')
+      .select('url')
+      .eq('id', trackId)
+      .eq('room_id', roomId)
+      .single();
+
+    if (fetchError && fetchError.code !== 'PGRST116') {
+      // PGRST116 = no rows found - track might already be deleted
+      console.error('Error fetching track for deletion:', fetchError);
+    }
+
+    // Delete from R2 if we have a URL
+    if (track?.url) {
+      try {
+        const r2Result = await deleteTrackByUrl(track.url, trackId);
+        if (r2Result.errors.length > 0) {
+          console.warn('R2 deletion warnings:', r2Result.errors);
+        }
+        if (r2Result.deletedCount > 0) {
+          console.log(`Deleted ${r2Result.deletedCount} files from R2 for track ${trackId}`);
+        }
+      } catch (r2Error) {
+        // Log but don't fail the request - we still want to clean up the database
+        console.error('Error deleting track from R2:', r2Error);
+      }
+    }
+
+    // Delete from database
     const { error } = await supabase
       .from('room_tracks')
       .delete()

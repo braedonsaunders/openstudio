@@ -107,6 +107,174 @@ export async function listRoomTracks(roomId: string): Promise<string[]> {
   return (response.Contents || []).map((obj) => obj.Key!).filter(Boolean);
 }
 
+/**
+ * Delete all files for a room (tracks and stems)
+ * This should be called before deleting a room from the database
+ */
+export async function deleteRoomFiles(roomId: string): Promise<{ deletedCount: number; errors: string[] }> {
+  const errors: string[] = [];
+  let deletedCount = 0;
+
+  try {
+    // List all files in the room's tracks directory (includes stems in subdirectories)
+    const response = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET_NAME,
+        Prefix: `rooms/${roomId}/`,
+      })
+    );
+
+    const keys = (response.Contents || []).map((obj) => obj.Key!).filter(Boolean);
+
+    // Delete all files
+    const deletePromises = keys.map(async (key) => {
+      try {
+        await s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: R2_BUCKET_NAME,
+            Key: key,
+          })
+        );
+        deletedCount++;
+      } catch (error) {
+        errors.push(`Failed to delete ${key}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    });
+
+    await Promise.all(deletePromises);
+  } catch (error) {
+    errors.push(`Failed to list room files: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  return { deletedCount, errors };
+}
+
+/**
+ * Delete a track and its associated stem files from R2
+ * Handles both old-style keys (tracks/{id}.ext) and new-style keys (rooms/{roomId}/tracks/{timestamp}-{filename})
+ */
+export async function deleteTrackWithStems(key: string): Promise<{ deletedCount: number; errors: string[] }> {
+  const errors: string[] = [];
+  let deletedCount = 0;
+
+  try {
+    // Delete the main track file
+    await s3Client.send(
+      new DeleteObjectCommand({
+        Bucket: R2_BUCKET_NAME,
+        Key: key,
+      })
+    );
+    deletedCount++;
+
+    // Delete associated stem files
+    // Stems are stored at: {basePath}/stems/{stemType}.wav
+    const basePath = key.replace(/\.[^/.]+$/, ''); // Remove file extension
+    const stemsPrefix = `${basePath}/stems/`;
+
+    const stemsResponse = await s3Client.send(
+      new ListObjectsV2Command({
+        Bucket: R2_BUCKET_NAME,
+        Prefix: stemsPrefix,
+      })
+    );
+
+    const stemKeys = (stemsResponse.Contents || []).map((obj) => obj.Key!).filter(Boolean);
+
+    for (const stemKey of stemKeys) {
+      try {
+        await s3Client.send(
+          new DeleteObjectCommand({
+            Bucket: R2_BUCKET_NAME,
+            Key: stemKey,
+          })
+        );
+        deletedCount++;
+      } catch (error) {
+        errors.push(`Failed to delete stem ${stemKey}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+  } catch (error) {
+    errors.push(`Failed to delete track ${key}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+
+  return { deletedCount, errors };
+}
+
+/**
+ * Extract R2 key from a track URL
+ * Handles various URL formats:
+ * - Direct R2 URL: https://{account}.r2.cloudflarestorage.com/{bucket}/rooms/{roomId}/tracks/...
+ * - Proxy URL: /api/audio/{trackId} -> tracks/{trackId}.{ext}
+ * - Full key: rooms/{roomId}/tracks/...
+ */
+export function extractR2KeyFromUrl(url: string, trackId?: string): string | null {
+  if (!url) return null;
+
+  // If it's already a key (starts with rooms/ or tracks/)
+  if (url.startsWith('rooms/') || url.startsWith('tracks/')) {
+    return url;
+  }
+
+  // Handle proxy URLs: /api/audio/{trackId}
+  if (url.startsWith('/api/audio/')) {
+    const id = url.replace('/api/audio/', '');
+    // Old format used tracks/{id}.ext - we'll return the base pattern
+    return `tracks/${id}`;
+  }
+
+  // Handle full R2 URLs
+  if (url.includes('r2.cloudflarestorage.com')) {
+    // Extract the key from the URL (everything after the bucket name)
+    const match = url.match(/r2\.cloudflarestorage\.com\/[^/]+\/(.+)/);
+    if (match) {
+      return match[1];
+    }
+    // Alternative pattern without bucket in URL
+    const altMatch = url.match(/r2\.cloudflarestorage\.com\/(.+)/);
+    if (altMatch) {
+      return altMatch[1];
+    }
+  }
+
+  // If we have a trackId, use the old format
+  if (trackId) {
+    return `tracks/${trackId}`;
+  }
+
+  return null;
+}
+
+/**
+ * Delete a track from R2 by its URL
+ * Tries multiple extensions for old-style URLs
+ */
+export async function deleteTrackByUrl(url: string, trackId?: string): Promise<{ deletedCount: number; errors: string[] }> {
+  const key = extractR2KeyFromUrl(url, trackId);
+
+  if (!key) {
+    return { deletedCount: 0, errors: ['Could not extract R2 key from URL'] };
+  }
+
+  // If key doesn't have an extension (old proxy format), try multiple extensions
+  if (key.startsWith('tracks/') && !key.match(/\.(mp3|wav|webm)$/)) {
+    const extensions = ['mp3', 'wav', 'webm'];
+    let totalDeleted = 0;
+    const allErrors: string[] = [];
+
+    for (const ext of extensions) {
+      const fullKey = `${key}.${ext}`;
+      const result = await deleteTrackWithStems(fullKey);
+      totalDeleted += result.deletedCount;
+      // Don't treat "not found" as an error since we're trying multiple extensions
+    }
+
+    return { deletedCount: totalDeleted, errors: allErrors };
+  }
+
+  return deleteTrackWithStems(key);
+}
+
 export async function getUploadUrl(
   filename: string,
   contentType: string,
