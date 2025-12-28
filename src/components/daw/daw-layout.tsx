@@ -531,7 +531,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       hasLoopTracks,
       hasAudioTracks,
       songDuration,
-      songTracksCount: songTracks.length,
     });
 
     // Only run for loop-only playback (no audio tracks to drive time)
@@ -595,7 +594,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       }
       playStartTimeRef.current = null;
     };
-  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration, songTracks.length]);
+  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {

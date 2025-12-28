@@ -122,17 +122,21 @@ export function useLoopPlayback() {
 
   // Listen for changes in track playing state
   useEffect(() => {
+    console.log('[useLoopPlayback] Setting up track state subscription');
     const unsubscribe = useLoopTracksStore.subscribe(
       (state) => state.tracks,
       async (tracks) => {
+        console.log('[useLoopPlayback] Track state changed, checking', tracks.size, 'tracks');
         // Check each track for playing state changes
         for (const [trackId, track] of tracks) {
           const wasPlaying = playingTracksRef.current.has(trackId);
 
           if (track.isPlaying && !wasPlaying) {
+            console.log('[useLoopPlayback] Track started playing:', track.name);
             // Track started playing - startLoop will initialize if needed
             await startLoop(track);
           } else if (!track.isPlaying && wasPlaying) {
+            console.log('[useLoopPlayback] Track stopped playing:', track.name);
             // Track stopped playing
             stopLoop(trackId);
           }
@@ -141,6 +145,7 @@ export function useLoopPlayback() {
         // Check for removed tracks
         for (const trackId of playingTracksRef.current) {
           if (!tracks.has(trackId)) {
+            console.log('[useLoopPlayback] Track removed:', trackId);
             stopLoop(trackId);
           }
         }
@@ -148,13 +153,16 @@ export function useLoopPlayback() {
     );
 
     return () => {
+      console.log('[useLoopPlayback] Cleaning up track state subscription');
       unsubscribe();
     };
   }, [startLoop, stopLoop]);
 
   // Stop all loops when global playback stops
   useEffect(() => {
+    console.log('[useLoopPlayback] isPlaying effect:', isPlaying);
     if (!isPlaying) {
+      console.log('[useLoopPlayback] isPlaying is false - stopping all loops');
       stopAll();
     }
   }, [isPlaying, stopAll]);
