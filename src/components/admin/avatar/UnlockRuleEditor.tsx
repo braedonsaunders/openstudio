@@ -93,9 +93,21 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
     setFormId(rule.id);
     setFormDisplayName(rule.displayName);
     setFormDescription(rule.description || '');
-    setFormType(rule.type);
-    setFormConditionKey(rule.conditionKey || '');
-    setFormConditionValue(rule.conditionValue?.toString() || '');
+    setFormType(rule.unlockType);
+    // Set condition key/value based on unlock type
+    if (rule.unlockType === 'level') {
+      setFormConditionKey('level');
+      setFormConditionValue(rule.levelRequired?.toString() || '');
+    } else if (rule.unlockType === 'achievement') {
+      setFormConditionKey(rule.achievementId || '');
+      setFormConditionValue('');
+    } else if (rule.unlockType === 'statistic') {
+      setFormConditionKey(rule.statisticKey || '');
+      setFormConditionValue(rule.statisticValue?.toString() || '');
+    } else {
+      setFormConditionKey('');
+      setFormConditionValue('');
+    }
     setIsModalOpen(true);
   };
 
@@ -104,14 +116,22 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
     setIsSaving(true);
 
     try {
-      const payload = {
+      const payload: Record<string, unknown> = {
         id: formId.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
         displayName: formDisplayName,
         description: formDescription || null,
-        type: formType,
-        conditionKey: formConditionKey || null,
-        conditionValue: formConditionValue ? parseFloat(formConditionValue) : null,
+        unlockType: formType,
       };
+      // Add type-specific fields
+      if (formType === 'level') {
+        payload.levelRequired = formConditionValue ? parseInt(formConditionValue) : null;
+      } else if (formType === 'achievement') {
+        payload.achievementId = formConditionKey || null;
+      } else if (formType === 'statistic') {
+        payload.statisticKey = formConditionKey || null;
+        payload.statisticValue = formConditionValue ? parseFloat(formConditionValue) : null;
+        payload.statisticOperator = '>=';
+      }
 
       if (editingRule) {
         const response = await fetch(`/api/admin/avatar/unlock-rules?id=${editingRule.id}`, {
@@ -217,29 +237,44 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
 
       {/* Rules List */}
       <div className="grid gap-4 md:grid-cols-2">
-        {rules.map((rule) => (
+        {rules.map((rule) => {
+          // Get condition display string based on unlock type
+          const getConditionDisplay = () => {
+            if (rule.unlockType === 'level' && rule.levelRequired) {
+              return `Level ≥ ${rule.levelRequired}`;
+            }
+            if (rule.unlockType === 'achievement' && rule.achievementId) {
+              return `Achievement: ${rule.achievementId}`;
+            }
+            if (rule.unlockType === 'statistic' && rule.statisticKey) {
+              return `${rule.statisticKey} ${rule.statisticOperator || '>='} ${rule.statisticValue}`;
+            }
+            return null;
+          };
+          const conditionDisplay = getConditionDisplay();
+
+          return (
           <Card key={rule.id} className="p-4">
             <div className="flex items-start justify-between">
               <div className="flex items-start gap-3">
                 <div className="p-2 bg-gray-100 dark:bg-gray-800 rounded-lg">
-                  {unlockTypeIcons[rule.type]}
+                  {unlockTypeIcons[rule.unlockType]}
                 </div>
                 <div>
                   <h4 className="font-medium text-gray-900 dark:text-white">
                     {rule.displayName}
                   </h4>
                   <p className="text-sm text-gray-500 dark:text-gray-400">
-                    {unlockTypeLabels[rule.type]}
+                    {unlockTypeLabels[rule.unlockType]}
                   </p>
                   {rule.description && (
                     <p className="text-xs text-gray-400 dark:text-gray-500 mt-1">
                       {rule.description}
                     </p>
                   )}
-                  {rule.conditionKey && (
+                  {conditionDisplay && (
                     <p className="text-xs text-indigo-600 dark:text-indigo-400 mt-1">
-                      {rule.conditionKey}
-                      {rule.conditionValue !== null && ` ≥ ${rule.conditionValue}`}
+                      {conditionDisplay}
                     </p>
                   )}
                 </div>
@@ -260,7 +295,8 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
               </div>
             </div>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {rules.length === 0 && (
