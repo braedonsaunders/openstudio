@@ -1,0 +1,428 @@
+'use client';
+
+import { useState } from 'react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Card } from '@/components/ui/card';
+import { Modal } from '@/components/ui/modal';
+import {
+  Plus,
+  GripVertical,
+  Edit2,
+  Trash2,
+  RefreshCw,
+  Save,
+  Layers,
+  Check,
+} from 'lucide-react';
+import type { AvatarCategory, AvatarColorPalette } from '@/types/avatar';
+
+interface CategoryManagerProps {
+  categories: AvatarCategory[];
+  colorPalettes: Record<string, string[]>;
+  onRefresh: () => void;
+}
+
+export function CategoryManager({ categories, colorPalettes, onRefresh }: CategoryManagerProps) {
+  const [orderedCategories, setOrderedCategories] = useState(categories);
+  const [hasOrderChanges, setHasOrderChanges] = useState(false);
+  const [isSavingOrder, setIsSavingOrder] = useState(false);
+
+  // Add/Edit modal
+  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [editingCategory, setEditingCategory] = useState<AvatarCategory | null>(null);
+  const [formId, setFormId] = useState('');
+  const [formDisplayName, setFormDisplayName] = useState('');
+  const [formIsRequired, setFormIsRequired] = useState(false);
+  const [formMaxSelections, setFormMaxSelections] = useState(1);
+  const [formSupportsColorVariants, setFormSupportsColorVariants] = useState(false);
+  const [formDefaultPalette, setFormDefaultPalette] = useState<string>('');
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Delete modal
+  const [deletingCategory, setDeletingCategory] = useState<AvatarCategory | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Drag and drop state
+  const [draggedIndex, setDraggedIndex] = useState<number | null>(null);
+
+  const handleDragStart = (index: number) => {
+    setDraggedIndex(index);
+  };
+
+  const handleDragOver = (e: React.DragEvent, index: number) => {
+    e.preventDefault();
+    if (draggedIndex === null || draggedIndex === index) return;
+
+    const newOrder = [...orderedCategories];
+    const [dragged] = newOrder.splice(draggedIndex, 1);
+    newOrder.splice(index, 0, dragged);
+
+    setOrderedCategories(newOrder);
+    setDraggedIndex(index);
+    setHasOrderChanges(true);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedIndex(null);
+  };
+
+  const handleSaveOrder = async () => {
+    setIsSavingOrder(true);
+    try {
+      const orderedIds = orderedCategories.map((c) => c.id);
+      const response = await fetch('/api/admin/avatar/categories?action=reorder', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orderedIds }),
+      });
+
+      if (response.ok) {
+        setHasOrderChanges(false);
+        onRefresh();
+      }
+    } catch (error) {
+      console.error('Failed to save order:', error);
+    } finally {
+      setIsSavingOrder(false);
+    }
+  };
+
+  const handleOpenAdd = () => {
+    setEditingCategory(null);
+    setFormId('');
+    setFormDisplayName('');
+    setFormIsRequired(false);
+    setFormMaxSelections(1);
+    setFormSupportsColorVariants(false);
+    setFormDefaultPalette('');
+    setIsModalOpen(true);
+  };
+
+  const handleOpenEdit = (category: AvatarCategory) => {
+    setEditingCategory(category);
+    setFormId(category.id);
+    setFormDisplayName(category.displayName);
+    setFormIsRequired(category.isRequired);
+    setFormMaxSelections(category.maxSelections);
+    setFormSupportsColorVariants(category.supportsColorVariants);
+    setFormDefaultPalette(category.defaultColorPalette || '');
+    setIsModalOpen(true);
+  };
+
+  const handleSave = async () => {
+    if (!formId || !formDisplayName) return;
+    setIsSaving(true);
+
+    try {
+      if (editingCategory) {
+        // Update existing
+        const response = await fetch(`/api/admin/avatar/categories?id=${editingCategory.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            displayName: formDisplayName,
+            isRequired: formIsRequired,
+            maxSelections: formMaxSelections,
+            supportsColorVariants: formSupportsColorVariants,
+            defaultColorPalette: formDefaultPalette || null,
+          }),
+        });
+
+        if (response.ok) {
+          setIsModalOpen(false);
+          onRefresh();
+        }
+      } else {
+        // Create new
+        const response = await fetch('/api/admin/avatar/categories', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            id: formId.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+            displayName: formDisplayName,
+            layerOrder: orderedCategories.length,
+            isRequired: formIsRequired,
+            maxSelections: formMaxSelections,
+            supportsColorVariants: formSupportsColorVariants,
+            defaultColorPalette: formDefaultPalette || undefined,
+          }),
+        });
+
+        if (response.ok) {
+          setIsModalOpen(false);
+          onRefresh();
+        }
+      }
+    } catch (error) {
+      console.error('Failed to save category:', error);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDelete = async () => {
+    if (!deletingCategory) return;
+    setIsDeleting(true);
+
+    try {
+      const response = await fetch(`/api/admin/avatar/categories?id=${deletingCategory.id}`, {
+        method: 'DELETE',
+      });
+
+      if (response.ok) {
+        setDeletingCategory(null);
+        onRefresh();
+      }
+    } catch (error) {
+      console.error('Failed to delete category:', error);
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Layers className="w-5 h-5 text-indigo-500" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+            Component Categories
+          </h3>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {hasOrderChanges && (
+            <Button
+              onClick={handleSaveOrder}
+              disabled={isSavingOrder}
+              className="bg-green-500 hover:bg-green-600"
+            >
+              {isSavingOrder ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Save className="w-4 h-4 mr-2" />
+              )}
+              Save Order
+            </Button>
+          )}
+
+          <Button onClick={handleOpenAdd}>
+            <Plus className="w-4 h-4 mr-2" />
+            Add Category
+          </Button>
+        </div>
+      </div>
+
+      <p className="text-sm text-gray-500 dark:text-gray-400">
+        Drag to reorder layers. Lower layers are rendered first (behind).
+      </p>
+
+      {/* Categories List */}
+      <Card className="divide-y divide-gray-200 dark:divide-gray-700">
+        {orderedCategories.map((category, index) => (
+          <div
+            key={category.id}
+            draggable
+            onDragStart={() => handleDragStart(index)}
+            onDragOver={(e) => handleDragOver(e, index)}
+            onDragEnd={handleDragEnd}
+            className={`flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 cursor-move ${
+              draggedIndex === index ? 'opacity-50 bg-indigo-50 dark:bg-indigo-900/20' : ''
+            }`}
+          >
+            <GripVertical className="w-5 h-5 text-gray-400" />
+
+            <div className="w-12 text-center">
+              <span className="inline-flex items-center justify-center w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 text-sm font-medium text-gray-700 dark:text-gray-300">
+                {index}
+              </span>
+            </div>
+
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <span className="font-medium text-gray-900 dark:text-white">
+                  {category.displayName}
+                </span>
+                {category.isRequired && (
+                  <span className="text-xs px-2 py-0.5 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded">
+                    Required
+                  </span>
+                )}
+                {category.supportsColorVariants && (
+                  <span className="text-xs px-2 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded">
+                    Colors
+                  </span>
+                )}
+              </div>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                ID: {category.id} | Max: {category.maxSelections}
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Button variant="ghost" size="sm" onClick={() => handleOpenEdit(category)}>
+                <Edit2 className="w-4 h-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setDeletingCategory(category)}
+                className="text-red-500 hover:text-red-600"
+              >
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </div>
+          </div>
+        ))}
+      </Card>
+
+      {/* Add/Edit Modal */}
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={editingCategory ? 'Edit Category' : 'Add Category'}
+      >
+        <div className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Category ID
+            </label>
+            <Input
+              value={formId}
+              onChange={(e) => setFormId(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g, '_'))}
+              placeholder="e.g., hair_front"
+              disabled={!!editingCategory}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Used in code. Lowercase, underscores only.
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Display Name
+            </label>
+            <Input
+              value={formDisplayName}
+              onChange={(e) => setFormDisplayName(e.target.value)}
+              placeholder="e.g., Hair (Front)"
+            />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Max Selections
+              </label>
+              <Input
+                type="number"
+                min={1}
+                max={10}
+                value={formMaxSelections}
+                onChange={(e) => setFormMaxSelections(parseInt(e.target.value) || 1)}
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Default Palette
+              </label>
+              <select
+                value={formDefaultPalette}
+                onChange={(e) => setFormDefaultPalette(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value="">None</option>
+                {Object.keys(colorPalettes).map((paletteId) => (
+                  <option key={paletteId} value={paletteId}>
+                    {paletteId}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formIsRequired}
+                onChange={(e) => setFormIsRequired(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                Required (user must select one)
+              </span>
+            </label>
+
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={formSupportsColorVariants}
+                onChange={(e) => setFormSupportsColorVariants(e.target.checked)}
+                className="rounded"
+              />
+              <span className="text-sm text-gray-700 dark:text-gray-300">
+                Supports color variants
+              </span>
+            </label>
+          </div>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={() => setIsModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSave} disabled={isSaving || !formId || !formDisplayName}>
+              {isSaving ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Check className="w-4 h-4 mr-2" />
+              )}
+              {editingCategory ? 'Save Changes' : 'Create Category'}
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Delete Modal */}
+      <Modal
+        isOpen={!!deletingCategory}
+        onClose={() => setDeletingCategory(null)}
+        title="Delete Category"
+      >
+        <div className="space-y-4">
+          <p className="text-gray-500 dark:text-gray-400">
+            Are you sure you want to delete{' '}
+            <span className="text-gray-900 dark:text-white font-medium">
+              {deletingCategory?.displayName}
+            </span>
+            ?
+          </p>
+          <p className="text-sm text-red-500">
+            This will also delete all components in this category!
+          </p>
+
+          <div className="flex justify-end gap-3">
+            <Button variant="ghost" onClick={() => setDeletingCategory(null)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleDelete}
+              disabled={isDeleting}
+              className="bg-red-500 hover:bg-red-600"
+            >
+              {isDeleting ? (
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+              ) : (
+                <Trash2 className="w-4 h-4 mr-2" />
+              )}
+              Delete
+            </Button>
+          </div>
+        </div>
+      </Modal>
+    </div>
+  );
+}

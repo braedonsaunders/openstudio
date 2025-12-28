@@ -31,10 +31,18 @@ import {
   Activity,
   Sun,
   Moon,
+  Palette,
 } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
+import {
+  ComponentGenerator,
+  ComponentLibrary,
+  CategoryManager,
+  UnlockRuleEditor,
+} from '@/components/admin/avatar';
+import type { AvatarCategory, AvatarUnlockRule } from '@/types/avatar';
 
-type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics';
+type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics' | 'avatars';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -164,6 +172,12 @@ export default function AdminPage() {
               active={activeTab === 'analytics'}
               onClick={() => setActiveTab('analytics')}
             />
+            <NavItem
+              icon={Palette}
+              label="Avatars"
+              active={activeTab === 'avatars'}
+              onClick={() => setActiveTab('avatars')}
+            />
           </div>
         </nav>
 
@@ -174,6 +188,7 @@ export default function AdminPage() {
           {activeTab === 'rooms' && <RoomsTab />}
           {activeTab === 'reports' && <ReportsTab />}
           {activeTab === 'analytics' && <AnalyticsTab />}
+          {activeTab === 'avatars' && <AvatarsTab />}
         </main>
       </div>
     </div>
@@ -851,6 +866,115 @@ function AnalyticsTab() {
         <Activity className="w-12 h-12 mx-auto mb-4 opacity-50" />
         <p>Analytics dashboard coming soon</p>
       </Card>
+    </div>
+  );
+}
+
+type AvatarSubTab = 'generate' | 'library' | 'categories' | 'unlocks';
+
+function AvatarsTab() {
+  const [subTab, setSubTab] = useState<AvatarSubTab>('generate');
+  const [categories, setCategories] = useState<AvatarCategory[]>([]);
+  const [unlockRules, setUnlockRules] = useState<AvatarUnlockRule[]>([]);
+  const [colorPalettes, setColorPalettes] = useState<Record<string, string[]>>({});
+  const [isLoading, setIsLoading] = useState(true);
+
+  const loadData = async () => {
+    setIsLoading(true);
+    try {
+      const [catRes, rulesRes, configRes] = await Promise.all([
+        fetch('/api/admin/avatar/categories'),
+        fetch('/api/admin/avatar/unlock-rules'),
+        fetch('/api/avatar/config'),
+      ]);
+
+      if (catRes.ok) {
+        const cats = await catRes.json();
+        setCategories(cats);
+      }
+      if (rulesRes.ok) {
+        const rules = await rulesRes.json();
+        setUnlockRules(rules);
+      }
+      if (configRes.ok) {
+        const config = await configRes.json();
+        setColorPalettes(config.colorPalettes || {});
+      }
+    } catch (error) {
+      console.error('Failed to load avatar data:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+  }, []);
+
+  const subTabItems = [
+    { id: 'generate' as const, label: 'Generate', icon: Palette },
+    { id: 'library' as const, label: 'Library', icon: Eye },
+    { id: 'categories' as const, label: 'Categories', icon: BarChart3 },
+    { id: 'unlocks' as const, label: 'Unlock Rules', icon: Shield },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <RefreshCw className="w-8 h-8 text-gray-400 animate-spin" />
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Avatar System</h2>
+        <Button variant="ghost" size="sm" onClick={loadData}>
+          <RefreshCw className="w-4 h-4" />
+        </Button>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-800">
+        {subTabItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setSubTab(item.id)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              subTab === item.id
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <item.icon className="w-4 h-4" />
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Sub-tab content */}
+      {subTab === 'generate' && (
+        <ComponentGenerator
+          categories={categories}
+          onComponentCreated={loadData}
+        />
+      )}
+      {subTab === 'library' && (
+        <ComponentLibrary
+          categories={categories}
+          unlockRules={unlockRules}
+          onRefresh={loadData}
+        />
+      )}
+      {subTab === 'categories' && (
+        <CategoryManager
+          categories={categories}
+          colorPalettes={colorPalettes}
+          onRefresh={loadData}
+        />
+      )}
+      {subTab === 'unlocks' && <UnlockRuleEditor onRefresh={loadData} />}
     </div>
   );
 }
