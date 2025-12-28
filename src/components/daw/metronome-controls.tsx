@@ -21,6 +21,11 @@ import {
   Wifi,
   Settings,
   Ban,
+  Radio,
+  Signal,
+  SignalHigh,
+  SignalMedium,
+  SignalLow,
 } from 'lucide-react';
 
 interface MetronomeControlsProps {
@@ -29,6 +34,12 @@ interface MetronomeControlsProps {
   onBroadcastStreamReady?: (stream: MediaStream) => void;
   className?: string;
   compact?: boolean;
+  /** Whether metronome is synced to master clock */
+  isSynced?: boolean;
+  /** Current sync quality */
+  syncQuality?: 'excellent' | 'good' | 'fair' | 'poor' | null;
+  /** Whether this client is the room master */
+  isMaster?: boolean;
 }
 
 const TEMPO_SOURCE_LABELS: Record<TempoSource, { label: string; description: string; icon: typeof Lock }> = {
@@ -68,12 +79,33 @@ export function MetronomeControls({
   onBroadcastStreamReady,
   className,
   compact = false,
+  isSynced = false,
+  syncQuality = null,
+  isMaster = false,
 }: MetronomeControlsProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
 
   // Permission checks
   const { canSetBpm, canSetSource, canSetTimeSignature, canMetronome } = useTempoPermissions();
+
+  // Sync quality icon helper
+  const getSyncIcon = () => {
+    if (!isSynced) return null;
+    switch (syncQuality) {
+      case 'excellent': return <SignalHigh className="w-3.5 h-3.5 text-emerald-400" />;
+      case 'good': return <SignalMedium className="w-3.5 h-3.5 text-emerald-400" />;
+      case 'fair': return <SignalLow className="w-3.5 h-3.5 text-yellow-400" />;
+      case 'poor': return <Signal className="w-3.5 h-3.5 text-red-400" />;
+      default: return <Radio className="w-3.5 h-3.5 text-zinc-400" />;
+    }
+  };
+
+  const getSyncTooltip = () => {
+    if (!isSynced) return 'Not synced to network';
+    if (isMaster) return `Master clock (${syncQuality || 'syncing'})`;
+    return `Synced to room (${syncQuality || 'syncing'})`;
+  };
 
   // Metronome settings store
   const {
@@ -209,6 +241,15 @@ export function MetronomeControls({
         <div className="flex items-center gap-2">
           <Timer className="w-4 h-4 text-zinc-400" />
           <span className="text-sm font-medium text-white">Metronome</span>
+          {/* Sync status indicator */}
+          {isSynced && (
+            <Tooltip content={getSyncTooltip()}>
+              <div className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-white/5">
+                {getSyncIcon()}
+                {isMaster && <span className="text-[10px] text-zinc-400">Master</span>}
+              </div>
+            </Tooltip>
+          )}
         </div>
 
         <div className="flex items-center gap-1">
@@ -270,23 +311,27 @@ export function MetronomeControls({
         {/* BPM display/input */}
         <div className="flex-1 flex flex-col gap-1">
           <div className="flex items-center gap-2">
-            <input
-              type="number"
-              value={Math.round(tempo)}
-              onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
-              disabled={!canSetBpm || source === 'analyzer' || source === 'track'}
-              className={cn(
-                'w-16 px-2 py-1 text-xl font-bold bg-transparent border-none outline-none text-center',
-                !canSetBpm
-                  ? 'text-zinc-500 cursor-not-allowed'
-                  : (source === 'analyzer' || source === 'track')
+            <Tooltip
+              content={
+                source === 'analyzer' ? 'Auto-detecting BPM from audio - switch to Manual to edit' :
+                source === 'track' ? 'Using track BPM - switch to Manual to edit' :
+                'Set tempo (40-240 BPM)'
+              }
+            >
+              <input
+                type="number"
+                value={Math.round(tempo)}
+                onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
+                className={cn(
+                  'w-16 px-2 py-1 text-xl font-bold bg-transparent border-none outline-none text-center',
+                  (source === 'analyzer' || source === 'track')
                     ? 'text-indigo-400'
                     : 'text-white'
-              )}
-              min={40}
-              max={240}
-              title={!canSetBpm ? 'You don\'t have permission to change BPM' : undefined}
-            />
+                )}
+                min={40}
+                max={240}
+              />
+            </Tooltip>
             <span className="text-sm text-zinc-400">BPM</span>
 
             {/* Source indicator */}
@@ -323,55 +368,47 @@ export function MetronomeControls({
 
       {/* Tempo Source selector */}
       <div className="relative">
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (canSetSource) {
+        <Tooltip content="Select where the tempo comes from">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
               setShowModeDropdown(!showModeDropdown);
-            }
-          }}
-          disabled={!canSetSource}
-          className={cn(
-            'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all',
-            canSetSource
-              ? 'bg-white/5 hover:bg-white/10'
-              : 'bg-white/5 opacity-50 cursor-not-allowed'
-          )}
-          title={!canSetSource ? 'You don\'t have permission to change tempo source' : undefined}
-        >
-          <div className="flex items-center gap-2">
-            <SourceIcon className="w-4 h-4 text-zinc-400" />
-            <span className="text-sm text-white">{TEMPO_SOURCE_LABELS[source].label}</span>
-          </div>
-          <ChevronDown className={cn(
-            'w-4 h-4 text-zinc-400 transition-transform',
-            showModeDropdown && 'rotate-180'
-          )} />
-        </button>
+            }}
+            className={cn(
+              'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all',
+              'bg-white/5 hover:bg-white/10'
+            )}
+          >
+            <div className="flex items-center gap-2">
+              <SourceIcon className="w-4 h-4 text-zinc-400" />
+              <span className="text-sm text-white">{TEMPO_SOURCE_LABELS[source].label}</span>
+            </div>
+            <ChevronDown className={cn(
+              'w-4 h-4 text-zinc-400 transition-transform',
+              showModeDropdown && 'rotate-180'
+            )} />
+          </button>
+        </Tooltip>
 
         {/* Source dropdown */}
         {showModeDropdown && (
           <div className="absolute top-full left-0 right-0 mt-1 py-1 rounded-lg bg-zinc-800 border border-white/10 shadow-xl z-50">
             {(Object.keys(TEMPO_SOURCE_LABELS) as TempoSource[]).map((src) => {
               const { label, description, icon: Icon } = TEMPO_SOURCE_LABELS[src];
-              const isDisabled = (src === 'track' && !trackTempo) || (src === 'analyzer' && !analyzerTempo);
+              const hint = src === 'track' && !trackTempo ? 'Load a track with BPM metadata' :
+                          src === 'analyzer' && !analyzerTempo ? 'Play audio to detect BPM' : null;
 
               return (
                 <button
                   key={src}
                   onClick={(e) => {
                     e.stopPropagation();
-                    if (!isDisabled) {
-                      handleSourceChange(src);
-                    }
+                    handleSourceChange(src);
                   }}
-                  disabled={isDisabled}
                   className={cn(
                     'w-full flex items-start gap-3 px-3 py-2 transition-all',
                     source === src && 'bg-white/5',
-                    isDisabled
-                      ? 'opacity-40 cursor-not-allowed'
-                      : 'hover:bg-white/5'
+                    'hover:bg-white/5'
                   )}
                 >
                   <Icon className={cn(
@@ -391,7 +428,9 @@ export function MetronomeControls({
                         <span className="ml-1 text-zinc-500">({Math.round(analyzerTempo)} BPM)</span>
                       )}
                     </span>
-                    <span className="text-xs text-zinc-500">{description}</span>
+                    <span className="text-xs text-zinc-500">
+                      {hint || description}
+                    </span>
                   </div>
                 </button>
               );
@@ -423,22 +462,19 @@ export function MetronomeControls({
           {/* Time signature */}
           <div className="flex items-center gap-3">
             <span className="text-xs text-zinc-400 w-16">Time Sig</span>
-            <select
-              value={beatsPerBar}
-              onChange={(e) => setTimeSignature(parseInt(e.target.value), 4)}
-              disabled={!canSetTimeSignature}
-              className={cn(
-                'flex-1 px-2 py-1 rounded bg-white/5 text-white text-sm border border-white/10 outline-none',
-                !canSetTimeSignature && 'opacity-50 cursor-not-allowed'
-              )}
-              title={!canSetTimeSignature ? 'You don\'t have permission to change time signature' : undefined}
-            >
-              {[2, 3, 4, 5, 6, 7, 8].map((beats) => (
-                <option key={beats} value={beats}>
-                  {beats}/4
-                </option>
-              ))}
-            </select>
+            <Tooltip content="Beats per bar - affects metronome pattern">
+              <select
+                value={beatsPerBar}
+                onChange={(e) => setTimeSignature(parseInt(e.target.value), 4)}
+                className="flex-1 px-2 py-1 rounded bg-white/5 text-white text-sm border border-white/10 outline-none"
+              >
+                {[2, 3, 4, 5, 6, 7, 8].map((beats) => (
+                  <option key={beats} value={beats}>
+                    {beats}/4
+                  </option>
+                ))}
+              </select>
+            </Tooltip>
           </div>
 
           {/* Click type */}
@@ -490,15 +526,39 @@ export function MetronomeInline({
   audioContext,
   masterGain,
   className,
+  isSynced = false,
+  syncQuality = null,
+  isMaster = false,
 }: {
   audioContext: AudioContext | null;
   masterGain?: AudioNode | null;
   className?: string;
+  /** Whether metronome is synced to master clock */
+  isSynced?: boolean;
+  /** Current sync quality */
+  syncQuality?: 'excellent' | 'good' | 'fair' | 'poor' | null;
+  /** Whether this client is the room master */
+  isMaster?: boolean;
 }) {
   const [showPopover, setShowPopover] = useState(false);
 
   // Permission checks
   const { canSetBpm, canSetSource, canSetTimeSignature, canMetronome } = useTempoPermissions();
+
+  // Sync quality indicator
+  const getSyncIndicator = () => {
+    if (!isSynced) return null;
+    const color = syncQuality === 'excellent' || syncQuality === 'good'
+      ? 'text-emerald-400'
+      : syncQuality === 'fair'
+        ? 'text-yellow-400'
+        : 'text-red-400';
+    return (
+      <Tooltip content={isMaster ? `Master (${syncQuality})` : `Synced (${syncQuality})`}>
+        <div className={cn('w-1.5 h-1.5 rounded-full', color.replace('text-', 'bg-'))} />
+      </Tooltip>
+    );
+  };
 
   // Metronome settings store
   const {
@@ -610,6 +670,9 @@ export function MetronomeInline({
                 ))}
               </div>
             )}
+
+            {/* Sync indicator */}
+            {getSyncIndicator()}
           </button>
         </Tooltip>
 
@@ -641,23 +704,27 @@ export function MetronomeInline({
           <div className="flex items-center gap-3 mb-3">
             <div className="flex-1">
               <label className="text-xs text-zinc-500 mb-1 block">BPM</label>
-              <input
-                type="number"
-                value={Math.round(tempo)}
-                onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
-                disabled={!canSetBpm || source === 'analyzer' || source === 'track'}
-                className={cn(
-                  'w-full px-3 py-2 text-lg font-bold rounded-lg bg-white/5 border border-white/10 outline-none',
-                  !canSetBpm
-                    ? 'text-zinc-500 cursor-not-allowed'
-                    : (source === 'analyzer' || source === 'track')
-                      ? 'text-indigo-400 cursor-not-allowed'
+              <Tooltip
+                content={
+                  source === 'analyzer' ? 'Auto-detecting - switch to Manual to edit' :
+                  source === 'track' ? 'Using track BPM - switch to Manual to edit' :
+                  'Set tempo (40-240 BPM)'
+                }
+              >
+                <input
+                  type="number"
+                  value={Math.round(tempo)}
+                  onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
+                  className={cn(
+                    'w-full px-3 py-2 text-lg font-bold rounded-lg bg-white/5 border border-white/10 outline-none',
+                    (source === 'analyzer' || source === 'track')
+                      ? 'text-indigo-400'
                       : 'text-white focus:border-orange-500/50'
-                )}
-                min={40}
-                max={240}
-                title={!canSetBpm ? 'You don\'t have permission to change BPM' : undefined}
-              />
+                  )}
+                  min={40}
+                  max={240}
+                />
+              </Tooltip>
             </div>
 
             {/* Tap tempo button */}
@@ -677,27 +744,25 @@ export function MetronomeInline({
             <div className="grid grid-cols-2 gap-1">
               {(Object.keys(TEMPO_SOURCE_LABELS) as TempoSource[]).map((src) => {
                 const { label, icon: Icon } = TEMPO_SOURCE_LABELS[src];
-                const isDisabled = !canSetSource || (src === 'track' && !trackTempo) || (src === 'analyzer' && !analyzerTempo);
+                const hint = src === 'track' && !trackTempo ? 'No track loaded' :
+                            src === 'analyzer' && !analyzerTempo ? 'Play audio' : null;
 
                 return (
-                  <button
-                    key={src}
-                    onClick={() => !isDisabled && handleSourceChange(src)}
-                    disabled={isDisabled}
-                    className={cn(
-                      'flex items-center gap-2 p-2 rounded-lg transition-all',
-                      source === src
-                        ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
-                        : 'bg-white/5 text-zinc-400 border border-white/10',
-                      isDisabled
-                        ? 'opacity-40 cursor-not-allowed'
-                        : 'hover:bg-white/10 hover:text-white'
-                    )}
-                    title={!canSetSource ? 'You don\'t have permission to change tempo source' : undefined}
-                  >
-                    <Icon className="w-4 h-4" />
-                    <span className="text-xs font-medium">{label}</span>
-                  </button>
+                  <Tooltip key={src} content={hint || TEMPO_SOURCE_LABELS[src].description}>
+                    <button
+                      onClick={() => handleSourceChange(src)}
+                      className={cn(
+                        'flex items-center gap-2 p-2 rounded-lg transition-all',
+                        source === src
+                          ? 'bg-orange-500/20 text-orange-400 border border-orange-500/30'
+                          : 'bg-white/5 text-zinc-400 border border-white/10',
+                        'hover:bg-white/10 hover:text-white'
+                      )}
+                    >
+                      <Icon className="w-4 h-4" />
+                      <span className="text-xs font-medium">{label}</span>
+                    </button>
+                  </Tooltip>
                 );
               })}
             </div>
@@ -724,22 +789,19 @@ export function MetronomeInline({
           {/* Time signature */}
           <div className="flex items-center gap-3 mb-3">
             <span className="text-xs text-zinc-500 w-20">Time Sig</span>
-            <select
-              value={beatsPerBar}
-              onChange={(e) => setTimeSignature(parseInt(e.target.value), 4)}
-              disabled={!canSetTimeSignature}
-              className={cn(
-                'flex-1 px-2 py-1.5 rounded-lg bg-white/5 text-white text-sm border border-white/10 outline-none',
-                !canSetTimeSignature && 'opacity-50 cursor-not-allowed'
-              )}
-              title={!canSetTimeSignature ? 'You don\'t have permission to change time signature' : undefined}
-            >
-              {[2, 3, 4, 5, 6, 7, 8].map((beats) => (
-                <option key={beats} value={beats}>
-                  {beats}/4
-                </option>
-              ))}
-            </select>
+            <Tooltip content="Beats per bar">
+              <select
+                value={beatsPerBar}
+                onChange={(e) => setTimeSignature(parseInt(e.target.value), 4)}
+                className="flex-1 px-2 py-1.5 rounded-lg bg-white/5 text-white text-sm border border-white/10 outline-none"
+              >
+                {[2, 3, 4, 5, 6, 7, 8].map((beats) => (
+                  <option key={beats} value={beats}>
+                    {beats}/4
+                  </option>
+                ))}
+              </select>
+            </Tooltip>
           </div>
 
           {/* Click sound */}
@@ -798,6 +860,45 @@ export function MetronomeInline({
               {broadcastEnabled && <Wifi className="w-3 h-3 text-indigo-400" />}
             </label>
           </div>
+
+          {/* Sync Status */}
+          {isSynced && (
+            <>
+              <div className="h-px bg-white/10 my-3" />
+              <div className={cn(
+                'flex items-center gap-2 px-2 py-1.5 rounded-lg',
+                syncQuality === 'excellent' || syncQuality === 'good'
+                  ? 'bg-emerald-500/10 border border-emerald-500/20'
+                  : syncQuality === 'fair'
+                    ? 'bg-yellow-500/10 border border-yellow-500/20'
+                    : 'bg-red-500/10 border border-red-500/20'
+              )}>
+                <Radio className={cn(
+                  'w-4 h-4',
+                  syncQuality === 'excellent' || syncQuality === 'good'
+                    ? 'text-emerald-400'
+                    : syncQuality === 'fair'
+                      ? 'text-yellow-400'
+                      : 'text-red-400'
+                )} />
+                <div className="flex flex-col">
+                  <span className={cn(
+                    'text-xs font-medium',
+                    syncQuality === 'excellent' || syncQuality === 'good'
+                      ? 'text-emerald-300'
+                      : syncQuality === 'fair'
+                        ? 'text-yellow-300'
+                        : 'text-red-300'
+                  )}>
+                    {isMaster ? 'Master Clock' : 'Synced to Room'}
+                  </span>
+                  <span className="text-[10px] text-zinc-400">
+                    Quality: {syncQuality || 'connecting...'}
+                  </span>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

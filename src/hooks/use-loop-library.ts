@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { LoopDefinition, LoopCategoryInfo, InstantBandPreset } from '@/types/loops';
+import { LOOP_LIBRARY } from '@/lib/audio/loop-library';
 
 interface LoopLibrary {
   categories: LoopCategoryInfo[];

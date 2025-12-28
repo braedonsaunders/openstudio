@@ -111,93 +111,108 @@ function BpmBadge() {
     setShowModeMenu(false);
   };
 
-  const isSourceAvailable = (s: TempoSource) => {
-    if (s === 'track') return trackTempo !== null;
-    if (s === 'analyzer') return analyzerTempo !== null;
-    return true;
+  // Get hint text for unavailable sources
+  const getSourceHint = (s: TempoSource): string | null => {
+    if (s === 'track' && !trackTempo) return 'Load a track with BPM metadata';
+    if (s === 'analyzer' && !analyzerTempo) return 'Play audio to detect BPM';
+    return null;
   };
 
   return (
     <div ref={containerRef} className="relative">
       <div className="flex items-stretch">
         {/* Source icon - clickable to show mode dropdown */}
-        <button
-          onClick={() => setShowModeMenu(!showModeMenu)}
-          className={cn(
-            'px-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
-            'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
-            'hover:bg-gray-200 dark:hover:bg-white/10',
-            showModeMenu && 'bg-gray-200 dark:bg-white/10'
-          )}
-        >
-          <SourceIcon className={cn('w-3.5 h-3.5 transition-colors', sourceConfig[source].color)} />
-        </button>
+        <Tooltip content={`Tempo source: ${sourceConfig[source].label}`} position="bottom">
+          <button
+            onClick={() => setShowModeMenu(!showModeMenu)}
+            className={cn(
+              'px-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
+              'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+              'hover:bg-gray-200 dark:hover:bg-white/10',
+              showModeMenu && 'bg-gray-200 dark:bg-white/10'
+            )}
+          >
+            <SourceIcon className={cn('w-3.5 h-3.5 transition-colors', sourceConfig[source].color)} />
+          </button>
+        </Tooltip>
 
         {/* Value display/input */}
-        <div
-          onClick={handleValueClick}
-          className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
-            'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
-            (source === 'manual' || source === 'tap') && 'cursor-text hover:bg-gray-200 dark:hover:bg-white/10'
-          )}
+        <Tooltip
+          content={source === 'track' || source === 'analyzer'
+            ? `${sourceConfig[source].label} mode - click icon to change source`
+            : 'Click to edit BPM'
+          }
+          position="bottom"
         >
-          {isEditing ? (
-            <input
-              ref={inputRef}
-              type="number"
-              value={editValue}
-              onChange={(e) => setEditValue(e.target.value)}
-              onBlur={handleSubmit}
-              onKeyDown={handleKeyDown}
-              className="w-10 bg-transparent text-sm font-semibold text-gray-900 dark:text-white outline-none text-center"
-              min={40}
-              max={240}
-            />
-          ) : (
-            <span className={cn(
-              'text-sm font-semibold',
-              source === 'analyzer' ? 'text-indigo-600 dark:text-indigo-400' :
-              source === 'track' ? 'text-emerald-600 dark:text-emerald-400' :
-              'text-gray-900 dark:text-white'
-            )}>
-              {Math.round(tempo)}
-            </span>
-          )}
-          <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
-        </div>
+          <div
+            onClick={handleValueClick}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all cursor-pointer',
+              'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+              'hover:bg-gray-200 dark:hover:bg-white/10'
+            )}
+          >
+            {isEditing ? (
+              <input
+                ref={inputRef}
+                type="number"
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                onBlur={handleSubmit}
+                onKeyDown={handleKeyDown}
+                className="w-10 bg-transparent text-sm font-semibold text-gray-900 dark:text-white outline-none text-center"
+                min={40}
+                max={240}
+              />
+            ) : (
+              <span className={cn(
+                'text-sm font-semibold',
+                source === 'analyzer' ? 'text-indigo-600 dark:text-indigo-400' :
+                source === 'track' ? 'text-emerald-600 dark:text-emerald-400' :
+                'text-gray-900 dark:text-white'
+              )}>
+                {Math.round(tempo)}
+              </span>
+            )}
+            <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
+          </div>
+        </Tooltip>
       </div>
 
       {/* Mode dropdown */}
       {showModeMenu && (
-        <div className="absolute top-full left-0 mt-1 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[140px]">
+        <div className="absolute top-full left-0 mt-1 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[180px]">
           {(Object.keys(sourceConfig) as TempoSource[]).map((s) => {
             const { icon: Icon, label, color } = sourceConfig[s];
-            const available = isSourceAvailable(s);
+            const hint = getSourceHint(s);
             const isActive = source === s;
             return (
               <button
                 key={s}
-                onClick={() => available && handleSourceSelect(s)}
-                disabled={!available}
+                onClick={() => handleSourceSelect(s)}
                 className={cn(
                   'w-full flex items-center gap-2 px-3 py-1.5 text-left transition-all',
                   isActive && 'bg-gray-100 dark:bg-white/10',
-                  available ? 'hover:bg-gray-50 dark:hover:bg-white/5' : 'opacity-40 cursor-not-allowed'
+                  'hover:bg-gray-50 dark:hover:bg-white/5'
                 )}
               >
                 <Icon className={cn('w-3.5 h-3.5', isActive ? color : 'text-gray-400 dark:text-zinc-500')} />
-                <span className={cn(
-                  'text-xs font-medium',
-                  isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-zinc-400'
-                )}>
-                  {label}
-                </span>
+                <div className="flex-1 flex flex-col">
+                  <span className={cn(
+                    'text-xs font-medium',
+                    isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-zinc-400'
+                  )}>
+                    {label}
+                  </span>
+                  {hint && (
+                    <span className="text-[10px] text-gray-400 dark:text-zinc-500">{hint}</span>
+                  )}
+                </div>
                 {s === 'track' && trackTempo && (
-                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto">{trackTempo}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500">{trackTempo}</span>
                 )}
                 {s === 'analyzer' && analyzerTempo && (
-                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto">{Math.round(analyzerTempo)}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500">{Math.round(analyzerTempo)}</span>
                 )}
               </button>
             );
@@ -273,97 +288,108 @@ function KeyBadge() {
     setShowKeyMenu(false);
   };
 
-  const isSourceAvailable = (s: KeySource) => {
-    if (s === 'track') return trackKey !== null;
-    if (s === 'analyzer') return analyzerKey !== null;
-    return true;
+  // Get hint text for unavailable sources
+  const getSourceHint = (s: KeySource): string | null => {
+    if (s === 'track' && !trackKey) return 'Load a track with key metadata';
+    if (s === 'analyzer' && !analyzerKey) return 'Play audio to detect key';
+    return null;
   };
 
   return (
     <div ref={containerRef} className="relative">
       <div className="flex items-stretch">
         {/* Source icon - clickable to show mode dropdown */}
-        <button
-          onClick={() => { setShowModeMenu(!showModeMenu); setShowKeyMenu(false); }}
-          className={cn(
-            'px-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
-            'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
-            'hover:bg-gray-200 dark:hover:bg-white/10',
-            showModeMenu && 'bg-gray-200 dark:bg-white/10'
-          )}
-        >
-          <SourceIcon className={cn('w-3.5 h-3.5 transition-colors', sourceConfig[keySource].color)} />
-        </button>
+        <Tooltip content={`Key source: ${sourceConfig[keySource].label}`} position="bottom">
+          <button
+            onClick={() => { setShowModeMenu(!showModeMenu); setShowKeyMenu(false); }}
+            className={cn(
+              'px-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
+              'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+              'hover:bg-gray-200 dark:hover:bg-white/10',
+              showModeMenu && 'bg-gray-200 dark:bg-white/10'
+            )}
+          >
+            <SourceIcon className={cn('w-3.5 h-3.5 transition-colors', sourceConfig[keySource].color)} />
+          </button>
+        </Tooltip>
 
-        {/* Value display - clickable to open key picker (manual mode only) */}
-        <button
-          onClick={() => {
-            if (keySource === 'manual') {
+        {/* Value display - clickable to open key picker */}
+        <Tooltip
+          content={keySource === 'manual'
+            ? 'Click to change key'
+            : `${sourceConfig[keySource].label} mode - click icon to change source`
+          }
+          position="bottom"
+        >
+          <button
+            onClick={() => {
               setShowKeyMenu(!showKeyMenu);
               setShowModeMenu(false);
-            }
-          }}
-          className={cn(
-            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
-            'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
-            keySource === 'manual' && 'hover:bg-gray-200 dark:hover:bg-white/10'
-          )}
-        >
-          {sessionKey ? (
-            <>
-              <div className={cn('w-2.5 h-2.5 rounded-full', keyColor)} />
-              <span className={cn(
-                'text-sm font-semibold',
-                keySource === 'analyzer' ? 'text-indigo-600 dark:text-indigo-400' :
-                keySource === 'track' ? 'text-emerald-600 dark:text-emerald-400' :
-                'text-gray-900 dark:text-white'
-              )}>
-                {sessionKey}
-                <span className="text-gray-500 dark:text-zinc-400">{sessionKeyScale === 'minor' ? 'm' : ''}</span>
-              </span>
-            </>
-          ) : (
-            <span className="text-sm text-gray-400 dark:text-zinc-500">Key</span>
-          )}
-          {keySource === 'manual' && (
+            }}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
+              'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
+              'hover:bg-gray-200 dark:hover:bg-white/10'
+            )}
+          >
+            {sessionKey ? (
+              <>
+                <div className={cn('w-2.5 h-2.5 rounded-full', keyColor)} />
+                <span className={cn(
+                  'text-sm font-semibold',
+                  keySource === 'analyzer' ? 'text-indigo-600 dark:text-indigo-400' :
+                  keySource === 'track' ? 'text-emerald-600 dark:text-emerald-400' :
+                  'text-gray-900 dark:text-white'
+                )}>
+                  {sessionKey}
+                  <span className="text-gray-500 dark:text-zinc-400">{sessionKeyScale === 'minor' ? 'm' : ''}</span>
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-gray-400 dark:text-zinc-500">Key</span>
+            )}
             <ChevronDown className={cn(
               'w-3 h-3 text-gray-400 dark:text-zinc-500 transition-transform',
               showKeyMenu && 'rotate-180'
             )} />
-          )}
-        </button>
+          </button>
+        </Tooltip>
       </div>
 
       {/* Mode dropdown */}
       {showModeMenu && (
-        <div className="absolute top-full left-0 mt-1 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[140px]">
+        <div className="absolute top-full left-0 mt-1 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[180px]">
           {(Object.keys(sourceConfig) as KeySource[]).map((s) => {
             const { icon: Icon, label, color } = sourceConfig[s];
-            const available = isSourceAvailable(s);
+            const hint = getSourceHint(s);
             const isActive = keySource === s;
             return (
               <button
                 key={s}
-                onClick={() => available && handleSourceSelect(s)}
-                disabled={!available}
+                onClick={() => handleSourceSelect(s)}
                 className={cn(
                   'w-full flex items-center gap-2 px-3 py-1.5 text-left transition-all',
                   isActive && 'bg-gray-100 dark:bg-white/10',
-                  available ? 'hover:bg-gray-50 dark:hover:bg-white/5' : 'opacity-40 cursor-not-allowed'
+                  'hover:bg-gray-50 dark:hover:bg-white/5'
                 )}
               >
                 <Icon className={cn('w-3.5 h-3.5', isActive ? color : 'text-gray-400 dark:text-zinc-500')} />
-                <span className={cn(
-                  'text-xs font-medium',
-                  isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-zinc-400'
-                )}>
-                  {label}
-                </span>
+                <div className="flex-1 flex flex-col">
+                  <span className={cn(
+                    'text-xs font-medium',
+                    isActive ? 'text-gray-900 dark:text-white' : 'text-gray-600 dark:text-zinc-400'
+                  )}>
+                    {label}
+                  </span>
+                  {hint && (
+                    <span className="text-[10px] text-gray-400 dark:text-zinc-500">{hint}</span>
+                  )}
+                </div>
                 {s === 'track' && trackKey && (
-                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto">{trackKey}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500">{trackKey}</span>
                 )}
                 {s === 'analyzer' && analyzerKey && (
-                  <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto">{analyzerKey}</span>
+                  <span className="text-[10px] text-gray-400 dark:text-zinc-500">{analyzerKey}</span>
                 )}
               </button>
             );

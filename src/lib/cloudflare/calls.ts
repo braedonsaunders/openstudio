@@ -1242,6 +1242,94 @@ export class CloudflareCalls {
     this.onMasterChange = callback;
   }
 
+  // ==========================================================================
+  // Metronome Integration for World-Class WebRTC Sync
+  // ==========================================================================
+
+  /**
+   * Get the master clock sync for metronome integration.
+   * The metronome engine can use this to synchronize beats across all participants.
+   */
+  getClockSync(): MasterClockSync {
+    return this.clockSync;
+  }
+
+  /**
+   * Get the current clock sync offset in milliseconds.
+   * Positive values mean local clock is ahead of master.
+   */
+  getClockOffset(): number {
+    return this.clockSync.getOffset();
+  }
+
+  /**
+   * Get the current sync quality assessment.
+   */
+  getSyncQuality(): 'excellent' | 'good' | 'fair' | 'poor' {
+    return this.clockSync.getSyncQuality();
+  }
+
+  /**
+   * Get the current master time (local time adjusted by offset).
+   * Use this for scheduling events in sync with other participants.
+   */
+  getMasterTime(): number {
+    return this.clockSync.getMasterTime();
+  }
+
+  /**
+   * Convert a master time to local time.
+   * Use this to schedule audio events at the correct local time.
+   */
+  getLocalTime(masterTime: number): number {
+    return this.clockSync.getLocalTime(masterTime);
+  }
+
+  /**
+   * Get the current beat position from the master clock broadcasts.
+   * Returns the beat position that should be playing RIGHT NOW.
+   */
+  getMasterBeatPosition(): { beatPosition: number; bpm: number; timestamp: number } {
+    const { tempo, beatsPerBar } = useSessionTempoStore.getState();
+    const masterTime = this.clockSync.getMasterTime();
+    const msPerBeat = 60000 / tempo;
+    const beatPosition = (masterTime / msPerBeat) % beatsPerBar;
+
+    return {
+      beatPosition,
+      bpm: tempo,
+      timestamp: masterTime,
+    };
+  }
+
+  /**
+   * Add metronome broadcast stream to WebRTC.
+   * The metronome audio will be sent to all room participants.
+   *
+   * @param stream MediaStream containing the metronome audio track
+   * @returns Promise that resolves with the track ID
+   */
+  async addMetronomeBroadcast(stream: MediaStream): Promise<string> {
+    return this.addTrack(stream, 'metronome', 'Metronome Click Track', false);
+  }
+
+  /**
+   * Remove metronome broadcast stream from WebRTC.
+   *
+   * @param trackId The metronome track ID to remove
+   */
+  async removeMetronomeBroadcast(trackId: string): Promise<void> {
+    return this.removeTrack(trackId);
+  }
+
+  /**
+   * Check if this client is currently the room master.
+   * Only the master broadcasts clock sync and should broadcast metronome.
+   */
+  isRoomMaster(): boolean {
+    return this.isMaster;
+  }
+
   /**
    * Leave the room and disconnect all connections.
    * Alias for disconnect() for API compatibility.
