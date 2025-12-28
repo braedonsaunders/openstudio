@@ -103,9 +103,27 @@ function floodFillFromEdges(
 }
 
 /**
+ * Check if a pixel matches the target color within tolerance
+ */
+function isMatchingColor(
+  r: number,
+  g: number,
+  b: number,
+  targetColor: { r: number; g: number; b: number },
+  tolerance: number
+): boolean {
+  const distance = Math.sqrt(
+    Math.pow(r - targetColor.r, 2) +
+    Math.pow(g - targetColor.g, 2) +
+    Math.pow(b - targetColor.b, 2)
+  );
+  return distance <= tolerance;
+}
+
+/**
  * Process an avatar component image:
- * 1. Remove white/near-white background using flood fill from edges
- * 2. Clean up small isolated white specs
+ * 1. Remove background using flood fill from edges or direct color matching
+ * 2. Clean up small isolated specs
  * 3. Apply edge feathering for smoother transitions
  * 4. Resize to standard canvas size
  * 5. Convert to PNG with alpha channel
@@ -115,17 +133,23 @@ export async function processAvatarComponent(
   options: {
     removeBackground?: boolean;
     backgroundThreshold?: number; // 0-255, pixels lighter than this become transparent
-    cleanupSpecs?: boolean; // Remove small isolated white regions
+    cleanupSpecs?: boolean; // Remove small isolated regions
     specSizeThreshold?: number; // Max size of specs to remove
     feathering?: number; // Edge feathering amount in pixels
+    targetColor?: { r: number; g: number; b: number }; // Target background color
+    colorTolerance?: number; // How close to target color to remove
+    useFloodFill?: boolean; // Use flood fill from edges vs remove all matching
   } = {}
 ): Promise<ProcessedImage> {
   const {
     removeBackground = true,
     backgroundThreshold = 240, // Lower threshold for more aggressive removal
     cleanupSpecs = true,
-    specSizeThreshold = 50, // Remove white specs smaller than this many pixels
+    specSizeThreshold = 50, // Remove specs smaller than this many pixels
     feathering = 0, // No feathering by default
+    targetColor = { r: 255, g: 255, b: 255 }, // Default to white
+    colorTolerance = 30, // Default color tolerance
+    useFloodFill = true, // Default to flood fill from edges
   } = options;
 
   let image = sharp(input);
@@ -143,28 +167,107 @@ export async function processAvatarComponent(
     const width = info.width;
     const height = info.height;
 
-    // Step 1: Flood fill from edges to find connected background
-    const backgroundPixels = floodFillFromEdges(pixels, width, height, backgroundThreshold);
+    // Helper to check if pixel matches target (either by color tolerance or brightness threshold)
+    const isTargetPixel = (idx: number): boolean => {
+      const r = pixels[idx];
+      const g = pixels[idx + 1];
+      const b = pixels[idx + 2];
 
-    // Step 2: Make background pixels transparent
-    for (const idx of backgroundPixels) {
-      pixels[idx + 3] = 0; // Set alpha to 0
-    }
+      // Check color tolerance match
+      if (isMatchingColor(r, g, b, targetColor, colorTolerance)) {
+        return true;
+      }
 
-    // Step 3: Clean up small isolated white specs
-    if (cleanupSpecs) {
-      // Find remaining white pixels that aren't transparent
-      const whitePixels = new Set<number>();
-      for (let i = 0; i < pixels.length; i += 4) {
-        if (
-          pixels[i + 3] > 0 && // Not already transparent
-          isWhitePixel(pixels[i], pixels[i + 1], pixels[i + 2], backgroundThreshold)
-        ) {
-          whitePixels.add(i);
+      // Also check brightness threshold for white-like backgrounds
+      if (targetColor.r >= 200 && targetColor.g >= 200 && targetColor.b >= 200) {
+        if (isWhitePixel(r, g, b, backgroundThreshold)) {
+          return true;
         }
       }
 
-      // Find connected components of white pixels
+      return false;
+    };
+
+    if (useFloodFill) {
+      // Step 1: Flood fill from edges to find connected background
+      // Modified to use color tolerance instead of just white
+      const background = new Set<number>();
+      const queue: number[] = [];
+      const getIdx = (x: number, y: number) => (y * width + x) * 4;
+
+      const canVisit = (x: number, y: number): boolean => {
+        if (x < 0 || x >= width || y < 0 || y >= height) return false;
+        const idx = getIdx(x, y);
+        if (background.has(idx)) return false;
+        return isTargetPixel(idx);
+      };
+
+      // Seed from all edges
+      for (let x = 0; x < width; x++) {
+        if (canVisit(x, 0)) {
+          const idx = getIdx(x, 0);
+          background.add(idx);
+          queue.push(x, 0);
+        }
+        if (canVisit(x, height - 1)) {
+          const idx = getIdx(x, height - 1);
+          background.add(idx);
+          queue.push(x, height - 1);
+        }
+      }
+      for (let y = 0; y < height; y++) {
+        if (canVisit(0, y)) {
+          const idx = getIdx(0, y);
+          background.add(idx);
+          queue.push(0, y);
+        }
+        if (canVisit(width - 1, y)) {
+          const idx = getIdx(width - 1, y);
+          background.add(idx);
+          queue.push(width - 1, y);
+        }
+      }
+
+      // Flood fill
+      while (queue.length > 0) {
+        const y = queue.pop()!;
+        const x = queue.pop()!;
+        const neighbors = [
+          [x - 1, y], [x + 1, y], [x, y - 1], [x, y + 1],
+        ];
+        for (const [nx, ny] of neighbors) {
+          if (canVisit(nx, ny)) {
+            const idx = getIdx(nx, ny);
+            background.add(idx);
+            queue.push(nx, ny);
+          }
+        }
+      }
+
+      // Make background pixels transparent
+      for (const idx of background) {
+        pixels[idx + 3] = 0;
+      }
+    } else {
+      // Remove all matching pixels (no flood fill)
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (isTargetPixel(i)) {
+          pixels[i + 3] = 0;
+        }
+      }
+    }
+
+    // Step 2: Clean up small isolated specs
+    if (cleanupSpecs) {
+      // Find remaining matching pixels that aren't transparent
+      const matchingPixels = new Set<number>();
+      for (let i = 0; i < pixels.length; i += 4) {
+        if (pixels[i + 3] > 0 && isTargetPixel(i)) {
+          matchingPixels.add(i);
+        }
+      }
+
+      // Find connected components of matching pixels
       const visited = new Set<number>();
       const getIdx = (x: number, y: number) => (y * width + x) * 4;
       const getCoords = (idx: number) => {
@@ -172,7 +275,7 @@ export async function processAvatarComponent(
         return [pixelNum % width, Math.floor(pixelNum / width)];
       };
 
-      for (const startIdx of whitePixels) {
+      for (const startIdx of matchingPixels) {
         if (visited.has(startIdx)) continue;
 
         // BFS to find connected component
@@ -193,7 +296,7 @@ export async function processAvatarComponent(
               const ny = y + dy;
               if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
               const nidx = getIdx(nx, ny);
-              if (!visited.has(nidx) && whitePixels.has(nidx)) {
+              if (!visited.has(nidx) && matchingPixels.has(nidx)) {
                 visited.add(nidx);
                 queue.push(nidx);
               }
