@@ -48,6 +48,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     startCapture,
     addRemoteStream,
     removeRemoteStream,
+    setRemoteVolume: audioSetRemoteVolume,
+    setRemoteMuted: audioSetRemoteMuted,
     loadBackingTrack,
     playBackingTrack,
     pauseBackingTrack,
@@ -366,11 +368,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('user:mute', (data) => {
         const payload = data as { targetUserId: string; isMuted: boolean };
         updateUser(payload.targetUserId, { isMuted: payload.isMuted });
+        // Apply mute to audio engine - this affects actual audio output
+        audioSetRemoteMuted(payload.targetUserId, payload.isMuted);
       });
 
       realtime.on('user:volume', (data) => {
         const payload = data as { targetUserId: string; volume: number };
         updateUser(payload.targetUserId, { volume: payload.volume });
+        // Apply volume to audio engine - this affects actual audio output
+        audioSetRemoteVolume(payload.targetUserId, payload.volume);
       });
 
       realtime.on('chat:message', (data) => {
@@ -937,14 +943,20 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   // Mute user
   const muteUser = useCallback((userId: string, muted: boolean) => {
     useRoomStore.getState().updateUser(userId, { isMuted: muted });
+    // Apply mute to audio engine locally (for immediate feedback)
+    audioSetRemoteMuted(userId, muted);
+    // Broadcast to sync all other users
     realtimeRef.current?.broadcastMute(userId, muted);
-  }, []);
+  }, [audioSetRemoteMuted]);
 
   // Set user volume
   const setUserVolume = useCallback((userId: string, volume: number) => {
     useRoomStore.getState().updateUser(userId, { volume });
+    // Apply volume to audio engine locally (for immediate feedback)
+    audioSetRemoteVolume(userId, volume);
+    // Broadcast to sync all other users
     realtimeRef.current?.broadcastVolume(userId, volume);
-  }, []);
+  }, [audioSetRemoteVolume]);
 
   // Loop track management
   const addLoopTrack = useCallback(async (track: LoopTrackState) => {

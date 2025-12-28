@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-tempo-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useRoomStore } from '@/stores/room-store';
+import { useSongsStore } from '@/stores/songs-store';
 
 /**
  * Hook to synchronize session tempo across all stores and track sources.
@@ -80,6 +81,37 @@ export function useSessionTempoSync(): void {
       },
       { fireImmediately: true }
     );
+
+    return unsubscribe;
+  }, []);
+
+  // ==========================================================================
+  // Sync song BPM to session tempo when song changes
+  // ==========================================================================
+  const previousSongIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Subscribe to current song changes (standard zustand subscribe, not subscribeWithSelector)
+    let prevSongId = useSongsStore.getState().currentSongId;
+
+    const unsubscribe = useSongsStore.subscribe((state) => {
+      const currentSongId = state.currentSongId;
+      // Only sync when actually changing to a different song
+      if (currentSongId !== prevSongId) {
+        prevSongId = currentSongId;
+        if (currentSongId && currentSongId !== previousSongIdRef.current) {
+          const song = state.getSongById(currentSongId);
+          if (song && song.bpm) {
+            // Set the song's BPM as the manual tempo and switch to manual mode
+            // This ensures the song's tempo becomes the session tempo
+            const { setManualTempo, setSource } = useSessionTempoStore.getState();
+            setSource('manual'); // Switch to manual mode so song BPM takes effect
+            setManualTempo(song.bpm);
+          }
+        }
+        previousSongIdRef.current = currentSongId;
+      }
+    });
 
     return unsubscribe;
   }, []);

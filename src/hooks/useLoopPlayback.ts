@@ -4,6 +4,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
+import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { LoopScheduler } from '@/lib/audio/loop-scheduler';
 import { SoundEngine } from '@/lib/audio/sound-engine';
 import { getLoopById } from '@/lib/audio/loop-library';
@@ -51,11 +52,9 @@ export function useLoopPlayback() {
       const scheduler = new LoopScheduler(context, soundEngine);
       schedulerRef.current = scheduler;
 
-      // Set master tempo from current song
-      const song = useSongsStore.getState().getCurrentSong();
-      if (song?.bpm) {
-        scheduler.setMasterTempo(song.bpm);
-      }
+      // Set master tempo from session tempo store (single source of truth)
+      const tempo = useSessionTempoStore.getState().tempo;
+      scheduler.setMasterTempo(tempo);
 
       isInitializedRef.current = true;
       return true;
@@ -369,21 +368,24 @@ export function useLoopPlayback() {
     return () => unsubLoopTracks();
   }, []);
 
-  // Update master tempo when song changes
+  // Sync master tempo with session tempo store (the single source of truth)
   useEffect(() => {
-    let prevSongId = useSongsStore.getState().currentSongId;
+    let prevTempo = useSessionTempoStore.getState().tempo;
 
-    const unsubSongChange = useSongsStore.subscribe((state) => {
-      if (state.currentSongId !== prevSongId) {
-        prevSongId = state.currentSongId;
-        const song = state.getCurrentSong();
-        if (song?.bpm && schedulerRef.current) {
-          schedulerRef.current.setMasterTempo(song.bpm);
+    const unsubTempo = useSessionTempoStore.subscribe(
+      (state) => state.tempo,
+      (tempo) => {
+        if (tempo !== prevTempo) {
+          prevTempo = tempo;
+          if (schedulerRef.current) {
+            schedulerRef.current.setMasterTempo(tempo);
+          }
         }
-      }
-    });
+      },
+      { fireImmediately: true }
+    );
 
-    return () => unsubSongChange();
+    return () => unsubTempo();
   }, []);
 
   // Cleanup on unmount

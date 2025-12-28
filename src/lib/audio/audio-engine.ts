@@ -3,6 +3,7 @@
 
 import { AdaptiveJitterBuffer } from './jitter-buffer';
 import { UnifiedEffectsProcessor } from './effects/unified-effects-processor';
+import { MasterEffectsProcessor, type MasterEffectsChain } from './effects/master-effects-processor';
 import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, UnifiedEffectsChain } from '@/types';
 
 export interface CaptureAudioOptions {
@@ -45,6 +46,7 @@ export class AudioEngine {
   private localArmGain: GainNode | null = null;
   private localMuteGain: GainNode | null = null;
   private localEffectsProcessor: UnifiedEffectsProcessor | null = null;
+  private masterEffectsProcessor: MasterEffectsProcessor | null = null;
   private monitoringEnabled: boolean = true;
   private localTrackMuted: boolean = false;
   private localTrackArmed: boolean = false;
@@ -91,7 +93,12 @@ export class AudioEngine {
 
     // Create master gain node
     this.masterGain = this.audioContext.createGain();
-    this.masterGain.connect(this.audioContext.destination);
+
+    // Create master effects processor (optional effects chain on master bus)
+    // Signal flow: masterGain → masterEffects → destination
+    this.masterEffectsProcessor = new MasterEffectsProcessor(this.audioContext);
+    this.masterGain.connect(this.masterEffectsProcessor.getInputNode());
+    this.masterEffectsProcessor.connect(this.audioContext.destination);
 
     // Create backing track gain node
     this.backingTrackGain = this.audioContext.createGain();
@@ -104,11 +111,11 @@ export class AudioEngine {
     this.backingTrackGain.connect(this.backingTrackAnalyser);
 
     // Create master analyser for analyzing all audio (backing + all users)
-    // This is useful for jam sessions where you want to detect key from all instruments
+    // Placed after master effects to analyze the final output
     this.masterAnalyser = this.audioContext.createAnalyser();
     this.masterAnalyser.fftSize = 2048;
     this.masterAnalyser.smoothingTimeConstant = 0.3;
-    this.masterGain.connect(this.masterAnalyser);
+    this.masterEffectsProcessor.getOutputNode().connect(this.masterAnalyser);
 
     // Load audio worklet processor
     try {
@@ -330,6 +337,25 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * Mute or unmute a remote user's audio stream
+   * Stores the pre-mute volume so it can be restored when unmuted
+   */
+  setRemoteMuted(userId: string, muted: boolean): void {
+    const streamData = this.remoteStreams.get(userId);
+    if (streamData?.gainNode && this.audioContext) {
+      if (muted) {
+        // Store the current volume before muting
+        streamData.preMuteVolume = streamData.gainNode.gain.value;
+        streamData.gainNode.gain.setTargetAtTime(0, this.audioContext.currentTime, 0.01);
+      } else {
+        // Restore the pre-mute volume (default to 1 if not stored)
+        const volume = streamData.preMuteVolume ?? 1;
+        streamData.gainNode.gain.setTargetAtTime(volume, this.audioContext.currentTime, 0.01);
+      }
+    }
+  }
+
   setMasterVolume(volume: number): void {
     if (this.masterGain) {
       this.masterGain.gain.value = volume;
@@ -340,6 +366,31 @@ export class AudioEngine {
     if (this.backingTrackGain) {
       this.backingTrackGain.gain.value = volume;
     }
+  }
+
+  // Master effects chain controls
+  setMasterEffectsEnabled(enabled: boolean): void {
+    this.masterEffectsProcessor?.setEnabled(enabled);
+  }
+
+  isMasterEffectsEnabled(): boolean {
+    return this.masterEffectsProcessor?.isEnabled() ?? false;
+  }
+
+  updateMasterEffects(settings: Partial<MasterEffectsChain>): void {
+    this.masterEffectsProcessor?.updateSettings(settings);
+  }
+
+  getMasterEffectsSettings(): MasterEffectsChain | null {
+    return this.masterEffectsProcessor?.getSettings() ?? null;
+  }
+
+  getMasterEffectsMetering(): { compressorReduction: number; limiterReduction: number } | null {
+    return this.masterEffectsProcessor?.getMeteringData() ?? null;
+  }
+
+  getMasterEffectsLatency(): number {
+    return this.masterEffectsProcessor?.getEstimatedLatency() ?? 0;
   }
 
   async setOutputDevice(deviceId: string): Promise<void> {
@@ -722,6 +773,51 @@ export class AudioEngine {
     return this.masterAnalyser;
   }
 
+  /**
+   * Get the current audio level for the backing track (0-1 normalized)
+   */
+  getBackingTrackLevel(): number {
+    if (!this.backingTrackAnalyser) return 0;
+    const data = new Uint8Array(this.backingTrackAnalyser.frequencyBinCount);
+    this.backingTrackAnalyser.getByteFrequencyData(data);
+    const sum = data.reduce((acc, val) => acc + val, 0);
+    return sum / data.length / 255;
+  }
+
+  /**
+   * Get the current audio level for the master output (0-1 normalized)
+   */
+  getMasterLevel(): number {
+    if (!this.masterAnalyser) return 0;
+    const data = new Uint8Array(this.masterAnalyser.frequencyBinCount);
+    this.masterAnalyser.getByteFrequencyData(data);
+    const sum = data.reduce((acc, val) => acc + val, 0);
+    return sum / data.length / 255;
+  }
+
+  /**
+   * Get the current audio level for a specific remote user (0-1 normalized)
+   */
+  getRemoteLevel(userId: string): number {
+    const streamData = this.remoteStreams.get(userId);
+    if (!streamData?.analyser) return 0;
+    const data = new Uint8Array(streamData.analyser.frequencyBinCount);
+    streamData.analyser.getByteFrequencyData(data);
+    const sum = data.reduce((acc, val) => acc + val, 0);
+    return sum / data.length / 255;
+  }
+
+  /**
+   * Get the current audio level for the local input (0-1 normalized)
+   */
+  getLocalLevel(): number {
+    if (!this.localAnalyser) return 0;
+    const data = new Uint8Array(this.localAnalyser.frequencyBinCount);
+    this.localAnalyser.getByteFrequencyData(data);
+    const sum = data.reduce((acc, val) => acc + val, 0);
+    return sum / data.length / 255;
+  }
+
   async loadStem(stemType: string, url: string): Promise<void> {
     if (!this.audioContext) return;
 
@@ -972,6 +1068,22 @@ export class AudioEngine {
         }
       }
 
+      // Backing track level
+      if (this.backingTrackAnalyser) {
+        const data = new Uint8Array(this.backingTrackAnalyser.frequencyBinCount);
+        this.backingTrackAnalyser.getByteFrequencyData(data);
+        const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
+        levels.set('backingTrack', level);
+      }
+
+      // Master output level
+      if (this.masterAnalyser) {
+        const data = new Uint8Array(this.masterAnalyser.frequencyBinCount);
+        this.masterAnalyser.getByteFrequencyData(data);
+        const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
+        levels.set('master', level);
+      }
+
       this.onLevelUpdate?.(levels);
     }, 50); // 20 FPS level updates
   }
@@ -1024,6 +1136,9 @@ export class AudioEngine {
     this.localMuteGain = null;
     this.localEffectsProcessor?.dispose();
     this.localEffectsProcessor = null;
+
+    this.masterEffectsProcessor?.dispose();
+    this.masterEffectsProcessor = null;
 
     this.workletNode?.disconnect();
     this.masterGain?.disconnect();

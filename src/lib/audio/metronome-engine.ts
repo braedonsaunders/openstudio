@@ -1,7 +1,9 @@
 // Metronome Engine - Sample-accurate metronome with WebRTC broadcast support
 // Generates click sounds synchronized with playback
+// World-class clock sync integration for worldwide jamming
 
 import type { MetronomeSettings } from '@/stores/metronome-store';
+import type { MasterClockSync } from './latency-sync-engine';
 
 export type ClickType = 'digital' | 'woodblock' | 'cowbell' | 'hihat' | 'rimshot';
 
@@ -268,6 +270,10 @@ export class MetronomeEngine {
   private syncStartTime: number | null = null;
   private syncOffset: number = 0;
 
+  // Master clock sync for worldwide jamming
+  private clockSync: MasterClockSync | null = null;
+  private isSyncedToMaster: boolean = false;
+
   constructor(context: AudioContext, destination?: AudioNode) {
     this.context = context;
     this.masterGain = context.createGain();
@@ -527,6 +533,140 @@ export class MetronomeEngine {
     }
   }
 
+  // ==========================================================================
+  // Master Clock Sync Integration (World-Class Latency System)
+  // ==========================================================================
+
+  /**
+   * Set the master clock sync for worldwide jamming
+   * When set, the metronome will sync to the room master's clock
+   */
+  setClockSync(clockSync: MasterClockSync | null): void {
+    this.clockSync = clockSync;
+    if (clockSync) {
+      console.log('[Metronome] Clock sync enabled - syncing to room master');
+    } else {
+      console.log('[Metronome] Clock sync disabled - using local clock');
+    }
+  }
+
+  /**
+   * Enable syncing to master clock
+   */
+  enableMasterSync(): void {
+    this.isSyncedToMaster = true;
+    console.log('[Metronome] Master sync enabled');
+  }
+
+  /**
+   * Disable syncing to master clock
+   */
+  disableMasterSync(): void {
+    this.isSyncedToMaster = false;
+    console.log('[Metronome] Master sync disabled');
+  }
+
+  /**
+   * Check if synced to master
+   */
+  isSyncedToMasterClock(): boolean {
+    return this.isSyncedToMaster && this.clockSync !== null;
+  }
+
+  /**
+   * Get the current beat position using master clock
+   * Returns the beat position that should be playing RIGHT NOW
+   * accounting for clock offset with the master
+   */
+  getMasterBeatPosition(): number {
+    if (!this.clockSync || !this.isSyncedToMaster || !this.isRunning) {
+      return this.currentBeat;
+    }
+
+    // Get master time
+    const masterTime = this.clockSync.getMasterTime();
+
+    // Calculate beats elapsed since sync start
+    const msPerBeat = 60000 / this.bpm;
+    const msElapsed = masterTime - (this.syncStartTime || 0);
+    const beatsElapsed = msElapsed / msPerBeat;
+
+    return beatsElapsed % this.beatsPerBar;
+  }
+
+  /**
+   * Schedule a click at a specific master time
+   * This allows all participants to hear clicks at the same beat position
+   */
+  scheduleClickAtMasterTime(masterBeatTime: number): void {
+    if (!this.clockSync) return;
+
+    // Convert master time to local audio context time
+    const localTime = this.clockSync.getLocalTime(masterBeatTime);
+    const audioContextTime = this.context.currentTime + (localTime - performance.now()) / 1000;
+
+    // Only schedule if it's in the future
+    if (audioContextTime > this.context.currentTime) {
+      const beat = Math.floor((masterBeatTime - (this.syncStartTime || 0)) / (60000 / this.bpm));
+      const isAccent = this.accentFirstBeat && (beat % this.beatsPerBar) === 0;
+      this.scheduleClick(audioContextTime, isAccent);
+    }
+  }
+
+  /**
+   * Get the next beat time in master clock time
+   */
+  getNextMasterBeatTime(): number {
+    if (!this.clockSync) {
+      return Date.now();
+    }
+
+    const masterTime = this.clockSync.getMasterTime();
+    const msPerBeat = 60000 / this.bpm;
+
+    // Calculate time since sync start
+    const msElapsed = masterTime - (this.syncStartTime || 0);
+
+    // Calculate next beat time
+    const beatsElapsed = Math.floor(msElapsed / msPerBeat);
+    const nextBeatTime = (this.syncStartTime || 0) + (beatsElapsed + 1) * msPerBeat;
+
+    return nextBeatTime;
+  }
+
+  /**
+   * Start metronome synced to master clock
+   * This ensures all participants hear the metronome at the same beat position
+   */
+  startSyncedToMaster(masterStartTime: number, offset: number = 0): void {
+    if (!this.clockSync) {
+      console.warn('[Metronome] Cannot start synced - no clock sync available');
+      this.start(undefined, offset);
+      return;
+    }
+
+    this.isSyncedToMaster = true;
+    this.syncStartTime = masterStartTime;
+    this.syncOffset = offset;
+
+    // Calculate when to start in local time
+    const localStartTime = this.clockSync.getLocalTime(masterStartTime);
+    const delayMs = localStartTime - performance.now();
+
+    if (delayMs > 0) {
+      // Schedule start for the future
+      setTimeout(() => {
+        this.start(masterStartTime, offset);
+      }, delayMs);
+      console.log(`[Metronome] Scheduled to start in ${delayMs.toFixed(0)}ms (synced to master)`);
+    } else {
+      // Start immediately, adjusting for elapsed time
+      const elapsedMs = -delayMs;
+      this.start(masterStartTime - elapsedMs, offset);
+      console.log(`[Metronome] Started ${elapsedMs.toFixed(0)}ms late (catching up to master)`);
+    }
+  }
+
   /**
    * Dispose and clean up
    */
@@ -534,5 +674,6 @@ export class MetronomeEngine {
     this.stop();
     this.disableBroadcast();
     this.masterGain.disconnect();
+    this.clockSync = null;
   }
 }

@@ -20,9 +20,11 @@ import {
   Music4,
   Signal,
   Wifi,
+  Sliders,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
 import type { User, BackingTrack } from '@/types';
+import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 
 interface MixerViewProps {
@@ -313,9 +315,12 @@ function UserChannelStrip({
   const config = instrumentConfig[instrument] || instrumentConfig.other;
   const [isSolo, setIsSolo] = useState(false);
 
-  // Simulate stereo spread
-  const leftLevel = audioLevel * (0.9 + Math.random() * 0.1);
-  const rightLevel = audioLevel * (0.85 + Math.random() * 0.15);
+  // Create slight stereo variation for visual interest (based on user id hash, not random)
+  // This provides consistent visual stereo image per user without random jitter
+  const idHash = user.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const stereoOffset = (idHash % 10) / 100; // 0-0.09 offset
+  const leftLevel = audioLevel * (0.95 + stereoOffset);
+  const rightLevel = audioLevel * (0.95 + (0.09 - stereoOffset));
 
   return (
     <motion.div
@@ -463,22 +468,18 @@ function UserChannelStrip({
 function TrackChannelStrip({
   track,
   isMaster,
+  audioLevel,
 }: {
   track: BackingTrack;
   isMaster: boolean;
+  audioLevel: number;
 }) {
   const { backingTrackVolume, setBackingTrackVolume } = useAudioStore();
-  const [level, setLevel] = useState(0.5);
   const [isMuted, setIsMuted] = useState(false);
   const [isSolo, setIsSolo] = useState(false);
 
-  // Simulate audio levels
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLevel(0.3 + Math.random() * 0.5);
-    }, 100);
-    return () => clearInterval(interval);
-  }, []);
+  // Use actual audio level from the engine
+  const level = audioLevel;
 
   return (
     <motion.div
@@ -617,17 +618,55 @@ function TrackChannelStrip({
 }
 
 // Master Channel Strip
-function MasterChannelStrip({ isMaster: isRoomMaster }: { isMaster: boolean }) {
+function MasterChannelStrip({
+  isMaster: isRoomMaster,
+  audioLevel,
+  onOpenMasterFx,
+}: {
+  isMaster: boolean;
+  audioLevel: number;
+  onOpenMasterFx?: () => void;
+}) {
   const { masterVolume, setMasterVolume } = useAudioStore();
-  const [level, setLevel] = useState(0.6);
+  const {
+    setMasterEffectsEnabled,
+    isMasterEffectsEnabled,
+    getMasterEffectsMetering,
+  } = useAudioEngine();
 
-  // Simulate master level
+  const [fxEnabled, setFxEnabled] = useState(false);
+  const [metering, setMetering] = useState<{ compressorReduction: number; limiterReduction: number } | null>(null);
+
+  // Sync local state with engine state
   useEffect(() => {
+    setFxEnabled(isMasterEffectsEnabled());
+  }, [isMasterEffectsEnabled]);
+
+  // Update metering data periodically when FX enabled
+  useEffect(() => {
+    if (!fxEnabled) {
+      setMetering(null);
+      return;
+    }
     const interval = setInterval(() => {
-      setLevel(0.4 + Math.random() * 0.4);
+      setMetering(getMasterEffectsMetering());
     }, 100);
     return () => clearInterval(interval);
-  }, []);
+  }, [fxEnabled, getMasterEffectsMetering]);
+
+  const toggleFx = () => {
+    const newState = !fxEnabled;
+    setFxEnabled(newState);
+    setMasterEffectsEnabled(newState);
+  };
+
+  // Use actual audio level from the engine
+  const level = audioLevel;
+
+  // Show gain reduction indicator
+  const gainReduction = metering
+    ? Math.max(metering.compressorReduction, metering.limiterReduction)
+    : 0;
 
   return (
     <div
@@ -701,6 +740,44 @@ function MasterChannelStrip({ isMaster: isRoomMaster }: { isMaster: boolean }) {
 
       {/* Master Controls */}
       <div className="px-2 pb-2 space-y-1">
+        {/* FX Toggle Button */}
+        <button
+          onClick={toggleFx}
+          disabled={!isRoomMaster}
+          className={cn(
+            'w-full py-1.5 rounded text-[8px] font-bold tracking-wider flex items-center justify-center gap-1 transition-all',
+            fxEnabled
+              ? 'bg-indigo-500/80 text-white border border-indigo-400/50 shadow-lg shadow-indigo-500/20'
+              : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600',
+            !isRoomMaster && 'opacity-50 cursor-not-allowed'
+          )}
+        >
+          <Sliders className="w-3 h-3" />
+          FX {fxEnabled ? 'ON' : 'OFF'}
+        </button>
+
+        {/* Gain Reduction Indicator (when FX enabled) */}
+        {fxEnabled && gainReduction > 0.5 && (
+          <div className="flex items-center justify-center gap-1 text-[7px] text-amber-400">
+            <span>GR: -{gainReduction.toFixed(1)}dB</span>
+          </div>
+        )}
+
+        {/* Edit FX Button (when FX enabled) */}
+        {fxEnabled && onOpenMasterFx && (
+          <button
+            onClick={onOpenMasterFx}
+            disabled={!isRoomMaster}
+            className={cn(
+              'w-full py-1 rounded text-[7px] font-medium tracking-wider',
+              'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 transition-colors',
+              !isRoomMaster && 'opacity-50 cursor-not-allowed'
+            )}
+          >
+            EDIT FX
+          </button>
+        )}
+
         <button className="w-full py-1.5 rounded bg-zinc-700/60 text-zinc-400 text-[8px] font-bold tracking-wider hover:bg-zinc-600 flex items-center justify-center gap-1">
           <Headphones className="w-3 h-3" />
           AFL
@@ -711,6 +788,21 @@ function MasterChannelStrip({ isMaster: isRoomMaster }: { isMaster: boolean }) {
       <div className="flex items-center justify-center py-2 border-t border-amber-900/40 bg-amber-950/20">
         <span className="text-[7px] text-amber-400/60 font-mono">MAIN OUT L/R</span>
       </div>
+    </div>
+  );
+}
+
+// Performance display component - shows real latency metrics
+function PerformanceDisplay() {
+  const { performanceMetrics } = useAudioStore();
+
+  // Calculate total latency (context + output + effects)
+  const totalLatency = performanceMetrics.totalLatency || 0;
+
+  return (
+    <div className="flex items-center gap-3 text-[9px] text-zinc-600">
+      <span>Latency: ~{Math.round(totalLatency)}ms</span>
+      <span>Buffer: {performanceMetrics.currentBufferSize || 256} samples</span>
     </div>
   );
 }
@@ -813,13 +905,20 @@ export function MixerView({
           {/* Track Channel (if backing track exists) */}
           {currentTrack && (
             <>
-              <TrackChannelStrip track={currentTrack} isMaster={isMaster} />
+              <TrackChannelStrip
+                track={currentTrack}
+                isMaster={isMaster}
+                audioLevel={audioLevels.get('backingTrack') || 0}
+              />
               <SectionDivider label="MASTER" />
             </>
           )}
 
           {/* Master Channel */}
-          <MasterChannelStrip isMaster={isMaster} />
+          <MasterChannelStrip
+            isMaster={isMaster}
+            audioLevel={audioLevels.get('master') || 0}
+          />
         </AnimatePresence>
       </div>
 
@@ -841,10 +940,7 @@ export function MixerView({
           )}
         </div>
 
-        <div className="flex items-center gap-3 text-[9px] text-zinc-600">
-          <span>Latency: ~{Math.round(Math.random() * 10 + 15)}ms</span>
-          <span>CPU: {Math.round(Math.random() * 20 + 5)}%</span>
-        </div>
+        <PerformanceDisplay />
       </div>
     </div>
   );

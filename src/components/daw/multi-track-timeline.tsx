@@ -6,6 +6,7 @@ import { useSongsStore } from '@/stores/songs-store';
 import { useRoomStore } from '@/stores/room-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAudioStore } from '@/stores/audio-store';
+import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { getLoopById } from '@/lib/audio/loop-library';
 import { generateWaveformFromUrl } from '@/lib/audio/waveform-generator';
 import {
@@ -378,6 +379,7 @@ export function MultiTrackTimeline({
   const { queue, setCurrentTrack } = useRoomStore();
   const { getTracksByRoom } = useLoopTracksStore();
   const { isPlaying, currentTime, duration, setPlaying } = useAudioStore();
+  const sessionTempo = useSessionTempoStore((s) => s.tempo);
 
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
@@ -398,13 +400,14 @@ export function MultiTrackTimeline({
     previousSongIdRef.current = songId;
   }, [currentSong?.id, onStop]);
 
-  // Calculate loop duration from definition
-  const getLoopDuration = useCallback((loopDef: LoopDefinition | undefined): number => {
+  // Calculate loop duration using session tempo (loops auto-adjust unless tempo-locked)
+  const getLoopDuration = useCallback((loopDef: LoopDefinition | undefined, tempoLocked = false): number => {
     if (!loopDef) return 0;
+    const effectiveBpm = tempoLocked ? loopDef.bpm : sessionTempo;
     const beatsPerBar = loopDef.timeSignature[0];
     const totalBeats = loopDef.bars * beatsPerBar;
-    return (totalBeats / loopDef.bpm) * 60;
-  }, []);
+    return (totalBeats / effectiveBpm) * 60;
+  }, [sessionTempo]);
 
   // Build unified track list with all resolved data
   const unifiedTracks = useMemo(() => {
@@ -414,7 +417,7 @@ export function MultiTrackTimeline({
       if (trackRef.type === 'loop') {
         const loopTrack = loopTracks.find((t) => t.id === trackRef.trackId);
         const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
-        const loopDuration = getLoopDuration(loopDef);
+        const loopDuration = getLoopDuration(loopDef, loopTrack?.tempoLocked);
         const midiNotes = loopTrack?.customMidiData || loopDef?.midiData || [];
 
         return {
@@ -1029,9 +1032,8 @@ export function MultiTrackTimeline({
       const deltaTime = deltaX / zoom;
       const rawOffset = Math.max(0, dragState.originalOffset + deltaTime);
 
-      // Calculate snap points based on current song BPM
-      const song = useSongsStore.getState().getCurrentSong();
-      const bpm = song?.bpm || 120;
+      // Use session tempo for snap calculations
+      const bpm = useSessionTempoStore.getState().tempo;
 
       const snapPoints = calculateSnapPoints(
         bpm,
@@ -1154,11 +1156,11 @@ export function MultiTrackTimeline({
       const x = e.clientX - rect.left + scrollLeft - TRACK_LABEL_WIDTH; // Account for track label width
       const dropTime = Math.max(0, x / zoom);
 
-      // Get BPM for snapping
+      // Get song and use session tempo for snapping
       const song = useSongsStore.getState().getCurrentSong();
       if (!song) return;
 
-      const bpm = song.bpm || 120;
+      const bpm = useSessionTempoStore.getState().tempo;
       const snapPoints = calculateSnapPoints(bpm, trackInfoForSnap, '', zoom);
       const { snappedOffset } = findNearestSnap(dropTime, snapPoints, zoom, SNAP_THRESHOLD);
 
@@ -1220,11 +1222,6 @@ export function MultiTrackTimeline({
           <span className="text-[10px] text-gray-500 dark:text-zinc-500">
             {trackRows.length} track{trackRows.length !== 1 ? 's' : ''}, {unifiedTracks.length} clip{unifiedTracks.length !== 1 ? 's' : ''}
           </span>
-          {currentSong && (
-            <span className="text-[10px] text-gray-400 dark:text-zinc-600">
-              {currentSong.bpm} BPM
-            </span>
-          )}
         </div>
 
         <div className="flex items-center gap-2">

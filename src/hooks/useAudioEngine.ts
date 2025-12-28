@@ -5,6 +5,7 @@ import { AudioEngine, type CaptureAudioOptions } from '@/lib/audio/audio-engine'
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
 import type { BackingTrack, TrackAudioSettings } from '@/types';
+import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
 
 // Singleton audio engine instance - shared across all components
 // This prevents issues when multiple components call useAudioEngine()
@@ -236,6 +237,11 @@ export function useAudioEngine() {
     globalEngine?.setRemoteVolume(userId, volume);
   }, []);
 
+  // Set remote user muted state
+  const setRemoteMuted = useCallback((userId: string, muted: boolean) => {
+    globalEngine?.setRemoteMuted(userId, muted);
+  }, []);
+
   // Set master volume
   const setMasterVolume = useCallback((volume: number) => {
     globalEngine?.setMasterVolume(volume);
@@ -282,6 +288,27 @@ export function useAudioEngine() {
   // Update local effects (unified chain - all 15 effects)
   const updateLocalEffects = useCallback((effects: Partial<import('@/types').UnifiedEffectsChain>) => {
     globalEngine?.updateLocalEffects(effects);
+  }, []);
+
+  // Master effects chain controls (EQ, Compressor, Reverb, Limiter)
+  const setMasterEffectsEnabled = useCallback((enabled: boolean) => {
+    globalEngine?.setMasterEffectsEnabled(enabled);
+  }, []);
+
+  const isMasterEffectsEnabled = useCallback((): boolean => {
+    return globalEngine?.isMasterEffectsEnabled() ?? false;
+  }, []);
+
+  const updateMasterEffects = useCallback((settings: Partial<MasterEffectsChain>) => {
+    globalEngine?.updateMasterEffects(settings);
+  }, []);
+
+  const getMasterEffectsSettings = useCallback((): MasterEffectsChain | null => {
+    return globalEngine?.getMasterEffectsSettings() ?? null;
+  }, []);
+
+  const getMasterEffectsMetering = useCallback(() => {
+    return globalEngine?.getMasterEffectsMetering() ?? null;
   }, []);
 
   // Check if backing track audio is available for analysis
@@ -526,6 +553,7 @@ export function useAudioEngine() {
     addRemoteStream,
     removeRemoteStream,
     setRemoteVolume,
+    setRemoteMuted,
     setMasterVolume,
     setBackingTrackVolume,
     setOutputDevice,
@@ -535,6 +563,12 @@ export function useAudioEngine() {
     setLocalTrackMuted,
     setLocalTrackVolume,
     updateLocalEffects,
+    // Master effects chain
+    setMasterEffectsEnabled,
+    isMasterEffectsEnabled,
+    updateMasterEffects,
+    getMasterEffectsSettings,
+    getMasterEffectsMetering,
     // Analyser nodes as state (triggers re-render when available)
     audioContext,
     backingTrackAnalyser,
