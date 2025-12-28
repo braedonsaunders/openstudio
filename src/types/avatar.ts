@@ -216,7 +216,7 @@ export interface GenerateImageRequest {
   prompt: string;
   negativePrompt?: string;
   presetId?: string;
-  model?: 'cf-flux-schnell' | 'cf-sdxl-lightning' | 'cf-sdxl-base' | 'replicate-flux-schnell' | 'replicate-sdxl' | string;
+  model?: 'cf-flux-schnell' | 'cf-sdxl-lightning' | 'cf-sdxl-base' | 'replicate-flux-schnell' | 'replicate-sdxl' | 'gemini-nano-banana' | 'gemini-nano-banana-pro' | string;
   count?: number;
   seed?: number;
 }
