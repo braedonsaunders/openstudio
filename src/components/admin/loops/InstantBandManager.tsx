@@ -89,7 +89,8 @@ export function InstantBandManager({ loops, onRefresh }: InstantBandManagerProps
           name: presetName,
           description: presetDescription,
           loop_ids: presetLoopIds,
-          bpm_range: [presetBpmMin, presetBpmMax],
+          bpm_range_min: presetBpmMin,
+          bpm_range_max: presetBpmMax,
           genre: presetGenre,
         });
       } else {
@@ -99,7 +100,8 @@ export function InstantBandManager({ loops, onRefresh }: InstantBandManagerProps
           name: presetName,
           description: presetDescription,
           loop_ids: presetLoopIds,
-          bpm_range: [presetBpmMin, presetBpmMax],
+          bpm_range_min: presetBpmMin,
+          bpm_range_max: presetBpmMax,
           genre: presetGenre,
         });
       }
