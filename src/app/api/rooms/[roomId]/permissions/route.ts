@@ -267,14 +267,18 @@ export async function PATCH(
 
     // Log permission change
     if (role || customPermissions) {
-      await supabase.from('room_permission_logs').insert({
-        room_id: roomId,
-        target_user_id: userId,
-        action: role ? 'role_change' : 'permissions_update',
-        old_value: null,
-        new_value: role || customPermissions,
-        performed_by: body.performedBy || 'unknown',
-      }).catch(() => {});
+      try {
+        await supabase.from('room_permission_logs').insert({
+          room_id: roomId,
+          target_user_id: userId,
+          action: role ? 'role_change' : 'permissions_update',
+          old_value: null,
+          new_value: role || customPermissions,
+          performed_by: body.performedBy || 'unknown',
+        });
+      } catch {
+        // Ignore logging errors
+      }
     }
 
     return NextResponse.json({ success: true });
@@ -316,13 +320,17 @@ export async function DELETE(
 
     if (ban) {
       // Add to ban list (upsert to room_bans table)
-      await supabase.from('room_bans').upsert({
-        room_id: roomId,
-        user_id: userId,
-        reason: banReason,
-        banned_by: performedBy,
-        banned_at: new Date().toISOString(),
-      }, { onConflict: 'room_id,user_id' }).catch(() => {});
+      try {
+        await supabase.from('room_bans').upsert({
+          room_id: roomId,
+          user_id: userId,
+          reason: banReason,
+          banned_by: performedBy,
+          banned_at: new Date().toISOString(),
+        }, { onConflict: 'room_id,user_id' });
+      } catch {
+        // Ignore ban table errors
+      }
 
       // Update member record to mark as banned
       await supabase
@@ -343,13 +351,17 @@ export async function DELETE(
     }
 
     // Log the action
-    await supabase.from('room_permission_logs').insert({
-      room_id: roomId,
-      target_user_id: userId,
-      action: ban ? 'ban' : 'kick',
-      new_value: banReason ? { reason: banReason } : null,
-      performed_by: performedBy,
-    }).catch(() => {});
+    try {
+      await supabase.from('room_permission_logs').insert({
+        room_id: roomId,
+        target_user_id: userId,
+        action: ban ? 'ban' : 'kick',
+        new_value: banReason ? { reason: banReason } : null,
+        performed_by: performedBy,
+      });
+    } catch {
+      // Ignore logging errors
+    }
 
     return NextResponse.json({ success: true });
   } catch (error) {
