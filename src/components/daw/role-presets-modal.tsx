@@ -32,7 +32,7 @@ export function RolePresetsModal({ onClose }: RolePresetsModalProps) {
     let total = 0;
 
     for (const category of Object.values(permissions)) {
-      const values = Object.values(category as Record<string, boolean>);
+      const values = Object.values(category as unknown as Record<string, boolean>);
       enabled += values.filter((v) => v).length;
       total += values.length;
     }
@@ -130,7 +130,7 @@ export function RolePresetsModal({ onClose }: RolePresetsModalProps) {
               <div className="space-y-3">
                 {(Object.entries(PERMISSION_CATEGORIES) as [keyof RoomPermissions, typeof PERMISSION_CATEGORIES.transport][]).map(
                   ([categoryKey, category]) => {
-                    const categoryPerms = ROLE_PERMISSIONS[selectedRole][categoryKey] as Record<
+                    const categoryPerms = ROLE_PERMISSIONS[selectedRole][categoryKey] as unknown as Record<
                       string,
                       boolean
                     >;
