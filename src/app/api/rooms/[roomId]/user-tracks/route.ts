@@ -128,7 +128,7 @@ export async function POST(
         is_muted: track.isMuted ?? false,
         is_solo: track.isSolo ?? false,
         volume: track.volume ?? 1,
-        is_armed: track.isArmed ?? true,
+        is_armed: track.isArmed ?? false,
         is_recording: track.isRecording ?? false,
         // Note: owner_user_id, owner_user_name, is_active require migration
         // They will be ignored if columns don't exist
@@ -155,7 +155,7 @@ export async function POST(
             is_muted: track.isMuted ?? false,
             is_solo: track.isSolo ?? false,
             volume: track.volume ?? 1,
-            is_armed: track.isArmed ?? true,
+            is_armed: track.isArmed ?? false,
             is_recording: track.isRecording ?? false,
           }, { onConflict: 'id' })
           .select()
