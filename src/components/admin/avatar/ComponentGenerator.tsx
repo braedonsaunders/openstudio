@@ -386,7 +386,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
       {/* Mode Tabs */}
       <div className="flex gap-2">
         <Button
-          variant={mode === 'single' ? 'default' : 'outline'}
+          variant={mode === 'single' ? 'primary' : 'outline'}
           onClick={() => setMode('single')}
           className={mode === 'single' ? 'bg-purple-500 hover:bg-purple-600' : ''}
         >
@@ -394,7 +394,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
           Single Generation
         </Button>
         <Button
-          variant={mode === 'batch' ? 'default' : 'outline'}
+          variant={mode === 'batch' ? 'primary' : 'outline'}
           onClick={() => setMode('batch')}
           className={mode === 'batch' ? 'bg-orange-500 hover:bg-orange-600' : ''}
         >
