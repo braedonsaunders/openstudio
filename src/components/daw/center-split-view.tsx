@@ -16,6 +16,7 @@ interface CenterSplitViewProps {
   onPlay?: () => void;
   onStop?: () => void;
   sessionStartTime?: number;
+  isGlobalMuted?: boolean;
   // Shared split position (synced with left panel)
   splitPosition?: number;
   onSplitPositionChange?: (position: number) => void;
@@ -31,6 +32,7 @@ export function CenterSplitView({
   onPlay,
   onStop,
   sessionStartTime,
+  isGlobalMuted,
   splitPosition: externalSplitPosition,
   onSplitPositionChange,
 }: CenterSplitViewProps) {
@@ -114,6 +116,7 @@ export function CenterSplitView({
           isMaster={isMaster}
           onSeek={onSeek}
           sessionStartTime={sessionStartTime}
+          isGlobalMuted={isGlobalMuted}
         />
       </div>
     </div>

@@ -225,7 +225,7 @@ export function UserTrackHeader({
       className={cn(
         'border-b border-gray-200 dark:border-white/5 transition-all',
         isActive && 'bg-gray-100/50 dark:bg-white/[0.02]',
-        isGlobalMuted && 'opacity-50'
+        (track.isMuted || isGlobalMuted) && 'opacity-50'
       )}
       style={{ '--track-color': track.color } as React.CSSProperties}
     >

@@ -16,6 +16,7 @@ interface LiveArrangementViewProps {
   isMaster: boolean;
   onSeek: (time: number) => void;
   sessionStartTime?: number;
+  isGlobalMuted?: boolean;
 }
 
 // Track color palette for remote users
@@ -34,6 +35,7 @@ export function LiveArrangementView({
   isMaster,
   onSeek,
   sessionStartTime = Date.now(),
+  isGlobalMuted,
 }: LiveArrangementViewProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -127,6 +129,7 @@ export function LiveArrangementView({
                     audioLevel={level}
                     zoom={zoom}
                     historySeconds={HISTORY_SECONDS}
+                    isGlobalMuted={isGlobalMuted}
                   />
                 );
               })}
@@ -147,6 +150,7 @@ export function LiveArrangementView({
                 trackColor={trackColor}
                 zoom={zoom}
                 historySeconds={HISTORY_SECONDS}
+                isGlobalMuted={isGlobalMuted}
               />
             );
           })}
