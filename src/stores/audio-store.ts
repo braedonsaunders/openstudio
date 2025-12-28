@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { persist } from 'zustand/middleware';
 import type { JitterStats, WebRTCStats, RoomSettings, AudioPerformanceMetrics, TrackPerformanceMetrics } from '@/types';
 
 interface AudioState {
@@ -94,7 +95,9 @@ const initialPerformanceMetrics: AudioPerformanceMetrics = {
   lastUpdate: 0,
 };
 
-export const useAudioStore = create<AudioState>((set, get) => ({
+export const useAudioStore = create<AudioState>()(
+  persist(
+    (set, get) => ({
   settings: defaultSettings,
   inputDeviceId: null,
   outputDeviceId: null,
@@ -187,4 +190,14 @@ export const useAudioStore = create<AudioState>((set, get) => ({
       backingTrackAnalyser: null,
       masterAnalyser: null,
     }),
-}));
+}),
+    {
+      name: 'audio-device-settings',
+      // Only persist device IDs - not runtime state
+      partialize: (state) => ({
+        inputDeviceId: state.inputDeviceId,
+        outputDeviceId: state.outputDeviceId,
+      }),
+    }
+  )
+);
