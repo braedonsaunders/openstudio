@@ -406,12 +406,10 @@ export class LyriaSession {
   }
 
   private sendSetup(): void {
+    // Send setup message with just the model name
     this.sendMessage({
       setup: {
         model: 'models/lyria-realtime-exp',
-        generation_config: {
-          response_modalities: ['AUDIO'],
-        },
       },
     });
   }
