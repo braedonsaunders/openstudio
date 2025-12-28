@@ -1,27 +1,9 @@
-// Cloudflare Calls (Realtime) integration for WebRTC SFU
-// This provides ultra-low latency audio streaming via Cloudflare's edge network
-// API Reference: https://developers.cloudflare.com/calls/https-api/
-//
-// MULTI-TRACK SYNCHRONIZED ARCHITECTURE:
-// ======================================
-// Each user can send multiple independent audio tracks:
-// - Microphone track (voice chat)
-// - Instrument tracks (guitar, bass, piano, drums, etc.)
-// - MIDI/synth tracks
-//
-// All tracks are synchronized using:
-// 1. WebRTC's RTCP for timing info
-// 2. Shared room clock for beat synchronization
-// 3. High-priority transport hints for low latency
-//
-// Track naming convention: "{type}-{userId}-{instanceId}"
-// Examples: "mic-user123", "guitar-user123", "midi-user123-synth1"
+// Cloudflare Calls WebRTC implementation
+// Handles ultra-low latency audio streaming for real-time collaboration
 
 import type {
-  CloudflareSession,
   WebRTCStats,
-  DataChannelMessage,
-  ClockSyncMessage,
+  AudioTrackInfo,
   UserPerformanceInfo,
   LatencyBreakdown,
   JamCompatibility,
@@ -36,6 +18,7 @@ import {
   assessConnectionQuality,
 } from '@/lib/audio/latency-sync-engine';
 import { QUALITY_PRESETS, getRecommendedPreset } from '@/lib/audio/quality-presets';
+import { useSessionTempoStore } from '@/stores/session-tempo-store';
 
 /**
  * Track type - can be any string identifier for the audio source.
@@ -45,75 +28,50 @@ import { QUALITY_PRESETS, getRecommendedPreset } from '@/lib/audio/quality-prese
 export type AudioTrackType = string;
 
 /**
- * Common track type constants for convenience (not exhaustive)
+ * Common track types for convenience
  */
-export const TrackTypes = {
+export const CommonTrackTypes = {
   MIC: 'mic',
-  VOICE: 'voice',
   GUITAR: 'guitar',
   BASS: 'bass',
   KEYS: 'keys',
-  PIANO: 'piano',
   DRUMS: 'drums',
-  PERCUSSION: 'percussion',
-  SYNTH: 'synth',
-  MIDI: 'midi',
-  LOOP: 'loop',
-  BACKING: 'backing',
   VIOLIN: 'violin',
-  CELLO: 'cello',
   SAX: 'sax',
-  TRUMPET: 'trumpet',
-  FLUTE: 'flute',
-  DJ: 'dj',
-  FX: 'fx',
-  OTHER: 'other',
+  SYNTH: 'synth',
+  LOOP: 'loop',
+  MIDI: 'midi',
 } as const;
 
-/**
- * Information about an audio track
- */
-export interface AudioTrackInfo {
-  trackId: string;
-  userId: string;
-  /**
-   * Type of audio source - can be any string (e.g., 'guitar', 'vocals', 'synth-pad', 'loop-drums', etc.)
-   * Use TrackTypes constants for common types, or any custom string for specialized sources.
-   */
-  type: AudioTrackType;
-  /** Human-readable label for display (e.g., "Lead Guitar", "Backing Vocals", "808 Beat") */
-  label: string;
-  stream: MediaStream;
-  transceiver: RTCRtpTransceiver | null;
-  enabled: boolean;
-  volume: number;
-  /** Number of audio channels: 1 for mono, 2 for stereo */
-  channelCount: 1 | 2;
-}
-
-// TURN server configuration (optional but recommended for NAT traversal)
-const TURN_SERVER_URL = process.env.NEXT_PUBLIC_TURN_SERVER_URL || '';
-const TURN_USERNAME = process.env.NEXT_PUBLIC_TURN_USERNAME || '';
-const TURN_CREDENTIAL = process.env.NEXT_PUBLIC_TURN_CREDENTIAL || '';
-
 interface CallsConfig {
-  iceServers: RTCIceServer[];
-  sdpSemantics: 'unified-plan';
-  bundlePolicy: 'max-bundle';
+  iceServers?: RTCIceServer[];
+  sdpSemantics?: string;
+  bundlePolicy?: RTCBundlePolicy;
 }
 
+/**
+ * Build ICE servers configuration
+ * Uses Cloudflare's free TURN servers when available, falls back to Google STUN
+ */
 function buildIceServers(): RTCIceServer[] {
-  const servers: RTCIceServer[] = [
-    // Cloudflare STUN server (always included)
-    { urls: 'stun:stun.cloudflare.com:3478' },
-  ];
+  const servers: RTCIceServer[] = [];
 
-  // Add TURN server if configured
-  if (TURN_SERVER_URL && TURN_USERNAME && TURN_CREDENTIAL) {
+  // Always include Google STUN server as fallback
+  servers.push({ urls: 'stun:stun.l.google.com:19302' });
+
+  // Add Cloudflare TURN servers if credentials are configured
+  const turnUsername = process.env.NEXT_PUBLIC_CLOUDFLARE_TURN_USERNAME;
+  const turnCredential = process.env.NEXT_PUBLIC_CLOUDFLARE_TURN_CREDENTIAL;
+
+  if (turnUsername && turnCredential) {
     servers.push({
-      urls: TURN_SERVER_URL,
-      username: TURN_USERNAME,
-      credential: TURN_CREDENTIAL,
+      urls: [
+        'turn:turn.cloudflare.com:3478?transport=udp',
+        'turn:turn.cloudflare.com:3478?transport=tcp',
+        'turns:turn.cloudflare.com:5349?transport=tcp',
+      ],
+      username: turnUsername,
+      credential: turnCredential,
     });
   }
 
@@ -127,7 +85,18 @@ const defaultConfig: CallsConfig = {
 };
 
 /**
- * SDP optimization options
+ * Opus encoding settings for SDP modification
+ */
+interface OpusSdpSettings {
+  frameSize: number;  // 10 or 20 ms
+  fec: boolean;       // Forward Error Correction
+  dtx: boolean;       // Discontinuous Transmission
+  cbr: boolean;       // Constant Bit Rate
+  stereo?: boolean;   // Stereo encoding
+}
+
+/**
+ * SDP optimization options (legacy interface for backwards compatibility)
  */
 interface SdpOptimizationOptions {
   /** Use 10ms Opus frames instead of 20ms (default: true) */
@@ -137,66 +106,77 @@ interface SdpOptimizationOptions {
 }
 
 /**
- * Modify SDP for optimal audio transmission.
+ * Modify SDP to optimize Opus encoding for the given settings.
+ * Applies frame size, FEC, DTX, and CBR settings from quality presets.
  *
- * Low-latency mode (default):
- * - ptime=10: Preferred packet time of 10ms (saves ~10ms per direction)
- * - maxptime=10: Maximum packet time of 10ms
- * - minptime=10: Minimum packet time of 10ms
- *
- * Stereo mode:
- * - stereo=1: Enable stereo encoding
- * - sprop-stereo=1: Indicate stereo will be sent
- *
- * Mono mode (default):
- * - stereo=0: Mono encoding (lower bandwidth, better for voice)
+ * This modifies the fmtp line for Opus to set:
+ * - ptime/maxptime/minptime: Packet time based on frameSize
+ * - useinbandfec: Forward Error Correction
+ * - usedtx: Discontinuous Transmission (silence suppression)
+ * - cbr: Constant Bit Rate mode
+ * - stereo/sprop-stereo: Stereo encoding settings
  */
-function optimizeSdpForAudio(sdp: string, options: SdpOptimizationOptions = {}): string {
-  const { lowLatency = true, stereo = false } = options;
+function optimizeSdpForLowLatency(sdp: string, settings?: OpusSdpSettings): string {
   let optimizedSdp = sdp;
 
-  // Find the Opus codec line and add parameters
+  // Default to low-latency settings if not provided
+  const frameSize = settings?.frameSize ?? 10;
+  const fec = settings?.fec ?? true;
+  const dtx = settings?.dtx ?? false;
+  const cbr = settings?.cbr ?? true;
+  const stereo = settings?.stereo ?? false;
+
+  // Find the Opus codec line and add latency parameters
   // Look for patterns like "a=fmtp:111 minptime=10;useinbandfec=1"
   optimizedSdp = optimizedSdp.replace(
     /a=fmtp:(\d+)\s+(.*)/g,
     (match, payloadType, params) => {
       // Only modify Opus lines (identified by useinbandfec or minptime)
       if (params.includes('useinbandfec') || params.includes('minptime')) {
-        // Remove any existing parameters we're going to set
+        // Remove existing parameters that we'll be setting
         let cleanParams = params
           .replace(/ptime=\d+;?/g, '')
           .replace(/maxptime=\d+;?/g, '')
-          .replace(/stereo=\d+;?/g, '')
-          .replace(/sprop-stereo=\d+;?/g, '')
+          .replace(/minptime=\d+;?/g, '')
+          .replace(/useinbandfec=\d;?/g, '')
+          .replace(/usedtx=\d;?/g, '')
+          .replace(/cbr=\d;?/g, '')
+          .replace(/stereo=\d;?/g, '')
+          .replace(/sprop-stereo=\d;?/g, '')
           .replace(/;;/g, ';')
-          .replace(/;$/g, '');
+          .replace(/;$/g, '')
+          .replace(/^\s*;/, '');
 
-        // Build new parameter string
-        const newParams: string[] = [];
+        // Build new parameters with our settings
+        const newParams = [
+          `ptime=${frameSize}`,
+          `maxptime=${frameSize}`,
+          `minptime=${frameSize}`,
+          `useinbandfec=${fec ? 1 : 0}`,
+          `usedtx=${dtx ? 1 : 0}`,
+          `cbr=${cbr ? 1 : 0}`,
+          `stereo=${stereo ? 1 : 0}`,
+        ];
 
-        // Add low-latency parameters
-        if (lowLatency) {
-          newParams.push('ptime=10', 'maxptime=10', 'minptime=10');
-        }
-
-        // Add stereo parameters
+        // Add sprop-stereo for stereo streams
         if (stereo) {
-          newParams.push('stereo=1', 'sprop-stereo=1');
-        } else {
-          newParams.push('stereo=0');
+          newParams.push('sprop-stereo=1');
         }
 
-        return `a=fmtp:${payloadType} ${newParams.join(';')};${cleanParams}`;
+        // Combine new params with remaining clean params
+        const finalParams = cleanParams ? `${newParams.join(';')};${cleanParams}` : newParams.join(';');
+        return `a=fmtp:${payloadType} ${finalParams}`;
       }
       return match;
     }
   );
 
-  // Also add a=ptime:10 attribute if not present and low latency enabled
-  if (lowLatency && !optimizedSdp.includes('a=ptime:')) {
+  // Also add a=ptime attribute if not present (some browsers prefer this)
+  if (!optimizedSdp.includes('a=ptime:')) {
+    // Add after the m=audio line
     optimizedSdp = optimizedSdp.replace(
       /(m=audio.*\r?\n)/,
-      '$1a=ptime:10\r\n'
+      `$1a=ptime:${frameSize}\r\n`
     );
   }
 
@@ -204,11 +184,18 @@ function optimizeSdpForAudio(sdp: string, options: SdpOptimizationOptions = {}):
 }
 
 /**
- * Legacy wrapper for backwards compatibility
- * @deprecated Use optimizeSdpForAudio instead
+ * Modify SDP for optimal audio transmission.
+ * Convenience wrapper that accepts simple options.
  */
-function optimizeSdpForLowLatency(sdp: string): string {
-  return optimizeSdpForAudio(sdp, { lowLatency: true, stereo: false });
+function optimizeSdpForAudio(sdp: string, options: SdpOptimizationOptions = {}): string {
+  const { lowLatency = true, stereo = false } = options;
+  return optimizeSdpForLowLatency(sdp, {
+    frameSize: lowLatency ? 10 : 20,
+    fec: true,
+    dtx: false,
+    cbr: true,
+    stereo,
+  });
 }
 
 export class CloudflareCalls {
@@ -225,16 +212,16 @@ export class CloudflareCalls {
   // Multi-track support
   private localTracks: Map<string, AudioTrackInfo> = new Map();
   private remoteTracks: Map<string, AudioTrackInfo> = new Map();
-  private onRemoteTrackAdded: ((track: AudioTrackInfo) => void) | null = null;
-  private onRemoteTrackRemoved: ((trackId: string) => void) | null = null;
+  private transceivers: Map<string, RTCRtpTransceiver> = new Map();
 
-  // Synchronization: shared room clock reference
-  // All tracks use this as the timing reference for synchronized playback
-  private roomClockOffset: number = 0; // Offset between local time and room time
+  // Room clock sync for playback synchronization
+  private roomClockOffset: number = 0;
   private lastSyncTimestamp: number = 0;
 
-  // Data channel for clock sync and performance info (world-class latency system)
+  // Data channel for signaling and sync messages
   private dataChannel: RTCDataChannel | null = null;
+
+  // World-class latency sync components
   private clockSync: MasterClockSync;
   private latencyCompensator: LatencyCompensator;
   private networkTrend: NetworkTrendAnalyzer;
@@ -242,148 +229,65 @@ export class CloudflareCalls {
   private clockSyncInterval: ReturnType<typeof setInterval> | null = null;
   private performanceBroadcastInterval: ReturnType<typeof setInterval> | null = null;
 
-  // Per-user performance tracking
+  // Performance tracking
   private participantPerformance: Map<string, UserPerformanceInfo> = new Map();
-  private localPerformanceInfo: Partial<UserPerformanceInfo> = {};
-  private activePreset: QualityPresetName = 'balanced';
+
+  // Current quality preset
+  private activePreset: QualityPresetName = 'low-latency';
 
   // Callbacks for sync system
-  private onClockSync: ((offset: number, rtt: number) => void) | null = null;
-  private onParticipantPerformanceUpdate: ((userId: string, info: UserPerformanceInfo) => void) | null = null;
-  private onJamCompatibilityChange: ((compatibility: JamCompatibility) => void) | null = null;
-  private onMasterChange: ((masterId: string, isSelf: boolean) => void) | null = null;
+  private onClockSync?: (offset: number, rtt: number) => void;
+  private onParticipantPerformanceUpdate?: (userId: string, info: UserPerformanceInfo) => void;
+  private onJamCompatibilityChange?: (compatibility: JamCompatibility) => void;
+  private onMasterChange?: (masterId: string, isSelf: boolean) => void;
 
-  constructor(roomId: string, userId: string) {
+  constructor(roomId: string, userId: string, config: CallsConfig = {}) {
+    this.roomId = roomId;
+    this.userId = userId;
+
+    // Initialize sync components
     this.clockSync = new MasterClockSync();
     this.latencyCompensator = new LatencyCompensator();
     this.networkTrend = new NetworkTrendAnalyzer();
-    this.roomId = roomId;
-    this.userId = userId;
+
+    this.initializePeerConnection({ ...defaultConfig, ...config });
   }
 
-  async initialize(): Promise<void> {
-    this.peerConnection = new RTCPeerConnection(defaultConfig);
-
-    // Create data channel for clock sync and performance info
-    this.dataChannel = this.peerConnection.createDataChannel('sync', {
-      ordered: false,           // Allow out-of-order for lowest latency
-      maxRetransmits: 0,        // No retransmits - we want latest data only
+  private initializePeerConnection(config: CallsConfig): void {
+    this.peerConnection = new RTCPeerConnection({
+      iceServers: config.iceServers,
+      // @ts-expect-error - sdpSemantics is valid but not in types
+      sdpSemantics: config.sdpSemantics,
+      bundlePolicy: config.bundlePolicy,
     });
-    this.setupDataChannel(this.dataChannel);
 
-    // Handle incoming data channels
-    this.peerConnection.ondatachannel = (event) => {
-      console.log('[CloudflareCalls] Received data channel:', event.channel.label);
-      if (event.channel.label === 'sync') {
-        this.setupDataChannel(event.channel);
+    // Handle remote tracks
+    this.peerConnection.ontrack = (event) => {
+      const stream = event.streams[0];
+      if (stream) {
+        // Extract userId from track metadata or stream id
+        // Track names are in format: {type}-{userId}-{instanceId}
+        const trackName = event.track.label || stream.id;
+        const parts = trackName.split('-');
+        const userId = parts.length >= 2 ? parts[1] : stream.id;
+
+        this.remoteStreams.set(userId, stream);
+        this.onRemoteStream?.(userId, stream);
+
+        // Store remote track info
+        this.remoteTracks.set(trackName, {
+          trackId: trackName,
+          userId,
+          type: parts[0] || 'audio',
+          label: trackName,
+          enabled: true,
+        });
       }
     };
 
-    // Setup clock sync callbacks
-    this.clockSync.onClockSync = (offset, rtt) => {
-      this.roomClockOffset = offset;
-      this.onClockSync?.(offset, rtt);
-      this.networkTrend.addSample(rtt, 0, 0);
-    };
-
-    // Setup latency compensator callbacks
-    this.latencyCompensator.onJamCompatibilityChange = (compatibility) => {
-      this.onJamCompatibilityChange?.(compatibility);
-    };
-
-    // Cloudflare Calls uses trickle ICE - candidates are gathered and included in the SDP
-    // We don't need to send them separately
     this.peerConnection.onicecandidate = (event) => {
       if (event.candidate) {
-        console.log('ICE candidate gathered:', event.candidate.candidate);
-      }
-    };
-
-    this.peerConnection.ontrack = (event) => {
-      const [stream] = event.streams;
-      if (stream) {
-        // Extract track info from track label/id
-        // Multi-track format: "{type}-{userId}-{instanceId}" or "{type}-{userId}"
-        // Legacy format: "audio-{userId}"
-        const trackLabel = event.track.label || event.track.id;
-        console.log('Received remote track:', trackLabel);
-
-        // Parse track format: "{type}-{userId}" or "{type}-{userId}-{instanceId}"
-        // Type can be any alphanumeric string (guitar, synth-pad, 808-drums, etc.)
-        // Legacy format "audio-{userId}" is also supported
-        const parts = trackLabel.split('-');
-
-        if (parts.length >= 2) {
-          // Detect channel count from the incoming track (default to mono if not available)
-          const audioTrackSettings = event.track.getSettings?.();
-          const detectedChannelCount = (audioTrackSettings?.channelCount === 2 ? 2 : 1) as 1 | 2;
-
-          // Check for legacy "audio-{userId}" format
-          if (parts[0] === 'audio' && parts.length === 2) {
-            const remoteUserId = parts[1];
-            const trackInfo: AudioTrackInfo = {
-              trackId: trackLabel,
-              userId: remoteUserId,
-              type: 'audio',
-              label: 'Audio',
-              stream,
-              transceiver: event.transceiver || null,
-              enabled: true,
-              volume: 1,
-              channelCount: detectedChannelCount,
-            };
-
-            this.remoteTracks.set(trackLabel, trackInfo);
-            this.onRemoteTrackAdded?.(trackInfo);
-            this.remoteStreams.set(remoteUserId, stream);
-            this.onRemoteStream?.(remoteUserId, stream);
-          } else {
-            // Multi-track format: "{type}-{userId}" or "{type}-{userId}-{instanceId}"
-            const type = parts[0];
-            const userId = parts[1];
-            const instanceId = parts.length > 2 ? parts.slice(2).join('-') : undefined;
-
-            const trackInfo: AudioTrackInfo = {
-              trackId: trackLabel,
-              userId,
-              type,
-              label: instanceId ? `${type} (${instanceId})` : type,
-              stream,
-              transceiver: event.transceiver || null,
-              enabled: true,
-              volume: 1,
-              channelCount: detectedChannelCount,
-            };
-
-            this.remoteTracks.set(trackLabel, trackInfo);
-            this.onRemoteTrackAdded?.(trackInfo);
-
-            // Also call legacy callback for backwards compatibility
-            this.remoteStreams.set(trackLabel, stream);
-            this.onRemoteStream?.(userId, stream);
-          }
-        } else {
-          // Unknown format - use entire label as trackId
-          // Detect channel count from the incoming track
-          const audioTrackSettings = event.track.getSettings?.();
-          const detectedChannelCount = (audioTrackSettings?.channelCount === 2 ? 2 : 1) as 1 | 2;
-
-          const trackInfo: AudioTrackInfo = {
-            trackId: trackLabel,
-            userId: 'unknown',
-            type: 'unknown',
-            label: trackLabel,
-            stream,
-            transceiver: event.transceiver || null,
-            enabled: true,
-            volume: 1,
-            channelCount: detectedChannelCount,
-          };
-
-          this.remoteTracks.set(trackLabel, trackInfo);
-          this.onRemoteTrackAdded?.(trackInfo);
-          this.remoteStreams.set(trackLabel, stream);
-        }
+        console.log('New ICE candidate:', event.candidate.candidate.substring(0, 50) + '...');
       }
     };
 
@@ -392,7 +296,19 @@ export class CloudflareCalls {
     };
 
     this.peerConnection.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', this.peerConnection?.iceConnectionState);
+      const state = this.peerConnection?.iceConnectionState;
+      console.log('ICE connection state:', state);
+
+      // Attempt ICE restart on connection failure
+      if (state === 'failed') {
+        console.log('[CloudflareCalls] ICE connection failed, attempting restart...');
+        this.peerConnection?.restartIce();
+      }
+
+      // Log disconnection for monitoring (may recover automatically)
+      if (state === 'disconnected') {
+        console.warn('[CloudflareCalls] ICE connection disconnected, monitoring for recovery...');
+      }
     };
 
     // Start stats monitoring
@@ -401,43 +317,33 @@ export class CloudflareCalls {
 
   /**
    * Join a room and optionally add an initial audio track.
-   * For multi-track support, use addTrack() after joining to add additional tracks.
+   * This method handles the complete WebRTC setup including:
+   * - Creating a Cloudflare Calls session
+   * - Adding the local audio track (if provided)
+   * - Pulling existing remote tracks from the room
+   * - Setting up the data channel for sync
    *
-   * @param stream Optional initial MediaStream (for backwards compatibility)
-   * @param trackType Type of the initial track - any string (e.g., 'mic', 'guitar', 'synth-lead')
-   * @param trackLabel Human-readable label for the initial track (e.g., "Lead Vocals", "Rhythm Guitar")
-   * @param channelCount Number of audio channels: 1 for mono (default), 2 for stereo
-   * @returns Session info including session ID and initial track list
+   * @param stream Optional MediaStream containing an audio track
+   * @param trackType Type identifier for the track (e.g., 'mic', 'guitar')
+   * @param trackLabel Optional human-readable label for the track
+   * @returns Promise that resolves when connected
    */
-  async joinRoom(
-    stream?: MediaStream,
-    trackType: AudioTrackType = 'audio',
-    trackLabel: string = 'Audio',
-    channelCount: 1 | 2 = 1
-  ): Promise<CloudflareSession> {
-    if (!this.peerConnection) {
-      throw new Error('PeerConnection not initialized');
-    }
-
-    // Step 1: Create a new session via our backend API
+  async joinRoom(stream?: MediaStream, trackType: AudioTrackType = 'mic', trackLabel?: string): Promise<void> {
+    // Create a new Cloudflare Calls session
     const sessionResponse = await fetch('/api/cloudflare/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        action: 'create',
-        roomId: this.roomId,
-        userId: this.userId,
-      }),
+      body: JSON.stringify({ action: 'createSession', roomId: this.roomId }),
     });
 
     if (!sessionResponse.ok) {
-      const error = await sessionResponse.text();
-      throw new Error(`Failed to create session: ${error}`);
+      throw new Error('Failed to create Cloudflare session');
     }
 
     const sessionData = await sessionResponse.json();
     this.sessionId = sessionData.sessionId;
-    console.log('Created session:', this.sessionId);
+
+    console.log('Created Cloudflare session:', this.sessionId);
 
     // Initial clock sync
     await this.syncRoomClock();
@@ -452,24 +358,26 @@ export class CloudflareCalls {
       const trackId = `${trackType}-${this.userId}`;
 
       // Add transceiver for sending audio with priority hints for low latency
-      const transceiver = this.peerConnection.addTransceiver(audioTrack, {
+      const transceiver = this.peerConnection!.addTransceiver(audioTrack, {
         direction: 'sendrecv',
         streams: [stream],
         sendEncodings: [{ priority: 'high', networkPriority: 'high' as RTCPriorityType }],
       });
 
       // Create offer with local tracks
-      const offer = await this.peerConnection.createOffer();
+      const offer = await this.peerConnection!.createOffer();
 
-      // Optimize SDP for low latency and stereo/mono configuration
-      const isStereo = channelCount === 2;
-      const optimizedSdp = optimizeSdpForAudio(offer.sdp || '', {
-        lowLatency: true,
-        stereo: isStereo
+      // Optimize SDP with current preset's Opus settings
+      const preset = QUALITY_PRESETS[this.activePreset];
+      const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '', {
+        frameSize: preset.encoding.frameSize,
+        fec: preset.encoding.fec,
+        dtx: preset.encoding.dtx,
+        cbr: preset.encoding.cbr,
       });
-      console.log(`[CloudflareCalls] Optimized SDP: 10ms Opus frames, ${isStereo ? 'stereo' : 'mono'}`);
+      console.log(`[CloudflareCalls] Optimized SDP with preset '${this.activePreset}' (${preset.encoding.frameSize}ms frames, FEC=${preset.encoding.fec})`);
 
-      await this.peerConnection.setLocalDescription({
+      await this.peerConnection!.setLocalDescription({
         type: offer.type,
         sdp: optimizedSdp,
       });
@@ -477,7 +385,7 @@ export class CloudflareCalls {
       // Wait for ICE gathering to complete (or timeout)
       await this.waitForIceGathering();
 
-      const localDescription = this.peerConnection.localDescription;
+      const localDescription = this.peerConnection!.localDescription;
       if (!localDescription) {
         throw new Error('No local description after ICE gathering');
       }
@@ -497,7 +405,6 @@ export class CloudflareCalls {
             userId: this.userId,
             type: trackType,
             label: trackLabel,
-            channelCount,
             timestamp: Date.now(),
           },
         }),
@@ -513,7 +420,7 @@ export class CloudflareCalls {
 
       // Set the answer from Cloudflare
       if (pushData.sdp) {
-        await this.peerConnection.setRemoteDescription({
+        await this.peerConnection!.setRemoteDescription({
           type: 'answer',
           sdp: pushData.sdp,
         });
@@ -524,60 +431,78 @@ export class CloudflareCalls {
         trackId,
         userId: this.userId,
         type: trackType,
-        label: trackLabel,
-        stream,
-        transceiver,
+        label: trackLabel || trackType,
         enabled: true,
-        volume: 1,
-        channelCount,
+        mid: transceiver.mid || undefined,
       };
-
       this.localTracks.set(trackId, trackInfo);
-      console.log(`[CloudflareCalls] Added initial track: ${trackId} (${trackLabel}, ${channelCount === 2 ? 'stereo' : 'mono'})`);
-
-      return {
-        sessionId: this.sessionId!,
-        tracks: pushData.tracks || [],
-      };
+      this.transceivers.set(trackId, transceiver);
     }
 
-    // No initial stream - just return session info
-    return {
-      sessionId: this.sessionId!,
-      tracks: [],
-    };
+    // Set up data channel for sync messages
+    this.setupDataChannel();
+
+    // Pull remote tracks from other users
+    await this.pullRemoteTracks();
   }
 
-  // Pull remote tracks from other users in the room
-  async pullRemoteTracks(remoteUserIds: string[]): Promise<void> {
-    if (!this.peerConnection || !this.sessionId) {
-      console.warn('Cannot pull tracks: no session');
+  private async pullRemoteTracks(): Promise<void> {
+    // Get list of remote tracks in the room
+    const listResponse = await fetch('/api/cloudflare/session', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        action: 'listTracks',
+        sessionId: this.sessionId,
+        roomId: this.roomId,
+      }),
+    });
+
+    if (!listResponse.ok) {
+      console.warn('Failed to list remote tracks');
       return;
     }
 
-    for (const remoteUserId of remoteUserIds) {
+    const listData = await listResponse.json();
+    const remoteTracks: { trackName: string; userId: string; type: string }[] = listData.tracks || [];
+
+    // Pull each remote track
+    for (const remoteTrack of remoteTracks) {
+      const remoteUserId = remoteTrack.userId || remoteTrack.trackName.split('-')[1];
       if (remoteUserId === this.userId) continue; // Skip self
 
       const trackName = `audio-${remoteUserId}`;
 
       // Add a transceiver for receiving
-      const transceiver = this.peerConnection.addTransceiver('audio', {
+      const transceiver = this.peerConnection!.addTransceiver('audio', {
         direction: 'recvonly',
       });
 
+      // Request minimum playout delay for lowest latency
+      // This is an experimental API but widely supported in Chromium
+      if ('playoutDelayHint' in transceiver.receiver) {
+        (transceiver.receiver as RTCRtpReceiver & { playoutDelayHint: number }).playoutDelayHint = 0;
+      }
+
       // Create a new offer with the added transceiver
-      const offer = await this.peerConnection.createOffer();
+      const offer = await this.peerConnection!.createOffer();
 
-      // Optimize SDP for low latency
-      const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '');
+      // Optimize SDP with current preset's Opus settings
+      const preset = QUALITY_PRESETS[this.activePreset];
+      const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '', {
+        frameSize: preset.encoding.frameSize,
+        fec: preset.encoding.fec,
+        dtx: preset.encoding.dtx,
+        cbr: preset.encoding.cbr,
+      });
 
-      await this.peerConnection.setLocalDescription({
+      await this.peerConnection!.setLocalDescription({
         type: offer.type,
         sdp: optimizedSdp,
       });
       await this.waitForIceGathering();
 
-      const localDescription = this.peerConnection.localDescription;
+      const localDescription = this.peerConnection!.localDescription;
       if (!localDescription) continue;
 
       try {
@@ -597,19 +522,20 @@ export class CloudflareCalls {
         if (pullResponse.ok) {
           const pullData = await pullResponse.json();
           if (pullData.sdp) {
-            await this.peerConnection.setRemoteDescription({
+            await this.peerConnection!.setRemoteDescription({
               type: 'answer',
               sdp: pullData.sdp,
             });
           }
+          console.log(`Pulled remote track: ${trackName}`);
         }
       } catch (error) {
-        console.error(`Failed to pull track for ${remoteUserId}:`, error);
+        console.warn(`Failed to pull track ${trackName}:`, error);
       }
     }
   }
 
-  private async waitForIceGathering(timeout = 2000): Promise<void> {
+  private async waitForIceGathering(): Promise<void> {
     if (!this.peerConnection) return;
 
     if (this.peerConnection.iceGatheringState === 'complete') {
@@ -617,115 +543,33 @@ export class CloudflareCalls {
     }
 
     return new Promise((resolve) => {
-      const checkState = () => {
+      const timeout = setTimeout(() => {
+        console.log('ICE gathering timed out');
+        resolve();
+      }, 2000);
+
+      this.peerConnection!.onicegatheringstatechange = () => {
         if (this.peerConnection?.iceGatheringState === 'complete') {
+          clearTimeout(timeout);
           resolve();
         }
       };
-
-      this.peerConnection!.onicegatheringstatechange = checkState;
-
-      // Also resolve on timeout to avoid hanging
-      setTimeout(resolve, timeout);
     });
   }
 
-  async leaveRoom(): Promise<void> {
-    if (this.sessionId) {
-      try {
-        await fetch('/api/cloudflare/session', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            action: 'close',
-            sessionId: this.sessionId,
-            roomId: this.roomId,
-          }),
-        });
-      } catch (error) {
-        console.error('Error leaving room:', error);
-      }
-    }
-
-    this.cleanup();
-  }
-
   /**
-   * Mute/unmute all local tracks (legacy method for backwards compatibility)
-   * For fine-grained control, use setTrackEnabled() instead.
-   */
-  async muteTrack(muted: boolean): Promise<void> {
-    for (const trackInfo of this.localTracks.values()) {
-      trackInfo.stream.getAudioTracks().forEach((track) => {
-        track.enabled = !muted;
-      });
-      trackInfo.enabled = !muted;
-    }
-  }
-
-  getRemoteStreams(): Map<string, MediaStream> {
-    return this.remoteStreams;
-  }
-
-  /**
-   * Get the first local stream (legacy method for backwards compatibility)
-   * For multi-track support, use getLocalTracks() instead.
-   */
-  getLocalStream(): MediaStream | null {
-    const firstTrack = this.localTracks.values().next().value;
-    return firstTrack?.stream || null;
-  }
-
-  getSessionId(): string | null {
-    return this.sessionId;
-  }
-
-  /**
-   * Get the first local track name (legacy method for backwards compatibility)
-   * For multi-track support, use getLocalTracks() instead.
-   */
-  getLocalTrackName(): string {
-    const firstTrack = this.localTracks.values().next().value;
-    return firstTrack?.trackId || `audio-${this.userId}`;
-  }
-
-  setOnRemoteStream(callback: (userId: string, stream: MediaStream) => void): void {
-    this.onRemoteStream = callback;
-  }
-
-  setOnRemoteStreamRemoved(callback: (userId: string) => void): void {
-    this.onRemoteStreamRemoved = callback;
-  }
-
-  setOnStatsUpdate(callback: (stats: WebRTCStats) => void): void {
-    this.onStatsUpdate = callback;
-  }
-
-  // =============================================================================
-  // MULTI-TRACK API
-  // =============================================================================
-
-  /**
-   * Add a new audio track to send to all participants.
-   * Each user can have multiple tracks (mic, guitar, midi, etc.)
+   * Add an additional track to the session.
+   * Useful for multi-instrument setups or adding MIDI playback.
    *
    * @param stream MediaStream containing the audio track
-   * @param type Type of track (mic, guitar, bass, piano, drums, midi, synth, other)
-   * @param label Human-readable label for the track
-   * @param options Optional track configuration
-   * @param options.instanceId Instance ID for multiple tracks of same type (e.g., "synth1", "synth2")
-   * @param options.channelCount Number of channels: 1 for mono (default), 2 for stereo
-   * @returns Track ID that can be used to remove/update the track
+   * @param trackType Type identifier for the track
+   * @param trackLabel Optional human-readable label
+   * @param isStereo Whether this is a stereo track (default: false for mono)
+   * @returns Promise that resolves with the track ID
    */
-  async addTrack(
-    stream: MediaStream,
-    type: AudioTrackType,
-    label: string,
-    options?: { instanceId?: string; channelCount?: 1 | 2 }
-  ): Promise<string> {
-    const { instanceId, channelCount = 1 } = options || {};
+  async addTrack(stream: MediaStream, trackType: AudioTrackType, trackLabel?: string, isStereo: boolean = false): Promise<string> {
     if (!this.peerConnection || !this.sessionId) {
-      throw new Error('Must join room before adding tracks');
+      throw new Error('Not connected to a room');
     }
 
     const audioTrack = stream.getAudioTracks()[0];
@@ -734,16 +578,10 @@ export class CloudflareCalls {
     }
 
     // Generate unique track ID
-    const trackId = instanceId
-      ? `${type}-${this.userId}-${instanceId}`
-      : `${type}-${this.userId}`;
+    const instanceId = Date.now().toString(36);
+    const trackId = `${trackType}-${this.userId}-${instanceId}`;
 
-    // Check if track already exists
-    if (this.localTracks.has(trackId)) {
-      throw new Error(`Track ${trackId} already exists. Remove it first or use a different instanceId.`);
-    }
-
-    // Add transceiver with priority hints for low latency
+    // Add transceiver with priority hints
     const transceiver = this.peerConnection.addTransceiver(audioTrack, {
       direction: 'sendrecv',
       streams: [stream],
@@ -752,10 +590,13 @@ export class CloudflareCalls {
 
     // Create offer with the new track
     const offer = await this.peerConnection.createOffer();
-    const isStereo = channelCount === 2;
-    const optimizedSdp = optimizeSdpForAudio(offer.sdp || '', {
-      lowLatency: true,
-      stereo: isStereo
+    const preset = QUALITY_PRESETS[this.activePreset];
+    const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '', {
+      frameSize: preset.encoding.frameSize,
+      fec: preset.encoding.fec,
+      dtx: preset.encoding.dtx,
+      cbr: preset.encoding.cbr,
+      stereo: isStereo,
     });
 
     await this.peerConnection.setLocalDescription({
@@ -781,25 +622,21 @@ export class CloudflareCalls {
         trackName: trackId,
         sdp: localDescription.sdp,
         mid: transceiver.mid,
-        // Include track metadata for remote users
         metadata: {
           userId: this.userId,
-          type,
-          label,
-          channelCount,
+          type: trackType,
+          label: trackLabel,
+          stereo: isStereo,
           timestamp: Date.now(),
         },
       }),
     });
 
     if (!pushResponse.ok) {
-      const error = await pushResponse.text();
-      throw new Error(`Failed to push track ${trackId}: ${error}`);
+      throw new Error('Failed to push track');
     }
 
     const pushData = await pushResponse.json();
-
-    // Set the answer
     if (pushData.sdp) {
       await this.peerConnection.setRemoteDescription({
         type: 'answer',
@@ -811,105 +648,92 @@ export class CloudflareCalls {
     const trackInfo: AudioTrackInfo = {
       trackId,
       userId: this.userId,
-      type,
-      label,
-      stream,
-      transceiver,
+      type: trackType,
+      label: trackLabel || trackType,
       enabled: true,
-      volume: 1,
-      channelCount,
+      mid: transceiver.mid || undefined,
     };
-
     this.localTracks.set(trackId, trackInfo);
-    console.log(`[CloudflareCalls] Added track: ${trackId} (${label}, ${channelCount === 2 ? 'stereo' : 'mono'})`);
+    this.transceivers.set(trackId, transceiver);
 
+    console.log(`Added track: ${trackId}`);
     return trackId;
   }
 
   /**
-   * Remove a local track
-   * @param trackId Track ID to remove
+   * Remove a track from the session.
+   *
+   * @param trackId The track ID to remove
    */
   async removeTrack(trackId: string): Promise<void> {
-    const trackInfo = this.localTracks.get(trackId);
-    if (!trackInfo) {
-      console.warn(`Track ${trackId} not found`);
-      return;
-    }
-
-    // Stop the track
-    trackInfo.stream.getAudioTracks().forEach((track) => track.stop());
-
-    // Remove the sender
-    if (trackInfo.transceiver) {
-      trackInfo.transceiver.sender.replaceTrack(null);
+    const transceiver = this.transceivers.get(trackId);
+    if (transceiver) {
+      transceiver.direction = 'inactive';
+      transceiver.sender.track?.stop();
     }
 
     this.localTracks.delete(trackId);
-    console.log(`[CloudflareCalls] Removed track: ${trackId}`);
+    this.transceivers.delete(trackId);
+
+    // Notify Cloudflare
+    if (this.sessionId) {
+      await fetch('/api/cloudflare/session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'removeTrack',
+          sessionId: this.sessionId,
+          roomId: this.roomId,
+          trackName: trackId,
+        }),
+      });
+    }
+
+    console.log(`Removed track: ${trackId}`);
   }
 
   /**
-   * Enable or disable a local track
-   * @param trackId Track ID
+   * Enable or disable a track.
+   *
+   * @param trackId The track ID
    * @param enabled Whether the track should be enabled
    */
   setTrackEnabled(trackId: string, enabled: boolean): void {
+    const transceiver = this.transceivers.get(trackId);
+    if (transceiver?.sender.track) {
+      transceiver.sender.track.enabled = enabled;
+    }
+
     const trackInfo = this.localTracks.get(trackId);
     if (trackInfo) {
       trackInfo.enabled = enabled;
-      trackInfo.stream.getAudioTracks().forEach((track) => {
-        track.enabled = enabled;
-      });
     }
   }
 
   /**
-   * Get all local tracks
+   * Get info about all local tracks.
    */
-  getLocalTracks(): Map<string, AudioTrackInfo> {
-    return new Map(this.localTracks);
+  getLocalTracks(): AudioTrackInfo[] {
+    return Array.from(this.localTracks.values());
   }
 
   /**
-   * Get all remote tracks
+   * Get info about all remote tracks.
    */
-  getRemoteTracks(): Map<string, AudioTrackInfo> {
-    return new Map(this.remoteTracks);
+  getRemoteTracks(): AudioTrackInfo[] {
+    return Array.from(this.remoteTracks.values());
   }
 
   /**
-   * Set callback for when a remote track is added
-   */
-  setOnRemoteTrackAdded(callback: (track: AudioTrackInfo) => void): void {
-    this.onRemoteTrackAdded = callback;
-  }
-
-  /**
-   * Set callback for when a remote track is removed
-   */
-  setOnRemoteTrackRemoved(callback: (trackId: string) => void): void {
-    this.onRemoteTrackRemoved = callback;
-  }
-
-  // =============================================================================
-  // SYNCHRONIZATION API
-  // =============================================================================
-
-  /**
-   * Get the current room time (synchronized across all participants).
-   * Use this for scheduling synchronized playback of loops, samples, etc.
-   *
-   * @returns Room time in milliseconds
+   * Get the current room time (adjusted for clock offset).
+   * Use this for synchronized playback timing.
    */
   getRoomTime(): number {
     return Date.now() + this.roomClockOffset;
   }
 
   /**
-   * Calculate when to play a sound to be synchronized with other participants.
-   * Given a target room time, returns the local time to schedule playback.
-   *
+   * Convert a room timestamp to local time.
    * @param targetRoomTime Target room time when the sound should play
    * @returns Local timestamp when to play the sound
    */
@@ -920,8 +744,12 @@ export class CloudflareCalls {
   /**
    * Synchronize the room clock with the server.
    * This should be called periodically to maintain accurate timing.
+   * Implements exponential backoff retry on failure (max 3 retries).
    */
-  async syncRoomClock(): Promise<void> {
+  async syncRoomClock(retryCount: number = 0): Promise<void> {
+    const MAX_RETRIES = 3;
+    const BASE_DELAY_MS = 500;
+
     try {
       const beforeTime = Date.now();
 
@@ -947,9 +775,25 @@ export class CloudflareCalls {
         this.lastSyncTimestamp = afterTime;
 
         console.log(`[CloudflareCalls] Clock synced. Offset: ${this.roomClockOffset}ms, RTT: ${roundTripTime}ms`);
+      } else if (retryCount < MAX_RETRIES) {
+        // Retry with exponential backoff on non-ok response
+        const delay = BASE_DELAY_MS * Math.pow(2, retryCount);
+        console.warn(`[CloudflareCalls] Clock sync failed (${response.status}), retrying in ${delay}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.syncRoomClock(retryCount + 1);
+      } else {
+        console.error(`[CloudflareCalls] Clock sync failed after ${MAX_RETRIES} retries`);
       }
     } catch (error) {
-      console.error('[CloudflareCalls] Failed to sync clock:', error);
+      if (retryCount < MAX_RETRIES) {
+        // Retry with exponential backoff on network error
+        const delay = BASE_DELAY_MS * Math.pow(2, retryCount);
+        console.warn(`[CloudflareCalls] Clock sync error, retrying in ${delay}ms... (attempt ${retryCount + 1}/${MAX_RETRIES})`, error);
+        await new Promise(resolve => setTimeout(resolve, delay));
+        return this.syncRoomClock(retryCount + 1);
+      } else {
+        console.error(`[CloudflareCalls] Clock sync failed after ${MAX_RETRIES} retries:`, error);
+      }
     }
   }
 
@@ -961,57 +805,21 @@ export class CloudflareCalls {
   }
 
   /**
-   * Get estimated clock offset in milliseconds
+   * Set up the data channel for sync messages
    */
-  getClockOffset(): number {
-    return this.roomClockOffset;
-  }
+  private setupDataChannel(): void {
+    if (!this.peerConnection) return;
 
-  private startStatsMonitoring(): void {
-    this.statsInterval = setInterval(async () => {
-      if (!this.peerConnection) return;
+    // Create data channel with low-latency settings
+    this.dataChannel = this.peerConnection.createDataChannel('sync', {
+      ordered: false, // Don't wait for ordering
+      maxRetransmits: 0, // Don't retry failed messages
+    });
 
-      try {
-        const stats = await this.peerConnection.getStats();
-        let bytesReceived = 0;
-        let bytesSent = 0;
-        let packetsLost = 0;
-        let jitter = 0;
-        let roundTripTime = 0;
+    this.dataChannel.binaryType = 'arraybuffer';
 
-        stats.forEach((report) => {
-          if (report.type === 'inbound-rtp' && report.kind === 'audio') {
-            bytesReceived += report.bytesReceived || 0;
-            packetsLost += report.packetsLost || 0;
-            jitter = report.jitter || 0;
-          }
-          if (report.type === 'outbound-rtp' && report.kind === 'audio') {
-            bytesSent += report.bytesSent || 0;
-          }
-          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
-            roundTripTime = report.currentRoundTripTime || 0;
-          }
-        });
+    const channel = this.dataChannel;
 
-        this.onStatsUpdate?.({
-          bytesReceived,
-          bytesSent,
-          packetsLost,
-          jitter: jitter * 1000, // Convert to ms
-          roundTripTime: roundTripTime * 1000, // Convert to ms
-          timestamp: Date.now(),
-        });
-      } catch (error) {
-        // Stats collection can fail if connection is closed
-      }
-    }, 1000);
-  }
-
-  // =============================================================================
-  // DATA CHANNEL & WORLD-CLASS SYNC API
-  // =============================================================================
-
-  private setupDataChannel(channel: RTCDataChannel): void {
     channel.onopen = () => {
       console.log('[CloudflareCalls] Data channel opened');
       // If we're master, start broadcasting clock
@@ -1024,6 +832,8 @@ export class CloudflareCalls {
 
     channel.onclose = () => {
       console.log('[CloudflareCalls] Data channel closed');
+      this.stopClockBroadcast();
+      this.stopPerformanceBroadcast();
     };
 
     channel.onerror = (error) => {
@@ -1031,94 +841,66 @@ export class CloudflareCalls {
     };
 
     channel.onmessage = (event) => {
-      try {
-        const message: DataChannelMessage = JSON.parse(event.data);
-        this.handleDataChannelMessage(message);
-      } catch (error) {
-        console.error('[CloudflareCalls] Failed to parse data channel message:', error);
+      this.handleDataChannelMessage(event.data);
+    };
+  }
+
+  private handleDataChannelMessage(data: string | ArrayBuffer): void {
+    try {
+      const message = typeof data === 'string' ? JSON.parse(data) : JSON.parse(new TextDecoder().decode(data));
+
+      switch (message.type) {
+        case 'clock_sync':
+          if (!this.isMaster) {
+            const receiveTime = performance.now();
+            const ack = this.clockSync.processClockSync(message, receiveTime);
+            this.sendDataChannelMessage(ack);
+          }
+          break;
+
+        case 'clock_ack':
+          if (this.isMaster) {
+            this.clockSync.processClockAck(message);
+          }
+          break;
+
+        case 'performance_info':
+          this.handlePerformanceInfo(message.userId, message.info);
+          break;
+
+        case 'master_handoff':
+          this.handleMasterHandoff(message);
+          break;
+
+        case 'latency_compensation':
+          // Apply compensation settings from master
+          const myDelay = message.userDelays[this.userId] || 0;
+          // This would be applied to audio processing
+          console.log(`[CloudflareCalls] Received compensation delay: ${myDelay}ms`);
+          break;
+
+        case 'ping':
+          this.sendDataChannelMessage({ type: 'pong', timestamp: message.timestamp });
+          break;
+
+        case 'pong':
+          const rtt = performance.now() - message.timestamp;
+          this.onClockSync?.(this.clockSync.getClockOffset(), rtt);
+          break;
       }
-    };
-
-    this.dataChannel = channel;
-  }
-
-  private handleDataChannelMessage(message: DataChannelMessage): void {
-    const receiveTime = performance.now();
-
-    switch (message.type) {
-      case 'clock_sync':
-        if (!this.isMaster) {
-          // Process clock sync and send ack
-          const ack = this.clockSync.processClockSync(message, receiveTime);
-          ack.clientId = this.userId;
-          this.sendDataChannelMessage(ack);
-        }
-        break;
-
-      case 'clock_ack':
-        if (this.isMaster) {
-          const rtt = this.clockSync.processClockAck(message, receiveTime);
-          // Update latency for this user
-          this.latencyCompensator.updateUserLatency(message.clientId, rtt, 0, 0);
-        }
-        break;
-
-      case 'performance_info':
-        this.handlePerformanceInfo(message.userId, message.info);
-        break;
-
-      case 'master_handoff':
-        this.handleMasterHandoff(message);
-        break;
-
-      case 'latency_compensation':
-        // Apply compensation settings from master
-        const myDelay = message.userDelays[this.userId] || 0;
-        this.latencyCompensator.setCompensationDelay('self', myDelay);
-        break;
-
-      case 'ping':
-        // Respond with pong
-        this.sendDataChannelMessage({
-          type: 'pong',
-          originalTimestamp: message.timestamp,
-          senderId: message.senderId,
-          responderId: this.userId,
-        });
-        break;
-
-      case 'pong':
-        // Calculate RTT
-        const rtt = performance.now() - message.originalTimestamp;
-        this.latencyCompensator.updateUserLatency(message.responderId, rtt, 0, 0);
-        break;
+    } catch (error) {
+      console.warn('[CloudflareCalls] Failed to parse data channel message:', error);
     }
   }
 
-  private sendDataChannelMessage(message: DataChannelMessage): void {
-    if (this.dataChannel && this.dataChannel.readyState === 'open') {
-      this.dataChannel.send(JSON.stringify(message));
-    }
-  }
+  private handlePerformanceInfo(userId: string, info: UserPerformanceInfo): void {
+    this.participantPerformance.set(userId, info);
+    this.onParticipantPerformanceUpdate?.(userId, info);
 
-  private handlePerformanceInfo(
-    userId: string,
-    info: Omit<UserPerformanceInfo, 'userId' | 'userName'>
-  ): void {
-    const existingInfo = this.participantPerformance.get(userId);
-    const fullInfo: UserPerformanceInfo = {
-      ...info,
-      userId,
-      userName: existingInfo?.userName || userId,
-    };
-
-    this.participantPerformance.set(userId, fullInfo);
-    this.onParticipantPerformanceUpdate?.(userId, fullInfo);
-
-    // Update latency compensator
+    // Update latency compensator with new info
     this.latencyCompensator.updateUserLatency(
       userId,
-      info.rttToMaster,
+      info.rtt,
       info.jitter,
       info.packetLoss
     );
@@ -1130,7 +912,6 @@ export class CloudflareCalls {
 
     if (this.isMaster && !wasMaster) {
       console.log('[CloudflareCalls] Becoming room master');
-      this.clockSync.reset();
       this.startClockBroadcast();
     } else if (!this.isMaster && wasMaster) {
       console.log('[CloudflareCalls] No longer room master');
@@ -1140,24 +921,6 @@ export class CloudflareCalls {
     this.onMasterChange?.(message.newMasterId, this.isMaster);
   }
 
-  /**
-   * Set this client as the room master
-   * Master is responsible for clock sync broadcasts
-   */
-  setAsMaster(isMaster: boolean): void {
-    const wasMaster = this.isMaster;
-    this.isMaster = isMaster;
-
-    if (isMaster && !wasMaster) {
-      this.startClockBroadcast();
-    } else if (!isMaster && wasMaster) {
-      this.stopClockBroadcast();
-    }
-  }
-
-  /**
-   * Check if this client is the room master
-   */
   isMasterClient(): boolean {
     return this.isMaster;
   }
@@ -1169,9 +932,15 @@ export class CloudflareCalls {
     this.clockSyncInterval = setInterval(() => {
       if (!this.isMaster || !this.dataChannel) return;
 
-      // Get current BPM and beat position from metronome if available
-      const bpm = 120; // TODO: Get from metronome store
-      const beatPosition = 0; // TODO: Get from metronome
+      // Get current BPM and beat position from session tempo store
+      const { tempo, beatsPerBar } = useSessionTempoStore.getState();
+      const bpm = tempo;
+
+      // Calculate beat position based on current time and BPM
+      // This provides a continuous beat position for synchronization
+      const msPerBeat = 60000 / bpm;
+      const currentTime = performance.now();
+      const beatPosition = (currentTime / msPerBeat) % beatsPerBar;
 
       const message = this.clockSync.createClockSyncMessage(bpm, beatPosition);
       this.sendDataChannelMessage(message);
@@ -1190,73 +959,68 @@ export class CloudflareCalls {
 
     // Broadcast performance info every 2 seconds
     this.performanceBroadcastInterval = setInterval(() => {
-      this.broadcastPerformanceInfo();
+      if (!this.dataChannel || this.dataChannel.readyState !== 'open') return;
+
+      const stats = this.getLatestStats();
+      if (!stats) return;
+
+      const info: UserPerformanceInfo = {
+        rtt: stats.roundTripTime,
+        jitter: stats.jitter,
+        packetLoss: stats.packetsLost,
+        bufferSize: stats.jitterBufferDelay || 0,
+        qualityScore: calculateQualityScore(
+          stats.roundTripTime,
+          stats.jitter,
+          stats.packetsLost,
+          stats.bitrate
+        ),
+        connectionQuality: assessConnectionQuality(
+          stats.roundTripTime,
+          stats.jitter,
+          stats.packetsLost
+        ),
+      };
+
+      this.sendDataChannelMessage({
+        type: 'performance_info',
+        userId: this.userId,
+        info,
+      });
     }, 2000);
   }
 
-  private broadcastPerformanceInfo(): void {
-    const info = this.getLocalPerformanceInfo();
-    this.sendDataChannelMessage({
-      type: 'performance_info',
-      userId: this.userId,
-      info,
-    });
+  private stopPerformanceBroadcast(): void {
+    if (this.performanceBroadcastInterval) {
+      clearInterval(this.performanceBroadcastInterval);
+      this.performanceBroadcastInterval = null;
+    }
   }
 
-  /**
-   * Get local performance info for broadcasting
-   */
-  private getLocalPerformanceInfo(): Omit<UserPerformanceInfo, 'userId' | 'userName'> {
-    const preset = QUALITY_PRESETS[this.activePreset];
-    const rtt = this.clockSync.getRtt();
+  private latestStats: WebRTCStats | null = null;
 
-    const latencyBreakdown = calculateLatencyBreakdown({
-      audioContextLatency: 0.003, // ~3ms estimate
-      outputLatency: 0.003,
-      networkRtt: rtt,
-      jitterBufferSize: 256,
-      sampleRate: 48000,
-      effectsEnabled: !preset.lowLatencyMode,
-      effectsCount: preset.lowLatencyMode ? 0 : 5,
-      encodingFrameSize: preset.encoding.frameSize,
-      compensationDelay: this.latencyCompensator.getUserCompensation('self'),
-    });
+  private getLatestStats(): WebRTCStats | null {
+    return this.latestStats;
+  }
 
-    const connectionQuality = assessConnectionQuality(rtt, 0, 0);
-
-    return {
-      rttToMaster: rtt,
-      rttEstimated: latencyBreakdown.total,
-      jitter: 0, // TODO: Get from jitter buffer
-      packetLoss: 0, // TODO: Get from stats
-      connectionQuality,
-      codec: 'opus',
-      sampleRate: 48000,
-      bitrate: preset.encoding.bitrate,
-      frameSize: preset.encoding.frameSize,
-      fecEnabled: preset.encoding.fec,
-      dtxEnabled: preset.encoding.dtx,
-      jitterBufferMode: preset.jitterMode,
-      jitterBufferSize: 256,
-      effectsLatency: latencyBreakdown.effects,
-      activePreset: this.activePreset,
-      compensationDelay: this.latencyCompensator.getUserCompensation('self'),
-      clockOffset: this.clockSync.getOffset(),
-      latencyBreakdown,
-      totalLatency: latencyBreakdown.total,
-      qualityScore: calculateQualityScore(rtt, 0, 0, preset.encoding.bitrate),
-      lastUpdate: Date.now(),
-    };
+  private sendDataChannelMessage(message: object): void {
+    if (this.dataChannel?.readyState === 'open') {
+      try {
+        this.dataChannel.send(JSON.stringify(message));
+      } catch (error) {
+        console.warn('[CloudflareCalls] Failed to send data channel message:', error);
+      }
+    }
   }
 
   /**
    * Set the active quality preset
    */
-  setQualityPreset(preset: QualityPresetName): void {
-    this.activePreset = preset;
-    console.log(`[CloudflareCalls] Quality preset changed to: ${preset}`);
-    // Broadcast updated performance info
-    this.broadcastPerformanceInfo();
+  setQualityPreset(presetName: QualityPresetName): void {
+    this.activePreset = presetName;
+    console.log(`[CloudflareCalls] Quality preset changed to: ${presetName}`);
+    // Note: Changing preset requires renegotiation to take effect on existing tracks
+    // New tracks will automatically use the new preset
   }
 
   /**
@@ -1264,6 +1028,101 @@ export class CloudflareCalls {
    */
   getQualityPreset(): QualityPresetName {
     return this.activePreset;
+  }
+
+  /**
+   * Get recommended preset based on current network conditions
+   */
+  getRecommendedPreset(): QualityPresetName {
+    const stats = this.getLatestStats();
+    if (!stats) return 'low-latency';
+    return getRecommendedPreset(stats.roundTripTime);
+  }
+
+  /**
+   * Set this client as the room master
+   */
+  setAsMaster(isMaster: boolean): void {
+    const wasMaster = this.isMaster;
+    this.isMaster = isMaster;
+
+    if (isMaster && !wasMaster) {
+      this.startClockBroadcast();
+    } else if (!isMaster && wasMaster) {
+      this.stopClockBroadcast();
+    }
+
+    this.onMasterChange?.(this.userId, isMaster);
+  }
+
+  async initialize(): Promise<void> {
+    // No-op, initialization happens in constructor
+    // This method exists for API consistency
+  }
+
+  setOnStatsUpdate(callback: (stats: WebRTCStats) => void): void {
+    this.onStatsUpdate = callback;
+  }
+
+  setOnRemoteStream(callback: (userId: string, stream: MediaStream) => void): void {
+    this.onRemoteStream = callback;
+  }
+
+  setOnRemoteStreamRemoved(callback: (userId: string) => void): void {
+    this.onRemoteStreamRemoved = callback;
+  }
+
+  private startStatsMonitoring(): void {
+    this.statsInterval = setInterval(async () => {
+      if (!this.peerConnection) return;
+
+      try {
+        const stats = await this.peerConnection.getStats();
+        let audioStats: WebRTCStats = {
+          bitrate: 0,
+          packetsLost: 0,
+          jitter: 0,
+          roundTripTime: 0,
+        };
+
+        stats.forEach((report) => {
+          if (report.type === 'inbound-rtp' && report.kind === 'audio') {
+            audioStats.packetsLost = report.packetsLost || 0;
+            audioStats.jitter = (report.jitter || 0) * 1000; // Convert to ms
+            audioStats.jitterBufferDelay = report.jitterBufferDelay || 0;
+          }
+          if (report.type === 'outbound-rtp' && report.kind === 'audio') {
+            // @ts-expect-error - bitrate may not be in types
+            audioStats.bitrate = report.bitrate || 0;
+          }
+          if (report.type === 'candidate-pair' && report.state === 'succeeded') {
+            audioStats.roundTripTime = (report.currentRoundTripTime || 0) * 1000; // Convert to ms
+          }
+        });
+
+        this.latestStats = audioStats;
+        this.onStatsUpdate?.(audioStats);
+
+        // Update network trend analyzer
+        if (audioStats.roundTripTime > 0) {
+          this.networkTrend.addMeasurement(
+            audioStats.roundTripTime,
+            audioStats.jitter,
+            audioStats.packetsLost
+          );
+
+          // Update self latency in compensator
+          this.latencyCompensator.updateUserLatency(
+            'self',
+            audioStats.roundTripTime,
+            audioStats.jitter,
+            audioStats.packetsLost
+          );
+        }
+      } catch (error) {
+        console.warn('Failed to get WebRTC stats:', error);
+      }
+    }, 1000);
   }
 
   /**
@@ -1315,6 +1174,16 @@ export class CloudflareCalls {
     return this.latencyCompensator.getDelayNode();
   }
 
+  /**
+   * Set callback for applying compensation delays to incoming remote streams.
+   * This is critical for proper bidirectional synchronization - each remote
+   * user's audio needs to be delayed based on their latency compensation.
+   * @param callback Function that receives userId and delay in ms
+   */
+  setOnRemoteStreamCompensation(callback: (userId: string, delayMs: number) => void): void {
+    this.latencyCompensator.onRemoteStreamCompensation = callback;
+  }
+
   // Callback setters for sync system
   setOnClockSync(callback: (offset: number, rtt: number) => void): void {
     this.onClockSync = callback;
@@ -1326,124 +1195,75 @@ export class CloudflareCalls {
 
   setOnJamCompatibilityChange(callback: (compatibility: JamCompatibility) => void): void {
     this.onJamCompatibilityChange = callback;
+    this.latencyCompensator.onJamCompatibilityChange = callback;
   }
 
   setOnMasterChange(callback: (masterId: string, isSelf: boolean) => void): void {
     this.onMasterChange = callback;
   }
 
-  private cleanup(): void {
-    // Stop sync intervals
-    if (this.clockSyncInterval) {
-      clearInterval(this.clockSyncInterval);
-      this.clockSyncInterval = null;
-    }
-    if (this.performanceBroadcastInterval) {
-      clearInterval(this.performanceBroadcastInterval);
-      this.performanceBroadcastInterval = null;
-    }
+  async disconnect(): Promise<void> {
+    this.stopClockBroadcast();
+    this.stopPerformanceBroadcast();
 
     if (this.statsInterval) {
       clearInterval(this.statsInterval);
       this.statsInterval = null;
     }
 
-    // Clean up data channel
     if (this.dataChannel) {
       this.dataChannel.close();
       this.dataChannel = null;
     }
 
-    // Clean up sync components
-    this.clockSync.reset();
-    this.latencyCompensator.dispose();
-    this.networkTrend.reset();
-    this.participantPerformance.clear();
-
-    // Clean up all local tracks
-    for (const trackInfo of this.localTracks.values()) {
-      trackInfo.stream.getTracks().forEach((track) => track.stop());
+    // Stop all local tracks
+    for (const [trackId, transceiver] of this.transceivers) {
+      transceiver.sender.track?.stop();
     }
     this.localTracks.clear();
+    this.transceivers.clear();
 
-    // Clean up all remote tracks
-    for (const trackInfo of this.remoteTracks.values()) {
-      trackInfo.stream.getTracks().forEach((track) => track.stop());
-      this.onRemoteTrackRemoved?.(trackInfo.trackId);
-    }
-    this.remoteTracks.clear();
-
-    // Legacy cleanup
-    this.remoteStreams.forEach((stream) => {
-      stream.getTracks().forEach((track) => track.stop());
-    });
-    this.remoteStreams.clear();
-
+    // Close peer connection
     if (this.peerConnection) {
       this.peerConnection.close();
       this.peerConnection = null;
     }
 
+    // Cleanup sync components
+    this.clockSync.reset();
+    this.latencyCompensator.dispose();
+
+    // Notify server
+    if (this.sessionId) {
+      try {
+        await fetch('/api/cloudflare/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            action: 'closeSession',
+            sessionId: this.sessionId,
+            roomId: this.roomId,
+          }),
+        });
+      } catch (error) {
+        console.warn('Failed to close session on server:', error);
+      }
+    }
+
     this.sessionId = null;
-    this.roomClockOffset = 0;
-    this.lastSyncTimestamp = 0;
-    this.isMaster = false;
+    this.remoteStreams.clear();
+    this.remoteTracks.clear();
+    this.participantPerformance.clear();
   }
 }
 
 /**
- * Summary of Multi-Track Synchronized Architecture:
- *
- * FLEXIBLE TRACK TYPES:
- * =====================
- * Track types are flexible strings - use any identifier that makes sense:
- * - Common: 'mic', 'guitar', 'bass', 'keys', 'drums', 'synth', 'loop'
- * - Specific: 'lead-guitar', 'rhythm-guitar', '808-drums', 'synth-pad'
- * - Custom: 'my-custom-source', 'fx-chain-1', 'ambient-layer'
- *
- * Use TrackTypes constants for common types, or any string for custom sources.
- *
- * SENDING TRACKS:
- * ===============
- * 1. Use addTrack() to add ANY audio source:
- *    - await calls.addTrack(micStream, 'vocals', 'Lead Vocals');
- *    - await calls.addTrack(guitarStream, 'guitar', 'Rhythm Guitar');
- *    - await calls.addTrack(synthStream, 'synth-pad', 'Ambient Pad', 'layer1');
- *    - await calls.addTrack(drumStream, '808-drums', 'Beat Machine');
- *
- * 2. Each track is sent independently with:
- *    - High priority transport hints
- *    - 10ms Opus frames for low latency
- *    - Unique track ID: "{type}-{userId}-{instanceId}"
- *
- * RECEIVING TRACKS:
- * =================
- * 1. Set up callbacks:
- *    - calls.setOnRemoteTrackAdded((track) => { ... });
- *    - calls.setOnRemoteTrackRemoved((trackId) => { ... });
- *
- * 2. Each remote track includes:
- *    - trackId: Unique identifier (e.g., "guitar-user123")
- *    - userId: Who sent this track
- *    - type: Source type string (flexible, any value)
- *    - label: Human-readable display name
- *    - stream: MediaStream to play/process
- *
- * SYNCHRONIZATION:
- * ================
- * 1. Sync clocks periodically:
- *    - await calls.syncRoomClock();
- *
- * 2. Schedule playback using room time:
- *    - const roomTime = calls.getRoomTime();
- *    - const targetBeatTime = getNextBeatTime(roomTime, bpm);
- *    - const localPlayTime = calls.getLocalPlaybackTime(targetBeatTime);
- *    - schedulePlayAt(localPlayTime);
- *
- * LATENCY OPTIMIZATIONS (implemented above):
- * ==========================================
- * - 10ms Opus frames (-20ms round-trip)
- * - Priority transport hints
+ * Latency optimization summary:
+ * - SDP ptime=10: Saves ~10ms per direction (20ms round-trip)
+ * - FEC, DTX, CBR settings: Configurable via quality presets
+ * - Data channel: ordered=false, maxRetransmits=0 for lowest latency
+ * - ICE restart: Automatic recovery on connection failure
+ * - playoutDelayHint=0: Request minimum playout buffer
  * - getUserMedia latency: 0 hint
  * - Aggressive jitter buffer mode
  * - Effect chain bypass optimization

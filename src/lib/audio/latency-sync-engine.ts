@@ -302,6 +302,12 @@ export class LatencyCompensator {
   // Callbacks
   public onCompensationChange?: (targetDelay: number, userDelays: Map<string, number>) => void;
   public onJamCompatibilityChange?: (compatibility: JamCompatibility) => void;
+  /**
+   * Callback to apply compensation delays to incoming remote streams.
+   * Called with userId and the delay in ms to apply to their incoming audio.
+   * This enables proper bidirectional synchronization.
+   */
+  public onRemoteStreamCompensation?: (userId: string, delayMs: number) => void;
 
   constructor(config: Partial<LatencyCompensationConfig> = {}) {
     this.config = { ...DEFAULT_COMPENSATION_CONFIG, ...config };
@@ -546,7 +552,7 @@ export class LatencyCompensator {
       this.userCompensations.set(userId, compensation);
     }
 
-    // Apply own compensation
+    // Apply own compensation (delay our local output)
     if (this.compensationNode && this.audioContext) {
       const ownCompensation = this.userCompensations.get('self') || 0;
       this.compensationNode.delayTime.setTargetAtTime(
@@ -554,6 +560,15 @@ export class LatencyCompensator {
         this.audioContext.currentTime,
         0.1
       );
+    }
+
+    // Apply compensation to incoming remote streams
+    // Each remote user's audio should be delayed by their compensation amount
+    // This ensures all audio arrives at our ears synchronized
+    for (const [userId, compensation] of this.userCompensations) {
+      if (userId !== 'self') {
+        this.onRemoteStreamCompensation?.(userId, compensation);
+      }
     }
 
     // Notify
