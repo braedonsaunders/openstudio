@@ -337,13 +337,13 @@ export function getEffectivePermissions(
   }
 
   // Deep merge custom permissions over base
-  const merged: RoomPermissions = JSON.parse(JSON.stringify(basePermissions));
+  const merged = JSON.parse(JSON.stringify(basePermissions)) as RoomPermissions;
 
   for (const category of Object.keys(customPermissions) as Array<keyof RoomPermissions>) {
     if (customPermissions[category]) {
-      merged[category] = {
-        ...merged[category],
-        ...customPermissions[category],
+      (merged as Record<string, Record<string, boolean>>)[category] = {
+        ...(merged[category] as unknown as Record<string, boolean>),
+        ...(customPermissions[category] as unknown as Record<string, boolean>),
       };
     }
   }
