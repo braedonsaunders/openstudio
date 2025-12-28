@@ -44,12 +44,15 @@ interface LoopCopyDialogState {
   copyCount: number;
 }
 
-// Drag state for moving track clips
+// Drag state for moving track clips (horizontal and vertical)
 interface DragState {
   isDragging: boolean;
   trackRefId: string | null;
   startX: number;
+  startY: number;
   originalOffset: number;
+  originalPosition: number; // Track row position
+  currentTargetRow: number | null; // Row being hovered over during drag
 }
 
 // Snap settings
@@ -298,12 +301,18 @@ export function MultiTrackTimeline({
     isDragging: false,
     trackRefId: null,
     startX: 0,
+    startY: 0,
     originalOffset: 0,
+    originalPosition: 0,
+    currentTargetRow: null,
   });
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const dragOffsetRef = useRef<number | null>(null);
   const isProgrammaticScroll = useRef(false);
   const [snapType, setSnapType] = useState<'beat' | 'bar' | 'track-end' | null>(null);
+
+  // Track row height constant
+  const trackHeight = 48;
   const [loopCopyDialog, setLoopCopyDialog] = useState<LoopCopyDialogState>({
     isOpen: false,
     trackRef: null,
@@ -682,7 +691,7 @@ export function MultiTrackTimeline({
     });
   }, [loopCopyDialog]);
 
-  // Drag handlers for moving clips along timeline
+  // Drag handlers for moving clips along timeline and between track rows
   const handleDragStart = useCallback(
     (e: React.MouseEvent, trackRef: SongTrackReference) => {
       e.preventDefault();
@@ -691,7 +700,10 @@ export function MultiTrackTimeline({
         isDragging: true,
         trackRefId: trackRef.id,
         startX: e.clientX,
+        startY: e.clientY,
         originalOffset: trackRef.startOffset,
+        originalPosition: trackRef.position,
+        currentTargetRow: trackRef.position,
       });
       setDragOffset(trackRef.startOffset);
       dragOffsetRef.current = trackRef.startOffset;
@@ -713,6 +725,7 @@ export function MultiTrackTimeline({
     if (!dragState.isDragging) return;
 
     const handleMouseMove = (e: MouseEvent) => {
+      // Horizontal dragging
       const deltaX = e.clientX - dragState.startX;
       const deltaTime = deltaX / zoom;
       const rawOffset = Math.max(0, dragState.originalOffset + deltaTime);
@@ -746,25 +759,49 @@ export function MultiTrackTimeline({
         dragOffsetRef.current = rawOffset;
         setSnapType(null);
       }
+
+      // Vertical dragging - calculate target row
+      const deltaY = e.clientY - dragState.startY;
+      const rowDelta = Math.round(deltaY / trackHeight);
+      const newTargetRow = Math.max(0, dragState.originalPosition + rowDelta);
+
+      if (newTargetRow !== dragState.currentTargetRow) {
+        setDragState((prev) => ({
+          ...prev,
+          currentTargetRow: newTargetRow,
+        }));
+      }
     };
 
     const handleMouseUp = () => {
       const finalOffset = dragOffsetRef.current;
+      const finalRow = dragState.currentTargetRow;
+
       // Get current song from store state to avoid stale closure
       const { getCurrentSong, updateTrackInSong: updateTrack } = useSongsStore.getState();
       const song = getCurrentSong();
 
       if (dragState.trackRefId && song && finalOffset !== null) {
-        // Update the track's start offset (already snapped, just round for precision)
-        updateTrack(song.id, dragState.trackRefId, {
+        // Update the track's start offset and position (row)
+        const updates: { startOffset?: number; position?: number } = {
           startOffset: Math.round(finalOffset * 1000) / 1000, // Round to 0.001s
-        });
+        };
+
+        // Only update position if it changed
+        if (finalRow !== null && finalRow !== dragState.originalPosition) {
+          updates.position = finalRow;
+        }
+
+        updateTrack(song.id, dragState.trackRefId, updates);
       }
       setDragState({
         isDragging: false,
         trackRefId: null,
         startX: 0,
+        startY: 0,
         originalOffset: 0,
+        originalPosition: 0,
+        currentTargetRow: null,
       });
       setDragOffset(null);
       dragOffsetRef.current = null;
@@ -778,7 +815,7 @@ export function MultiTrackTimeline({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, zoom, trackInfoForSnap]);
+  }, [dragState, zoom, trackInfoForSnap, trackHeight]);
 
   // Handle drag over for drop zone
   const handleDragOver = useCallback((e: React.DragEvent) => {
@@ -872,8 +909,6 @@ export function MultiTrackTimeline({
       container.scrollLeft = Math.max(0, playheadX - 100);
     }
   }, [currentTime, zoom, isPlaying]);
-
-  const trackHeight = 48;
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-[#0a0a0f] border-b border-gray-200 dark:border-white/5">
