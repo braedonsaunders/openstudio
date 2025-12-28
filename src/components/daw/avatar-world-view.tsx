@@ -6,13 +6,16 @@ import { useTheme } from '@/components/theme/ThemeProvider';
 import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
 import { useRoomStore } from '@/stores/room-store';
 import type { User } from '@/types';
-import { Music, Mic, Guitar } from 'lucide-react';
+import { Music, Mic, Guitar, Users2 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
+import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 
 interface AvatarWorldViewProps {
   users: User[];
   currentUser: User | null;
   audioLevels: Map<string, number>;
+  activeView?: MainViewType;
+  onViewChange?: (view: MainViewType) => void;
 }
 
 // Instrument icons based on user instrument type
@@ -443,7 +446,7 @@ function JamScene({ isDark }: { isDark: boolean }) {
   );
 }
 
-export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorldViewProps) {
+export function AvatarWorldView({ users, currentUser, audioLevels, activeView, onViewChange }: AvatarWorldViewProps) {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const messages = useRoomStore((state) => state.messages);
@@ -501,9 +504,34 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
   }, [allUsers]);
 
   return (
-    <div className="relative w-full h-full overflow-hidden rounded-xl">
-      {/* Main scene */}
-      <JamScene isDark={isDark} />
+    <div className="h-full flex flex-col overflow-hidden">
+      {/* Header */}
+      <div className="h-8 px-3 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
+        <div className="flex items-center gap-3">
+          {/* View Switcher */}
+          {activeView && onViewChange && (
+            <MainViewSwitcher
+              activeView={activeView}
+              onViewChange={onViewChange}
+              isMaster={true}
+            />
+          )}
+          <div className="flex items-center gap-2">
+            <Users2 className="w-3.5 h-3.5 text-purple-500" />
+            <span className="text-xs font-medium text-gray-900 dark:text-white">
+              World
+            </span>
+            <span className="text-[10px] text-gray-500 dark:text-zinc-500">
+              {allUsers.length} musician{allUsers.length !== 1 ? 's' : ''}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* World View Content */}
+      <div className="relative flex-1 overflow-hidden">
+        {/* Main scene */}
+        <JamScene isDark={isDark} />
 
       {/* Floating music notes - audio reactive */}
       <FloatingMusicNotes audioLevel={totalAudioLevel} />
@@ -601,6 +629,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
             }}
           />
         ))}
+      </div>
       </div>
     </div>
   );

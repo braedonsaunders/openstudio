@@ -193,24 +193,24 @@ export function TracksPanel({
   return (
     <div className="h-full flex flex-col">
       {/* Header with Song Selector */}
-      <div className="px-3 py-2 border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
+      <div className="h-8 px-3 flex items-center border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
         {/* Song Dropdown */}
-        <div className="relative">
+        <div className="relative flex-1">
           <button
             onClick={() => setShowSongDropdown(!showSongDropdown)}
-            className="w-full flex items-center justify-between gap-2 px-2 py-1.5 rounded-lg bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
+            className="w-full flex items-center justify-between gap-2 px-2 py-1 rounded-lg bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 transition-colors"
           >
             <div className="flex items-center gap-2 min-w-0">
               <div
-                className="w-3 h-3 rounded-sm shrink-0"
+                className="w-2.5 h-2.5 rounded-sm shrink-0"
                 style={{ backgroundColor: currentSong?.color || '#6366f1' }}
               />
-              <span className="text-xs font-medium text-gray-900 dark:text-white truncate">
+              <span className="text-[11px] font-medium text-gray-900 dark:text-white truncate">
                 {currentSong?.name || 'No Song'}
               </span>
             </div>
             <ChevronDown className={cn(
-              'w-3.5 h-3.5 text-gray-500 dark:text-zinc-400 transition-transform',
+              'w-3 h-3 text-gray-500 dark:text-zinc-400 transition-transform',
               showSongDropdown && 'rotate-180'
             )} />
           </button>
@@ -267,40 +267,41 @@ export function TracksPanel({
           )}
         </div>
 
-        {/* Add Track Buttons */}
-        <div className="flex items-center gap-1 mt-2">
-          <button
-            onClick={onUpload}
-            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[10px] font-medium transition-colors"
-            title="Upload audio"
-          >
-            <Upload className="w-3 h-3" />
-            Upload
-          </button>
-          <button
-            onClick={onYouTubeSearch}
-            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[10px] font-medium transition-colors"
-            title="Add from YouTube"
-          >
-            <Youtube className="w-3 h-3" />
-            YouTube
-          </button>
-          <button
-            onClick={() => setShowLoopBrowser(true)}
-            className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px] font-medium transition-colors"
-            title="Add loop"
-          >
-            <Repeat className="w-3 h-3" />
-            Loop
-          </button>
-          <button
-            onClick={onAIGenerate}
-            className="p-1.5 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-colors"
-            title="AI Generate"
-          >
-            <Sparkles className="w-3.5 h-3.5" />
-          </button>
-        </div>
+      </div>
+
+      {/* Add Track Buttons */}
+      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
+        <button
+          onClick={onUpload}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[9px] font-medium transition-colors"
+          title="Upload audio"
+        >
+          <Upload className="w-2.5 h-2.5" />
+          Upload
+        </button>
+        <button
+          onClick={onYouTubeSearch}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[9px] font-medium transition-colors"
+          title="Add from YouTube"
+        >
+          <Youtube className="w-2.5 h-2.5" />
+          YouTube
+        </button>
+        <button
+          onClick={() => setShowLoopBrowser(true)}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[9px] font-medium transition-colors"
+          title="Add loop"
+        >
+          <Repeat className="w-2.5 h-2.5" />
+          Loop
+        </button>
+        <button
+          onClick={onAIGenerate}
+          className="p-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-colors"
+          title="AI Generate"
+        >
+          <Sparkles className="w-3 h-3" />
+        </button>
       </div>
 
       {/* Asset Library */}

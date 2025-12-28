@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { MultiTrackTimeline } from './multi-track-timeline';
 import { LiveArrangementView } from './live-arrangement-view';
 import type { User } from '@/types';
+import type { MainViewType } from './main-view-switcher';
 
 interface CenterSplitViewProps {
   roomId: string;
@@ -20,6 +21,9 @@ interface CenterSplitViewProps {
   // Shared split position (synced with left panel)
   splitPosition?: number;
   onSplitPositionChange?: (position: number) => void;
+  // View switcher props
+  activeView?: MainViewType;
+  onViewChange?: (view: MainViewType) => void;
 }
 
 export function CenterSplitView({
@@ -35,6 +39,8 @@ export function CenterSplitView({
   isGlobalMuted,
   splitPosition: externalSplitPosition,
   onSplitPositionChange,
+  activeView,
+  onViewChange,
 }: CenterSplitViewProps) {
   // Split position - use external if provided, otherwise local state
   const [localSplitPosition, setLocalSplitPosition] = useState(33);
@@ -90,6 +96,8 @@ export function CenterSplitView({
           onSeek={onSeek}
           onPlay={onPlay}
           onStop={onStop}
+          activeView={activeView}
+          onViewChange={onViewChange}
         />
       </div>
 

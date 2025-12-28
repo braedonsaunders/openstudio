@@ -23,6 +23,7 @@ import {
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
 import type { User, BackingTrack } from '@/types';
+import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 
 interface MixerViewProps {
   isMaster: boolean;
@@ -31,6 +32,8 @@ interface MixerViewProps {
   audioLevels: Map<string, number>;
   onUserVolumeChange?: (userId: string, volume: number) => void;
   onUserMuteChange?: (userId: string, muted: boolean) => void;
+  activeView?: MainViewType;
+  onViewChange?: (view: MainViewType) => void;
 }
 
 // Instrument configuration
@@ -734,6 +737,8 @@ export function MixerView({
   audioLevels,
   onUserVolumeChange,
   onUserMuteChange,
+  activeView,
+  onViewChange,
 }: MixerViewProps) {
   const { currentTrack } = useRoomStore();
 
@@ -755,34 +760,30 @@ export function MixerView({
   return (
     <div className="h-full flex flex-col bg-gradient-to-b from-zinc-900 via-zinc-950 to-black overflow-hidden">
       {/* Mixer Header */}
-      <div className="flex items-center justify-between px-4 py-2.5 border-b border-zinc-800/80 bg-zinc-900/90 backdrop-blur-sm">
-        <div className="flex items-center gap-4">
-          <h2 className="text-sm font-bold text-zinc-100 tracking-wide flex items-center gap-2">
-            <Signal className="w-4 h-4 text-indigo-400" />
+      <div className="h-8 flex items-center justify-between px-4 border-b border-zinc-800/80 bg-zinc-900/90 backdrop-blur-sm">
+        <div className="flex items-center gap-3">
+          {/* View Switcher */}
+          {activeView && onViewChange && (
+            <MainViewSwitcher
+              activeView={activeView}
+              onViewChange={onViewChange}
+              isMaster={isMaster}
+            />
+          )}
+          <h2 className="text-xs font-bold text-zinc-100 tracking-wide flex items-center gap-2">
+            <Signal className="w-3.5 h-3.5 text-indigo-400" />
             LIVE MIXER
           </h2>
           {!isMaster && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-500/10 border border-amber-500/30">
-              <Volume2 className="w-3 h-3 text-amber-400" />
-              <span className="text-[10px] text-amber-300 font-medium">LISTEN ONLY</span>
-            </div>
-          )}
-          {isMaster && (
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-500/10 border border-green-500/30">
-              <Crown className="w-3 h-3 text-green-400" />
-              <span className="text-[10px] text-green-300 font-medium">ROOM MASTER</span>
-            </div>
+            <span className="text-[9px] text-amber-400/70">(view only)</span>
           )}
         </div>
 
-        <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2 text-[10px] text-zinc-500">
-            <Wifi className="w-3 h-3" />
-            <span>{allUsers.length} CHANNELS</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="text-[9px] text-zinc-600 font-mono">48kHz / 24-bit</span>
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse shadow-lg shadow-green-500/50" />
+        <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+          <span>{allUsers.length} channels</span>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[9px] text-zinc-600 font-mono">48kHz</span>
+            <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
           </div>
         </div>
       </div>
