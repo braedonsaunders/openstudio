@@ -207,9 +207,6 @@ export function useAudioEngine() {
       deviceId: trackSettings.inputDeviceId,
       channelConfig: trackSettings.channelConfig,
       sampleRate: trackSettings.sampleRate,
-      echoCancellation: trackSettings.echoCancellation,
-      noiseSuppression: trackSettings.noiseSuppression,
-      autoGainControl: trackSettings.autoGainControl,
     };
 
     const stream = await globalEngine.captureLocalAudio(captureOptions);
