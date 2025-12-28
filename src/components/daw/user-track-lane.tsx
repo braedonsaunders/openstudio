@@ -32,8 +32,8 @@ export function UserTrackLane({
   return (
     <div
       className={cn(
-        'h-[80px] border-b border-white/5 relative transition-colors flex-shrink-0 overflow-hidden',
-        isActive && 'bg-white/[0.02]'
+        'h-[80px] border-b border-gray-200 dark:border-white/5 relative transition-colors flex-shrink-0 overflow-hidden',
+        isActive && 'bg-gray-100/50 dark:bg-white/[0.02]'
       )}
       style={{ '--track-color': track.color } as React.CSSProperties}
     >
