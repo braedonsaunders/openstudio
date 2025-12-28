@@ -21,7 +21,6 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
-  X,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -35,6 +34,80 @@ import { getPublicRooms, ROOM_GENRES } from '@/lib/rooms/service';
 import { ROOM_COLORS, ROOM_ICONS } from '@/types';
 import type { RoomListItem } from '@/types';
 import { INSTRUMENTS } from '@/types/user';
+
+// Animated stars for night scene
+function Stars() {
+  const stars = useMemo(
+    () =>
+      Array.from({ length: 30 }, (_, i) => ({
+        x: `${Math.random() * 100}%`,
+        y: `${Math.random() * 100}%`,
+        size: Math.random() * 2 + 1,
+        duration: Math.random() * 3 + 2,
+        delay: Math.random() * 2,
+      })),
+    []
+  );
+
+  return (
+    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+      {stars.map((star, i) => (
+        <motion.div
+          key={i}
+          className="absolute rounded-full bg-white"
+          style={{
+            left: star.x,
+            top: star.y,
+            width: star.size,
+            height: star.size,
+          }}
+          animate={{
+            opacity: [0.2, 0.6, 0.2],
+            scale: [1, 1.2, 1],
+          }}
+          transition={{
+            duration: star.duration,
+            delay: star.delay,
+            repeat: Infinity,
+            ease: 'easeInOut',
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+// Animated clouds for day scene
+function Clouds() {
+  return (
+    <div className="fixed inset-0 overflow-hidden pointer-events-none z-0">
+      {[
+        { x: '10%', y: '15%', scale: 0.7, duration: 120, delay: 0 },
+        { x: '60%', y: '10%', scale: 0.5, duration: 100, delay: -40 },
+        { x: '85%', y: '20%', scale: 0.6, duration: 140, delay: -20 },
+      ].map((cloud, i) => (
+        <motion.div
+          key={i}
+          className="absolute opacity-60"
+          style={{ left: cloud.x, top: cloud.y, scale: cloud.scale }}
+          animate={{ x: ['0%', '100vw'] }}
+          transition={{
+            duration: cloud.duration,
+            delay: cloud.delay,
+            repeat: Infinity,
+            ease: 'linear',
+          }}
+        >
+          <svg width="80" height="32" viewBox="0 0 120 50" fill="none">
+            <ellipse cx="60" cy="35" rx="40" ry="15" fill="white" fillOpacity="0.7" />
+            <ellipse cx="40" cy="28" rx="25" ry="18" fill="white" fillOpacity="0.8" />
+            <ellipse cx="75" cy="30" rx="22" ry="15" fill="white" fillOpacity="0.7" />
+          </svg>
+        </motion.div>
+      ))}
+    </div>
+  );
+}
 
 // Theme toggle button
 function ThemeToggle() {
@@ -58,7 +131,7 @@ function ThemeToggle() {
   );
 }
 
-// Compact room card
+// Compact room card with description
 function RoomCard({
   room,
   index,
@@ -83,17 +156,17 @@ function RoomCard({
       onClick={onClick}
       className={`relative group cursor-pointer rounded-xl overflow-hidden ${
         isDark
-          ? 'bg-gray-800/80 border border-white/10 hover:border-white/20'
-          : 'bg-white/90 border border-gray-200 hover:border-gray-300'
+          ? 'bg-gray-800/90 border border-white/10 hover:border-white/20'
+          : 'bg-white/95 border border-gray-200 hover:border-gray-300'
       } backdrop-blur-sm shadow-sm hover:shadow-lg transition-all`}
     >
       {/* Header with color */}
       <div className={`h-2 bg-gradient-to-r ${colorConfig.gradient}`} />
 
-      <div className="p-3">
+      <div className="p-4">
         {/* Title row */}
-        <div className="flex items-start gap-2 mb-2">
-          <span className="text-lg">{iconConfig.icon}</span>
+        <div className="flex items-start gap-2.5 mb-2">
+          <span className="text-xl flex-shrink-0">{iconConfig.icon}</span>
           <div className="flex-1 min-w-0">
             <h3 className={`font-semibold text-sm truncate ${isDark ? 'text-white' : 'text-gray-900'}`}>
               {room.name}
@@ -104,7 +177,7 @@ function RoomCard({
               </p>
             )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-1.5 flex-shrink-0">
             {isLive && (
               <span className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-green-500/20 text-green-400 text-xs">
                 <motion.span
@@ -124,18 +197,16 @@ function RoomCard({
         </div>
 
         {/* Description */}
-        {room.description && (
-          <p className={`text-xs line-clamp-1 mb-2 ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
-            {room.description}
-          </p>
-        )}
+        <p className={`text-xs line-clamp-2 mb-3 min-h-[2.5rem] ${isDark ? 'text-gray-400' : 'text-gray-600'}`}>
+          {room.description || 'No description provided'}
+        </p>
 
         {/* Footer */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {room.genre && (
               <span
-                className={`px-1.5 py-0.5 text-xs rounded ${
+                className={`px-2 py-0.5 text-xs rounded-full ${
                   isDark ? 'bg-purple-900/50 text-purple-300' : 'bg-purple-100 text-purple-700'
                 }`}
               >
@@ -517,14 +588,14 @@ export default function LobbyPage() {
   };
 
   if (!mounted) {
-    return <div className={`min-h-screen ${isDark ? 'bg-[#0a0a0f]' : 'bg-gray-50'}`} />;
+    return <div className={`min-h-screen ${isDark ? 'bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900' : 'bg-gradient-to-b from-sky-100 via-blue-50 to-white'}`} />;
   }
 
   if (authLoading && !isInitialized) {
     return (
       <div
         className={`min-h-screen flex items-center justify-center ${
-          isDark ? 'bg-[#0a0a0f] text-white' : 'bg-gray-50 text-gray-900'
+          isDark ? 'bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900 text-white' : 'bg-gradient-to-b from-sky-100 via-blue-50 to-white text-gray-900'
         }`}
       >
         <div className="flex flex-col items-center gap-4">
@@ -543,9 +614,12 @@ export default function LobbyPage() {
   const totalMusicians = filteredRooms.reduce((sum, r) => sum + (r.activeUsers || 0), 0);
 
   return (
-    <div className={`min-h-screen ${isDark ? 'bg-[#0a0a0f]' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen relative ${isDark ? 'bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900' : 'bg-gradient-to-b from-sky-100 via-blue-50 to-white'}`}>
+      {/* Animated background */}
+      {isDark ? <Stars /> : <Clouds />}
+
       {/* Header */}
-      <header className={`sticky top-0 z-50 backdrop-blur-xl ${isDark ? 'bg-gray-900/80 border-b border-white/10' : 'bg-white/80 border-b border-gray-200'}`}>
+      <header className={`sticky top-0 z-50 backdrop-blur-xl ${isDark ? 'bg-slate-900/80 border-b border-white/10' : 'bg-white/80 border-b border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
@@ -564,7 +638,7 @@ export default function LobbyPage() {
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-4 py-4">
+      <main className="relative z-10 max-w-7xl mx-auto px-4 py-4">
         {/* Compact Hero */}
         <div className={`rounded-xl p-4 mb-4 ${isDark ? 'bg-gradient-to-r from-indigo-900/50 via-purple-900/50 to-pink-900/50 border border-white/10' : 'bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border border-gray-200'}`}>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
