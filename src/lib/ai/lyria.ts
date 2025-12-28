@@ -95,6 +95,9 @@ export class LyriaSession {
   private isProcessingAudio = false;
   private nextStartTime = 0;
   private scheduledSources: AudioBufferSourceNode[] = [];
+  private setupComplete = false;
+  private connectResolve: (() => void) | null = null;
+  private connectReject: ((error: Error) => void) | null = null;
 
   constructor(apiKey: string) {
     this.apiKey = apiKey;
@@ -125,11 +128,12 @@ export class LyriaSession {
    * Connect to Lyria RealTime
    */
   async connect(): Promise<void> {
-    if (this.state !== 'disconnected') {
+    if (this.state !== 'disconnected' && this.state !== 'error') {
       throw new Error('Session already connected or connecting');
     }
 
     this.setState('connecting');
+    this.setupComplete = false;
 
     try {
       // Initialize Web Audio context
@@ -145,29 +149,46 @@ export class LyriaSession {
       await new Promise<void>((resolve, reject) => {
         if (!this.ws) return reject(new Error('WebSocket not initialized'));
 
+        this.connectResolve = resolve;
+        this.connectReject = reject;
+
+        const timeoutId = setTimeout(() => {
+          reject(new Error('Connection timeout'));
+          this.disconnect();
+        }, 10000);
+
         this.ws.onopen = () => {
-          this.setState('connected');
-          resolve();
+          clearTimeout(timeoutId);
+          console.log('[Lyria] WebSocket connected, sending setup...');
+          // Send setup immediately on open
+          this.sendSetup();
         };
 
         this.ws.onerror = (event) => {
+          clearTimeout(timeoutId);
+          console.error('[Lyria] WebSocket error:', event);
           const error = new Error('WebSocket connection failed');
           this.handleError(error);
           reject(error);
         };
 
-        this.ws.onclose = () => {
-          this.setState('disconnected');
+        this.ws.onclose = (event) => {
+          clearTimeout(timeoutId);
+          console.log('[Lyria] WebSocket closed:', event.code, event.reason);
+          // Only set disconnected if we were previously connected
+          if (this.state !== 'connecting') {
+            this.setState('disconnected');
+          }
           this.cleanup();
+          if (!this.setupComplete) {
+            reject(new Error(`Connection closed: ${event.reason || 'Unknown reason'} (code: ${event.code})`));
+          }
         };
 
         this.ws.onmessage = (event) => {
           this.handleMessage(event);
         };
       });
-
-      // Send initial setup message
-      this.sendSetup();
     } catch (error) {
       this.setState('error');
       throw error;
@@ -480,10 +501,37 @@ export class LyriaSession {
   }
 
   private handleJsonMessage(message: Record<string, unknown>): void {
-    if (message.error) {
-      this.handleError(new Error(String(message.error)));
+    console.log('[Lyria] Received message:', message);
+
+    // Handle setup complete response
+    if (message.setupComplete || message.setup_complete) {
+      console.log('[Lyria] Setup complete!');
+      this.setupComplete = true;
+      this.setState('connected');
+      this.connectResolve?.();
+      this.connectResolve = null;
+      this.connectReject = null;
+      return;
     }
-    // Handle other message types as needed
+
+    // Handle server config acknowledgement
+    if (message.serverContent || message.server_content) {
+      // Server acknowledged our message
+      return;
+    }
+
+    // Handle error
+    if (message.error) {
+      const errorMsg = typeof message.error === 'object'
+        ? JSON.stringify(message.error)
+        : String(message.error);
+      console.error('[Lyria] Error from server:', errorMsg);
+      this.handleError(new Error(errorMsg));
+      return;
+    }
+
+    // Handle other message types
+    console.log('[Lyria] Unhandled message type:', Object.keys(message));
   }
 
   private handleError(error: Error): void {

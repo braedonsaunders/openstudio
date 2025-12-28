@@ -984,12 +984,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
             activePanel={activePanel}
             onPanelChange={setActivePanel}
             onClose={() => setIsPanelDockVisible(false)}
-            // Mixer props (kept for AI panel)
+            // Mixer props
             onToggleStem={handleToggleStem}
             onStemVolumeChange={handleStemVolume}
-            onSeparateTrack={handleSeparateTrack}
-            isSeparating={isSeparating}
-            separationProgress={separationProgress}
             // Chat/Room props
             roomId={roomId}
             userId={currentUser?.id || ''}
