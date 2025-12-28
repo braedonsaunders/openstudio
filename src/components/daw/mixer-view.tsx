@@ -1,6 +1,6 @@
 'use client';
 
-import { useMemo, useEffect, useState, useRef } from 'react';
+import { useMemo, useEffect, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
@@ -21,11 +21,21 @@ import {
   Signal,
   Wifi,
   Sliders,
+  X,
+  Power,
+  BarChart3,
+  Zap,
+  Waves,
+  Wind,
+  RotateCcw,
+  ChevronDown,
+  ChevronRight,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
 import type { User, BackingTrack } from '@/types';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
+import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
 
 interface MixerViewProps {
   isMaster: boolean;
@@ -745,10 +755,10 @@ function MasterChannelStrip({
           onClick={toggleFx}
           disabled={!isRoomMaster}
           className={cn(
-            'w-full py-1.5 rounded text-[8px] font-bold tracking-wider flex items-center justify-center gap-1 transition-all',
+            'w-full py-1.5 rounded text-[8px] font-bold tracking-wider flex items-center justify-center gap-1 transition-all border',
             fxEnabled
-              ? 'bg-indigo-500/80 text-white border border-indigo-400/50 shadow-lg shadow-indigo-500/20'
-              : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600',
+              ? 'bg-indigo-500/80 text-white border-indigo-400/50 shadow-lg shadow-indigo-500/20'
+              : 'bg-zinc-700/60 text-zinc-400 border-transparent hover:bg-zinc-600',
             !isRoomMaster && 'opacity-50 cursor-not-allowed'
           )}
         >
@@ -778,7 +788,11 @@ function MasterChannelStrip({
           </button>
         )}
 
-        <button className="w-full py-1.5 rounded bg-zinc-700/60 text-zinc-400 text-[8px] font-bold tracking-wider hover:bg-zinc-600 flex items-center justify-center gap-1">
+        <button
+          disabled
+          title="AFL monitoring coming soon"
+          className="w-full py-1.5 rounded bg-zinc-700/40 text-zinc-500 text-[8px] font-bold tracking-wider flex items-center justify-center gap-1 cursor-not-allowed opacity-50"
+        >
           <Headphones className="w-3 h-3" />
           AFL
         </button>
@@ -803,6 +817,409 @@ function PerformanceDisplay() {
     <div className="flex items-center gap-3 text-[9px] text-zinc-600">
       <span>Latency: ~{Math.round(totalLatency)}ms</span>
       <span>Buffer: {performanceMetrics.currentBufferSize || 256} samples</span>
+    </div>
+  );
+}
+
+// Compact Knob for master effects panel
+function MasterKnob({
+  value,
+  min,
+  max,
+  onChange,
+  label,
+  unit = '',
+  disabled = false,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  onChange: (value: number) => void;
+  label: string;
+  unit?: string;
+  disabled?: boolean;
+}) {
+  const [isDragging, setIsDragging] = useState(false);
+  const [startY, setStartY] = useState(0);
+  const [startValue, setStartValue] = useState(0);
+
+  const normalizedValue = (value - min) / (max - min);
+  const rotation = -135 + normalizedValue * 270;
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (disabled) return;
+    setIsDragging(true);
+    setStartY(e.clientY);
+    setStartValue(value);
+    e.preventDefault();
+  };
+
+  const handleMouseMove = useCallback(
+    (e: MouseEvent) => {
+      if (!isDragging) return;
+      const delta = (startY - e.clientY) * ((max - min) / 100);
+      const newValue = Math.max(min, Math.min(max, startValue + delta));
+      onChange(newValue);
+    },
+    [isDragging, startY, startValue, min, max, onChange]
+  );
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
+  useEffect(() => {
+    if (isDragging) {
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+      return () => {
+        window.removeEventListener('mousemove', handleMouseMove);
+        window.removeEventListener('mouseup', handleMouseUp);
+      };
+    }
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
+  const formatValue = (v: number) => {
+    if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`;
+    if (Number.isInteger(v)) return v.toString();
+    return v.toFixed(1);
+  };
+
+  return (
+    <div className="flex flex-col items-center gap-0.5">
+      <div
+        className={cn(
+          'w-8 h-8 relative rounded-full bg-gradient-to-b from-zinc-700 to-zinc-800 shadow-inner cursor-pointer',
+          disabled && 'opacity-50 cursor-not-allowed'
+        )}
+        onMouseDown={handleMouseDown}
+      >
+        <div
+          className="absolute inset-1 rounded-full bg-gradient-to-b from-zinc-600 to-zinc-700 shadow"
+          style={{ transform: `rotate(${rotation}deg)` }}
+        >
+          <div className="absolute top-0.5 left-1/2 -translate-x-1/2 w-0.5 h-1 rounded-full bg-amber-400" />
+        </div>
+      </div>
+      <div className="text-center">
+        <div className="text-[8px] text-zinc-500 uppercase tracking-wide">{label}</div>
+        <div className="text-[9px] text-zinc-300">
+          {formatValue(value)}{unit}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Effect section header with enable toggle
+function EffectSectionHeader({
+  name,
+  icon: Icon,
+  enabled,
+  onToggle,
+  expanded,
+  onExpandToggle,
+  color = 'amber',
+}: {
+  name: string;
+  icon: React.ElementType;
+  enabled: boolean;
+  onToggle: () => void;
+  expanded: boolean;
+  onExpandToggle: () => void;
+  color?: string;
+}) {
+  const colorMap: Record<string, string> = {
+    amber: 'text-amber-400 bg-amber-500/20',
+    cyan: 'text-cyan-400 bg-cyan-500/20',
+    indigo: 'text-indigo-400 bg-indigo-500/20',
+    rose: 'text-rose-400 bg-rose-500/20',
+  };
+
+  return (
+    <div className="flex items-center gap-2 py-1.5">
+      <button
+        onClick={onExpandToggle}
+        className="flex items-center gap-2 flex-1 text-left hover:bg-white/[0.02] rounded transition-colors -ml-1 pl-1"
+      >
+        <div className="p-0.5 text-zinc-500">
+          {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+        </div>
+        <div className={cn('p-1 rounded', enabled ? colorMap[color] || colorMap.amber : 'text-zinc-600 bg-white/5')}>
+          <Icon className="w-3 h-3" />
+        </div>
+        <span className={cn('text-[10px] font-medium', enabled ? 'text-white' : 'text-zinc-500')}>
+          {name}
+        </span>
+      </button>
+      <button
+        onClick={onToggle}
+        className={cn(
+          'p-1 rounded transition-colors',
+          enabled ? 'text-emerald-400 bg-emerald-500/20' : 'text-zinc-600 hover:text-zinc-400'
+        )}
+        title={enabled ? 'Disable effect' : 'Enable effect'}
+      >
+        <Power className="w-3 h-3" />
+      </button>
+    </div>
+  );
+}
+
+// Master Effects Panel Component
+function MasterEffectsPanel({
+  onClose,
+}: {
+  onClose: () => void;
+}) {
+  const { getMasterEffectsSettings, updateMasterEffects } = useAudioEngine();
+  const [settings, setSettings] = useState<MasterEffectsChain | null>(null);
+  const [expandedEffects, setExpandedEffects] = useState<Set<string>>(new Set(['eq', 'compressor']));
+
+  // Refresh settings periodically
+  useEffect(() => {
+    const update = () => {
+      const s = getMasterEffectsSettings();
+      if (s) setSettings(s);
+    };
+    update();
+    const interval = setInterval(update, 500);
+    return () => clearInterval(interval);
+  }, [getMasterEffectsSettings]);
+
+  const toggleExpanded = (effect: string) => {
+    setExpandedEffects((prev) => {
+      const next = new Set(prev);
+      if (next.has(effect)) next.delete(effect);
+      else next.add(effect);
+      return next;
+    });
+  };
+
+  const handleUpdate = useCallback((updates: Partial<MasterEffectsChain>) => {
+    updateMasterEffects(updates);
+    // Immediately reflect in local state for responsiveness
+    setSettings((prev) => prev ? { ...prev, ...updates } : null);
+  }, [updateMasterEffects]);
+
+  if (!settings) {
+    return (
+      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
+        <div className="bg-zinc-900 rounded-xl p-6 text-zinc-400">Loading...</div>
+      </div>
+    );
+  }
+
+  const reverbTypes = ['room', 'hall', 'plate', 'spring', 'ambient'] as const;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.95 }}
+        className="w-[380px] max-h-[80vh] overflow-y-auto bg-gradient-to-b from-zinc-800 to-zinc-900 border border-amber-600/30 rounded-xl shadow-2xl"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b border-amber-900/40 bg-amber-950/30">
+          <div className="flex items-center gap-2">
+            <Crown className="w-4 h-4 text-amber-400" />
+            <span className="text-sm font-medium text-amber-200">Master Effects</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => {
+                handleUpdate({
+                  eq: { ...settings.eq, enabled: false },
+                  compressor: { ...settings.compressor, enabled: false },
+                  reverb: { ...settings.reverb, enabled: false },
+                  limiter: { ...settings.limiter, enabled: true },
+                });
+              }}
+              className="p-1.5 text-zinc-500 hover:text-white transition-colors"
+              title="Reset to defaults"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+            </button>
+            <button onClick={onClose} className="p-1.5 text-zinc-500 hover:text-white transition-colors">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </div>
+
+        {/* Effects */}
+        <div className="p-3 space-y-1">
+          {/* EQ */}
+          <div className="border-b border-white/5">
+            <EffectSectionHeader
+              name="Equalizer"
+              icon={BarChart3}
+              enabled={settings.eq.enabled}
+              onToggle={() => handleUpdate({ eq: { ...settings.eq, enabled: !settings.eq.enabled } })}
+              expanded={expandedEffects.has('eq')}
+              onExpandToggle={() => toggleExpanded('eq')}
+              color="cyan"
+            />
+            {expandedEffects.has('eq') && (
+              <div className="pb-3 px-2 space-y-2">
+                {settings.eq.bands.map((band, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <span className="text-[9px] text-zinc-500 w-10">
+                      {band.type === 'lowshelf' ? 'Low' : band.type === 'highshelf' ? 'High' : `Mid${index}`}
+                    </span>
+                    <div className="flex-1 flex justify-center gap-2">
+                      <MasterKnob
+                        value={band.frequency}
+                        min={20}
+                        max={20000}
+                        onChange={(v) => {
+                          const newBands = [...settings.eq.bands];
+                          newBands[index] = { ...newBands[index], frequency: v };
+                          handleUpdate({ eq: { ...settings.eq, bands: newBands } });
+                        }}
+                        label="Freq"
+                        unit="Hz"
+                        disabled={!settings.eq.enabled}
+                      />
+                      <MasterKnob
+                        value={band.gain}
+                        min={-24}
+                        max={24}
+                        onChange={(v) => {
+                          const newBands = [...settings.eq.bands];
+                          newBands[index] = { ...newBands[index], gain: v };
+                          handleUpdate({ eq: { ...settings.eq, bands: newBands } });
+                        }}
+                        label="Gain"
+                        unit="dB"
+                        disabled={!settings.eq.enabled}
+                      />
+                      <MasterKnob
+                        value={band.q}
+                        min={0.1}
+                        max={10}
+                        onChange={(v) => {
+                          const newBands = [...settings.eq.bands];
+                          newBands[index] = { ...newBands[index], q: v };
+                          handleUpdate({ eq: { ...settings.eq, bands: newBands } });
+                        }}
+                        label="Q"
+                        disabled={!settings.eq.enabled}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Compressor */}
+          <div className="border-b border-white/5">
+            <EffectSectionHeader
+              name="Compressor"
+              icon={Zap}
+              enabled={settings.compressor.enabled}
+              onToggle={() => handleUpdate({ compressor: { ...settings.compressor, enabled: !settings.compressor.enabled } })}
+              expanded={expandedEffects.has('compressor')}
+              onExpandToggle={() => toggleExpanded('compressor')}
+              color="amber"
+            />
+            {expandedEffects.has('compressor') && (
+              <div className="pb-3 px-2">
+                <div className="flex flex-wrap justify-center gap-2">
+                  <MasterKnob value={settings.compressor.threshold} min={-60} max={0} onChange={(v) => handleUpdate({ compressor: { ...settings.compressor, threshold: v } })} label="Thresh" unit="dB" disabled={!settings.compressor.enabled} />
+                  <MasterKnob value={settings.compressor.ratio} min={1} max={20} onChange={(v) => handleUpdate({ compressor: { ...settings.compressor, ratio: v } })} label="Ratio" unit=":1" disabled={!settings.compressor.enabled} />
+                  <MasterKnob value={settings.compressor.attack} min={0} max={1000} onChange={(v) => handleUpdate({ compressor: { ...settings.compressor, attack: v } })} label="Attack" unit="ms" disabled={!settings.compressor.enabled} />
+                  <MasterKnob value={settings.compressor.release} min={0} max={3000} onChange={(v) => handleUpdate({ compressor: { ...settings.compressor, release: v } })} label="Release" unit="ms" disabled={!settings.compressor.enabled} />
+                  <MasterKnob value={settings.compressor.knee} min={0} max={40} onChange={(v) => handleUpdate({ compressor: { ...settings.compressor, knee: v } })} label="Knee" unit="dB" disabled={!settings.compressor.enabled} />
+                  <MasterKnob value={settings.compressor.makeupGain} min={-12} max={24} onChange={(v) => handleUpdate({ compressor: { ...settings.compressor, makeupGain: v } })} label="Makeup" unit="dB" disabled={!settings.compressor.enabled} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Reverb */}
+          <div className="border-b border-white/5">
+            <EffectSectionHeader
+              name="Reverb"
+              icon={Waves}
+              enabled={settings.reverb.enabled}
+              onToggle={() => handleUpdate({ reverb: { ...settings.reverb, enabled: !settings.reverb.enabled } })}
+              expanded={expandedEffects.has('reverb')}
+              onExpandToggle={() => toggleExpanded('reverb')}
+              color="indigo"
+            />
+            {expandedEffects.has('reverb') && (
+              <div className="pb-3 px-2 space-y-2">
+                <div className="flex gap-1">
+                  {reverbTypes.map((type) => (
+                    <button
+                      key={type}
+                      onClick={() => handleUpdate({ reverb: { ...settings.reverb, type } })}
+                      disabled={!settings.reverb.enabled}
+                      className={cn(
+                        'flex-1 px-2 py-1 text-[9px] font-medium rounded transition-colors',
+                        settings.reverb.type === type
+                          ? 'bg-indigo-500/20 text-indigo-400'
+                          : 'bg-white/5 text-zinc-500 hover:bg-white/10',
+                        !settings.reverb.enabled && 'opacity-50'
+                      )}
+                    >
+                      {type.charAt(0).toUpperCase() + type.slice(1)}
+                    </button>
+                  ))}
+                </div>
+                <div className="flex flex-wrap justify-center gap-2">
+                  <MasterKnob value={settings.reverb.mix * 100} min={0} max={100} onChange={(v) => handleUpdate({ reverb: { ...settings.reverb, mix: v / 100 } })} label="Mix" unit="%" disabled={!settings.reverb.enabled} />
+                  <MasterKnob value={settings.reverb.decay} min={0.1} max={10} onChange={(v) => handleUpdate({ reverb: { ...settings.reverb, decay: v } })} label="Decay" unit="s" disabled={!settings.reverb.enabled} />
+                  <MasterKnob value={settings.reverb.preDelay} min={0} max={100} onChange={(v) => handleUpdate({ reverb: { ...settings.reverb, preDelay: v } })} label="Pre-Dly" unit="ms" disabled={!settings.reverb.enabled} />
+                  <MasterKnob value={settings.reverb.lowCut} min={20} max={1000} onChange={(v) => handleUpdate({ reverb: { ...settings.reverb, lowCut: v } })} label="Lo Cut" unit="Hz" disabled={!settings.reverb.enabled} />
+                  <MasterKnob value={settings.reverb.highCut} min={1000} max={20000} onChange={(v) => handleUpdate({ reverb: { ...settings.reverb, highCut: v } })} label="Hi Cut" unit="Hz" disabled={!settings.reverb.enabled} />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Limiter */}
+          <div className="border-b border-white/5">
+            <EffectSectionHeader
+              name="Limiter"
+              icon={Wind}
+              enabled={settings.limiter.enabled}
+              onToggle={() => handleUpdate({ limiter: { ...settings.limiter, enabled: !settings.limiter.enabled } })}
+              expanded={expandedEffects.has('limiter')}
+              onExpandToggle={() => toggleExpanded('limiter')}
+              color="rose"
+            />
+            {expandedEffects.has('limiter') && (
+              <div className="pb-3 px-2">
+                <div className="flex flex-wrap justify-center gap-2">
+                  <MasterKnob value={settings.limiter.threshold} min={-24} max={0} onChange={(v) => handleUpdate({ limiter: { ...settings.limiter, threshold: v } })} label="Thresh" unit="dB" disabled={!settings.limiter.enabled} />
+                  <MasterKnob value={settings.limiter.release} min={10} max={1000} onChange={(v) => handleUpdate({ limiter: { ...settings.limiter, release: v } })} label="Release" unit="ms" disabled={!settings.limiter.enabled} />
+                  <MasterKnob value={settings.limiter.ceiling} min={-6} max={0} onChange={(v) => handleUpdate({ limiter: { ...settings.limiter, ceiling: v } })} label="Ceiling" unit="dB" disabled={!settings.limiter.enabled} />
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Signal Flow */}
+        <div className="px-4 py-2 bg-black/20 border-t border-white/5">
+          <div className="text-[8px] text-zinc-600 mb-1">Signal Flow:</div>
+          <div className="flex items-center gap-1 text-[9px]">
+            <span className={settings.eq.enabled ? 'text-cyan-400' : 'text-zinc-600'}>EQ</span>
+            <span className="text-zinc-600">→</span>
+            <span className={settings.compressor.enabled ? 'text-amber-400' : 'text-zinc-600'}>Comp</span>
+            <span className="text-zinc-600">→</span>
+            <span className={settings.reverb.enabled ? 'text-indigo-400' : 'text-zinc-600'}>Reverb</span>
+            <span className="text-zinc-600">→</span>
+            <span className={settings.limiter.enabled ? 'text-rose-400' : 'text-zinc-600'}>Limiter</span>
+            <span className="text-zinc-600">→</span>
+            <span className="text-amber-400">Out</span>
+          </div>
+        </div>
+      </motion.div>
     </div>
   );
 }
@@ -833,6 +1250,7 @@ export function MixerView({
   onViewChange,
 }: MixerViewProps) {
   const { currentTrack } = useRoomStore();
+  const [showMasterFxPanel, setShowMasterFxPanel] = useState(false);
 
   // Combine and sort users
   const allUsers = useMemo(() => {
@@ -918,9 +1336,17 @@ export function MixerView({
           <MasterChannelStrip
             isMaster={isMaster}
             audioLevel={audioLevels.get('master') || 0}
+            onOpenMasterFx={() => setShowMasterFxPanel(true)}
           />
         </AnimatePresence>
       </div>
+
+      {/* Master Effects Panel Modal */}
+      <AnimatePresence>
+        {showMasterFxPanel && (
+          <MasterEffectsPanel onClose={() => setShowMasterFxPanel(false)} />
+        )}
+      </AnimatePresence>
 
       {/* Bottom Status Bar */}
       <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-800/80 bg-zinc-900/80 backdrop-blur-sm">
