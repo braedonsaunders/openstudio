@@ -1051,11 +1051,16 @@ export function SavedTrackEditor({
     }
 
     try {
+      // Request more channels than needed to allow channel selection
+      const requestedChannels = channelCount === 1
+        ? Math.max(2, leftChannel + 1)
+        : Math.max(2, Math.max(leftChannel, rightChannel) + 1);
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           deviceId: inputDeviceId !== 'default' ? { exact: inputDeviceId } : undefined,
           sampleRate,
-          channelCount,
+          channelCount: requestedChannels,
           echoCancellation,
           noiseSuppression,
           autoGainControl,
@@ -1066,26 +1071,65 @@ export function SavedTrackEditor({
       const audioContext = new AudioContext({ sampleRate });
       audioContextRef.current = audioContext;
 
-      const source = audioContext.createMediaStreamSource(stream);
-      const analyser = audioContext.createAnalyser();
-      analyser.fftSize = 256;
-      source.connect(analyser);
+      // IMPORTANT: Resume the audio context (browser autoplay policy)
+      await audioContext.resume();
 
-      // Also connect to output for monitoring
-      if (directMonitoring) {
-        const gainNode = audioContext.createGain();
-        gainNode.gain.value = monitoringVolume;
-        source.connect(gainNode);
-        gainNode.connect(audioContext.destination);
+      const source = audioContext.createMediaStreamSource(stream);
+
+      // Apply input gain
+      const inputGainNode = audioContext.createGain();
+      inputGainNode.gain.value = Math.pow(10, inputGain / 20); // Convert dB to linear
+
+      // Create analyser for level metering
+      const analyser = audioContext.createAnalyser();
+      analyser.fftSize = 2048;
+      analyser.smoothingTimeConstant = 0.3;
+
+      // Handle mono channel selection
+      let processedSource: AudioNode = source;
+      if (channelCount === 1 && leftChannel > 0) {
+        const actualChannels = stream.getAudioTracks()[0]?.getSettings().channelCount || 2;
+        if (leftChannel < actualChannels) {
+          const splitter = audioContext.createChannelSplitter(actualChannels);
+          const merger = audioContext.createChannelMerger(1);
+          source.connect(splitter);
+          splitter.connect(merger, leftChannel, 0);
+          processedSource = merger;
+        }
       }
 
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      // Connect: source -> gain -> analyser
+      processedSource.connect(inputGainNode);
+      inputGainNode.connect(analyser);
+
+      // Connect to output for monitoring
+      if (directMonitoring) {
+        const monitorGainNode = audioContext.createGain();
+        monitorGainNode.gain.value = monitoringVolume;
+        analyser.connect(monitorGainNode);
+        monitorGainNode.connect(audioContext.destination);
+      }
+
+      // Use time domain data for accurate level metering (RMS)
+      const dataArray = new Float32Array(analyser.fftSize);
 
       const updateLevel = () => {
         if (!audioContextRef.current) return;
-        analyser.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        setInputLevel(average / 255);
+
+        analyser.getFloatTimeDomainData(dataArray);
+
+        // Calculate RMS (Root Mean Square) for accurate level
+        let sumSquares = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          sumSquares += dataArray[i] * dataArray[i];
+        }
+        const rms = Math.sqrt(sumSquares / dataArray.length);
+
+        // Convert to dB and normalize (0 = -60dB, 1 = 0dB)
+        const db = 20 * Math.log10(Math.max(rms, 0.000001));
+        const normalized = Math.max(0, Math.min(1, (db + 60) / 60));
+
+        setInputLevel(normalized);
         requestAnimationFrame(updateLevel);
       };
       updateLevel();
@@ -1094,7 +1138,7 @@ export function SavedTrackEditor({
     } catch (err) {
       console.error('Failed to start preview:', err);
     }
-  }, [isPreviewing, inputDeviceId, sampleRate, channelCount, echoCancellation, noiseSuppression, autoGainControl, directMonitoring, monitoringVolume]);
+  }, [isPreviewing, inputDeviceId, sampleRate, channelCount, leftChannel, rightChannel, echoCancellation, noiseSuppression, autoGainControl, directMonitoring, monitoringVolume, inputGain]);
 
   const handleApplyEffectPreset = (presetName: string) => {
     const effectPreset = EFFECT_PRESETS.find(p => p.name === presetName);
