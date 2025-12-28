@@ -234,7 +234,7 @@ export interface EffectPreset {
   id: string;
   name: string;
   type: EffectPresetType;
-  effects: TrackEffectsChain;
+  effects: UnifiedEffectsChain;
 }
 
 // Per-track audio settings
@@ -252,8 +252,8 @@ export interface TrackAudioSettings {
   channelConfig: InputChannelConfig;
   // Input gain before effects
   inputGain: number; // dB (-24 to 24)
-  // Effects chain
-  effects: TrackEffectsChain;
+  // Unified effects chain (all 15 effects in signal chain order)
+  effects: UnifiedEffectsChain;
   // Active preset (if any)
   activePreset?: string;
   // Monitoring
@@ -659,6 +659,31 @@ export interface GuitarEffectsChain {
   tremolo: TremoloSettings;
 }
 
+// Unified Effects Chain - combines all effects in signal chain order
+// Signal flow: wah → overdrive → distortion → amp → cabinet → noiseGate → eq → compressor → chorus → flanger → phaser → delay → tremolo → reverb → limiter
+export interface UnifiedEffectsChain {
+  // Guitar/instrument effects (pre-processing)
+  wah: WahSettings;
+  overdrive: OverdriveSettings;
+  distortion: DistortionSettings;
+  ampSimulator: AmpSimulatorSettings;
+  cabinet: CabinetSimulatorSettings;
+  // Track effects (mixing)
+  noiseGate: NoiseGateSettings;
+  eq: EQSettings;
+  compressor: CompressorSettings;
+  // Modulation effects
+  chorus: ChorusSettings;
+  flanger: FlangerSettings;
+  phaser: PhaserSettings;
+  // Time-based effects
+  delay: DelaySettings;
+  tremolo: TremoloSettings;
+  // Output effects
+  reverb: ReverbSettings;
+  limiter: LimiterSettings;
+}
+
 // Guitar Effect Preset Types
 export type GuitarPresetCategory =
   | 'clean'
@@ -681,9 +706,6 @@ export interface GuitarEffectPreset {
   effects: GuitarEffectsChain;
 }
 
-// Extended Track Audio Settings with Guitar Effects
-export interface ExtendedTrackAudioSettings extends TrackAudioSettings {
-  guitarEffects?: GuitarEffectsChain;
-  guitarPreset?: string;
-  isGuitarTrack: boolean;
-}
+// Legacy type aliases for backwards compatibility
+/** @deprecated Use UnifiedEffectsChain instead */
+export type ExtendedTrackAudioSettings = TrackAudioSettings;

@@ -5,8 +5,8 @@ import { cn } from '@/lib/utils';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
-import { DEFAULT_GUITAR_EFFECTS } from '@/lib/audio/effects/guitar/guitar-effects-processor';
-import type { UserTrack, GuitarEffectsChain } from '@/types';
+import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects/unified-effects-processor';
+import type { UserTrack, UnifiedEffectsChain } from '@/types';
 import {
   Sparkles,
   ChevronDown,
@@ -361,8 +361,8 @@ function LimiterUI({ track }: { track: UserTrack }) {
 // ============================================================================
 
 interface GuitarEffectProps {
-  settings: GuitarEffectsChain;
-  onChange: (settings: Partial<GuitarEffectsChain>) => void;
+  settings: UnifiedEffectsChain;
+  onChange: (settings: Partial<UnifiedEffectsChain>) => void;
 }
 
 function WahUI({ settings, onChange }: GuitarEffectProps) {
@@ -612,19 +612,17 @@ interface EffectsRackProps {
 type EffectCategory = 'all' | 'standard' | 'guitar' | 'modulation' | 'dynamics' | 'amp';
 
 export function EffectsRack({ track, onClose }: EffectsRackProps) {
-  const { loadPreset, updateTrackEffects, updateGuitarEffects, loadGuitarPreset } = useUserTracksStore();
+  const { loadPreset, updateTrackEffects, loadGuitarPreset } = useUserTracksStore();
   const [showPresets, setShowPresets] = useState(false);
   const [category, setCategory] = useState<EffectCategory>('all');
   const [searchQuery, setSearchQuery] = useState('');
   const [presetCategory, setPresetCategory] = useState<'standard' | 'guitar'>('standard');
 
-  // Initialize guitar effects if not present
-  const guitarSettings: GuitarEffectsChain = (track.audioSettings as any).guitarEffects || DEFAULT_GUITAR_EFFECTS;
+  // Get the unified effects chain (all 15 effects in one)
+  const effectsSettings: UnifiedEffectsChain = track.audioSettings.effects || DEFAULT_UNIFIED_EFFECTS;
 
-  const handleGuitarChange = (settings: Partial<GuitarEffectsChain>) => {
-    if (updateGuitarEffects) {
-      updateGuitarEffects(track.id, settings);
-    }
+  const handleEffectChange = (settings: Partial<UnifiedEffectsChain>) => {
+    updateTrackEffects(track.id, settings);
   };
 
   const handleReset = () => {
@@ -681,16 +679,16 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
       case 'compressor': return <CompressorUI key={effectId} track={track} />;
       case 'reverb': return <ReverbUI key={effectId} track={track} />;
       case 'limiter': return <LimiterUI key={effectId} track={track} />;
-      case 'wah': return <WahUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'overdrive': return <OverdriveUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'distortion': return <DistortionUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'ampSimulator': return <AmpSimulatorUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'cabinet': return <CabinetUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'chorus': return <ChorusUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'flanger': return <FlangerUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'phaser': return <PhaserUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'delay': return <DelayUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
-      case 'tremolo': return <TremoloUI key={effectId} settings={guitarSettings} onChange={handleGuitarChange} />;
+      case 'wah': return <WahUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'overdrive': return <OverdriveUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'distortion': return <DistortionUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'ampSimulator': return <AmpSimulatorUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'cabinet': return <CabinetUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'chorus': return <ChorusUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'flanger': return <FlangerUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'phaser': return <PhaserUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'delay': return <DelayUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'tremolo': return <TremoloUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
       default: return null;
     }
   };
@@ -707,23 +705,23 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
   // Count enabled effects
   const enabledCount = useMemo(() => {
     let count = 0;
-    if (track.audioSettings.effects?.noiseGate.enabled) count++;
-    if (track.audioSettings.effects?.eq.enabled) count++;
-    if (track.audioSettings.effects?.compressor.enabled) count++;
-    if (track.audioSettings.effects?.reverb.enabled) count++;
-    if (track.audioSettings.effects?.limiter.enabled) count++;
-    if (guitarSettings.wah.enabled) count++;
-    if (guitarSettings.overdrive.enabled) count++;
-    if (guitarSettings.distortion.enabled) count++;
-    if (guitarSettings.ampSimulator.enabled) count++;
-    if (guitarSettings.cabinet.enabled) count++;
-    if (guitarSettings.chorus.enabled) count++;
-    if (guitarSettings.flanger.enabled) count++;
-    if (guitarSettings.phaser.enabled) count++;
-    if (guitarSettings.delay.enabled) count++;
-    if (guitarSettings.tremolo.enabled) count++;
+    if (effectsSettings.noiseGate.enabled) count++;
+    if (effectsSettings.eq.enabled) count++;
+    if (effectsSettings.compressor.enabled) count++;
+    if (effectsSettings.reverb.enabled) count++;
+    if (effectsSettings.limiter.enabled) count++;
+    if (effectsSettings.wah.enabled) count++;
+    if (effectsSettings.overdrive.enabled) count++;
+    if (effectsSettings.distortion.enabled) count++;
+    if (effectsSettings.ampSimulator.enabled) count++;
+    if (effectsSettings.cabinet.enabled) count++;
+    if (effectsSettings.chorus.enabled) count++;
+    if (effectsSettings.flanger.enabled) count++;
+    if (effectsSettings.phaser.enabled) count++;
+    if (effectsSettings.delay.enabled) count++;
+    if (effectsSettings.tremolo.enabled) count++;
     return count;
-  }, [track.audioSettings.effects, guitarSettings]);
+  }, [effectsSettings]);
 
   return (
     <div className="w-96 bg-white dark:bg-[#16161f] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden">
@@ -821,31 +819,31 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
       <div className="px-4 py-2 bg-white/[0.02] border-t border-white/5">
         <div className="text-[9px] text-zinc-600 mb-1">Signal Flow:</div>
         <div className="flex flex-wrap items-center gap-1 text-[9px] text-zinc-600">
-          <span className={guitarSettings.wah.enabled ? 'text-purple-400' : ''}>Wah</span>
+          <span className={effectsSettings.wah.enabled ? 'text-purple-400' : ''}>Wah</span>
           <span>→</span>
-          <span className={guitarSettings.overdrive.enabled ? 'text-yellow-400' : ''}>OD</span>
+          <span className={effectsSettings.overdrive.enabled ? 'text-yellow-400' : ''}>OD</span>
           <span>→</span>
-          <span className={guitarSettings.distortion.enabled ? 'text-red-400' : ''}>Dist</span>
+          <span className={effectsSettings.distortion.enabled ? 'text-red-400' : ''}>Dist</span>
           <span>→</span>
-          <span className={guitarSettings.ampSimulator.enabled ? 'text-orange-400' : ''}>Amp</span>
+          <span className={effectsSettings.ampSimulator.enabled ? 'text-orange-400' : ''}>Amp</span>
           <span>→</span>
-          <span className={guitarSettings.cabinet.enabled ? 'text-amber-400' : ''}>Cab</span>
+          <span className={effectsSettings.cabinet.enabled ? 'text-amber-400' : ''}>Cab</span>
           <span>→</span>
-          <span className={track.audioSettings.effects?.noiseGate.enabled ? 'text-emerald-400' : ''}>Gate</span>
+          <span className={effectsSettings.noiseGate.enabled ? 'text-emerald-400' : ''}>Gate</span>
           <span>→</span>
-          <span className={track.audioSettings.effects?.eq.enabled ? 'text-cyan-400' : ''}>EQ</span>
+          <span className={effectsSettings.eq.enabled ? 'text-cyan-400' : ''}>EQ</span>
           <span>→</span>
-          <span className={track.audioSettings.effects?.compressor.enabled ? 'text-amber-400' : ''}>Comp</span>
+          <span className={effectsSettings.compressor.enabled ? 'text-amber-400' : ''}>Comp</span>
           <span>→</span>
-          <span className={guitarSettings.chorus.enabled || guitarSettings.flanger.enabled || guitarSettings.phaser.enabled ? 'text-indigo-400' : ''}>Mod</span>
+          <span className={effectsSettings.chorus.enabled || effectsSettings.flanger.enabled || effectsSettings.phaser.enabled ? 'text-indigo-400' : ''}>Mod</span>
           <span>→</span>
-          <span className={guitarSettings.delay.enabled ? 'text-cyan-400' : ''}>Dly</span>
+          <span className={effectsSettings.delay.enabled ? 'text-cyan-400' : ''}>Dly</span>
           <span>→</span>
-          <span className={track.audioSettings.effects?.reverb.enabled ? 'text-indigo-400' : ''}>Verb</span>
+          <span className={effectsSettings.tremolo.enabled ? 'text-amber-400' : ''}>Trem</span>
           <span>→</span>
-          <span className={guitarSettings.tremolo.enabled ? 'text-amber-400' : ''}>Trem</span>
+          <span className={effectsSettings.reverb.enabled ? 'text-indigo-400' : ''}>Verb</span>
           <span>→</span>
-          <span className={track.audioSettings.effects?.limiter.enabled ? 'text-rose-400' : ''}>Limit</span>
+          <span className={effectsSettings.limiter.enabled ? 'text-rose-400' : ''}>Limit</span>
         </div>
       </div>
     </div>
