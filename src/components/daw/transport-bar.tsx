@@ -129,7 +129,7 @@ export function TransportBar({
   const keyColor = displayKey ? keyColors[displayKey] || 'bg-zinc-500' : 'bg-zinc-600';
 
   return (
-    <header className="h-14 bg-white dark:bg-[#12121a] border-b border-gray-200 dark:border-white/5 flex items-center px-4 gap-4 z-30 shrink-0">
+    <header className="h-14 bg-white dark:bg-[#12121a] border-b border-gray-200 dark:border-white/5 flex items-center px-4 gap-4 z-40 shrink-0">
       {/* Logo & Room */}
       <div className="flex items-center gap-3">
         <div className="flex items-center gap-2.5">
