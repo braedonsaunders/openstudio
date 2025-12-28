@@ -20,9 +20,11 @@ import {
   Music4,
   Signal,
   Wifi,
+  Sliders,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
 import type { User, BackingTrack } from '@/types';
+import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 
 interface MixerViewProps {
@@ -616,11 +618,55 @@ function TrackChannelStrip({
 }
 
 // Master Channel Strip
-function MasterChannelStrip({ isMaster: isRoomMaster, audioLevel }: { isMaster: boolean; audioLevel: number }) {
+function MasterChannelStrip({
+  isMaster: isRoomMaster,
+  audioLevel,
+  onOpenMasterFx,
+}: {
+  isMaster: boolean;
+  audioLevel: number;
+  onOpenMasterFx?: () => void;
+}) {
   const { masterVolume, setMasterVolume } = useAudioStore();
+  const {
+    setMasterEffectsEnabled,
+    isMasterEffectsEnabled,
+    getMasterEffectsMetering,
+  } = useAudioEngine();
+
+  const [fxEnabled, setFxEnabled] = useState(false);
+  const [metering, setMetering] = useState<{ compressorReduction: number; limiterReduction: number } | null>(null);
+
+  // Sync local state with engine state
+  useEffect(() => {
+    setFxEnabled(isMasterEffectsEnabled());
+  }, [isMasterEffectsEnabled]);
+
+  // Update metering data periodically when FX enabled
+  useEffect(() => {
+    if (!fxEnabled) {
+      setMetering(null);
+      return;
+    }
+    const interval = setInterval(() => {
+      setMetering(getMasterEffectsMetering());
+    }, 100);
+    return () => clearInterval(interval);
+  }, [fxEnabled, getMasterEffectsMetering]);
+
+  const toggleFx = () => {
+    const newState = !fxEnabled;
+    setFxEnabled(newState);
+    setMasterEffectsEnabled(newState);
+  };
 
   // Use actual audio level from the engine
   const level = audioLevel;
+
+  // Show gain reduction indicator
+  const gainReduction = metering
+    ? Math.max(metering.compressorReduction, metering.limiterReduction)
+    : 0;
 
   return (
     <div
@@ -694,6 +740,44 @@ function MasterChannelStrip({ isMaster: isRoomMaster, audioLevel }: { isMaster: 
 
       {/* Master Controls */}
       <div className="px-2 pb-2 space-y-1">
+        {/* FX Toggle Button */}
+        <button
+          onClick={toggleFx}
+          disabled={!isRoomMaster}
+          className={cn(
+            'w-full py-1.5 rounded text-[8px] font-bold tracking-wider flex items-center justify-center gap-1 transition-all',
+            fxEnabled
+              ? 'bg-indigo-500/80 text-white border border-indigo-400/50 shadow-lg shadow-indigo-500/20'
+              : 'bg-zinc-700/60 text-zinc-400 hover:bg-zinc-600',
+            !isRoomMaster && 'opacity-50 cursor-not-allowed'
+          )}
+        >
+          <Sliders className="w-3 h-3" />
+          FX {fxEnabled ? 'ON' : 'OFF'}
+        </button>
+
+        {/* Gain Reduction Indicator (when FX enabled) */}
+        {fxEnabled && gainReduction > 0.5 && (
+          <div className="flex items-center justify-center gap-1 text-[7px] text-amber-400">
+            <span>GR: -{gainReduction.toFixed(1)}dB</span>
+          </div>
+        )}
+
+        {/* Edit FX Button (when FX enabled) */}
+        {fxEnabled && onOpenMasterFx && (
+          <button
+            onClick={onOpenMasterFx}
+            disabled={!isRoomMaster}
+            className={cn(
+              'w-full py-1 rounded text-[7px] font-medium tracking-wider',
+              'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 transition-colors',
+              !isRoomMaster && 'opacity-50 cursor-not-allowed'
+            )}
+          >
+            EDIT FX
+          </button>
+        )}
+
         <button className="w-full py-1.5 rounded bg-zinc-700/60 text-zinc-400 text-[8px] font-bold tracking-wider hover:bg-zinc-600 flex items-center justify-center gap-1">
           <Headphones className="w-3 h-3" />
           AFL
