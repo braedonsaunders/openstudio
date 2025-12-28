@@ -14,6 +14,7 @@ import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { getLoopById } from '@/lib/audio/loop-library';
+import { getCachedLoopById } from '@/hooks/use-loop-library';
 import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
@@ -150,8 +151,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     return currentSong.tracks.map((trackRef: SongTrackReference) => {
       if (trackRef.type === 'loop') {
         const loopTrack = loopTracks.find((t: LoopTrackState) => t.id === trackRef.trackId);
-        // Check both hardcoded library AND custom loops store (for database-stored loops)
-        let loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+        // Check: 1) cached library (database-fetched), 2) custom loops store, 3) hardcoded library
+        let loopDef = loopTrack ? getCachedLoopById(loopTrack.loopId) : undefined;
         if (!loopDef && loopTrack) {
           loopDef = getCustomLoop(loopTrack.loopId);
         }

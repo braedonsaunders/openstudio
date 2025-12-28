@@ -8,6 +8,7 @@ import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { LoopScheduler } from '@/lib/audio/loop-scheduler';
 import { SoundEngine } from '@/lib/audio/sound-engine';
 import { getLoopById } from '@/lib/audio/loop-library';
+import { getCachedLoopById } from '@/hooks/use-loop-library';
 import type { LoopTrackState } from '@/types/loops';
 import type { SongTrackReference } from '@/types/songs';
 
@@ -84,10 +85,10 @@ export function useLoopPlayback() {
       return false;
     }
 
-    // Get loop definition - check custom loops first
-    let loopDef = getLoopById(loopTrack.loopId);
+    // Get loop definition - check: 1) cached library (database-fetched), 2) custom loops store
+    let loopDef = getCachedLoopById(loopTrack.loopId);
 
-    // If not found in main library, check custom loops store
+    // If not found in cached library, check custom loops store (user-created loops)
     if (!loopDef) {
       const { useCustomLoopsStore } = await import('@/stores/custom-loops-store');
       const customLoop = useCustomLoopsStore.getState().getLoop(loopTrack.loopId);
@@ -149,9 +150,10 @@ export function useLoopPlayback() {
 
   // Helper to calculate loop duration in seconds
   const getLoopDuration = useCallback((loopId: string): number => {
-    let loopDef = getLoopById(loopId);
+    // Check cached library first (includes database-fetched loops)
+    let loopDef = getCachedLoopById(loopId);
     if (!loopDef) {
-      // Check custom loops store synchronously (already imported at module level)
+      // Check custom loops store synchronously
       const { useCustomLoopsStore } = require('@/stores/custom-loops-store');
       loopDef = useCustomLoopsStore.getState().getLoop(loopId);
     }
