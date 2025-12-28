@@ -898,6 +898,8 @@ export function SavedTrackEditor({
   const [inputMode, setInputMode] = useState<'microphone' | 'application'>(
     preset?.audioSettings?.inputMode || 'microphone'
   );
+  const [inputDeviceId, setInputDeviceId] = useState(preset?.audioSettings?.inputDeviceId || 'default');
+  const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
   const [sampleRate, setSampleRate] = useState(preset?.audioSettings?.sampleRate || 48000);
   const [bufferSize, setBufferSize] = useState(preset?.audioSettings?.bufferSize || 256);
   const [inputGain, setInputGain] = useState(preset?.audioSettings?.inputGain || 0);
@@ -926,6 +928,36 @@ export function SavedTrackEditor({
   const [isSaving, setIsSaving] = useState(false);
   const { savePreset, updatePreset } = useSavedTracksStore();
 
+  // Load available audio input devices
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const loadDevices = async () => {
+      try {
+        // Request permission first (needed to get device labels)
+        await navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+          stream.getTracks().forEach(t => t.stop());
+        }).catch(() => {
+          // Permission denied, but we can still try to enumerate
+        });
+
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const audioInputs = devices.filter(d => d.kind === 'audioinput');
+        setInputDevices(audioInputs);
+      } catch (err) {
+        console.error('Failed to enumerate devices:', err);
+      }
+    };
+
+    loadDevices();
+
+    // Listen for device changes
+    navigator.mediaDevices.addEventListener('devicechange', loadDevices);
+    return () => {
+      navigator.mediaDevices.removeEventListener('devicechange', loadDevices);
+    };
+  }, [isOpen]);
+
   // Reset state when preset changes
   useEffect(() => {
     if (isOpen) {
@@ -937,6 +969,7 @@ export function SavedTrackEditor({
       setVolume(preset?.volume ?? 1);
       setIsMuted(preset?.isMuted ?? false);
       setInputMode(preset?.audioSettings?.inputMode || 'microphone');
+      setInputDeviceId(preset?.audioSettings?.inputDeviceId || 'default');
       setSampleRate(preset?.audioSettings?.sampleRate || 48000);
       setBufferSize(preset?.audioSettings?.bufferSize || 256);
       setInputGain(preset?.audioSettings?.inputGain || 0);
@@ -976,6 +1009,7 @@ export function SavedTrackEditor({
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
+          deviceId: inputDeviceId !== 'default' ? { exact: inputDeviceId } : undefined,
           sampleRate,
           channelCount,
           echoCancellation,
@@ -1016,7 +1050,7 @@ export function SavedTrackEditor({
     } catch (err) {
       console.error('Failed to start preview:', err);
     }
-  }, [isPreviewing, sampleRate, channelCount, echoCancellation, noiseSuppression, autoGainControl, directMonitoring, monitoringVolume]);
+  }, [isPreviewing, inputDeviceId, sampleRate, channelCount, echoCancellation, noiseSuppression, autoGainControl, directMonitoring, monitoringVolume]);
 
   const handleApplyEffectPreset = (presetName: string) => {
     const effectPreset = EFFECT_PRESETS.find(p => p.name === presetName);
@@ -1066,7 +1100,7 @@ export function SavedTrackEditor({
         isSolo: false,
         audioSettings: trackType === 'audio' ? {
           inputMode,
-          inputDeviceId: 'default',
+          inputDeviceId,
           sampleRate,
           bufferSize,
           noiseSuppression,
@@ -1275,6 +1309,30 @@ export function SavedTrackEditor({
                   </button>
                 </div>
               </div>
+
+              {/* Input Device Selection (only for Direct Input) */}
+              {inputMode === 'microphone' && (
+                <div>
+                  <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Input Device</label>
+                  <select
+                    value={inputDeviceId}
+                    onChange={(e) => setInputDeviceId(e.target.value)}
+                    className="w-full px-3 py-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm"
+                  >
+                    <option value="default">System Default</option>
+                    {inputDevices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || `Input ${device.deviceId.slice(0, 8)}...`}
+                      </option>
+                    ))}
+                  </select>
+                  {inputDevices.length === 0 && (
+                    <p className="text-xs text-amber-500 mt-1">
+                      No devices found. Grant microphone permission to see available devices.
+                    </p>
+                  )}
+                </div>
+              )}
 
               {/* Channel Config */}
               <div>
