@@ -34,6 +34,7 @@ function transformCategory(data: Record<string, unknown>): AvatarCategory {
     maxSelections: data.max_selections as number,
     supportsColorVariants: data.supports_color_variants as boolean,
     defaultColorPalette: data.default_color_palette as string | undefined,
+    promptAddition: data.prompt_addition as string | undefined,
     renderX: (data.render_x as number) ?? 0,
     renderY: (data.render_y as number) ?? 0,
     renderWidth: (data.render_width as number) ?? 512,
@@ -219,6 +220,7 @@ export async function createCategory(request: CreateCategoryRequest): Promise<Av
       max_selections: request.maxSelections ?? 1,
       supports_color_variants: request.supportsColorVariants ?? false,
       default_color_palette: request.defaultColorPalette,
+      prompt_addition: request.promptAddition,
       render_x: request.renderX ?? 0,
       render_y: request.renderY ?? 0,
       render_width: request.renderWidth ?? 512,
@@ -246,6 +248,7 @@ export async function updateCategory(
   if (request.maxSelections !== undefined) updates.max_selections = request.maxSelections;
   if (request.supportsColorVariants !== undefined) updates.supports_color_variants = request.supportsColorVariants;
   if (request.defaultColorPalette !== undefined) updates.default_color_palette = request.defaultColorPalette;
+  if (request.promptAddition !== undefined) updates.prompt_addition = request.promptAddition;
   if (request.isActive !== undefined) updates.is_active = request.isActive;
   if (request.renderX !== undefined) updates.render_x = request.renderX;
   if (request.renderY !== undefined) updates.render_y = request.renderY;
