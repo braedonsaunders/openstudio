@@ -516,6 +516,60 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isMaster, isPlaying, isMuted, activePanel, handlePlay, handlePause, handleSeek, setMuted, skipToNext, skipToPrevious, hasSongTracks, setMainView]);
 
+  // Time update for loop-only playback (when no audio tracks are driving the time)
+  const playStartTimeRef = useRef<number | null>(null);
+  const playStartPositionRef = useRef<number>(0);
+  const loopTimeAnimationRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    // Check if we're playing with only loop tracks (no audio tracks)
+    const hasAudioTracks = songTracks.some((t) => t.type === 'audio');
+    const hasLoopTracks = songTracks.some((t) => t.type === 'loop');
+
+    if (isPlaying && hasLoopTracks && !hasAudioTracks) {
+      // Start time tracking for loop-only playback
+      if (playStartTimeRef.current === null) {
+        playStartTimeRef.current = performance.now();
+        playStartPositionRef.current = currentTime;
+      }
+
+      const updateLoopTime = () => {
+        if (playStartTimeRef.current !== null) {
+          const elapsed = (performance.now() - playStartTimeRef.current) / 1000;
+          const newTime = playStartPositionRef.current + elapsed;
+
+          // Update time if we haven't exceeded song duration
+          if (newTime < songDuration) {
+            setCurrentTime(newTime);
+            loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
+          } else {
+            // Song ended - loop back to start or stop
+            setCurrentTime(0);
+            playStartTimeRef.current = performance.now();
+            playStartPositionRef.current = 0;
+            loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
+          }
+        }
+      };
+
+      loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
+
+      return () => {
+        if (loopTimeAnimationRef.current) {
+          cancelAnimationFrame(loopTimeAnimationRef.current);
+          loopTimeAnimationRef.current = null;
+        }
+      };
+    } else {
+      // Not in loop-only mode - reset tracking
+      playStartTimeRef.current = null;
+      if (loopTimeAnimationRef.current) {
+        cancelAnimationFrame(loopTimeAnimationRef.current);
+        loopTimeAnimationRef.current = null;
+      }
+    }
+  }, [isPlaying, songTracks, currentTime, songDuration, setCurrentTime]);
+
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
     // Get ALL fresh state to avoid ANY stale closure issues
