@@ -806,6 +806,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onMuteUser={muteUser}
           onVolumeChange={setUserVolume}
           onMuteSelf={() => setMuted(!isMuted)}
+          isGlobalMuted={isMuted}
           width={leftPanelWidth}
           // Shared split position (synced with timeline)
           splitPosition={sharedSplitPosition}

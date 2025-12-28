@@ -25,6 +25,7 @@ interface LeftPanelProps {
   onMuteUser: (userId: string, muted: boolean) => void;
   onVolumeChange: (userId: string, volume: number) => void;
   onMuteSelf: () => void;
+  isGlobalMuted?: boolean;
   // Layout props
   width?: number;
   // Shared split position (synced with timeline)
@@ -51,6 +52,7 @@ export function LeftPanel({
   onMuteUser,
   onVolumeChange,
   onMuteSelf,
+  isGlobalMuted,
   // Layout props
   width,
   splitPosition: externalSplitPosition,
@@ -143,6 +145,7 @@ export function LeftPanel({
           onMuteUser={onMuteUser}
           onVolumeChange={onVolumeChange}
           onMuteSelf={onMuteSelf}
+          isGlobalMuted={isGlobalMuted}
           roomId={roomId}
         />
       </div>
