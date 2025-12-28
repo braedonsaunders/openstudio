@@ -438,7 +438,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
                 className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
               >
                 <option value="">Select category...</option>
-                {categories.map((cat) => (
+                {[...categories].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((cat) => (
                   <option key={cat.id} value={cat.id}>
                     {cat.displayName}
                   </option>
@@ -841,7 +841,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
               className="w-full max-w-xs px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
             >
               <option value="">Select category...</option>
-              {categories.map((cat) => (
+              {[...categories].sort((a, b) => a.displayName.localeCompare(b.displayName)).map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.displayName}
                 </option>
