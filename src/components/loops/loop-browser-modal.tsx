@@ -175,21 +175,36 @@ export function LoopBrowserModal({
 
       let loopStartTime = context.currentTime;
 
+      // Track scheduled notes to prevent duplicates (key: "noteTime-noteNumber")
+      const scheduledNotes = new Set<string>();
+      let currentIteration = 0;
+
       const scheduleLoop = () => {
         const now = context.currentTime;
+
+        // Check if loop should restart (reset scheduled notes for new iteration)
+        if (now >= loopStartTime + loopDuration) {
+          loopStartTime = now;
+          currentIteration++;
+          scheduledNotes.clear();
+        }
 
         // Schedule notes for current loop iteration
         for (const note of loop.midiData) {
           const noteTime = loopStartTime + note.t * loopDuration;
           if (noteTime >= now && noteTime < now + 0.1) {
+            // Create unique key for this note in this iteration
+            const noteKey = `${currentIteration}-${note.t.toFixed(4)}-${note.n}`;
+
+            // Skip if already scheduled
+            if (scheduledNotes.has(noteKey)) {
+              continue;
+            }
+            scheduledNotes.add(noteKey);
+
             const noteDuration = note.d * loopDuration;
             engine.playNote(loop.soundPreset, note.n, note.v, noteTime, noteDuration);
           }
-        }
-
-        // Check if loop should restart
-        if (now >= loopStartTime + loopDuration) {
-          loopStartTime = now;
         }
       };
 
