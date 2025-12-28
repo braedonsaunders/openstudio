@@ -341,7 +341,7 @@ export function getEffectivePermissions(
 
   for (const category of Object.keys(customPermissions) as Array<keyof RoomPermissions>) {
     if (customPermissions[category]) {
-      (merged as Record<string, Record<string, boolean>>)[category] = {
+      (merged as unknown as Record<string, Record<string, boolean>>)[category] = {
         ...(merged[category] as unknown as Record<string, boolean>),
         ...(customPermissions[category] as unknown as Record<string, boolean>),
       };
@@ -373,7 +373,7 @@ export function countCategoryPermissions(
   permissions: RoomPermissions,
   category: keyof RoomPermissions
 ): { enabled: number; total: number } {
-  const categoryPerms = permissions[category] as Record<string, boolean>;
+  const categoryPerms = permissions[category] as unknown as Record<string, boolean>;
   const values = Object.values(categoryPerms);
   return {
     enabled: values.filter(v => v).length,
