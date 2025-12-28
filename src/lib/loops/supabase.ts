@@ -30,11 +30,12 @@ interface DbLoopSubcategory {
 interface DbLoop {
   id: string;
   name: string;
-  category_id: string;
-  subcategory_id: string | null;
+  category: string;
+  subcategory: string | null;
   bpm: number;
   bars: number;
-  time_signature: [number, number];
+  time_signature_numerator: number;
+  time_signature_denominator: number;
   key: string | null;
   midi_data: MidiNote[];
   sound_preset: string;
@@ -131,13 +132,13 @@ export async function getAllLoopCategories(): Promise<LoopCategoryInfo[]> {
   // Fetch loop counts per subcategory
   const { data: loops } = await supabase
     .from('system_loops')
-    .select('subcategory_id')
+    .select('subcategory')
     .eq('is_active', true);
 
   const loopCounts = new Map<string, number>();
   loops?.forEach(loop => {
-    if (loop.subcategory_id) {
-      loopCounts.set(loop.subcategory_id, (loopCounts.get(loop.subcategory_id) || 0) + 1);
+    if (loop.subcategory) {
+      loopCounts.set(loop.subcategory, (loopCounts.get(loop.subcategory) || 0) + 1);
     }
   });
 
@@ -298,10 +299,10 @@ export async function getAllSystemLoops(options?: {
     .order('name');
 
   if (options?.categoryId) {
-    query = query.eq('category_id', options.categoryId);
+    query = query.eq('category', options.categoryId);
   }
   if (options?.subcategoryId) {
-    query = query.eq('subcategory_id', options.subcategoryId);
+    query = query.eq('subcategory', options.subcategoryId);
   }
   if (options?.activeOnly !== false) {
     query = query.eq('is_active', true);
@@ -354,11 +355,12 @@ export async function createSystemLoop(loop: {
     .insert({
       id: loop.id,
       name: loop.name,
-      category_id: loop.category_id,
-      subcategory_id: loop.subcategory_id || null,
+      category: loop.category_id,
+      subcategory: loop.subcategory_id || null,
       bpm: loop.bpm,
       bars: loop.bars,
-      time_signature: loop.time_signature,
+      time_signature_numerator: loop.time_signature[0],
+      time_signature_denominator: loop.time_signature[1],
       key: loop.key || null,
       midi_data: loop.midi_data,
       sound_preset: loop.sound_preset,
@@ -394,9 +396,29 @@ export async function updateSystemLoop(id: string, updates: Partial<{
 }>): Promise<LoopDefinition> {
   const supabase = getSupabaseClient();
 
+  // Transform field names to match database columns
+  const dbUpdates: Record<string, unknown> = {};
+  if (updates.name !== undefined) dbUpdates.name = updates.name;
+  if (updates.category_id !== undefined) dbUpdates.category = updates.category_id;
+  if (updates.subcategory_id !== undefined) dbUpdates.subcategory = updates.subcategory_id;
+  if (updates.bpm !== undefined) dbUpdates.bpm = updates.bpm;
+  if (updates.bars !== undefined) dbUpdates.bars = updates.bars;
+  if (updates.time_signature !== undefined) {
+    dbUpdates.time_signature_numerator = updates.time_signature[0];
+    dbUpdates.time_signature_denominator = updates.time_signature[1];
+  }
+  if (updates.key !== undefined) dbUpdates.key = updates.key;
+  if (updates.midi_data !== undefined) dbUpdates.midi_data = updates.midi_data;
+  if (updates.sound_preset !== undefined) dbUpdates.sound_preset = updates.sound_preset;
+  if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
+  if (updates.intensity !== undefined) dbUpdates.intensity = updates.intensity;
+  if (updates.complexity !== undefined) dbUpdates.complexity = updates.complexity;
+  if (updates.description !== undefined) dbUpdates.description = updates.description;
+  if (updates.is_active !== undefined) dbUpdates.is_active = updates.is_active;
+
   const { data, error } = await supabase
     .from('system_loops')
-    .update(updates)
+    .update(dbUpdates)
     .eq('id', id)
     .select()
     .single();
@@ -442,15 +464,15 @@ function dbLoopToDefinition(db: DbLoop): LoopDefinition {
   return {
     id: db.id,
     name: db.name,
-    category: db.category_id as LoopDefinition['category'],
-    subcategory: db.subcategory_id || '',
+    category: db.category as LoopDefinition['category'],
+    subcategory: db.subcategory || '',
     bpm: db.bpm,
     bars: db.bars,
-    timeSignature: db.time_signature,
+    timeSignature: [db.time_signature_numerator, db.time_signature_denominator] as [number, number],
     key: db.key || undefined,
-    midiData: db.midi_data,
+    midiData: db.midi_data || [],
     soundPreset: db.sound_preset,
-    tags: db.tags,
+    tags: db.tags || [],
     intensity: db.intensity,
     complexity: db.complexity,
   };

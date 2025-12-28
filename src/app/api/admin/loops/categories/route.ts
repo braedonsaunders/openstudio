@@ -6,7 +6,6 @@ import {
   updateLoopCategory,
   deleteLoopCategory,
 } from '@/lib/loops/supabase';
-import { LOOP_CATEGORIES } from '@/lib/audio/loop-library';
 
 // GET /api/admin/loops/categories - List all loop categories
 export async function GET(req: NextRequest) {
@@ -17,17 +16,13 @@ export async function GET(req: NextRequest) {
     }
 
     const categories = await getAllLoopCategories();
-
-    // Fall back to hardcoded data if database is empty
-    if (categories.length === 0) {
-      return NextResponse.json(LOOP_CATEGORIES);
-    }
-
     return NextResponse.json(categories);
   } catch (error) {
     console.error('Failed to get loop categories:', error);
-    // Return hardcoded data as fallback on error
-    return NextResponse.json(LOOP_CATEGORIES);
+    return NextResponse.json(
+      { error: 'Failed to get loop categories' },
+      { status: 500 }
+    );
   }
 }
 

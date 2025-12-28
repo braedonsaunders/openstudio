@@ -8,7 +8,6 @@ import {
   deleteSystemInstrument,
   duplicateSystemInstrument,
 } from '@/lib/loops/supabase';
-import { getAllInstruments } from '@/lib/audio/instrument-registry';
 
 // GET /api/admin/instruments - List all system instruments
 export async function GET(req: NextRequest) {
@@ -24,24 +23,13 @@ export async function GET(req: NextRequest) {
     const activeOnly = searchParams.get('active') !== 'false';
 
     const instruments = await getAllSystemInstruments({ categoryId, type, activeOnly });
-
-    // Fall back to hardcoded data if database is empty
-    if (instruments.length === 0) {
-      let fallbackInstruments = getAllInstruments();
-      if (categoryId) {
-        fallbackInstruments = fallbackInstruments.filter(i => i.category === categoryId);
-      }
-      if (type) {
-        fallbackInstruments = fallbackInstruments.filter(i => i.type === type);
-      }
-      return NextResponse.json(fallbackInstruments);
-    }
-
     return NextResponse.json(instruments);
   } catch (error) {
     console.error('Failed to get instruments:', error);
-    // Return hardcoded data as fallback on error
-    return NextResponse.json(getAllInstruments());
+    return NextResponse.json(
+      { error: 'Failed to get instruments' },
+      { status: 500 }
+    );
   }
 }
 

@@ -9,7 +9,6 @@ import {
   duplicateSystemLoop,
   promoteUserLoopToSystem,
 } from '@/lib/loops/supabase';
-import { LOOP_LIBRARY } from '@/lib/audio/loop-library';
 
 // GET /api/admin/loops - List all system loops
 export async function GET(req: NextRequest) {
@@ -25,24 +24,13 @@ export async function GET(req: NextRequest) {
     const activeOnly = searchParams.get('active') !== 'false';
 
     const loops = await getAllSystemLoops({ categoryId, subcategoryId, activeOnly });
-
-    // Fall back to hardcoded data if database is empty
-    if (loops.length === 0) {
-      let fallbackLoops = LOOP_LIBRARY;
-      if (categoryId) {
-        fallbackLoops = fallbackLoops.filter(l => l.category === categoryId);
-      }
-      if (subcategoryId) {
-        fallbackLoops = fallbackLoops.filter(l => l.subcategory === subcategoryId);
-      }
-      return NextResponse.json(fallbackLoops);
-    }
-
     return NextResponse.json(loops);
   } catch (error) {
     console.error('Failed to get loops:', error);
-    // Return hardcoded data as fallback on error
-    return NextResponse.json(LOOP_LIBRARY);
+    return NextResponse.json(
+      { error: 'Failed to get loops' },
+      { status: 500 }
+    );
   }
 }
 
