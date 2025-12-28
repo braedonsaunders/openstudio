@@ -4,6 +4,37 @@
 // USER PROFILE
 // ============================================
 
+// Music tags that users can add to their profile
+export const MUSIC_TAGS = {
+  genres: [
+    'Rock', 'Jazz', 'Blues', 'Metal', 'Pop', 'Hip Hop', 'R&B', 'Electronic',
+    'Classical', 'Folk', 'Country', 'Funk', 'Soul', 'Reggae', 'Punk',
+    'Indie', 'Alternative', 'Ambient', 'Lo-Fi', 'Experimental'
+  ],
+  skills: [
+    'Beginner', 'Intermediate', 'Advanced', 'Pro', 'Session Musician',
+    'Producer', 'Songwriter', 'Composer', 'Arranger', 'Teacher'
+  ],
+  lookingFor: [
+    'Jam Sessions', 'Band Members', 'Collaboration', 'Feedback',
+    'Learning', 'Teaching', 'Recording', 'Live Performance', 'Fun'
+  ],
+  vibes: [
+    'Chill', 'High Energy', 'Experimental', 'Traditional', 'Creative',
+    'Technical', 'Improvisation', 'Structured', 'Laid Back', 'Competitive'
+  ]
+} as const;
+
+export type MusicTagCategory = keyof typeof MUSIC_TAGS;
+
+export interface UserMusicTags {
+  genres: string[];
+  instruments: string[];
+  skills: string[];
+  lookingFor: string[];
+  vibes: string[];
+}
+
 export interface UserProfile {
   id: string;
   username: string;
@@ -27,6 +58,9 @@ export interface UserProfile {
   longestDailyStreak: number;
   lastActiveDate?: string;
   streakFreezes: number;
+
+  // Music Tags - for discovery in the lobby
+  musicTags?: UserMusicTags;
 
   // Social Links
   links: {

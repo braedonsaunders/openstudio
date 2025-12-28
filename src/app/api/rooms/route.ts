@@ -45,6 +45,8 @@ function transformRoom(room: Record<string, unknown>) {
     creatorName: room.creator_name,
     creatorUsername: room.creator_username,
     lastActivity: room.last_activity,
+    color: room.color || 'indigo',
+    icon: room.icon || 'music',
   };
 }
 
@@ -63,7 +65,9 @@ export async function POST(request: NextRequest) {
       genre,
       tags,
       rules,
-      settings
+      settings,
+      color = 'indigo',
+      icon = 'music',
     } = body;
 
     // Use provided ID or generate a new one
@@ -84,6 +88,8 @@ export async function POST(request: NextRequest) {
         tags,
         rules,
         settings: settings || {},
+        color,
+        icon,
       });
     }
 
@@ -103,6 +109,8 @@ export async function POST(request: NextRequest) {
         rules: rules || null,
         settings: settings || {},
         last_activity: new Date().toISOString(),
+        color: color || 'indigo',
+        icon: icon || 'music',
       }, { onConflict: 'id', ignoreDuplicates: true })
       .select()
       .single();
@@ -124,6 +132,8 @@ export async function POST(request: NextRequest) {
           tags,
           rules,
           settings: settings || {},
+          color,
+          icon,
         });
       }
       // If duplicate key, fetch and return the existing room
@@ -412,6 +422,8 @@ export async function PATCH(request: NextRequest) {
     if (updates.tags !== undefined) dbUpdates.tags = updates.tags;
     if (updates.rules !== undefined) dbUpdates.rules = updates.rules;
     if (updates.settings !== undefined) dbUpdates.settings = updates.settings;
+    if (updates.color !== undefined) dbUpdates.color = updates.color;
+    if (updates.icon !== undefined) dbUpdates.icon = updates.icon;
     dbUpdates.last_activity = new Date().toISOString();
 
     const { data, error } = await supabase

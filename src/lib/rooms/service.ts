@@ -56,6 +56,8 @@ export async function createRoom(
       genre: input.genre,
       tags: input.tags,
       settings: input.settings || {},
+      color: input.color || 'indigo',
+      icon: input.icon || 'music',
     }),
   });
 
