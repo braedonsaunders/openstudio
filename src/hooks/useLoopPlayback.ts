@@ -57,11 +57,19 @@ export function useLoopPlayback() {
 
   // Start playing a loop track
   const startLoop = useCallback(async (track: LoopTrackState) => {
+    console.log('[useLoopPlayback] startLoop called:', track.name, 'initialized:', isInitializedRef.current);
+
     if (!isInitializedRef.current) {
+      console.log('[useLoopPlayback] Initializing audio system...');
       await initialize();
     }
 
     const scheduler = schedulerRef.current;
+    const soundEngine = soundEngineRef.current;
+    const audioContext = audioContextRef.current;
+
+    console.log('[useLoopPlayback] After init - scheduler:', !!scheduler, 'soundEngine:', !!soundEngine, 'audioContext:', !!audioContext);
+
     if (!scheduler) {
       console.error('[useLoopPlayback] Scheduler not initialized');
       return;
@@ -75,16 +83,20 @@ export function useLoopPlayback() {
     }
 
     // Resume audio context if suspended
-    if (audioContextRef.current?.state === 'suspended') {
-      await audioContextRef.current.resume();
+    if (audioContext?.state === 'suspended') {
+      console.log('[useLoopPlayback] Resuming suspended audio context');
+      await audioContext.resume();
     }
 
-    console.log('[useLoopPlayback] Starting loop:', track.name, loopDef.name);
+    console.log('[useLoopPlayback] Audio context state:', audioContext?.state);
+    console.log('[useLoopPlayback] Starting loop:', track.name, 'preset:', track.soundPreset, 'midiNotes:', loopDef.midiData?.length);
 
     // Start the loop
     const syncTimestamp = track.startTime || Date.now();
     scheduler.startLoop(track.id, loopDef, track, syncTimestamp);
     playingTracksRef.current.add(track.id);
+
+    console.log('[useLoopPlayback] Loop started, active loops:', scheduler.getActiveLoopIds());
   }, [initialize]);
 
   // Stop playing a loop track
