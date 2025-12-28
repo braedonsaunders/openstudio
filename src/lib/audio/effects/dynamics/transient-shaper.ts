@@ -12,7 +12,7 @@ export class TransientShaperProcessor extends BaseEffect {
 
   // Envelope detection
   private analyser: AnalyserNode;
-  private analysisData: Float32Array;
+  private analysisData: Float32Array<ArrayBuffer>;
 
   // Attack path
   private attackGain: GainNode;
@@ -46,7 +46,7 @@ export class TransientShaperProcessor extends BaseEffect {
     // Create envelope analyser
     this.analyser = audioContext.createAnalyser();
     this.analyser.fftSize = 256;
-    this.analysisData = new Float32Array(this.analyser.fftSize);
+    this.analysisData = new Float32Array(this.analyser.fftSize) as Float32Array<ArrayBuffer>;
 
     // Attack path - emphasizes transients
     this.attackFilter = audioContext.createBiquadFilter();
