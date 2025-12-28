@@ -12,8 +12,9 @@ import { useAudioEngine } from './useAudioEngine';
  * (e.g., DAWLayout or a track component).
  */
 export function useTrackAudioSync(currentUserId: string | undefined) {
-  const { setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects } = useAudioEngine();
+  const { setLocalTrackArmed, setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects } = useAudioEngine();
   const lastSyncRef = useRef<{
+    isArmed: boolean;
     isMuted: boolean;
     isSolo: boolean;
     volume: number;
@@ -47,6 +48,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
 
       // Check if state has changed
       const currentState = {
+        isArmed: primaryTrack.isArmed,
         isMuted: isEffectivelyMuted,
         isSolo: primaryTrack.isSolo,
         volume: primaryTrack.volume,
@@ -54,6 +56,12 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       };
 
       const lastState = lastSyncRef.current;
+
+      // Apply armed state if changed
+      // When not armed, audio is blocked from processing/monitoring
+      if (!lastState || lastState.isArmed !== currentState.isArmed) {
+        setLocalTrackArmed(currentState.isArmed);
+      }
 
       // Apply mute if changed
       if (!lastState || lastState.isMuted !== currentState.isMuted) {
@@ -78,5 +86,5 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
     return () => {
       unsubscribe();
     };
-  }, [currentUserId, setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects]);
+  }, [currentUserId, setLocalTrackArmed, setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects]);
 }

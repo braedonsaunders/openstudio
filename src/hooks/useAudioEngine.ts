@@ -264,6 +264,11 @@ export function useAudioEngine() {
     globalEngine?.setMonitoringVolume(volume);
   }, []);
 
+  // Set local track armed state (blocks audio when unarmed)
+  const setLocalTrackArmed = useCallback((armed: boolean) => {
+    globalEngine?.setLocalTrackArmed(armed);
+  }, []);
+
   // Set local track muted state (for mute/solo)
   const setLocalTrackMuted = useCallback((muted: boolean) => {
     globalEngine?.setLocalTrackMuted(muted);
@@ -526,6 +531,7 @@ export function useAudioEngine() {
     setOutputDevice,
     setMonitoringEnabled,
     setMonitoringVolume,
+    setLocalTrackArmed,
     setLocalTrackMuted,
     setLocalTrackVolume,
     updateLocalEffects,
