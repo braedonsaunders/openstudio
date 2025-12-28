@@ -242,7 +242,10 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
           No AI Providers Configured
         </h3>
         <p className="text-gray-500 dark:text-gray-400 mb-4">
-          Add CLOUDFLARE_AI_API_TOKEN or REPLICATE_API_TOKEN to your environment variables.
+          For Cloudflare Workers AI: Set CLOUDFLARE_R2_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (or CLOUDFLARE_R2_ACCESS_KEY_ID with AI permissions).
+        </p>
+        <p className="text-gray-500 dark:text-gray-400 text-sm">
+          For Replicate: Set REPLICATE_API_TOKEN.
         </p>
       </Card>
     );
