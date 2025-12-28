@@ -132,6 +132,19 @@ export class LoopScheduler {
     // Get MIDI data (possibly with humanization)
     let midiData = trackState.customMidiData || loopDef.midiData;
 
+    if (iteration === 0) {
+      console.log('[LoopScheduler] First iteration:', {
+        trackId: loop.trackId,
+        loopDuration,
+        nextLoopTime,
+        currentTime: this.context.currentTime,
+        lookahead: this.lookaheadTime,
+        midiNotes: midiData?.length,
+        preset: trackState.soundPreset,
+        muted: trackState.muted,
+      });
+    }
+
     // Apply humanization if enabled
     if (trackState.humanizeEnabled) {
       midiData = this.humanizeMidi(midiData, trackState.humanizeTiming, trackState.humanizeVelocity);
@@ -142,6 +155,8 @@ export class LoopScheduler {
     if (!trackState.keyLocked && this.masterKey && loopDef.key) {
       transpose = this.calculateTranspose(loopDef.key, trackState.targetKey || this.masterKey);
     }
+
+    let scheduledCount = 0;
 
     // Schedule each note
     for (const note of midiData) {
@@ -166,6 +181,7 @@ export class LoopScheduler {
             noteTime,
             noteDuration
           );
+          scheduledCount++;
         }
 
         loop.scheduledNotes.push({
@@ -176,6 +192,10 @@ export class LoopScheduler {
           soundPreset: trackState.soundPreset,
         });
       }
+    }
+
+    if (iteration === 0) {
+      console.log('[LoopScheduler] Scheduled notes in first iteration:', scheduledCount);
     }
 
     // Schedule next iteration
