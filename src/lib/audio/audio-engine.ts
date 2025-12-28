@@ -3,6 +3,7 @@
 
 import { AdaptiveJitterBuffer } from './jitter-buffer';
 import { UnifiedEffectsProcessor } from './effects/unified-effects-processor';
+import { SoundEngine } from './sound-engine';
 import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, UnifiedEffectsChain } from '@/types';
 
 export interface CaptureAudioOptions {
@@ -68,6 +69,15 @@ export class AudioEngine {
   private onLevelUpdate: ((levels: Map<string, number>) => void) | null = null;
   private levelUpdateInterval: NodeJS.Timeout | null = null;
   private onTrackEnded: (() => void) | null = null;
+
+  // WebRTC broadcast support - unified stream for all local audio (mic + effects + MIDI)
+  private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
+  private broadcastGain: GainNode | null = null;
+  private midiMixerGain: GainNode | null = null;
+
+  // Integrated SoundEngine for MIDI loops/synths - shares same AudioContext
+  private soundEngine: SoundEngine | null = null;
+  private soundEngineSourceNode: MediaStreamAudioSourceNode | null = null;
 
   constructor(config: Partial<AudioEngineConfig> = {}) {
     this.config = { ...defaultConfig, ...config };
@@ -146,7 +156,10 @@ export class AudioEngine {
       autoGainControl,
       sampleRate,
       channelCount: requestedChannelCount,
-    };
+      // Request minimum capture latency for live jamming
+      // Chrome-specific but safely ignored by other browsers
+      latency: 0,
+    } as MediaTrackConstraints & { latency?: number };
 
     // Add device constraint if specified
     if (deviceId && deviceId !== 'default') {
@@ -797,6 +810,184 @@ export class AudioEngine {
     this.onTrackEnded = callback;
   }
 
+  // ==========================================================================
+  // WebRTC Broadcast Support (Unified Audio Stream)
+  // ==========================================================================
+
+  /**
+   * Enable broadcast mode - creates a unified MediaStream containing:
+   * - Microphone/instrument input (post-effects)
+   * - MIDI/synth audio (when mixed in via addMidiStream)
+   * - Metronome audio (when mixed in via addMidiStream)
+   *
+   * This stream should be used for WebRTC instead of the raw mic stream.
+   */
+  enableBroadcast(): MediaStream {
+    if (!this.audioContext) {
+      throw new Error('AudioEngine not initialized');
+    }
+
+    if (this.broadcastDestination) {
+      return this.broadcastDestination.stream;
+    }
+
+    // Create broadcast destination and gain
+    this.broadcastDestination = this.audioContext.createMediaStreamDestination();
+    this.broadcastGain = this.audioContext.createGain();
+    this.broadcastGain.gain.value = 1.0;
+    this.broadcastGain.connect(this.broadcastDestination);
+
+    // Create mixer node for MIDI/metronome streams
+    this.midiMixerGain = this.audioContext.createGain();
+    this.midiMixerGain.gain.value = 1.0;
+    this.midiMixerGain.connect(this.broadcastGain);
+
+    // Connect the processed local audio to broadcast
+    // Route: localInput -> effects -> muteGain -> broadcastGain -> broadcastDestination
+    if (this.localMuteGain) {
+      this.localMuteGain.connect(this.broadcastGain);
+    }
+
+    // If SoundEngine exists, connect it to broadcast
+    if (this.soundEngine && !this.soundEngineSourceNode) {
+      const midiStream = this.soundEngine.enableBroadcast();
+      this.soundEngineSourceNode = this.audioContext.createMediaStreamSource(midiStream);
+      this.soundEngineSourceNode.connect(this.midiMixerGain);
+      console.log('[AudioEngine] Connected existing SoundEngine to broadcast');
+    }
+
+    console.log('[AudioEngine] Broadcast enabled - unified audio stream ready for WebRTC');
+    return this.broadcastDestination.stream;
+  }
+
+  /**
+   * Disable broadcast mode
+   */
+  disableBroadcast(): void {
+    // Disconnect SoundEngine from broadcast
+    if (this.soundEngineSourceNode) {
+      this.soundEngineSourceNode.disconnect();
+      this.soundEngineSourceNode = null;
+    }
+    if (this.soundEngine) {
+      this.soundEngine.disableBroadcast();
+    }
+
+    if (this.localMuteGain && this.broadcastGain) {
+      try {
+        this.localMuteGain.disconnect(this.broadcastGain);
+      } catch {
+        // Already disconnected
+      }
+    }
+    if (this.midiMixerGain) {
+      this.midiMixerGain.disconnect();
+      this.midiMixerGain = null;
+    }
+    if (this.broadcastGain) {
+      this.broadcastGain.disconnect();
+      this.broadcastGain = null;
+    }
+    this.broadcastDestination = null;
+    console.log('[AudioEngine] Broadcast disabled');
+  }
+
+  /**
+   * Get the unified broadcast MediaStream for WebRTC
+   * This includes mic + effects + MIDI audio
+   */
+  getBroadcastStream(): MediaStream | null {
+    return this.broadcastDestination?.stream || null;
+  }
+
+  /**
+   * Check if broadcast is enabled
+   */
+  isBroadcastEnabled(): boolean {
+    return this.broadcastDestination !== null;
+  }
+
+  /**
+   * Add a MIDI/synth MediaStream to the broadcast mix
+   * Use this to include SoundEngine or MetronomeEngine audio in WebRTC
+   */
+  addMidiStreamToBroadcast(stream: MediaStream): MediaStreamAudioSourceNode | null {
+    if (!this.audioContext || !this.midiMixerGain) {
+      console.warn('[AudioEngine] Cannot add MIDI stream - broadcast not enabled');
+      return null;
+    }
+
+    const source = this.audioContext.createMediaStreamSource(stream);
+    source.connect(this.midiMixerGain);
+    console.log('[AudioEngine] Added MIDI stream to broadcast mix');
+    return source;
+  }
+
+  /**
+   * Get the MIDI mixer gain node for direct connection
+   * Useful when you want to connect a SoundEngine output node directly
+   */
+  getMidiMixerGain(): GainNode | null {
+    return this.midiMixerGain;
+  }
+
+  /**
+   * Set the volume of MIDI audio in the broadcast mix
+   */
+  setMidiBroadcastVolume(volume: number): void {
+    if (this.midiMixerGain) {
+      this.midiMixerGain.gain.value = Math.max(0, Math.min(1, volume));
+    }
+  }
+
+  // ==========================================================================
+  // Integrated SoundEngine (MIDI/Synth Audio)
+  // ==========================================================================
+
+  /**
+   * Get or create the integrated SoundEngine.
+   * Uses the same AudioContext as the main AudioEngine for unified audio processing.
+   * MIDI audio is automatically routed to both local output and WebRTC broadcast.
+   */
+  async getSoundEngine(): Promise<SoundEngine> {
+    if (!this.audioContext || !this.masterGain) {
+      throw new Error('AudioEngine not initialized - call initialize() first');
+    }
+
+    if (this.soundEngine) {
+      return this.soundEngine;
+    }
+
+    // Create SoundEngine that outputs to master gain (local playback)
+    this.soundEngine = new SoundEngine(this.audioContext, this.masterGain);
+    await this.soundEngine.initialize();
+
+    // If broadcast is enabled, also route MIDI to WebRTC
+    if (this.midiMixerGain) {
+      const midiStream = this.soundEngine.enableBroadcast();
+      this.soundEngineSourceNode = this.audioContext.createMediaStreamSource(midiStream);
+      this.soundEngineSourceNode.connect(this.midiMixerGain);
+      console.log('[AudioEngine] SoundEngine connected to broadcast mix');
+    }
+
+    console.log('[AudioEngine] Integrated SoundEngine initialized');
+    return this.soundEngine;
+  }
+
+  /**
+   * Check if SoundEngine is initialized
+   */
+  hasSoundEngine(): boolean {
+    return this.soundEngine !== null;
+  }
+
+  /**
+   * Get the SoundEngine synchronously (returns null if not yet initialized)
+   */
+  getSoundEngineSync(): SoundEngine | null {
+    return this.soundEngine;
+  }
+
   private startLevelMonitoring(): void {
     this.levelUpdateInterval = setInterval(() => {
       const levels = new Map<string, number>();
@@ -833,6 +1024,15 @@ export class AudioEngine {
     if (this.levelUpdateInterval) {
       clearInterval(this.levelUpdateInterval);
       this.levelUpdateInterval = null;
+    }
+
+    // Disable broadcast before cleanup
+    this.disableBroadcast();
+
+    // Dispose SoundEngine
+    if (this.soundEngine) {
+      this.soundEngine.dispose();
+      this.soundEngine = null;
     }
 
     this.stopBackingTrack();

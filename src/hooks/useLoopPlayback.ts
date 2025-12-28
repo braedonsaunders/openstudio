@@ -5,40 +5,52 @@ import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { LoopScheduler } from '@/lib/audio/loop-scheduler';
-import { SoundEngine } from '@/lib/audio/sound-engine';
 import { getLoopById } from '@/lib/audio/loop-library';
+import { useAudioEngine } from './useAudioEngine';
 import type { LoopTrackState } from '@/types/loops';
+import type { SoundEngine } from '@/lib/audio/sound-engine';
 
 /**
  * Hook that manages loop playback by connecting the LoopScheduler and SoundEngine
  * to the loop tracks store state.
+ *
+ * IMPORTANT: Uses the integrated SoundEngine from AudioEngine to ensure MIDI audio
+ * is routed through the WebRTC broadcast stream. This allows other participants
+ * to hear your MIDI loops.
  */
 export function useLoopPlayback() {
   const schedulerRef = useRef<LoopScheduler | null>(null);
   const soundEngineRef = useRef<SoundEngine | null>(null);
-  const audioContextRef = useRef<AudioContext | null>(null);
   const isInitializedRef = useRef(false);
   const playingTracksRef = useRef<Set<string>>(new Set());
 
-  const { isPlaying } = useAudioStore();
+  const { isPlaying, audioContext } = useAudioStore();
   const { getCurrentSong } = useSongsStore();
   const { getTrack, getAllTracks } = useLoopTracksStore();
 
-  // Initialize audio system
+  // Get the integrated SoundEngine from AudioEngine
+  const { getSoundEngine, initialize: initializeAudioEngine } = useAudioEngine();
+
+  // Initialize audio system using the shared AudioEngine
   const initialize = useCallback(async () => {
     if (isInitializedRef.current) return;
 
     try {
-      // Create audio context
-      const context = new AudioContext({ latencyHint: 'interactive' });
-      audioContextRef.current = context;
+      // Ensure AudioEngine is initialized first
+      await initializeAudioEngine();
 
-      // Create sound engine
-      const soundEngine = new SoundEngine(context);
-      await soundEngine.initialize();
+      // Get the integrated SoundEngine (shares AudioContext with main engine)
+      // This ensures MIDI audio is routed through the WebRTC broadcast stream
+      const soundEngine = await getSoundEngine();
       soundEngineRef.current = soundEngine;
 
-      // Create loop scheduler
+      // Get the shared AudioContext
+      const context = useAudioStore.getState().audioContext;
+      if (!context) {
+        throw new Error('AudioContext not available after initialization');
+      }
+
+      // Create loop scheduler using shared context and engine
       const scheduler = new LoopScheduler(context, soundEngine);
       schedulerRef.current = scheduler;
 
@@ -49,11 +61,11 @@ export function useLoopPlayback() {
       }
 
       isInitializedRef.current = true;
-      console.log('[useLoopPlayback] Initialized audio system');
+      console.log('[useLoopPlayback] Initialized with shared AudioEngine (MIDI audio routed to WebRTC)');
     } catch (err) {
       console.error('[useLoopPlayback] Failed to initialize:', err);
     }
-  }, [getCurrentSong]);
+  }, [getCurrentSong, getSoundEngine, initializeAudioEngine]);
 
   // Start playing a loop track
   const startLoop = useCallback(async (track: LoopTrackState) => {
@@ -66,9 +78,8 @@ export function useLoopPlayback() {
 
     const scheduler = schedulerRef.current;
     const soundEngine = soundEngineRef.current;
-    const audioContext = audioContextRef.current;
 
-    console.log('[useLoopPlayback] After init - scheduler:', !!scheduler, 'soundEngine:', !!soundEngine, 'audioContext:', !!audioContext);
+    console.log('[useLoopPlayback] After init - scheduler:', !!scheduler, 'soundEngine:', !!soundEngine);
 
     if (!scheduler) {
       console.error('[useLoopPlayback] Scheduler not initialized');
@@ -83,12 +94,13 @@ export function useLoopPlayback() {
     }
 
     // Resume audio context if suspended
-    if (audioContext?.state === 'suspended') {
+    const context = useAudioStore.getState().audioContext;
+    if (context?.state === 'suspended') {
       console.log('[useLoopPlayback] Resuming suspended audio context');
-      await audioContext.resume();
+      await context.resume();
     }
 
-    console.log('[useLoopPlayback] Audio context state:', audioContext?.state, 'currentTime:', audioContext?.currentTime);
+    console.log('[useLoopPlayback] Audio context state:', context?.state, 'currentTime:', context?.currentTime);
     console.log('[useLoopPlayback] Starting loop:', track.name, 'preset:', track.soundPreset, 'midiNotes:', loopDef.midiData?.length);
     console.log('[useLoopPlayback] Track details:', { id: track.id, loopId: track.loopId, soundPreset: track.soundPreset });
 
@@ -168,12 +180,12 @@ export function useLoopPlayback() {
   }, [getCurrentSong]);
 
   // Cleanup on unmount
+  // Note: We don't dispose the SoundEngine here since it's shared with AudioEngine
+  // The engine will be cleaned up when the user leaves the room
   useEffect(() => {
     return () => {
       stopAll();
-      soundEngineRef.current?.dispose();
       schedulerRef.current?.dispose();
-      audioContextRef.current?.close();
       isInitializedRef.current = false;
     };
   }, [stopAll]);

@@ -39,6 +39,73 @@ const defaultConfig: CallsConfig = {
   bundlePolicy: 'max-bundle',
 };
 
+// =============================================================================
+// Opus Latency Optimization
+// =============================================================================
+
+/**
+ * Modify SDP to use smaller Opus frame sizes for lower latency.
+ * Default browser Opus uses 20ms frames. We force 10ms for live jamming.
+ *
+ * Frame size impact on latency:
+ * - 20ms (default): Higher latency, more efficient
+ * - 10ms: ~10ms lower latency per hop, good balance
+ * - 5ms: Lowest latency, higher bandwidth, may cause issues
+ *
+ * For live jamming, 10ms is the sweet spot.
+ */
+function optimizeSdpForLowLatency(sdp: string): string {
+  // Find Opus codec line and modify ptime parameters
+  // Opus is typically payload type 111
+  let optimizedSdp = sdp;
+
+  // Add/modify ptime (packet time) to 10ms
+  // This is the key parameter that controls Opus frame size
+  optimizedSdp = optimizedSdp.replace(
+    /a=fmtp:111 (.+)/g,
+    (match, params) => {
+      // Remove any existing ptime/maxptime parameters
+      let newParams = params
+        .replace(/;?\s*ptime=\d+/g, '')
+        .replace(/;?\s*maxptime=\d+/g, '')
+        .replace(/;?\s*minptime=\d+/g, '');
+
+      // Add our optimized parameters
+      // ptime=10: 10ms packet time (frame size)
+      // maxptime=10: Maximum packet time (prevents aggregation)
+      // stereo=0: Mono for lower bandwidth (can be changed if stereo needed)
+      // usedtx=0: Disable DTX (discontinuous transmission) - adds latency
+      // cbr=1: Use constant bitrate for more predictable latency
+      newParams = `${newParams};ptime=10;maxptime=10;usedtx=0`;
+
+      return `a=fmtp:111 ${newParams}`;
+    }
+  );
+
+  // Also set the a=ptime attribute at the media level
+  if (!optimizedSdp.includes('a=ptime:')) {
+    optimizedSdp = optimizedSdp.replace(
+      /(m=audio .+\r?\n)/g,
+      '$1a=ptime:10\r\n'
+    );
+  } else {
+    optimizedSdp = optimizedSdp.replace(/a=ptime:\d+/g, 'a=ptime:10');
+  }
+
+  // Set maxptime at media level
+  if (!optimizedSdp.includes('a=maxptime:')) {
+    optimizedSdp = optimizedSdp.replace(
+      /(a=ptime:10\r?\n)/g,
+      '$1a=maxptime:10\r\n'
+    );
+  } else {
+    optimizedSdp = optimizedSdp.replace(/a=maxptime:\d+/g, 'a=maxptime:10');
+  }
+
+  console.log('[CloudflareCalls] SDP optimized for 10ms Opus frames');
+  return optimizedSdp;
+}
+
 export class CloudflareCalls {
   private peerConnection: RTCPeerConnection | null = null;
   private localStream: MediaStream | null = null;
@@ -138,6 +205,12 @@ export class CloudflareCalls {
 
     // Step 3: Create offer with local tracks
     const offer = await this.peerConnection.createOffer();
+
+    // Optimize SDP for low-latency audio (10ms Opus frames instead of 20ms)
+    if (offer.sdp) {
+      offer.sdp = optimizeSdpForLowLatency(offer.sdp);
+    }
+
     await this.peerConnection.setLocalDescription(offer);
 
     // Wait for ICE gathering to complete (or timeout)
@@ -203,6 +276,12 @@ export class CloudflareCalls {
 
       // Create a new offer with the added transceiver
       const offer = await this.peerConnection.createOffer();
+
+      // Optimize SDP for low-latency audio
+      if (offer.sdp) {
+        offer.sdp = optimizeSdpForLowLatency(offer.sdp);
+      }
+
       await this.peerConnection.setLocalDescription(offer);
       await this.waitForIceGathering();
 

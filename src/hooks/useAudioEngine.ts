@@ -515,6 +515,85 @@ export function useAudioEngine() {
     return globalEngine?.getMasterGain() || null;
   }, []);
 
+  // ==========================================================================
+  // WebRTC Broadcast Support
+  // ==========================================================================
+
+  /**
+   * Enable broadcast mode and get the unified MediaStream for WebRTC.
+   * This stream includes:
+   * - Microphone/instrument input (post-effects)
+   * - MIDI/synth audio from SoundEngine
+   * - Metronome audio (when enabled)
+   *
+   * Use this stream for WebRTC instead of the raw mic stream.
+   */
+  const enableBroadcast = useCallback((): MediaStream | null => {
+    if (!globalEngine) {
+      console.warn('[useAudioEngine] Cannot enable broadcast: engine not initialized');
+      return null;
+    }
+    return globalEngine.enableBroadcast();
+  }, []);
+
+  /**
+   * Disable broadcast mode
+   */
+  const disableBroadcast = useCallback(() => {
+    globalEngine?.disableBroadcast();
+  }, []);
+
+  /**
+   * Get the broadcast stream (if enabled)
+   */
+  const getBroadcastStream = useCallback((): MediaStream | null => {
+    return globalEngine?.getBroadcastStream() || null;
+  }, []);
+
+  /**
+   * Check if broadcast is enabled
+   */
+  const isBroadcastEnabled = useCallback((): boolean => {
+    return globalEngine?.isBroadcastEnabled() || false;
+  }, []);
+
+  // ==========================================================================
+  // SoundEngine Access (MIDI/Synth)
+  // ==========================================================================
+
+  /**
+   * Get the integrated SoundEngine for MIDI/synth playback.
+   * The SoundEngine shares the same AudioContext and is automatically
+   * connected to both local output and WebRTC broadcast.
+   */
+  const getSoundEngine = useCallback(async () => {
+    if (!globalEngine) {
+      await initialize();
+    }
+    return globalEngine!.getSoundEngine();
+  }, [initialize]);
+
+  /**
+   * Get SoundEngine synchronously (returns null if not initialized)
+   */
+  const getSoundEngineSync = useCallback(() => {
+    return globalEngine?.getSoundEngineSync() || null;
+  }, []);
+
+  /**
+   * Check if SoundEngine is initialized
+   */
+  const hasSoundEngine = useCallback((): boolean => {
+    return globalEngine?.hasSoundEngine() || false;
+  }, []);
+
+  /**
+   * Set the volume of MIDI audio in the WebRTC broadcast mix
+   */
+  const setMidiBroadcastVolume = useCallback((volume: number) => {
+    globalEngine?.setMidiBroadcastVolume(volume);
+  }, []);
+
   return {
     isInitialized,
     isPlaying,
@@ -551,5 +630,15 @@ export function useAudioEngine() {
     setOnTrackEnded,
     destroyEngine,
     getMasterGain,
+    // WebRTC broadcast support
+    enableBroadcast,
+    disableBroadcast,
+    getBroadcastStream,
+    isBroadcastEnabled,
+    // SoundEngine access
+    getSoundEngine,
+    getSoundEngineSync,
+    hasSoundEngine,
+    setMidiBroadcastVolume,
   };
 }

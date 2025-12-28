@@ -54,6 +54,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     seekTo,
     updateFromStats,
     destroyEngine,
+    enableBroadcast,
+    disableBroadcast,
   } = useAudioEngine();
 
   // Join room - returns true on success, false on failure
@@ -212,7 +214,18 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       const trackSettings = firstTrack?.audioSettings;
 
       // Start audio capture with track settings (device, channel config, etc.)
-      const stream = await startCapture(trackSettings);
+      // This sets up local mic → effects → local output
+      await startCapture(trackSettings);
+
+      // Enable broadcast to get the unified stream for WebRTC
+      // This includes: mic + effects + MIDI/synth audio
+      // Much lower latency than raw mic (10ms Opus frames, post-effects audio)
+      const broadcastStream = enableBroadcast();
+      if (!broadcastStream) {
+        throw new Error('Failed to enable audio broadcast');
+      }
+
+      console.log('[useRoom] Using broadcast stream for WebRTC (mic + effects + MIDI)');
 
       // Initialize Cloudflare Calls
       const cloudflare = new CloudflareCalls(roomId, user.id);
@@ -237,7 +250,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         });
       });
 
-      await cloudflare.joinRoom(stream);
+      // Join room with the unified broadcast stream (includes mic + effects + MIDI)
+      await cloudflare.joinRoom(broadcastStream);
       cloudflareRef.current = cloudflare;
 
       // Initialize realtime connection
@@ -554,12 +568,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current = null;
     cloudflareRef.current = null;
 
+    // Disable broadcast before destroying engine
+    disableBroadcast();
+
     // Clean up the audio engine
     destroyEngine();
 
     // Use getState() to access reset
     useRoomStore.getState().reset();
-  }, [roomId, destroyEngine]);
+  }, [roomId, destroyEngine, disableBroadcast]);
 
   // Master controls - BULLETPROOF with fresh state
   const play = useCallback(async () => {

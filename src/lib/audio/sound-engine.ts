@@ -622,6 +622,10 @@ export class SoundEngine {
   private drumKits: Map<string, DrumKitSampler> = new Map();
   private outputNode: AudioNode;
 
+  // WebRTC broadcast support - allows MIDI audio to be sent to other participants
+  private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
+  private broadcastGain: GainNode | null = null;
+
   constructor(context: AudioContext, outputNode?: AudioNode) {
     this.context = context;
     this.masterGain = context.createGain();
@@ -629,6 +633,66 @@ export class SoundEngine {
     this.outputNode = outputNode || context.destination;
     this.masterGain.connect(this.outputNode);
     console.log('[SoundEngine] Created with context state:', context.state, 'outputNode:', outputNode ? 'custom' : 'destination');
+  }
+
+  // ==========================================================================
+  // WebRTC Broadcast Support
+  // ==========================================================================
+
+  /**
+   * Enable broadcast mode - creates a MediaStream of MIDI/synth audio
+   * that can be sent over WebRTC to other users
+   */
+  enableBroadcast(): MediaStream {
+    if (this.broadcastDestination) {
+      return this.broadcastDestination.stream;
+    }
+
+    this.broadcastDestination = this.context.createMediaStreamDestination();
+    this.broadcastGain = this.context.createGain();
+    this.broadcastGain.gain.value = 1.0;
+
+    // Connect master gain to broadcast destination
+    this.masterGain.connect(this.broadcastGain);
+    this.broadcastGain.connect(this.broadcastDestination);
+
+    console.log('[SoundEngine] Broadcast enabled - MIDI audio will be sent via WebRTC');
+    return this.broadcastDestination.stream;
+  }
+
+  /**
+   * Disable broadcast mode
+   */
+  disableBroadcast(): void {
+    if (this.broadcastGain) {
+      this.broadcastGain.disconnect();
+      this.broadcastGain = null;
+    }
+    this.broadcastDestination = null;
+    console.log('[SoundEngine] Broadcast disabled');
+  }
+
+  /**
+   * Get the broadcast MediaStream (if enabled)
+   */
+  getBroadcastStream(): MediaStream | null {
+    return this.broadcastDestination?.stream || null;
+  }
+
+  /**
+   * Check if broadcast is enabled
+   */
+  isBroadcastEnabled(): boolean {
+    return this.broadcastDestination !== null;
+  }
+
+  /**
+   * Set broadcast volume (independent of local playback volume)
+   */
+  setBroadcastVolume(volume: number): void {
+    if (this.broadcastGain) {
+      this.broadcastGain.gain.value = Math.max(0, Math.min(1, volume));
+    }
   }
 
   async initialize(): Promise<void> {
@@ -747,6 +811,7 @@ export class SoundEngine {
   }
 
   dispose(): void {
+    this.disableBroadcast();
     for (const synth of this.synths.values()) {
       synth.dispose();
     }
