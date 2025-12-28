@@ -19,7 +19,8 @@ export function useTrackAudioProcessing() {
   const metricsIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const lastJsProcessingTimeRef = useRef<number>(0);
 
-  const { audioContext, setPerformanceMetrics, updateTrackMetrics } = useAudioStore();
+  // Only subscribe to audioContext value, not setter functions (to avoid infinite loops)
+  const audioContext = useAudioStore((s) => s.audioContext);
   const tracks = useUserTracksStore((state) => state.tracks);
 
   // Create or update processor for a track
@@ -117,6 +118,7 @@ export function useTrackAudioProcessing() {
   }, []);
 
   // Collect and update performance metrics
+  // Use getState() for store functions to avoid dependency issues
   const updateMetrics = useCallback(() => {
     const start = performance.now();
     const ctx = useAudioStore.getState().audioContext;
@@ -125,6 +127,9 @@ export function useTrackAudioProcessing() {
 
     const audioContextLatency = measureAudioContextLatency();
     let totalEffectsTime = 0;
+
+    // Get store functions via getState() to avoid infinite loops
+    const { updateTrackMetrics, setPerformanceMetrics, settings } = useAudioStore.getState();
 
     // Collect metrics from all processors
     for (const [trackId, entry] of processorsRef.current) {
@@ -148,7 +153,6 @@ export function useTrackAudioProcessing() {
     lastJsProcessingTimeRef.current = jsProcessingTime;
 
     // Calculate buffer size in ms
-    const settings = useAudioStore.getState().settings;
     const bufferLatencyMs = (settings.bufferSize / settings.sampleRate) * 1000;
 
     const performanceUpdate: Partial<AudioPerformanceMetrics> = {
@@ -160,7 +164,7 @@ export function useTrackAudioProcessing() {
     };
 
     setPerformanceMetrics(performanceUpdate);
-  }, [measureAudioContextLatency, setPerformanceMetrics, updateTrackMetrics]);
+  }, [measureAudioContextLatency]);
 
   // Start metrics collection interval
   useEffect(() => {

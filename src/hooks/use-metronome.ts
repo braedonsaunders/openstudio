@@ -47,7 +47,7 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
 
   const engineRef = useRef<MetronomeEngine | null>(null);
 
-  // Metronome settings store
+  // Metronome settings store - only subscribe to values, not functions
   const {
     enabled,
     volume,
@@ -55,15 +55,11 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     accentFirstBeat,
     broadcastEnabled,
     isPlaying,
-    setCurrentBeat,
-    setIsPlaying,
-    setEnabled,
   } = useMetronomeStore();
 
   // Session tempo store
   const tempo = useSessionTempoStore(selectTempo);
   const { beatsPerBar, beatUnit } = useSessionTempoStore(selectTimeSignature);
-  const recordTap = useSessionTempoStore((s) => s.recordTap);
 
   // Audio store for playback sync
   const audioIsPlaying = useAudioStore((s) => s.isPlaying);
@@ -84,7 +80,8 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
 
     engine.setCallbacks({
       onBeat: (beat) => {
-        setCurrentBeat(beat);
+        // Use getState() to avoid dependency on store functions
+        useMetronomeStore.getState().setCurrentBeat(beat);
       },
     });
 
@@ -94,7 +91,7 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
       engine.dispose();
       engineRef.current = null;
     };
-  }, [audioContext, masterGain, setCurrentBeat]);
+  }, [audioContext, masterGain]);
 
   // ==========================================================================
   // Settings Sync
@@ -142,9 +139,10 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     if (audioIsPlaying && !engine.isPlaying()) {
       // Start metronome synced with playback
       engine.start(undefined, currentTime);
-      setIsPlaying(true);
+      // Use getState() to avoid dependency on store functions
+      useMetronomeStore.getState().setIsPlaying(true);
     }
-  }, [audioIsPlaying, enabled, currentTime, setIsPlaying]);
+  }, [audioIsPlaying, enabled, currentTime]);
 
   // ==========================================================================
   // Controls
@@ -155,16 +153,18 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     if (!engine) return;
 
     engine.start(syncTimestamp, offset);
-    setIsPlaying(true);
-  }, [setIsPlaying]);
+    // Use getState() to avoid dependency on store functions
+    useMetronomeStore.getState().setIsPlaying(true);
+  }, []);
 
   const stop = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
 
     engine.stop();
-    setIsPlaying(false);
-  }, [setIsPlaying]);
+    // Use getState() to avoid dependency on store functions
+    useMetronomeStore.getState().setIsPlaying(false);
+  }, []);
 
   const toggle = useCallback(() => {
     const engine = engineRef.current;
@@ -178,8 +178,9 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
   }, [start, stop]);
 
   const tap = useCallback(() => {
-    recordTap();
-  }, [recordTap]);
+    // Use getState() to avoid dependency on store functions
+    useSessionTempoStore.getState().recordTap();
+  }, []);
 
   const getBroadcastStream = useCallback(() => {
     return engineRef.current?.getBroadcastStream() || null;
@@ -190,13 +191,15 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
   // ==========================================================================
 
   const handleToggle = useCallback(() => {
-    setEnabled(!enabled);
-    if (!enabled) {
+    // Use getState() to avoid dependency on store functions
+    const { enabled: currentEnabled, setEnabled } = useMetronomeStore.getState();
+    setEnabled(!currentEnabled);
+    if (!currentEnabled) {
       start();
     } else {
       stop();
     }
-  }, [enabled, setEnabled, start, stop]);
+  }, [start, stop]);
 
   // ==========================================================================
   // Return

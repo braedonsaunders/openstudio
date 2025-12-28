@@ -27,6 +27,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
   // Subscribe to store values we need to read reactively
   // For store functions, we use getState() inside callbacks/effects to avoid dependency issues
+  // Subscribe only to values, not setter functions (to avoid infinite loops)
   const {
     localAnalysis,
     syncedAnalysis,
@@ -36,8 +37,6 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     spectrumData,
     waveformData,
     tunerEnabled,
-    setWorkerReady,
-    setBackingTrackAvailable,
   } = useAnalysisStore();
 
   // Initialize the analyzer in background - doesn't block audio
@@ -51,7 +50,8 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     const checkInterval = setInterval(() => {
       const ready = analyzerRef.current.isReady();
       if (ready) {
-        setWorkerReady(true);
+        // Use getState() to avoid dependency on store functions
+        useAnalysisStore.getState().setWorkerReady(true);
         isInitializedRef.current = true;
         clearInterval(checkInterval);
         console.log('Audio analysis ready');
@@ -63,7 +63,8 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
       clearInterval(checkInterval);
       if (!analyzerRef.current.isReady()) {
         console.log('Audio analysis disabled - essentia.js loading timed out');
-        setWorkerReady(false);
+        // Use getState() to avoid dependency on store functions
+        useAnalysisStore.getState().setWorkerReady(false);
       }
     }, 30000);
 
@@ -74,7 +75,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
         cancelAnimationFrame(visualizationFrameRef.current);
       }
     };
-  }, [setWorkerReady]);
+  }, []);
 
   // Connect to audio context when available
   useEffect(() => {
@@ -87,8 +88,9 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
   // Update backing track availability (for UI - e.g. enable/disable Track source button)
   useEffect(() => {
-    setBackingTrackAvailable(!!backingTrackAnalyser);
-  }, [backingTrackAnalyser, setBackingTrackAvailable]);
+    // Use getState() to avoid dependency on store functions
+    useAnalysisStore.getState().setBackingTrackAvailable(!!backingTrackAnalyser);
+  }, [backingTrackAnalyser]);
 
   // Handle analysis data updates
   // Use getState() to avoid recreating callback when room state changes
