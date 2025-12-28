@@ -16,10 +16,21 @@ import {
 } from 'lucide-react';
 import type { AvatarGenerationPreset, AvatarCategory, ComponentRarity } from '@/types/avatar';
 
+interface EnvDebug {
+  hasAccountId: boolean;
+  hasApiToken: boolean;
+  hasR2AccessKey: boolean;
+  hasReplicate: boolean;
+  accountIdLength: number;
+  apiTokenLength: number;
+  r2AccessKeyLength: number;
+}
+
 interface GeneratorConfig {
   models: Array<{ id: string; name: string; provider: string; speed: string; cost: string }>;
   presets: AvatarGenerationPreset[];
   providers: { cloudflare: boolean; replicate: boolean };
+  debug?: EnvDebug;
 }
 
 interface ComponentGeneratorProps {
@@ -54,34 +65,17 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
   const [saveRarity, setSaveRarity] = useState<ComponentRarity>('common');
 
   useEffect(() => {
-    loadConfig();
-  }, []);
-
-  const loadConfig = async () => {
-    try {
-      const response = await fetch('/api/admin/avatar/generate');
-      if (response.ok) {
-        const data = await setConfig(await response.json());
-        setConfig(await response.json().catch(() => data));
-      }
-    } catch (error) {
-      console.error('Failed to load config:', error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  useEffect(() => {
     const fetchConfig = async () => {
       try {
         const response = await fetch('/api/admin/avatar/generate');
         if (response.ok) {
           const data = await response.json();
+          console.log('Generator config:', data);
           setConfig(data);
-          if (data.models.length > 0) {
+          if (data.models?.length > 0) {
             setSelectedModel(data.models[0].id);
           }
-          if (data.presets.length > 0) {
+          if (data.presets?.length > 0) {
             setSelectedPreset(data.presets[0].id);
           }
         }
@@ -235,6 +229,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
   }
 
   if (!config?.providers.cloudflare && !config?.providers.replicate) {
+    const debug = config?.debug;
     return (
       <Card className="p-8 text-center">
         <Wand2 className="w-12 h-12 mx-auto mb-4 text-gray-400" />
@@ -244,9 +239,18 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
         <p className="text-gray-500 dark:text-gray-400 mb-4">
           For Cloudflare Workers AI: Set CLOUDFLARE_R2_ACCOUNT_ID and CLOUDFLARE_API_TOKEN (or CLOUDFLARE_R2_ACCESS_KEY_ID with AI permissions).
         </p>
-        <p className="text-gray-500 dark:text-gray-400 text-sm">
+        <p className="text-gray-500 dark:text-gray-400 text-sm mb-4">
           For Replicate: Set REPLICATE_API_TOKEN.
         </p>
+        {debug && (
+          <div className="mt-4 p-4 bg-gray-100 dark:bg-gray-800 rounded-lg text-left text-xs font-mono">
+            <p className="font-bold mb-2">Debug Info (env vars detected on server):</p>
+            <p>CLOUDFLARE_R2_ACCOUNT_ID: {debug.hasAccountId ? `✓ (${debug.accountIdLength} chars)` : '✗ missing'}</p>
+            <p>CLOUDFLARE_API_TOKEN: {debug.hasApiToken ? `✓ (${debug.apiTokenLength} chars)` : '✗ missing'}</p>
+            <p>CLOUDFLARE_R2_ACCESS_KEY_ID: {debug.hasR2AccessKey ? `✓ (${debug.r2AccessKeyLength} chars)` : '✗ missing'}</p>
+            <p>REPLICATE_API_TOKEN: {debug.hasReplicate ? '✓' : '✗ missing'}</p>
+          </div>
+        )}
       </Card>
     );
   }
