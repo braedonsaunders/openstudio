@@ -968,26 +968,6 @@ export function MultiTrackTimeline({
         </div>
 
         <div className="flex items-center gap-2">
-          {/* Playback controls */}
-          <div className="flex items-center gap-1">
-            {onPlay && (
-              <button
-                onClick={isPlaying ? onStop : onPlay}
-                className={cn(
-                  'p-1 rounded transition-colors',
-                  isPlaying
-                    ? 'bg-red-500/20 text-red-500 hover:bg-red-500/30'
-                    : 'bg-indigo-500/20 text-indigo-500 hover:bg-indigo-500/30'
-                )}
-                title={isPlaying ? 'Stop' : 'Play'}
-              >
-                {isPlaying ? <Square className="w-3 h-3" /> : <Play className="w-3 h-3" />}
-              </button>
-            )}
-          </div>
-
-          <div className="h-4 w-px bg-gray-200 dark:bg-white/10" />
-
           {/* Zoom controls */}
           <div className="flex items-center gap-1">
             <button
@@ -1026,7 +1006,10 @@ export function MultiTrackTimeline({
       >
         <div className="min-h-full" style={{ width: timelineWidth }}>
           {/* Time Ruler */}
-          <div className="h-5 sticky top-0 bg-gray-50 dark:bg-[#0d0d14] border-b border-gray-200 dark:border-white/10 z-10">
+          <div
+            className="h-5 sticky top-0 bg-gray-50 dark:bg-[#0d0d14] border-b border-gray-200 dark:border-white/10 z-10"
+            style={{ width: timelineWidth, minWidth: '100%' }}
+          >
             {timeMarkers.map((marker) => (
               <div
                 key={marker.time}
