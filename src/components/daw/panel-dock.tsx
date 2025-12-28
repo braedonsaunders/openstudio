@@ -24,12 +24,9 @@ interface PanelDockProps {
   activePanel: PanelType;
   onPanelChange: (panel: PanelType) => void;
   onClose: () => void;
-  // Mixer props (kept for AI panel)
+  // Mixer props
   onToggleStem: (stem: StemType, enabled: boolean) => void;
   onStemVolumeChange: (stem: StemType, volume: number) => void;
-  onSeparateTrack: () => void;
-  isSeparating: boolean;
-  separationProgress: number;
   // Chat/Room props
   roomId: string;
   userId: string;
@@ -68,9 +65,6 @@ export function PanelDock({
   onClose,
   onToggleStem,
   onStemVolumeChange,
-  onSeparateTrack,
-  isSeparating,
-  separationProgress,
   roomId,
   userId,
   userName,
@@ -168,12 +162,7 @@ export function PanelDock({
         )}
 
         {validPanel === 'ai' && (
-          <AIPanel
-            onSeparateTrack={onSeparateTrack}
-            isSeparating={isSeparating}
-            separationProgress={separationProgress}
-            roomId={roomId}
-          />
+          <AIPanel />
         )}
 
         {validPanel === 'permissions' && (

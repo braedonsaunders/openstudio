@@ -7,10 +7,8 @@ import { useAIPermissions } from '@/hooks/usePermissions';
 import { Slider } from '../ui/slider';
 import {
   Sparkles,
-  Wand2,
   Loader2,
   ExternalLink,
-  Layers,
   Play,
   Pause,
   Square,
@@ -27,7 +25,6 @@ import {
   ChevronUp,
   Lock,
 } from 'lucide-react';
-import { Progress } from '../ui/progress';
 import {
   LyriaSession,
   createLyriaSession,
@@ -40,21 +37,9 @@ import {
 } from '@/lib/ai/lyria';
 import type { LyriaSessionState } from '@/types';
 
-interface AIPanelProps {
-  onSeparateTrack: () => void;
-  isSeparating: boolean;
-  separationProgress: number;
-  roomId?: string;
-}
-
-export function AIPanel({
-  onSeparateTrack,
-  isSeparating,
-  separationProgress,
-  roomId,
-}: AIPanelProps) {
-  const { currentTrack, stemsAvailable, syncedAnalysis } = useRoomStore();
-  const { canSeparateStems, canGenerateMusic } = useAIPermissions();
+export function AIPanel() {
+  const { syncedAnalysis } = useRoomStore();
+  const { canGenerateMusic } = useAIPermissions();
 
   // Lyria session
   const sessionRef = useRef<LyriaSession | null>(null);
@@ -88,13 +73,15 @@ export function AIPanel({
         setSessionState(state);
         if (state === 'error') {
           setError('Connection lost. Click Connect to retry.');
+        } else if (state === 'connected') {
+          setError(null);
         }
       },
       onError: (err) => {
         setError(err.message);
       },
       onConfigApplied: () => {
-        setError(null);
+        // Config applied successfully
       },
     });
     sessionRef.current = session;
@@ -162,7 +149,7 @@ export function AIPanel({
     sessionRef.current?.stop();
   }, []);
 
-  // Live control handlers with debounce
+  // Live control handlers
   const handleVolumeChange = useCallback((value: number) => {
     setVolume(value);
     sessionRef.current?.setVolume(value);
@@ -524,55 +511,6 @@ export function AIPanel({
             </div>
           </>
         )}
-
-        {/* Stem Separation */}
-        <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-4">
-          <div className="flex items-center gap-3 mb-3">
-            <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-500 flex items-center justify-center">
-              <Layers className="w-4 h-4 text-white" />
-            </div>
-            <div>
-              <h4 className="text-sm font-medium text-gray-900 dark:text-white">Stem Separation</h4>
-              <p className="text-[10px] text-gray-500 dark:text-zinc-500">Extract instruments</p>
-            </div>
-          </div>
-
-          {!currentTrack ? (
-            <p className="text-xs text-gray-500 dark:text-zinc-500 text-center py-2">
-              Load a track first
-            </p>
-          ) : !canSeparateStems ? (
-            <div className="flex items-center justify-center gap-2 py-2 text-gray-500 dark:text-zinc-500">
-              <Lock className="w-3 h-3" />
-              <span className="text-xs">No permission to separate stems</span>
-            </div>
-          ) : isSeparating ? (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <Loader2 className="w-3.5 h-3.5 text-emerald-400 animate-spin" />
-                <span className="text-xs text-gray-900 dark:text-white">Separating...</span>
-              </div>
-              <Progress value={separationProgress} showLabel />
-            </div>
-          ) : stemsAvailable ? (
-            <div className="flex items-center gap-2 py-1">
-              <div className="w-5 h-5 rounded-full bg-emerald-500/20 flex items-center justify-center">
-                <svg className="w-3 h-3 text-emerald-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
-                </svg>
-              </div>
-              <span className="text-xs text-emerald-400">Stems ready - use Mixer panel</span>
-            </div>
-          ) : (
-            <button
-              onClick={onSeparateTrack}
-              className="w-full py-2 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-600 dark:text-emerald-400 text-xs font-medium flex items-center justify-center gap-1.5 transition-colors"
-            >
-              <Wand2 className="w-3.5 h-3.5" />
-              Separate Stems
-            </button>
-          )}
-        </div>
       </div>
 
       {/* Footer */}

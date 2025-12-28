@@ -119,12 +119,12 @@ function BpmBadge() {
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex items-center">
+      <div className="flex items-stretch">
         {/* Source icon - clickable to show mode dropdown */}
         <button
           onClick={() => setShowModeMenu(!showModeMenu)}
           className={cn(
-            'p-1.5 rounded-l-lg border border-r-0 transition-all',
+            'px-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
             'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
             'hover:bg-gray-200 dark:hover:bg-white/10',
             showModeMenu && 'bg-gray-200 dark:bg-white/10'
@@ -137,7 +137,7 @@ function BpmBadge() {
         <div
           onClick={handleValueClick}
           className={cn(
-            'flex items-center gap-1.5 px-2 py-1.5 rounded-r-lg border border-l-0 transition-all',
+            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
             'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
             (source === 'manual' || source === 'tap') && 'cursor-text hover:bg-gray-200 dark:hover:bg-white/10'
           )}
@@ -281,12 +281,12 @@ function KeyBadge() {
 
   return (
     <div ref={containerRef} className="relative">
-      <div className="flex items-center">
+      <div className="flex items-stretch">
         {/* Source icon - clickable to show mode dropdown */}
         <button
           onClick={() => { setShowModeMenu(!showModeMenu); setShowKeyMenu(false); }}
           className={cn(
-            'p-1.5 rounded-l-lg border border-r-0 transition-all',
+            'px-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
             'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
             'hover:bg-gray-200 dark:hover:bg-white/10',
             showModeMenu && 'bg-gray-200 dark:bg-white/10'
@@ -304,7 +304,7 @@ function KeyBadge() {
             }
           }}
           className={cn(
-            'flex items-center gap-1.5 px-2 py-1.5 rounded-r-lg border border-l-0 transition-all',
+            'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
             'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
             keySource === 'manual' && 'hover:bg-gray-200 dark:hover:bg-white/10'
           )}
