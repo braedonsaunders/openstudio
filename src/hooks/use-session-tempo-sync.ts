@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-tempo-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useRoomStore } from '@/stores/room-store';
@@ -17,8 +18,9 @@ import { useRoomStore } from '@/stores/room-store';
  */
 export function useSessionTempoSync(): void {
   // Subscribe to values we need reactively
+  // Use shallow equality for object selectors to prevent infinite re-renders
   const tempo = useSessionTempoStore(selectTempo);
-  const { key, scale: keyScale } = useSessionTempoStore(selectKey);
+  const { key, scale: keyScale } = useSessionTempoStore(useShallow(selectKey));
 
   // ==========================================================================
   // Sync backing track metadata to session tempo store
@@ -117,11 +119,11 @@ export function useSessionTempoDisplay() {
   const trackTempo = useSessionTempoStore((s) => s.trackTempo);
   const analyzerTempo = useSessionTempoStore((s) => s.analyzerTempo);
   const analyzerConfidence = useSessionTempoStore((s) => s.analyzerConfidence);
-  const { key, scale: keyScale } = useSessionTempoStore(selectKey);
-  const { beatsPerBar, beatUnit } = useSessionTempoStore((s) => ({
-    beatsPerBar: s.beatsPerBar,
-    beatUnit: s.beatUnit,
-  }));
+  // Use shallow equality for object selectors to prevent infinite re-renders
+  const { key, scale: keyScale } = useSessionTempoStore(useShallow(selectKey));
+  // Select primitive values individually to avoid object reference issues
+  const beatsPerBar = useSessionTempoStore((s) => s.beatsPerBar);
+  const beatUnit = useSessionTempoStore((s) => s.beatUnit);
 
   return {
     tempo,

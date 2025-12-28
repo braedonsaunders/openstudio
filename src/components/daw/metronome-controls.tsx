@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
+import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/lib/utils';
 import { useMetronomeStore } from '@/stores/metronome-store';
 import { useSessionTempoStore, type TempoSource, selectTempo, selectTimeSignature, selectSource } from '@/stores/session-tempo-store';
@@ -87,7 +88,7 @@ export function MetronomeControls({
   // Session tempo store
   const tempo = useSessionTempoStore(selectTempo);
   const source = useSessionTempoStore(selectSource);
-  const { beatsPerBar } = useSessionTempoStore(selectTimeSignature);
+  const { beatsPerBar } = useSessionTempoStore(useShallow(selectTimeSignature));
   const trackTempo = useSessionTempoStore((s) => s.trackTempo);
   const analyzerTempo = useSessionTempoStore((s) => s.analyzerTempo);
   const setSource = useSessionTempoStore((s) => s.setSource);
@@ -492,7 +493,7 @@ export function MetronomeInline({
   // Session tempo store
   const tempo = useSessionTempoStore(selectTempo);
   const source = useSessionTempoStore(selectSource);
-  const { beatsPerBar } = useSessionTempoStore(selectTimeSignature);
+  const { beatsPerBar } = useSessionTempoStore(useShallow(selectTimeSignature));
   const trackTempo = useSessionTempoStore((s) => s.trackTempo);
   const analyzerTempo = useSessionTempoStore((s) => s.analyzerTempo);
   const setSource = useSessionTempoStore((s) => s.setSource);
