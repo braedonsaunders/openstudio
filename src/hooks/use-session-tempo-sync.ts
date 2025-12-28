@@ -102,10 +102,10 @@ export function useSessionTempoSync(): void {
         if (currentSongId && currentSongId !== previousSongIdRef.current) {
           const song = state.getSongById(currentSongId);
           if (song && song.bpm) {
-            // Set the song's BPM as the manual tempo and switch to manual mode
-            // This ensures the song's tempo becomes the session tempo
-            const { setManualTempo, setSource } = useSessionTempoStore.getState();
-            setSource('manual'); // Switch to manual mode so song BPM takes effect
+            // Set the song's BPM as the manual tempo (base tempo)
+            // Don't change the source mode - if user is in analyzer mode, let analyzer control
+            // If in manual mode, this sets the tempo directly
+            const { setManualTempo } = useSessionTempoStore.getState();
             setManualTempo(song.bpm);
           }
         }
