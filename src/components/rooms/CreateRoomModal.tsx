@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -20,14 +20,19 @@ import {
   ListChecks,
   Plus,
   Palette,
+  Sliders,
+  Check,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/auth-store';
+import { useSavedTracksStore } from '@/stores/saved-tracks-store';
 import { createRoom, ROOM_GENRES, MAX_USER_OPTIONS } from '@/lib/rooms/service';
 import type { RoomRules, RoomColor, RoomIcon } from '@/types';
 import { ROOM_COLORS, ROOM_ICONS } from '@/types';
+import { InstrumentIcon } from '@/components/ui/instrument-icon';
+import { INSTRUMENTS } from '@/types/user';
 
 interface CreateRoomModalProps {
   isOpen: boolean;
@@ -46,6 +51,7 @@ const DEFAULT_RULES: RoomRules = {
 export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
   const router = useRouter();
   const { user, profile } = useAuthStore();
+  const { presets, loadPresets, selectedPresets, togglePresetSelection } = useSavedTracksStore();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -57,10 +63,18 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
   const [rules, setRules] = useState<RoomRules>(DEFAULT_RULES);
   const [customRuleInput, setCustomRuleInput] = useState('');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showSavedTracks, setShowSavedTracks] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
   const [roomColor, setRoomColor] = useState<RoomColor>('indigo');
   const [roomIcon, setRoomIcon] = useState<RoomIcon>('music');
+
+  // Load saved track presets when user is logged in
+  useEffect(() => {
+    if (user?.id && isOpen) {
+      loadPresets(user.id);
+    }
+  }, [user?.id, isOpen, loadPresets]);
 
   // Pre-populate name with user's display name
   const defaultName = profile ? `${profile.displayName}'s Jam` : 'New Jam Session';
@@ -153,6 +167,7 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
     setRules(DEFAULT_RULES);
     setCustomRuleInput('');
     setShowAdvanced(false);
+    setShowSavedTracks(false);
     setError('');
     setRoomColor('indigo');
     setRoomIcon('music');
@@ -519,6 +534,84 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
             </motion.div>
           )}
         </AnimatePresence>
+
+        {/* Saved Tracks Selection */}
+        {user && presets.length > 0 && (
+          <div className="space-y-3">
+            <button
+              onClick={() => setShowSavedTracks(!showSavedTracks)}
+              className="w-full flex items-center justify-between px-4 py-3 rounded-xl bg-slate-50 dark:bg-gray-800/50 hover:bg-slate-100 dark:hover:bg-gray-800 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-sm font-medium text-slate-700 dark:text-gray-300">
+                <Sliders className="w-4 h-4" />
+                Bring your saved tracks
+                {selectedPresets.size > 0 && (
+                  <span className="bg-indigo-500 text-white text-xs px-2 py-0.5 rounded-full">
+                    {selectedPresets.size}
+                  </span>
+                )}
+              </span>
+              {showSavedTracks ? (
+                <ChevronUp className="w-5 h-5 text-slate-400" />
+              ) : (
+                <ChevronDown className="w-5 h-5 text-slate-400" />
+              )}
+            </button>
+
+            <AnimatePresence>
+              {showSavedTracks && (
+                <motion.div
+                  initial={{ opacity: 0, height: 0 }}
+                  animate={{ opacity: 1, height: 'auto' }}
+                  exit={{ opacity: 0, height: 0 }}
+                  className="overflow-hidden"
+                >
+                  <div className="space-y-2 p-3 bg-slate-100 dark:bg-gray-800/50 rounded-lg">
+                    {presets.map((preset) => (
+                      <button
+                        key={preset.id}
+                        onClick={() => togglePresetSelection(preset.id)}
+                        disabled={isCreating}
+                        className={`
+                          w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left
+                          ${selectedPresets.has(preset.id)
+                            ? 'bg-indigo-500/10 border-2 border-indigo-500'
+                            : 'bg-white dark:bg-gray-800 border-2 border-transparent hover:border-slate-300 dark:hover:border-gray-600'}
+                          ${isCreating && 'opacity-50 cursor-not-allowed'}
+                        `}
+                      >
+                        <div
+                          className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                          style={{ backgroundColor: `${preset.color}20` }}
+                        >
+                          <InstrumentIcon
+                            instrumentId={preset.instrumentId}
+                            size="md"
+                            className="opacity-80"
+                          />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-slate-900 dark:text-white truncate">
+                            {preset.name}
+                          </p>
+                          <p className="text-xs text-slate-500 dark:text-gray-400 truncate">
+                            {INSTRUMENTS[preset.instrumentId]?.name || preset.instrumentId}
+                          </p>
+                        </div>
+                        {selectedPresets.has(preset.id) && (
+                          <Check className="w-5 h-5 text-indigo-500 shrink-0" />
+                        )}
+                      </button>
+                    ))}
+                    <p className="text-xs text-slate-500 dark:text-gray-400 text-center pt-2">
+                      Selected tracks will be created automatically when you join
+                    </p>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        )}
 
         {/* Error message */}
         {error && (
