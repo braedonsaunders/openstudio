@@ -1,6 +1,7 @@
 // Avatar system Supabase operations
 
 import { supabaseAuth } from '@/lib/supabase/auth';
+import { getAdminSupabase } from '@/lib/supabase/server';
 import type {
   AvatarCategory,
   AvatarComponent,
@@ -205,7 +206,10 @@ export async function getAllCategories(): Promise<AvatarCategory[]> {
 }
 
 export async function createCategory(request: CreateCategoryRequest): Promise<AvatarCategory> {
-  const { data, error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { data, error } = await adminClient
     .from('avatar_categories')
     .insert({
       id: request.id,
@@ -231,6 +235,9 @@ export async function updateCategory(
   id: string,
   request: UpdateCategoryRequest
 ): Promise<AvatarCategory> {
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if (request.displayName !== undefined) updates.display_name = request.displayName;
@@ -245,7 +252,7 @@ export async function updateCategory(
   if (request.renderWidth !== undefined) updates.render_width = request.renderWidth;
   if (request.renderHeight !== undefined) updates.render_height = request.renderHeight;
 
-  const { data, error } = await supabaseAuth
+  const { data, error } = await adminClient
     .from('avatar_categories')
     .update(updates)
     .eq('id', id)
@@ -257,6 +264,9 @@ export async function updateCategory(
 }
 
 export async function updateCategoryOrder(orderedIds: string[]): Promise<void> {
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
   const updates = orderedIds.map((id, index) => ({
     id,
     layer_order: index,
@@ -264,7 +274,7 @@ export async function updateCategoryOrder(orderedIds: string[]): Promise<void> {
   }));
 
   for (const update of updates) {
-    await supabaseAuth
+    await adminClient
       .from('avatar_categories')
       .update({ layer_order: update.layer_order, updated_at: update.updated_at })
       .eq('id', update.id);
@@ -272,7 +282,10 @@ export async function updateCategoryOrder(orderedIds: string[]): Promise<void> {
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  const { error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { error } = await adminClient
     .from('avatar_categories')
     .delete()
     .eq('id', id);
@@ -309,7 +322,10 @@ export async function createComponent(
   request: CreateComponentRequest,
   createdBy: string
 ): Promise<AvatarComponent> {
-  const { data, error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { data, error } = await adminClient
     .from('avatar_components')
     .insert({
       id: request.id,
@@ -338,6 +354,9 @@ export async function updateComponent(
   id: string,
   request: UpdateComponentRequest
 ): Promise<AvatarComponent> {
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if (request.name !== undefined) updates.name = request.name;
@@ -347,7 +366,7 @@ export async function updateComponent(
   if (request.baseColor !== undefined) updates.base_color = request.baseColor;
   if (request.isActive !== undefined) updates.is_active = request.isActive;
 
-  const { data, error } = await supabaseAuth
+  const { data, error } = await adminClient
     .from('avatar_components')
     .update(updates)
     .eq('id', id)
@@ -359,14 +378,14 @@ export async function updateComponent(
   // Update unlock rules if provided
   if (request.unlockRuleIds !== undefined) {
     // Remove existing
-    await supabaseAuth
+    await adminClient
       .from('avatar_component_unlocks')
       .delete()
       .eq('component_id', id);
 
     // Add new
     if (request.unlockRuleIds.length > 0) {
-      await supabaseAuth
+      await adminClient
         .from('avatar_component_unlocks')
         .insert(
           request.unlockRuleIds.map((ruleId) => ({
@@ -381,7 +400,10 @@ export async function updateComponent(
 }
 
 export async function deleteComponent(id: string): Promise<void> {
-  const { error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { error } = await adminClient
     .from('avatar_components')
     .delete()
     .eq('id', id);
@@ -404,7 +426,10 @@ export async function getAllUnlockRules(): Promise<AvatarUnlockRule[]> {
 }
 
 export async function createUnlockRule(request: CreateUnlockRuleRequest): Promise<AvatarUnlockRule> {
-  const { data, error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { data, error } = await adminClient
     .from('avatar_unlock_rules')
     .insert({
       id: request.id,
@@ -428,6 +453,9 @@ export async function updateUnlockRule(
   id: string,
   request: UpdateUnlockRuleRequest
 ): Promise<AvatarUnlockRule> {
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
   const updates: Record<string, unknown> = { updated_at: new Date().toISOString() };
 
   if (request.displayName !== undefined) updates.display_name = request.displayName;
@@ -440,7 +468,7 @@ export async function updateUnlockRule(
   if (request.statisticValue !== undefined) updates.statistic_value = request.statisticValue;
   if (request.isActive !== undefined) updates.is_active = request.isActive;
 
-  const { data, error } = await supabaseAuth
+  const { data, error } = await adminClient
     .from('avatar_unlock_rules')
     .update(updates)
     .eq('id', id)
@@ -452,14 +480,14 @@ export async function updateUnlockRule(
   // Update component associations if provided
   if (request.componentIds !== undefined) {
     // Remove existing
-    await supabaseAuth
+    await adminClient
       .from('avatar_component_unlocks')
       .delete()
       .eq('unlock_rule_id', id);
 
     // Add new
     if (request.componentIds.length > 0) {
-      await supabaseAuth
+      await adminClient
         .from('avatar_component_unlocks')
         .insert(
           request.componentIds.map((componentId) => ({
@@ -474,7 +502,10 @@ export async function updateUnlockRule(
 }
 
 export async function deleteUnlockRule(id: string): Promise<void> {
-  const { error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { error } = await adminClient
     .from('avatar_unlock_rules')
     .delete()
     .eq('id', id);
@@ -499,7 +530,10 @@ export async function getGenerationPresets(): Promise<AvatarGenerationPreset[]> 
 export async function createGenerationPreset(
   preset: Omit<AvatarGenerationPreset, 'createdAt' | 'isActive'>
 ): Promise<AvatarGenerationPreset> {
-  const { data, error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { data, error } = await adminClient
     .from('avatar_generation_presets')
     .insert({
       id: preset.id,
@@ -521,6 +555,9 @@ export async function updateGenerationPreset(
   id: string,
   updates: Partial<AvatarGenerationPreset>
 ): Promise<AvatarGenerationPreset> {
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
   const dbUpdates: Record<string, unknown> = {};
 
   if (updates.name !== undefined) dbUpdates.name = updates.name;
@@ -531,7 +568,7 @@ export async function updateGenerationPreset(
   if (updates.params !== undefined) dbUpdates.params = updates.params;
   if (updates.isActive !== undefined) dbUpdates.is_active = updates.isActive;
 
-  const { data, error } = await supabaseAuth
+  const { data, error } = await adminClient
     .from('avatar_generation_presets')
     .update(dbUpdates)
     .eq('id', id)
@@ -543,7 +580,10 @@ export async function updateGenerationPreset(
 }
 
 export async function deleteGenerationPreset(id: string): Promise<void> {
-  const { error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { error } = await adminClient
     .from('avatar_generation_presets')
     .delete()
     .eq('id', id);
@@ -575,7 +615,10 @@ export async function upsertColorPalette(
   displayName: string,
   colors: string[]
 ): Promise<AvatarColorPalette> {
-  const { data, error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { data, error } = await adminClient
     .from('avatar_color_palettes')
     .upsert({
       id,
@@ -603,7 +646,10 @@ export async function grantComponentToUser(
   componentId: string,
   reason?: string
 ): Promise<void> {
-  const { error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { error } = await adminClient
     .from('user_unlocked_components')
     .upsert({
       user_id: userId,
@@ -618,7 +664,10 @@ export async function revokeComponentFromUser(
   userId: string,
   componentId: string
 ): Promise<void> {
-  const { error } = await supabaseAuth
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  const { error } = await adminClient
     .from('user_unlocked_components')
     .delete()
     .eq('user_id', userId)
@@ -690,15 +739,18 @@ export async function setComponentUnlockRules(
   componentId: string,
   unlockRuleIds: string[]
 ): Promise<void> {
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
   // Remove existing
-  await supabaseAuth
+  await adminClient
     .from('avatar_component_unlocks')
     .delete()
     .eq('component_id', componentId);
 
   // Add new
   if (unlockRuleIds.length > 0) {
-    const { error } = await supabaseAuth
+    const { error } = await adminClient
       .from('avatar_component_unlocks')
       .insert(
         unlockRuleIds.map((ruleId) => ({
