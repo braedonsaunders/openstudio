@@ -9,6 +9,7 @@ import { useTheme } from '@/components/theme/ThemeProvider';
 import { useAuthStore } from '@/stores/auth-store';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus } from 'lucide-react';
+import { CreateRoomModal } from '@/components/rooms';
 
 // Theme toggle button
 function ThemeToggle() {
@@ -1106,6 +1107,7 @@ export default function HomePage() {
   const [isCreating, setIsCreating] = useState(false);
   const [isHovering, setIsHovering] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   // State for characters coming and going
   const [visibleMusicians, setVisibleMusicians] = useState({
@@ -1153,10 +1155,12 @@ export default function HomePage() {
   }, []);
 
   const handleCreateRoom = useCallback(async () => {
-    setIsCreating(true);
     if (user) {
-      router.push('/rooms');
+      // Open the create room modal directly for logged-in users
+      setShowCreateModal(true);
     } else {
+      // For guests, create a quick room and redirect
+      setIsCreating(true);
       const newRoomId = generateRoomId();
       router.push(`/room/${newRoomId}`);
     }
@@ -1403,6 +1407,9 @@ export default function HomePage() {
           POWERED BY CLOUDFLARE CALLS
         </p>
       </motion.div>
+
+      {/* Create Room Modal */}
+      <CreateRoomModal isOpen={showCreateModal} onClose={() => setShowCreateModal(false)} />
     </div>
   );
 }
