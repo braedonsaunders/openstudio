@@ -143,14 +143,14 @@ export function TransportBar({
 
         <button
           onClick={handleCopyRoomId}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/5 transition-colors group"
+          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/5 transition-colors group"
         >
-          <span className="text-xs text-gray-500 dark:text-zinc-400">Room</span>
-          <span className="text-sm font-mono font-medium text-gray-900 dark:text-white">{roomId}</span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-400">Room</span>
+          <span className="text-xs font-mono font-medium text-gray-900 dark:text-white">{roomId}</span>
           {copied ? (
-            <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" />
+            <Check className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
           ) : (
-            <Copy className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-500 group-hover:text-gray-600 dark:group-hover:text-zinc-300 transition-colors" />
+            <Copy className="w-3 h-3 text-gray-400 dark:text-zinc-500 group-hover:text-gray-600 dark:group-hover:text-zinc-300 transition-colors" />
           )}
         </button>
 
@@ -158,7 +158,7 @@ export function TransportBar({
         <Tooltip
           position="bottom"
           delay={0}
-          className="w-64 whitespace-normal p-0"
+          className="w-64 whitespace-normal p-0 z-[100]"
           content={
             <div className="p-3 space-y-2.5">
               <div className="flex items-center justify-between">
@@ -248,7 +248,7 @@ export function TransportBar({
           }
         >
           <div className={cn(
-            'flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-default transition-colors',
+            'flex items-center gap-1 px-2 py-1 rounded-lg cursor-default transition-colors',
             connectionQuality === 'excellent' && 'bg-emerald-500/10',
             connectionQuality === 'good' && 'bg-emerald-500/10',
             connectionQuality === 'fair' && 'bg-yellow-500/10',
