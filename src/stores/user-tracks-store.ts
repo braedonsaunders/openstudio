@@ -162,7 +162,7 @@ export const useUserTracksStore = create<UserTracksState>()(
         isMuted: false,
         isSolo: false,
         volume: 1,
-        isArmed: true, // New tracks are armed by default
+        isArmed: false, // New tracks are not armed by default
         isRecording: false,
         createdAt: Date.now(),
         // Ownership fields
@@ -203,7 +203,7 @@ export const useUserTracksStore = create<UserTracksState>()(
         isMuted: false,
         isSolo: false,
         volume: 1,
-        isArmed: true,
+        isArmed: false,
         isRecording: false,
         createdAt: Date.now(),
         ownerUserId: userId,

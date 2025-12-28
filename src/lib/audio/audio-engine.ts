@@ -47,7 +47,7 @@ export class AudioEngine {
   private localEffectsProcessor: UnifiedEffectsProcessor | null = null;
   private monitoringEnabled: boolean = true;
   private localTrackMuted: boolean = false;
-  private localTrackArmed: boolean = true;
+  private localTrackArmed: boolean = false;
   private localTrackVolume: number = 1;
   private remoteStreams: Map<string, AudioStream> = new Map();
   private backingTrackSource: AudioBufferSourceNode | null = null;
