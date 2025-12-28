@@ -25,6 +25,7 @@ import {
   Palette,
   ToggleLeft,
   ToggleRight,
+  Layers,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Slider } from '@/components/ui/slider';
@@ -73,6 +74,8 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
   const [search, setSearch] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('');
   const [filterRarity, setFilterRarity] = useState<ComponentRarity | ''>('');
+  const [filterModel, setFilterModel] = useState<string>('');
+  const [groupBy, setGroupBy] = useState<'category' | 'model'>('category');
   const [showInactive, setShowInactive] = useState(false);
 
   // Edit modal
@@ -137,11 +140,23 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     }
   };
 
+  // Get unique models for filter dropdown
+  const availableModels = useMemo(() => {
+    const models = new Set<string>();
+    for (const comp of components) {
+      if (comp.generationModel) {
+        models.add(comp.generationModel);
+      }
+    }
+    return Array.from(models).sort();
+  }, [components]);
+
   const filteredComponents = useMemo(() => {
     return components.filter((comp) => {
       if (!showInactive && !comp.isActive) return false;
       if (filterCategory && comp.categoryId !== filterCategory) return false;
       if (filterRarity && comp.rarity !== filterRarity) return false;
+      if (filterModel && comp.generationModel !== filterModel) return false;
       if (search) {
         const searchLower = search.toLowerCase();
         return (
@@ -152,7 +167,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
       }
       return true;
     });
-  }, [components, search, filterCategory, filterRarity, showInactive]);
+  }, [components, search, filterCategory, filterRarity, filterModel, showInactive]);
 
   const componentsByCategory = useMemo(() => {
     const grouped: Record<string, AvatarComponent[]> = {};
@@ -161,6 +176,18 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
         grouped[comp.categoryId] = [];
       }
       grouped[comp.categoryId].push(comp);
+    }
+    return grouped;
+  }, [filteredComponents]);
+
+  const componentsByModel = useMemo(() => {
+    const grouped: Record<string, AvatarComponent[]> = {};
+    for (const comp of filteredComponents) {
+      const model = comp.generationModel || 'Unknown';
+      if (!grouped[model]) {
+        grouped[model] = [];
+      }
+      grouped[model].push(comp);
     }
     return grouped;
   }, [filteredComponents]);
@@ -515,6 +542,21 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
             <option value="legendary">Legendary</option>
           </select>
 
+          {availableModels.length > 0 && (
+            <select
+              value={filterModel}
+              onChange={(e) => setFilterModel(e.target.value)}
+              className="px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            >
+              <option value="">All Styles</option>
+              {availableModels.map((model) => (
+                <option key={model} value={model}>
+                  {model}
+                </option>
+              ))}
+            </select>
+          )}
+
           <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300">
             <input
               type="checkbox"
@@ -529,17 +571,46 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
             <RefreshCw className="w-4 h-4" />
           </Button>
         </div>
+
+        {/* Group By Toggle */}
+        <div className="flex items-center gap-2 mt-3 pt-3 border-t border-gray-200 dark:border-gray-700">
+          <span className="text-sm text-gray-500 dark:text-gray-400">Group by:</span>
+          <button
+            onClick={() => setGroupBy('category')}
+            className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+              groupBy === 'category'
+                ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-300'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+          >
+            Category
+          </button>
+          <button
+            onClick={() => setGroupBy('model')}
+            className={`px-3 py-1 text-sm rounded-lg transition-colors ${
+              groupBy === 'model'
+                ? 'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300'
+                : 'text-gray-600 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+            }`}
+          >
+            Style/Model
+          </button>
+        </div>
       </Card>
 
       {/* Component Stats */}
       <div className="flex items-center gap-4 text-sm text-gray-500 dark:text-gray-400">
         <span>{filteredComponents.length} components</span>
         <span>|</span>
-        <span>{Object.keys(componentsByCategory).length} categories</span>
+        <span>
+          {groupBy === 'category'
+            ? `${Object.keys(componentsByCategory).length} categories`
+            : `${Object.keys(componentsByModel).length} styles`}
+        </span>
       </div>
 
-      {/* Components by Category */}
-      {[...categories]
+      {/* Components grouped by Category */}
+      {groupBy === 'category' && [...categories]
         .sort((a, b) => a.displayName.localeCompare(b.displayName))
         .filter((cat) => componentsByCategory[cat.id]?.length > 0)
         .map((category) => (
@@ -584,6 +655,92 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
                   <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
                     <p className="text-xs text-white text-center px-1 truncate w-full">
                       {component.name}
+                    </p>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => handleEdit(component)}
+                        className="p-1 bg-white/20 rounded hover:bg-white/40"
+                        title="Edit Component"
+                      >
+                        <Edit2 className="w-3 h-3 text-white" />
+                      </button>
+                      <button
+                        onClick={() => handleToggleActive(component)}
+                        className="p-1 bg-white/20 rounded hover:bg-white/40"
+                        title={component.isActive ? 'Deactivate' : 'Activate'}
+                      >
+                        {component.isActive ? (
+                          <EyeOff className="w-3 h-3 text-white" />
+                        ) : (
+                          <Eye className="w-3 h-3 text-white" />
+                        )}
+                      </button>
+                      <button
+                        onClick={() => setDeletingComponent(component)}
+                        className="p-1 bg-red-500/50 rounded hover:bg-red-500/80"
+                        title="Delete"
+                      >
+                        <Trash2 className="w-3 h-3 text-white" />
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Card>
+        ))}
+
+      {/* Components grouped by Style/Model */}
+      {groupBy === 'model' && Object.keys(componentsByModel)
+        .sort()
+        .map((model) => (
+          <Card key={model} className="p-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">
+              <span className="inline-flex items-center gap-2">
+                <Palette className="w-4 h-4 text-purple-500" />
+                {model}
+              </span>
+              <span className="ml-2 text-sm font-normal text-gray-500">
+                ({componentsByModel[model].length})
+              </span>
+            </h3>
+
+            <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8 gap-3">
+              {componentsByModel[model].map((component) => (
+                <div
+                  key={component.id}
+                  className={`relative group aspect-square rounded-lg overflow-hidden border-2 ${
+                    rarityColors[component.rarity]
+                  } ${!component.isActive ? 'opacity-50' : ''}`}
+                >
+                  <img
+                    src={component.thumbnailUrl || component.imageUrl}
+                    alt={component.name}
+                    className="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+
+                  {/* Rarity indicator */}
+                  {rarityIcons[component.rarity] && (
+                    <div className="absolute top-1 left-1">
+                      {rarityIcons[component.rarity]}
+                    </div>
+                  )}
+
+                  {/* Inactive indicator */}
+                  {!component.isActive && (
+                    <div className="absolute top-1 right-1">
+                      <EyeOff className="w-3 h-3 text-gray-500" />
+                    </div>
+                  )}
+
+                  {/* Hover overlay */}
+                  <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
+                    <p className="text-xs text-white text-center px-1 truncate w-full">
+                      {component.name}
+                    </p>
+                    <p className="text-xs text-gray-300 truncate w-full text-center">
+                      {categories.find(c => c.id === component.categoryId)?.displayName}
                     </p>
                     <div className="flex gap-1">
                       <button

@@ -357,9 +357,10 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
 
       // Only remove saved items from results, keep unsaved/unselected for retry
       setBatchResults((prev) => prev.filter((r) => !savedIds.has(r.componentIdBase)));
-      // Keep theme and settings for regeneration
+      // Keep theme, category, preset, and other settings for continued generation
+      // Only clear tags as they're typically batch-specific
       setBatchTags('');
-      onComponentCreated();
+      // Don't call onComponentCreated() - keep the generator state intact so user can continue
     } catch (error) {
       console.error('Failed to save batch:', error);
       toast.error('Failed to save components');
