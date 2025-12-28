@@ -14,6 +14,7 @@ import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { getLoopById } from '@/lib/audio/loop-library';
+import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
 import { LeftPanel } from './left-panel';
@@ -130,6 +131,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   // Song system - the primary track/playback system
   const { getCurrentSong } = useSongsStore();
   const { getTracksByRoom } = useLoopTracksStore();
+  const { getLoop: getCustomLoop } = useCustomLoopsStore();
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
 
@@ -148,7 +150,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     return currentSong.tracks.map((trackRef: SongTrackReference) => {
       if (trackRef.type === 'loop') {
         const loopTrack = loopTracks.find((t: LoopTrackState) => t.id === trackRef.trackId);
-        const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+        // Check both hardcoded library AND custom loops store (for database-stored loops)
+        let loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+        if (!loopDef && loopTrack) {
+          loopDef = getCustomLoop(loopTrack.loopId);
+        }
         const loopDuration = getLoopDuration(loopDef);
 
         return {
@@ -170,7 +176,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         };
       }
     });
-  }, [currentSong, loopTracks, queue.tracks, getLoopDuration]);
+  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, getCustomLoop]);
 
   // Calculate Song duration (max end time of all tracks)
   const songDuration = useMemo(() => {
