@@ -126,13 +126,13 @@ function BpmBadge() {
           <button
             onClick={() => setShowModeMenu(!showModeMenu)}
             className={cn(
-              'px-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
+              'px-2 py-1 flex items-center rounded-l-lg border border-r-0 transition-all',
               'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
               'hover:bg-gray-200 dark:hover:bg-white/10',
               showModeMenu && 'bg-gray-200 dark:bg-white/10'
             )}
           >
-            <SourceIcon className={cn('w-3.5 h-3.5 transition-colors', sourceConfig[source].color)} />
+            <SourceIcon className={cn('w-4 h-4 transition-colors', sourceConfig[source].color)} />
           </button>
         </Tooltip>
 
@@ -303,13 +303,13 @@ function KeyBadge() {
           <button
             onClick={() => { setShowModeMenu(!showModeMenu); setShowKeyMenu(false); }}
             className={cn(
-              'px-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
+              'px-2 py-1 flex items-center rounded-l-lg border border-r-0 transition-all',
               'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
               'hover:bg-gray-200 dark:hover:bg-white/10',
               showModeMenu && 'bg-gray-200 dark:bg-white/10'
             )}
           >
-            <SourceIcon className={cn('w-3.5 h-3.5 transition-colors', sourceConfig[keySource].color)} />
+            <SourceIcon className={cn('w-4 h-4 transition-colors', sourceConfig[keySource].color)} />
           </button>
         </Tooltip>
 
