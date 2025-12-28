@@ -349,7 +349,7 @@ export function UserTrackHeader({
               onClick={() => setTrackMuted(track.id, !track.isMuted)}
               className={cn(
                 'w-5 h-5 rounded flex items-center justify-center text-[10px] font-bold transition-all',
-                track.isMuted
+                track.isMuted || isGlobalMuted
                   ? 'bg-red-500/20 text-red-400'
                   : 'bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-white/10'
               )}
