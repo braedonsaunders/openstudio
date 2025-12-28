@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useSongsStore } from '@/stores/songs-store';
+import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { LoopBrowserModal } from '../loops/loop-browser-modal';
 import { getLoopById } from '@/lib/audio/loop-library';
 import {
@@ -49,6 +50,7 @@ export function TracksPanel({
 }: TracksPanelProps) {
   const { queue, isMaster } = useRoomStore();
   const { getTracksByRoom, addTrack: addLoopTrack, removeTrack: removeLoopTrack, setTrackMuted } = useLoopTracksStore();
+  const sessionTempo = useSessionTempoStore((s) => s.tempo);
   const {
     getSongsByRoom,
     getCurrentSong,
@@ -152,12 +154,13 @@ export function TracksPanel({
     return `${mins}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Calculate loop duration from BPM and bars
-  const getLoopDuration = (loopDef: LoopDefinition | undefined): number => {
+  // Calculate loop duration using session tempo (loops auto-adjust unless tempo-locked)
+  const getLoopDuration = (loopDef: LoopDefinition | undefined, tempoLocked = false): number => {
     if (!loopDef) return 0;
+    const effectiveBpm = tempoLocked ? loopDef.bpm : sessionTempo;
     const beatsPerBar = loopDef.timeSignature[0];
     const totalBeats = loopDef.bars * beatsPerBar;
-    return (totalBeats / loopDef.bpm) * 60;
+    return (totalBeats / effectiveBpm) * 60;
   };
 
   // Build asset list - unique source tracks (not timeline clips)
@@ -174,7 +177,7 @@ export function TracksPanel({
     clipCount: currentSong?.tracks.filter((ref) => ref.type === 'audio' && ref.trackId === track.id).length || 0,
   }));
 
-  // Loop assets from loop tracks
+  // Loop assets from loop tracks (duration adjusts to session tempo unless tempo-locked)
   const loopAssets = loopTracks.map((track) => {
     const loopDef = getLoopById(track.loopId);
     return {
@@ -182,7 +185,7 @@ export function TracksPanel({
       id: track.id,
       loopId: track.loopId,
       name: track.name || loopDef?.name || 'Loop',
-      duration: getLoopDuration(loopDef),
+      duration: getLoopDuration(loopDef, track.tempoLocked),
       color: track.color || '#f59e0b',
       muted: track.muted,
       // Count how many times this asset appears in the current song
@@ -452,9 +455,8 @@ export function TracksPanel({
 
       {/* Song Summary */}
       {currentSong && (
-        <div className="px-3 py-1.5 border-t border-gray-200 dark:border-white/5 flex items-center justify-between text-[10px] text-gray-500 dark:text-zinc-500 shrink-0">
+        <div className="px-3 py-1.5 border-t border-gray-200 dark:border-white/5 text-[10px] text-gray-500 dark:text-zinc-500 shrink-0">
           <span>{audioAssets.length + loopAssets.length} asset{audioAssets.length + loopAssets.length !== 1 ? 's' : ''} • {currentSong.tracks.length} clip{currentSong.tracks.length !== 1 ? 's' : ''}</span>
-          <span>{currentSong.bpm} BPM</span>
         </div>
       )}
 
