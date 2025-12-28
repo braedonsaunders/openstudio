@@ -172,14 +172,14 @@ export default function RoomPage() {
       const selected = getSelectedPresets();
       for (const preset of selected) {
         const trackSettings = presetToTrackSettings(preset);
-        if (preset.type === 'midi' && trackSettings.midiSettings) {
+        if ('type' in trackSettings && trackSettings.type === 'midi' && 'midiSettings' in trackSettings && trackSettings.midiSettings) {
           addMidiTrack(
             user?.id || 'local-user',
             trackSettings.name,
             trackSettings.midiSettings,
             userName.trim()
           );
-        } else if (trackSettings.audioSettings) {
+        } else if ('audioSettings' in trackSettings && trackSettings.audioSettings) {
           addTrack(
             user?.id || 'local-user',
             trackSettings.name,
