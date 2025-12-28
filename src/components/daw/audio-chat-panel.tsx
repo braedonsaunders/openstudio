@@ -31,6 +31,7 @@ const SPEAKING_DEBOUNCE_MS = 150;
 export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPanelProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [inputDevices, setInputDevices] = useState<MediaDeviceInfo[]>([]);
+  const [deviceChannels, setDeviceChannels] = useState<Map<string, number>>(new Map());
 
   const localAudioRef = useRef<HTMLAudioElement>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
@@ -78,7 +79,26 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
     reset,
   } = useAudioChatStore();
 
-  // Load available input devices
+  // Probe channel count for a specific device
+  const probeDeviceChannels = useCallback(async (deviceId: string): Promise<number> => {
+    try {
+      const testStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          deviceId: { exact: deviceId },
+          channelCount: { ideal: 32 }, // Request max channels for detection
+        },
+      });
+      const audioTrack = testStream.getAudioTracks()[0];
+      const settings = audioTrack.getSettings();
+      const channelCount = settings.channelCount || 2;
+      testStream.getTracks().forEach((t) => t.stop());
+      return channelCount;
+    } catch {
+      return 2; // Default to stereo if probing fails
+    }
+  }, []);
+
+  // Load available input devices and probe their channel counts
   useEffect(() => {
     async function loadDevices() {
       try {
@@ -90,12 +110,20 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
         const devices = await navigator.mediaDevices.enumerateDevices();
         const audioInputs = devices.filter((d) => d.kind === 'audioinput');
         setInputDevices(audioInputs);
+
+        // Probe channel count for each device
+        const channelMap = new Map<string, number>();
+        for (const device of audioInputs) {
+          const channels = await probeDeviceChannels(device.deviceId);
+          channelMap.set(device.deviceId, channels);
+        }
+        setDeviceChannels(channelMap);
       } catch (err) {
         console.error('Failed to load audio devices:', err);
       }
     }
     loadDevices();
-  }, []);
+  }, [probeDeviceChannels]);
 
   // Analyze local audio level
   const analyzeAudioLevel = useCallback(() => {
@@ -126,18 +154,21 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
       const ctx = new AudioContext();
       setAudioContext(ctx);
 
-      // Get local audio stream - request all available channels
+      // Use the probed channel count if available, otherwise request max
+      const requestedChannels = availableChannels > 2 ? availableChannels : 32;
+
+      // Get local audio stream - request the probed number of channels
       const constraints: MediaStreamConstraints = {
         audio: selectedInputDevice
           ? {
               deviceId: { exact: selectedInputDevice },
-              channelCount: { ideal: 8 }, // Request up to 8 channels
+              channelCount: { ideal: requestedChannels, min: selectedInputChannel > 0 ? selectedInputChannel : undefined },
               echoCancellation: false,
               noiseSuppression: false,
               autoGainControl: false,
             }
           : {
-              channelCount: { ideal: 8 },
+              channelCount: { ideal: requestedChannels },
               echoCancellation: false,
               noiseSuppression: false,
               autoGainControl: false,
@@ -153,12 +184,23 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
       const audioTrack = stream.getAudioTracks()[0];
       const trackSettings = audioTrack.getSettings();
       const numChannels = trackSettings.channelCount || 2;
-      setAvailableChannels(numChannels);
+
+      // Only update available channels if we got more than expected
+      // (don't downgrade to fewer channels than we probed)
+      if (numChannels > availableChannels) {
+        setAvailableChannels(numChannels);
+      }
+
+      // Validate that selected channel is available
+      if (selectedInputChannel > 0 && selectedInputChannel > numChannels) {
+        throw new Error(`Channel ${selectedInputChannel} is not available. This device only has ${numChannels} channel(s).`);
+      }
 
       // Set up audio processing based on channel selection
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
+      analyser.smoothingTimeConstant = 0.3;
 
       if (selectedInputChannel > 0 && numChannels > 1) {
         // Split channels and use specific one
@@ -168,7 +210,7 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
         source.connect(splitter);
 
         // Connect the selected channel (1-indexed) to a mono merger
-        const channelIndex = Math.min(selectedInputChannel - 1, numChannels - 1);
+        const channelIndex = selectedInputChannel - 1;
         splitter.connect(merger, channelIndex, 0);
         merger.connect(analyser);
 
@@ -207,13 +249,15 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
       setConnected(true);
     } catch (err) {
       console.error('Failed to join voice chat:', err);
-      setError('Failed to access microphone. Please check permissions.');
+      const errorMessage = err instanceof Error ? err.message : 'Failed to access microphone. Please check permissions.';
+      setError(errorMessage);
     } finally {
       setConnecting(false);
     }
   }, [
     selectedInputDevice,
     selectedInputChannel,
+    availableChannels,
     userId,
     users,
     setConnecting,
@@ -370,7 +414,17 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
                 </label>
                 <select
                   value={selectedInputDevice || ''}
-                  onChange={(e) => setSelectedInputDevice(e.target.value || null)}
+                  onChange={(e) => {
+                    const deviceId = e.target.value || null;
+                    setSelectedInputDevice(deviceId);
+                    // Update available channels based on probed data
+                    if (deviceId) {
+                      const channels = deviceChannels.get(deviceId) || 2;
+                      setAvailableChannels(channels);
+                    } else {
+                      setAvailableChannels(2);
+                    }
+                  }}
                   className="w-full px-2 py-1.5 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white"
                 >
                   <option value="">Default</option>
