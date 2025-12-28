@@ -85,14 +85,25 @@ async function generateWithCloudflare(
       throw new Error(`Cloudflare AI error: ${error}`);
     }
 
-    // Cloudflare Workers AI REST API returns JSON with base64-encoded image
-    const result = await response.json() as { result?: { image?: string }; success?: boolean; errors?: string[] };
+    // Cloudflare returns either raw binary PNG or JSON with base64 image
+    // Check content-type to determine format
+    const contentType = response.headers.get('content-type') || '';
 
-    if (!result.success || !result.result?.image) {
-      throw new Error(`Cloudflare AI error: ${result.errors?.join(', ') || 'No image in response'}`);
+    if (contentType.includes('image/')) {
+      // Raw binary image response
+      const imageBuffer = await response.arrayBuffer();
+      const base64 = Buffer.from(imageBuffer).toString('base64');
+      return `data:image/png;base64,${base64}`;
+    } else {
+      // JSON response with base64-encoded image
+      const result = await response.json() as { result?: { image?: string }; success?: boolean; errors?: string[] };
+
+      if (!result.success || !result.result?.image) {
+        throw new Error(`Cloudflare AI error: ${result.errors?.join(', ') || 'No image in response'}`);
+      }
+
+      return `data:image/png;base64,${result.result.image}`;
     }
-
-    return `data:image/png;base64,${result.result.image}`;
   });
 
   const images = await Promise.all(imagePromises);
