@@ -761,3 +761,281 @@ export interface GuitarEffectPreset {
 // Legacy type aliases for backwards compatibility
 /** @deprecated Use UnifiedEffectsChain instead */
 export type ExtendedTrackAudioSettings = TrackAudioSettings;
+
+// ============================================================================
+// World-Class Latency & Synchronization Types
+// ============================================================================
+
+/**
+ * Quality preset names for audio encoding/latency tradeoffs
+ */
+export type QualityPresetName =
+  | 'ultra-low-latency'
+  | 'low-latency'
+  | 'balanced'
+  | 'high-quality'
+  | 'studio-quality'
+  | 'poor-connection'
+  | 'custom';
+
+/**
+ * Opus encoding settings - controls codec behavior
+ */
+export interface OpusEncodingSettings {
+  /** Bitrate in kbps (24-510) */
+  bitrate: number;
+  /** Frame size in ms (10 or 20) - lower = less latency */
+  frameSize: 10 | 20;
+  /** Encoder complexity (0-10) - higher = better quality but more CPU */
+  complexity: number;
+  /** Forward Error Correction - helps with packet loss but adds latency */
+  fec: boolean;
+  /** Discontinuous Transmission - saves bandwidth during silence */
+  dtx: boolean;
+  /** Constant Bitrate - more predictable latency */
+  cbr: boolean;
+  /** In-band FEC for voice - additional redundancy */
+  inbandFec: boolean;
+  /** Packet loss percentage to optimize for (0-100) */
+  packetLossPercentage: number;
+}
+
+/**
+ * Quality preset with all encoding and buffer settings
+ */
+export interface QualityPreset {
+  name: string;
+  id: QualityPresetName;
+  description: string;
+  icon: string;
+  encoding: OpusEncodingSettings;
+  jitterMode: 'live-jamming' | 'balanced' | 'stable';
+  lowLatencyMode: boolean;
+  /** Recommended for connections under this RTT (ms) */
+  recommendedMaxRtt: number;
+}
+
+/**
+ * Jam compatibility assessment
+ */
+export type JamQuality = 'tight' | 'good' | 'loose' | 'difficult' | 'impossible';
+
+export interface JamCompatibility {
+  canJam: boolean;
+  quality: JamQuality;
+  maxGroupLatency: number;
+  recommendation: string;
+  suggestedBpmMax?: number;
+  autoOptimizations: AutoOptimization[];
+}
+
+export interface AutoOptimization {
+  type: 'reduce_buffer' | 'increase_buffer' | 'enable_fec' | 'disable_fec' |
+        'reduce_bitrate' | 'increase_bitrate' | 'bypass_effects' |
+        'enable_effects' | 'switch_preset';
+  description: string;
+  automatic: boolean;
+  applied?: boolean;
+}
+
+/**
+ * Per-user performance information (shared with room)
+ */
+export interface UserPerformanceInfo {
+  userId: string;
+  userName: string;
+
+  // Network metrics
+  rttToMaster: number;           // ms - RTT to room master
+  rttEstimated: number;          // ms - estimated end-to-end latency
+  jitter: number;                // ms - network jitter
+  packetLoss: number;            // percentage (0-100)
+  connectionQuality: 'excellent' | 'good' | 'fair' | 'poor';
+
+  // Encoding info
+  codec: 'opus';
+  sampleRate: 48000 | 44100;
+  bitrate: number;               // kbps
+  frameSize: 10 | 20;            // ms
+  fecEnabled: boolean;
+  dtxEnabled: boolean;
+
+  // Processing info
+  jitterBufferMode: 'live-jamming' | 'balanced' | 'stable';
+  jitterBufferSize: number;      // samples
+  effectsLatency: number;        // ms added by effects chain
+  activePreset: QualityPresetName;
+
+  // Compensation info
+  compensationDelay: number;     // ms of artificial delay added
+  clockOffset: number;           // ms offset from master clock
+
+  // Latency breakdown
+  latencyBreakdown: LatencyBreakdown;
+
+  // Derived
+  totalLatency: number;          // End-to-end estimated latency
+  qualityScore: number;          // 0-100 quality estimation
+
+  // Timestamp
+  lastUpdate: number;
+}
+
+/**
+ * Detailed latency breakdown for visualization
+ */
+export interface LatencyBreakdown {
+  capture: number;       // Audio capture latency (getUserMedia)
+  encode: number;        // Opus encoding time
+  network: number;       // Network RTT / 2
+  jitterBuffer: number;  // Jitter buffer delay
+  decode: number;        // Opus decoding time
+  effects: number;       // Effects processing
+  playback: number;      // Audio output latency
+  compensation: number;  // Artificial delay for sync
+  total: number;         // Sum of all
+}
+
+/**
+ * Clock sync message sent via WebRTC data channel
+ */
+export interface ClockSyncMessage {
+  type: 'clock_sync';
+  masterTime: number;        // Master's performance.now()
+  masterWallClock: number;   // Master's Date.now()
+  beatPosition: number;      // Current beat position
+  bpm: number;               // Current BPM
+  sendTimestamp: number;     // When packet was sent
+  sequence: number;          // Sequence number for ordering
+}
+
+/**
+ * Clock sync acknowledgment
+ */
+export interface ClockSyncAck {
+  type: 'clock_ack';
+  originalSendTime: number;
+  clientReceiveTime: number;
+  clientId: string;
+  sequence: number;
+}
+
+/**
+ * Performance info broadcast message
+ */
+export interface PerformanceInfoMessage {
+  type: 'performance_info';
+  userId: string;
+  info: Omit<UserPerformanceInfo, 'userId' | 'userName'>;
+}
+
+/**
+ * Master handoff message
+ */
+export interface MasterHandoffMessage {
+  type: 'master_handoff';
+  previousMasterId: string;
+  newMasterId: string;
+  lastKnownBeatPosition: number;
+  lastKnownBpm: number;
+  handoffTime: number;
+}
+
+/**
+ * Latency compensation settings message
+ */
+export interface LatencyCompensationMessage {
+  type: 'latency_compensation';
+  targetDelay: number;       // Global target delay all users sync to
+  userDelays: Record<string, number>;  // Per-user compensation delays
+}
+
+/**
+ * All data channel message types
+ */
+export type DataChannelMessage =
+  | ClockSyncMessage
+  | ClockSyncAck
+  | PerformanceInfoMessage
+  | MasterHandoffMessage
+  | LatencyCompensationMessage
+  | { type: 'ping'; timestamp: number; senderId: string }
+  | { type: 'pong'; originalTimestamp: number; senderId: string; responderId: string };
+
+/**
+ * Clock sample for NTP-style sync
+ */
+export interface ClockSample {
+  offset: number;
+  rtt: number;
+  timestamp: number;
+  weight: number;
+}
+
+/**
+ * Latency history sample for prediction
+ */
+export interface LatencySample {
+  rtt: number;
+  jitter: number;
+  packetLoss: number;
+  timestamp: number;
+}
+
+/**
+ * Network quality trend
+ */
+export interface NetworkTrend {
+  direction: 'improving' | 'stable' | 'degrading';
+  confidence: number;
+  predictedRtt: number;
+  predictedJitter: number;
+}
+
+/**
+ * Auto-optimization engine state
+ */
+export interface OptimizationState {
+  isEnabled: boolean;
+  lastOptimization: number;
+  recentIssues: OptimizationIssue[];
+  appliedOptimizations: AutoOptimization[];
+  pendingOptimizations: AutoOptimization[];
+}
+
+export interface OptimizationIssue {
+  type: 'high_jitter' | 'high_latency' | 'packet_loss' | 'buffer_underrun' |
+        'bandwidth_constrained' | 'consistent_low_latency';
+  severity: 'low' | 'medium' | 'high';
+  detectedAt: number;
+  resolved: boolean;
+}
+
+/**
+ * Room synchronization state
+ */
+export interface RoomSyncState {
+  masterId: string;
+  masterName: string;
+  clockOffset: number;
+  clockDrift: number;
+  lastSyncTime: number;
+  syncQuality: 'excellent' | 'good' | 'fair' | 'poor';
+  participantPerformance: Map<string, UserPerformanceInfo>;
+  jamCompatibility: JamCompatibility;
+  targetCompensationDelay: number;
+}
+
+// ============================================================================
+// Quality Preset Constants (exported from types for reference)
+// ============================================================================
+
+/**
+ * All available bitrate options for Opus encoding
+ * Range: 24kbps (voice) to 510kbps (studio quality)
+ */
+export const OPUS_BITRATES = [
+  24, 32, 48, 64, 96, 128, 160, 192, 256, 320, 384, 448, 510
+] as const;
+
+export type OpusBitrate = typeof OPUS_BITRATES[number];
