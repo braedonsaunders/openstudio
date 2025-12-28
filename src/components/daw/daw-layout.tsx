@@ -771,6 +771,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         onLeave={leave}
         loopEnabled={loopEnabled}
         onLoopToggle={() => setLoopEnabled(!loopEnabled)}
+        activeView={mainView}
+        onViewChange={setMainView}
       />
 
       {/* Main Content Area */}
