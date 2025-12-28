@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRoomPermissions } from '@/hooks/useRoomPermissions';
 import { useRoomStore } from '@/stores/room-store';
@@ -41,14 +41,18 @@ export function PermissionsPanel({ roomId }: PermissionsPanelProps) {
     kickUser,
     banUser,
   } = useRoomPermissions(roomId);
-  const { users, currentUser } = useRoomStore();
+
+  // Use selector to get users as array for proper reactivity
+  const usersMap = useRoomStore((state) => state.users);
+  const currentUser = useRoomStore((state) => state.currentUser);
+  const users = useMemo(() => Array.from(usersMap.values()), [usersMap]);
 
   const [selectedMember, setSelectedMember] = useState<RoomMember | null>(null);
   const [showRolePresets, setShowRolePresets] = useState(false);
   const [openRoleDropdown, setOpenRoleDropdown] = useState<string | null>(null);
 
   // Combine connected users with member data
-  const connectedMembers = Array.from(users.values()).map((user) => {
+  const connectedMembers = users.map((user) => {
     const memberData = members.find((m: RoomMember) => m.oduserId === user.id);
     return {
       user,
@@ -134,11 +138,11 @@ export function PermissionsPanel({ roomId }: PermissionsPanelProps) {
             <select
               value={defaultRole}
               onChange={(e) => setDefaultRole(e.target.value as RoomRole)}
-              className="text-xs bg-gray-100 dark:bg-white/5 border border-gray-300 dark:border-white/10 rounded px-2 py-1 text-gray-800 dark:text-zinc-200"
+              className="text-xs bg-gray-100 dark:bg-zinc-800 border border-gray-300 dark:border-white/10 rounded px-2 py-1 text-gray-800 dark:text-zinc-200"
             >
-              <option value="performer">Performer</option>
-              <option value="member">Member</option>
-              <option value="listener">Listener</option>
+              <option value="performer" className="bg-white dark:bg-zinc-800 text-gray-800 dark:text-zinc-200">Performer</option>
+              <option value="member" className="bg-white dark:bg-zinc-800 text-gray-800 dark:text-zinc-200">Member</option>
+              <option value="listener" className="bg-white dark:bg-zinc-800 text-gray-800 dark:text-zinc-200">Listener</option>
             </select>
           </div>
 
