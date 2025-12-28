@@ -807,18 +807,18 @@ export function MultiTrackTimeline({
   }, [contextMenu.trackRef, closeContextMenu]);
 
   // Edit loop handler - opens the loop editor modal
-  const handleEditLoop = useCallback(() => {
+  const handleEditLoop = useCallback(async () => {
     if (!contextMenu.trackRef || contextMenu.trackRef.type !== 'loop') return;
 
     // Find the loop track
     const loopTrack = loopTracks.find((t) => t.id === contextMenu.trackRef!.trackId);
     if (!loopTrack) return;
 
-    // Get loop definition to check if it's a custom loop
-    const loopDef = getLoopById(loopTrack.loopId);
+    // Check if it's a custom loop by looking in the custom loops store
     const { duplicateLoop, getLoop } = useCustomLoopsStore.getState();
+    const existingCustomLoop = getLoop(loopTrack.loopId);
 
-    if (loopDef?.isCustom) {
+    if (existingCustomLoop) {
       // It's already a custom loop - edit directly
       setLoopEditorState({
         isOpen: true,
@@ -827,16 +827,16 @@ export function MultiTrackTimeline({
       });
     } else {
       // It's a built-in loop - duplicate it first to make it editable
-      const customLoop = duplicateLoop(loopTrack.loopId);
-      if (customLoop) {
+      const newCustomLoop = await duplicateLoop(loopTrack.loopId);
+      if (newCustomLoop) {
         // Update the loop track to use the new custom loop
         useLoopTracksStore.getState().updateTrack(loopTrack.id, {
-          loopId: customLoop.id,
+          loopId: newCustomLoop.id,
         });
         // Open the editor with the new custom loop
         setLoopEditorState({
           isOpen: true,
-          loopId: customLoop.id,
+          loopId: newCustomLoop.id,
           loopTrackId: loopTrack.id,
         });
       }
