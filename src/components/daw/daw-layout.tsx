@@ -61,6 +61,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const [leftPanelWidth, setLeftPanelWidth] = useState(340); // Default width for track headers
   const [rightPanelWidth, setRightPanelWidth] = useState(320); // Default w-80 = 320px
 
+  // Shared horizontal split position for left panel and timeline (1/3 - 2/3 split)
+  const [sharedSplitPosition, setSharedSplitPosition] = useState(33);
+
   // Panel resize constraints
   const MIN_LEFT_WIDTH = 180;
   const MAX_LEFT_WIDTH = 400;
@@ -586,6 +589,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           onVolumeChange={setUserVolume}
           onMuteSelf={() => setMuted(!isMuted)}
           width={leftPanelWidth}
+          // Shared split position (synced with timeline)
+          splitPosition={sharedSplitPosition}
+          onSplitPositionChange={setSharedSplitPosition}
         />
 
         {/* Left Resize Handle */}
@@ -615,6 +621,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                 onPlay={isYouTubeTrack ? handleYouTubePlay : play}
                 onStop={isYouTubeTrack ? handleYouTubePause : pause}
                 sessionStartTime={sessionStartTime}
+                // Shared split position (synced with left panel)
+                splitPosition={sharedSplitPosition}
+                onSplitPositionChange={setSharedSplitPosition}
               />
             )}
 

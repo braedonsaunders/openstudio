@@ -27,6 +27,9 @@ interface LeftPanelProps {
   onMuteSelf: () => void;
   // Layout props
   width?: number;
+  // Shared split position (synced with timeline)
+  splitPosition?: number;
+  onSplitPositionChange?: (position: number) => void;
 }
 
 export function LeftPanel({
@@ -50,9 +53,14 @@ export function LeftPanel({
   onMuteSelf,
   // Layout props
   width,
+  splitPosition: externalSplitPosition,
+  onSplitPositionChange,
 }: LeftPanelProps) {
-  // Panel split ratio - Tracks gets upper 1/3, Live Channels gets lower 2/3
-  const [splitPosition, setSplitPosition] = useState(33); // percentage for tracks panel
+  // Panel split ratio - use external if provided, otherwise local state
+  const [localSplitPosition, setLocalSplitPosition] = useState(33);
+  const splitPosition = externalSplitPosition ?? localSplitPosition;
+  const setSplitPosition = onSplitPositionChange ?? setLocalSplitPosition;
+
   const [isDragging, setIsDragging] = useState(false);
 
   // Handle split resize
@@ -85,7 +93,7 @@ export function LeftPanel({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, setSplitPosition]);
 
   return (
     <div
