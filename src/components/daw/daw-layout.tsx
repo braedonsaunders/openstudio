@@ -128,7 +128,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     getCloudflareRef,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize } = useAudioEngine();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume, currentTime } = useAudioStore();
 
@@ -311,30 +311,39 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     const syncTime = Date.now() + 100; // 100ms in future for sync
     const playbackOffset = currentTime || 0;
 
+    // Check if ANY track has solo enabled (across all track types)
+    const hasSoloTrack = songTracks.some(t => t.ref.solo);
+
     // Play all audio tracks in the Song
     for (const track of songTracks) {
       if (track.type === 'audio' && track.audioTrack) {
         // Skip if track hasn't started yet or already ended
         const trackEndTime = track.ref.startOffset + track.duration;
-        if (playbackOffset >= trackEndTime || track.ref.muted) {
+        if (playbackOffset >= trackEndTime) {
           continue;
         }
+
+        // Check if track should be audible (mute + solo logic)
+        const isEffectivelyMuted = track.ref.muted || (hasSoloTrack && !track.ref.solo);
 
         // Calculate offset within this track
         const trackOffset = Math.max(0, playbackOffset - track.ref.startOffset);
 
-        console.log('Loading audio track:', track.name, 'at offset:', trackOffset);
+        console.log('Loading audio track:', track.name, 'at offset:', trackOffset, 'muted:', isEffectivelyMuted);
         const loadSuccess = await loadBackingTrack(track.audioTrack);
         if (loadSuccess) {
           playBackingTrack(syncTime, trackOffset);
+          // Apply mute state via volume (0 = muted, 1 = normal)
+          setBackingTrackVolume(isEffectivelyMuted ? 0 : (track.ref.volume ?? 1));
         }
         break; // Only play one audio track at a time for now
       }
     }
 
     // Play all loop tracks in the Song - this sets state which triggers useLoopPlayback
+    // Note: useLoopPlayback handles its own mute/solo logic using hasSoloTrack from all song.tracks
     for (const track of songTracks) {
-      if (track.type === 'loop' && track.loopTrack && !track.ref.muted) {
+      if (track.type === 'loop' && track.loopTrack) {
         // Check if this loop should be playing at current time
         const trackEndTime = track.ref.startOffset + track.duration;
         if (playbackOffset < trackEndTime) {
@@ -346,7 +355,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     }
 
     setPlaying(true);
-  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setDuration, setPlaying]);
+  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setDuration, setPlaying, setBackingTrackVolume]);
 
   const handleSongPause = useCallback(() => {
     console.log('Pausing Song playback');
@@ -407,26 +416,35 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
 
       const syncTime = Date.now() + 50; // Small delay for sync
 
+      // Check if ANY track has solo enabled (across all track types)
+      const hasSoloTrack = songTracks.some(t => t.ref.solo);
+
       // Play all audio tracks at new position
       for (const track of songTracks) {
         if (track.type === 'audio' && track.audioTrack) {
           const trackEndTime = track.ref.startOffset + track.duration;
-          if (seekTime >= trackEndTime || track.ref.muted) continue;
+          if (seekTime >= trackEndTime) continue;
+
+          // Check if track should be audible (mute + solo logic)
+          const isEffectivelyMuted = track.ref.muted || (hasSoloTrack && !track.ref.solo);
 
           const trackOffset = Math.max(0, seekTime - track.ref.startOffset);
-          console.log('Resuming audio track at:', trackOffset);
+          console.log('Resuming audio track at:', trackOffset, 'muted:', isEffectivelyMuted);
 
           const loadSuccess = await loadBackingTrack(track.audioTrack);
           if (loadSuccess) {
             playBackingTrack(syncTime, trackOffset);
+            // Apply mute state via volume (0 = muted, 1 = normal)
+            setBackingTrackVolume(isEffectivelyMuted ? 0 : (track.ref.volume ?? 1));
           }
           break;
         }
       }
 
       // Play all loop tracks at new position
+      // Note: useLoopPlayback handles its own mute/solo logic using hasSoloTrack from all song.tracks
       for (const track of songTracks) {
-        if (track.type === 'loop' && track.loopTrack && !track.ref.muted) {
+        if (track.type === 'loop' && track.loopTrack) {
           const trackEndTime = track.ref.startOffset + track.duration;
           if (seekTime < trackEndTime) {
             console.log('Resuming loop track:', track.name);
@@ -435,7 +453,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         }
       }
     }
-  }, [isMaster, isPlaying, songTracks, hasLoopTracks, hasAudioTracks, pauseBackingTrack, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setPlaying]);
+  }, [isMaster, isPlaying, songTracks, hasLoopTracks, hasAudioTracks, pauseBackingTrack, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setPlaying, setBackingTrackVolume]);
 
   // Playback handlers - Song system only, no legacy fallback
   const handlePlay = useCallback(() => {
@@ -539,6 +557,26 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isMaster, isPlaying, isMuted, activePanel, handlePlay, handlePause, handleSeek, setMuted, skipToNext, skipToPrevious, hasSongTracks, setMainView]);
+
+  // Real-time sync of audio track mute/solo state with backing track volume
+  // This allows mute/solo buttons to work during playback
+  useEffect(() => {
+    if (!isPlaying || !hasAudioTracks) return;
+
+    // Find the currently playing audio track
+    const playingAudioTrack = songTracks.find(t => t.type === 'audio' && t.audioTrack);
+    if (!playingAudioTrack) return;
+
+    // Check if ANY track has solo enabled (across all track types)
+    const hasSoloTrack = songTracks.some(t => t.ref.solo);
+
+    // Calculate if this audio track should be muted
+    const isEffectivelyMuted = playingAudioTrack.ref.muted || (hasSoloTrack && !playingAudioTrack.ref.solo);
+
+    // Apply volume (0 = muted, track volume = normal)
+    const effectiveVolume = isEffectivelyMuted ? 0 : (playingAudioTrack.ref.volume ?? 1);
+    setBackingTrackVolume(effectiveVolume);
+  }, [isPlaying, hasAudioTracks, songTracks, setBackingTrackVolume]);
 
   // Time update for loop-only playback (when no audio tracks are driving the time)
   const playStartTimeRef = useRef<number | null>(null);
