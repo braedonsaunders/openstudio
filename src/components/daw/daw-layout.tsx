@@ -206,7 +206,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   useSessionTempoSync();
 
   // Loop playback - connects loop scheduler to sound engine
-  const { initialize: initLoopPlayback, startLoop, stopLoop: stopLoopAudio } = useLoopPlayback();
+  // This is now BULLETPROOF - it automatically reacts to song changes during playback
+  const { initialize: initLoopPlayback, startLoop, stopLoop: stopLoopAudio, syncPlaybackWithSong } = useLoopPlayback();
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);

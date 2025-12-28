@@ -114,7 +114,9 @@ export class LoopScheduler {
     for (const trackId of this.activeLoops.keys()) {
       this.stopLoop(trackId);
     }
-    this.soundEngine.allNotesOff();
+    // Use killAll() for immediate stop - no release envelope
+    // This prevents notes from continuing to play after stop
+    this.soundEngine.killAll();
   }
 
   // Update loop track state (volume, effects, etc)
