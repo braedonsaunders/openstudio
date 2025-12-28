@@ -12,6 +12,8 @@ import {
   Check,
   X,
   ImagePlus,
+  Layers,
+  Zap,
 } from 'lucide-react';
 import type { AvatarGenerationPreset, AvatarCategory, ComponentRarity } from '@/types/avatar';
 import { adminGet, adminPost } from '@/lib/api/admin';
@@ -38,11 +40,22 @@ interface ComponentGeneratorProps {
   onComponentCreated: () => void;
 }
 
+interface BatchResult {
+  prompt: string;
+  image: string;
+  componentIdBase: string;
+  suggestedName: string;
+  selected: boolean;
+}
+
 export function ComponentGenerator({ categories, onComponentCreated }: ComponentGeneratorProps) {
   const [config, setConfig] = useState<GeneratorConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Mode: 'single' or 'batch'
+  const [mode, setMode] = useState<'single' | 'batch'>('single');
 
   // Generation inputs
   const [selectedPreset, setSelectedPreset] = useState<string>('');
@@ -63,6 +76,15 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
   const [saveComponentName, setSaveComponentName] = useState('');
   const [saveTags, setSaveTags] = useState('');
   const [saveRarity, setSaveRarity] = useState<ComponentRarity>('common');
+
+  // Batch generation state
+  const [batchTheme, setBatchTheme] = useState('');
+  const [batchCategory, setBatchCategory] = useState<string>('');
+  const [batchCount, setBatchCount] = useState(8);
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [batchTags, setBatchTags] = useState('');
+  const [batchRarity, setBatchRarity] = useState<ComponentRarity>('common');
+  const [batchProgress, setBatchProgress] = useState('');
 
   useEffect(() => {
     const fetchConfig = async () => {
@@ -211,6 +233,119 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
     }
   };
 
+  // Batch generation handlers
+  const handleBatchGenerate = async () => {
+    if (!batchCategory || !batchTheme || !selectedModel) return;
+
+    const category = categories.find((c) => c.id === batchCategory);
+    if (!category) return;
+
+    setIsGenerating(true);
+    setBatchResults([]);
+    setBatchProgress('Generating varied prompts with AI...');
+
+    try {
+      const response = await adminPost('/api/admin/avatar/generate/batch', {
+        theme: batchTheme,
+        categoryId: batchCategory,
+        categoryName: category.displayName,
+        count: batchCount,
+        model: selectedModel,
+        presetId: selectedPreset || undefined,
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        setBatchResults(
+          result.results.map((r: Omit<BatchResult, 'selected'>) => ({
+            ...r,
+            selected: true, // Select all by default
+          }))
+        );
+        setBatchProgress(`Generated ${result.generatedCount} of ${result.requestedCount} images`);
+      } else {
+        const error = await response.json();
+        alert(`Batch generation failed: ${error.error}`);
+        setBatchProgress('');
+      }
+    } catch (error) {
+      console.error('Batch generation failed:', error);
+      alert('Batch generation failed');
+      setBatchProgress('');
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const toggleBatchSelection = (index: number) => {
+    setBatchResults((prev) =>
+      prev.map((r, i) => (i === index ? { ...r, selected: !r.selected } : r))
+    );
+  };
+
+  const selectAllBatch = () => {
+    setBatchResults((prev) => prev.map((r) => ({ ...r, selected: true })));
+  };
+
+  const deselectAllBatch = () => {
+    setBatchResults((prev) => prev.map((r) => ({ ...r, selected: false })));
+  };
+
+  const handleSaveBatch = async () => {
+    const selectedResults = batchResults.filter((r) => r.selected);
+    if (selectedResults.length === 0) return;
+
+    setIsSaving(true);
+    let savedCount = 0;
+
+    try {
+      for (const result of selectedResults) {
+        // Upload the image
+        const uploadResponse = await adminPost('/api/admin/avatar/upload', {
+          imageData: result.image,
+          categoryId: batchCategory,
+          componentId: result.componentIdBase,
+        });
+
+        if (!uploadResponse.ok) {
+          console.error('Failed to upload image:', result.componentIdBase);
+          continue;
+        }
+
+        const uploadResult = await uploadResponse.json();
+
+        // Create the component
+        const componentResponse = await adminPost('/api/admin/avatar/components', {
+          id: result.componentIdBase,
+          categoryId: batchCategory,
+          name: result.suggestedName,
+          imageUrl: uploadResult.url,
+          thumbnailUrl: uploadResult.thumbnailUrl,
+          r2Key: uploadResult.key,
+          tags: batchTags.split(',').map((t) => t.trim()).filter(Boolean),
+          rarity: batchRarity,
+          generationPrompt: result.prompt,
+          generationModel: selectedModel,
+        });
+
+        if (componentResponse.ok) {
+          savedCount++;
+        }
+      }
+
+      alert(`Saved ${savedCount} component(s)`);
+      setBatchResults([]);
+      setBatchTheme('');
+      setBatchTags('');
+      onComponentCreated();
+    } catch (error) {
+      console.error('Failed to save batch:', error);
+      alert('Failed to save components');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -248,48 +383,306 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
 
   return (
     <div className="space-y-6">
-      {/* Generation Controls */}
-      <Card className="p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-          <Sparkles className="w-5 h-5 text-purple-500" />
-          Generate Components
-        </h3>
+      {/* Mode Tabs */}
+      <div className="flex gap-2">
+        <Button
+          variant={mode === 'single' ? 'primary' : 'outline'}
+          onClick={() => setMode('single')}
+          className={mode === 'single' ? 'bg-purple-500 hover:bg-purple-600' : ''}
+        >
+          <Sparkles className="w-4 h-4 mr-2" />
+          Single Generation
+        </Button>
+        <Button
+          variant={mode === 'batch' ? 'primary' : 'outline'}
+          onClick={() => setMode('batch')}
+          className={mode === 'batch' ? 'bg-orange-500 hover:bg-orange-600' : ''}
+        >
+          <Zap className="w-4 h-4 mr-2" />
+          Batch Generate Category
+        </Button>
+      </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-          {/* Model Selection */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              AI Model
-            </label>
-            <select
-              value={selectedModel}
-              onChange={(e) => setSelectedModel(e.target.value)}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            >
-              {config?.models.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.name} ({model.provider}) - {model.speed}
-                </option>
-              ))}
-            </select>
+      {/* Batch Generation Mode */}
+      {mode === 'batch' && (
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Layers className="w-5 h-5 text-orange-500" />
+            Batch Generate with AI-Varied Prompts
+          </h3>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+            Enter a theme like &quot;hats&quot; or &quot;christmas accessories&quot; and AI will generate varied prompts and images automatically.
+          </p>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Category *
+              </label>
+              <select
+                value={batchCategory}
+                onChange={(e) => setBatchCategory(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value="">Select category...</option>
+                {categories.map((cat) => (
+                  <option key={cat.id} value={cat.id}>
+                    {cat.displayName}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                AI Model
+              </label>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                {config?.models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} ({model.provider}) - {model.speed}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Theme / Description *
+              </label>
+              <Input
+                value={batchTheme}
+                onChange={(e) => setBatchTheme(e.target.value)}
+                placeholder="e.g., hats, christmas stuff, sci-fi helmets, cute animals"
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Number to Generate
+              </label>
+              <select
+                value={batchCount}
+                onChange={(e) => setBatchCount(parseInt(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value={4}>4</option>
+                <option value={6}>6</option>
+                <option value={8}>8</option>
+                <option value={10}>10</option>
+                <option value={12}>12</option>
+                <option value={16}>16</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Style Preset (optional)
+              </label>
+              <select
+                value={selectedPreset}
+                onChange={(e) => setSelectedPreset(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value="">No preset</option>
+                {config?.presets.map((preset) => (
+                  <option key={preset.id} value={preset.id}>
+                    {preset.name}
+                  </option>
+                ))}
+              </select>
+            </div>
           </div>
 
-          {/* Image Count */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Number of Images
-            </label>
-            <select
-              value={imageCount}
-              onChange={(e) => setImageCount(parseInt(e.target.value))}
-              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-            >
-              <option value={1}>1</option>
-              <option value={2}>2</option>
-              <option value={4}>4</option>
-            </select>
+          <Button
+            onClick={handleBatchGenerate}
+            disabled={isGenerating || !batchCategory || !batchTheme}
+            className="bg-orange-500 hover:bg-orange-600"
+          >
+            {isGenerating ? (
+              <>
+                <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                {batchProgress || 'Generating...'}
+              </>
+            ) : (
+              <>
+                <Zap className="w-4 h-4 mr-2" />
+                Generate {batchCount} Varied Components
+              </>
+            )}
+          </Button>
+        </Card>
+      )}
+
+      {/* Batch Results */}
+      {mode === 'batch' && batchResults.length > 0 && (
+        <Card className="p-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <ImagePlus className="w-5 h-5 text-green-500" />
+              Generated Components ({batchResults.filter((r) => r.selected).length} selected)
+            </h3>
+            <div className="flex gap-2">
+              <Button variant="outline" size="sm" onClick={selectAllBatch}>
+                Select All
+              </Button>
+              <Button variant="outline" size="sm" onClick={deselectAllBatch}>
+                Deselect All
+              </Button>
+            </div>
           </div>
-        </div>
+
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+            {batchResults.map((result, index) => (
+              <div
+                key={index}
+                onClick={() => toggleBatchSelection(index)}
+                className={`relative rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
+                  result.selected
+                    ? 'border-green-500 ring-2 ring-green-500/50'
+                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-400 opacity-50'
+                }`}
+              >
+                <div className="aspect-square">
+                  <img
+                    src={result.image}
+                    alt={result.suggestedName}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="p-2 bg-white dark:bg-gray-800">
+                  <p className="text-xs font-medium text-gray-900 dark:text-white truncate">
+                    {result.suggestedName}
+                  </p>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                    {result.prompt.slice(0, 40)}...
+                  </p>
+                </div>
+                {result.selected && (
+                  <div className="absolute top-2 right-2 bg-green-500 rounded-full p-1">
+                    <Check className="w-4 h-4 text-white" />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+
+          {/* Batch Save Options */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
+            <h4 className="font-medium text-gray-900 dark:text-white mb-4">
+              Save {batchResults.filter((r) => r.selected).length} Selected Components
+            </h4>
+
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Rarity for All
+                </label>
+                <select
+                  value={batchRarity}
+                  onChange={(e) => setBatchRarity(e.target.value as ComponentRarity)}
+                  className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                >
+                  <option value="common">Common</option>
+                  <option value="rare">Rare</option>
+                  <option value="epic">Epic</option>
+                  <option value="legendary">Legendary</option>
+                </select>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                  Tags for All (comma-separated)
+                </label>
+                <Input
+                  value={batchTags}
+                  onChange={(e) => setBatchTags(e.target.value)}
+                  placeholder="e.g., holiday, festive, winter"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <Button
+                onClick={handleSaveBatch}
+                disabled={isSaving || batchResults.filter((r) => r.selected).length === 0}
+                className="bg-green-500 hover:bg-green-600"
+              >
+                {isSaving ? (
+                  <>
+                    <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                    Saving...
+                  </>
+                ) : (
+                  <>
+                    <Save className="w-4 h-4 mr-2" />
+                    Save All Selected
+                  </>
+                )}
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setBatchResults([]);
+                  setBatchProgress('');
+                }}
+              >
+                <X className="w-4 h-4 mr-2" />
+                Clear All
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      {/* Single Generation Controls */}
+      {mode === 'single' && (
+        <Card className="p-6">
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
+            <Sparkles className="w-5 h-5 text-purple-500" />
+            Generate Components
+          </h3>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+            {/* Model Selection */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                AI Model
+              </label>
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                {config?.models.map((model) => (
+                  <option key={model.id} value={model.id}>
+                    {model.name} ({model.provider}) - {model.speed}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {/* Image Count */}
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Number of Images
+              </label>
+              <select
+                value={imageCount}
+                onChange={(e) => setImageCount(parseInt(e.target.value))}
+                className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+              >
+                <option value={1}>1</option>
+                <option value={2}>2</option>
+                <option value={4}>4</option>
+              </select>
+            </div>
+          </div>
 
         {/* Prompt Mode Toggle */}
         <div className="flex items-center gap-4 mb-4">
@@ -392,10 +785,11 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
             </>
           )}
         </Button>
-      </Card>
+        </Card>
+      )}
 
-      {/* Generated Images */}
-      {generatedImages.length > 0 && (
+      {/* Generated Images (Single mode only) */}
+      {mode === 'single' && generatedImages.length > 0 && (
         <Card className="p-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
             <ImagePlus className="w-5 h-5 text-green-500" />

@@ -1,7 +1,11 @@
 // AI image generation for avatar components
 // Supports Cloudflare Workers AI (primary) and Replicate (fallback)
+// Also supports text generation for varied prompt creation
 
 import type { GenerateImageRequest, GenerateImageResponse } from '@/types/avatar';
+
+// Cloudflare text generation model
+const CF_TEXT_MODEL = '@cf/meta/llama-3.1-8b-instruct';
 
 // Available models
 export type AIModel = 'cf-sdxl-lightning' | 'cf-sdxl-base' | 'cf-flux-schnell' | 'replicate-flux-schnell' | 'replicate-sdxl';
@@ -235,8 +239,13 @@ export function getAvailableModels(): Array<{ id: AIModel; name: string; provide
   ];
 }
 
+// Default requirements for avatar asset generation
+const ASSET_PROMPT_SUFFIX = ', isolated object on plain white background, front-facing view, centered composition, no shadows, product photography style, single item only';
+const ASSET_NEGATIVE_PROMPT = 'person, human, character, body, face, background scenery, complex background, shadows, multiple objects, side view, angled view, perspective distortion';
+
 /**
  * Build a full prompt from a preset template
+ * Automatically adds white background and front-facing requirements for avatar assets
  */
 export function buildPromptFromPreset(
   component: string,
@@ -250,9 +259,17 @@ export function buildPromptFromPreset(
     prompt = `${prompt}, ${styleSuffix}`;
   }
 
+  // Add asset-specific requirements
+  prompt = `${prompt}${ASSET_PROMPT_SUFFIX}`;
+
+  // Combine negative prompts
+  const finalNegativePrompt = negativePrompt
+    ? `${negativePrompt}, ${ASSET_NEGATIVE_PROMPT}`
+    : ASSET_NEGATIVE_PROMPT;
+
   return {
     prompt,
-    negativePrompt,
+    negativePrompt: finalNegativePrompt,
   };
 }
 
@@ -265,4 +282,166 @@ export function getConfiguredProviders(): { cloudflare: boolean; replicate: bool
     cloudflare: !!(process.env.CLOUDFLARE_R2_ACCOUNT_ID && hasCloudflareToken),
     replicate: !!process.env.REPLICATE_API_TOKEN,
   };
+}
+
+/**
+ * Generate varied prompts for a theme/category using Cloudflare LLM
+ */
+export async function generateVariedPrompts(
+  theme: string,
+  categoryName: string,
+  count: number = 10,
+  styleSuffix?: string
+): Promise<{ prompts: string[]; error?: string }> {
+  const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID;
+  const apiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
+
+  if (!accountId || !apiToken) {
+    return { prompts: [], error: 'Cloudflare credentials not configured' };
+  }
+
+  const systemPrompt = `You are an asset generation assistant for an avatar customization system.
+You generate SHORT, SPECIFIC image prompts for individual avatar components/accessories.
+Each prompt should describe a SINGLE isolated item - NOT a person wearing it.
+Focus on variety in style, color, material, and design.
+The items will be rendered on white backgrounds as product images.`;
+
+  const userPrompt = `Generate exactly ${count} unique image prompts for "${categoryName}" avatar components with the theme: "${theme}"
+
+Requirements:
+- Each prompt is for ONE isolated item only (e.g., "a red baseball cap with white stitching" not "a person wearing a cap")
+- Include variety in colors, materials, patterns, and styles
+- Keep each prompt to 1-2 sentences max
+- Make them specific and descriptive
+${styleSuffix ? `- Apply this style to all: ${styleSuffix}` : ''}
+
+Return ONLY a JSON array of prompt strings, no other text. Example:
+["a red baseball cap with white stitching, sporty design", "an elegant black top hat with silk ribbon band"]`;
+
+  try {
+    const response = await fetch(
+      `https://api.cloudflare.com/client/v4/accounts/${accountId}/ai/run/${CF_TEXT_MODEL}`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt },
+          ],
+          max_tokens: 2048,
+          temperature: 0.8,
+        }),
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      return { prompts: [], error: `Cloudflare AI error: ${error}` };
+    }
+
+    const result = await response.json() as {
+      result?: { response?: string };
+      success?: boolean;
+      errors?: string[];
+    };
+
+    if (!result.success || !result.result?.response) {
+      return { prompts: [], error: `AI error: ${result.errors?.join(', ') || 'No response'}` };
+    }
+
+    // Parse JSON array from response
+    const responseText = result.result.response.trim();
+    // Extract JSON array from response (may have extra text around it)
+    const jsonMatch = responseText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      return { prompts: [], error: 'Failed to parse prompts from AI response' };
+    }
+
+    const prompts = JSON.parse(jsonMatch[0]) as string[];
+    return { prompts: prompts.slice(0, count) };
+  } catch (error) {
+    return { prompts: [], error: error instanceof Error ? error.message : 'Failed to generate prompts' };
+  }
+}
+
+export interface BatchGenerateRequest {
+  theme: string;
+  categoryId: string;
+  categoryName: string;
+  count: number;
+  model: string;
+  presetId?: string;
+  styleSuffix?: string;
+}
+
+export interface BatchGenerateResult {
+  prompt: string;
+  images: string[];
+  componentIdBase: string;
+}
+
+/**
+ * Generate a batch of varied components for a category
+ */
+export async function generateBatch(
+  request: BatchGenerateRequest
+): Promise<{ results: BatchGenerateResult[]; error?: string }> {
+  // First, generate varied prompts using LLM
+  const { prompts, error: promptError } = await generateVariedPrompts(
+    request.theme,
+    request.categoryName,
+    request.count,
+    request.styleSuffix
+  );
+
+  if (promptError || prompts.length === 0) {
+    return { results: [], error: promptError || 'No prompts generated' };
+  }
+
+  // Now generate images for each prompt
+  const results: BatchGenerateResult[] = [];
+
+  for (let i = 0; i < prompts.length; i++) {
+    const prompt = prompts[i];
+
+    // Build full prompt with asset requirements
+    const fullPromptData = buildPromptFromPreset(
+      prompt,
+      '{component}', // Simple template that just uses the component as-is
+      request.styleSuffix
+    );
+
+    try {
+      const imageResult = await generateAvatarImages({
+        prompt: fullPromptData.prompt,
+        negativePrompt: fullPromptData.negativePrompt,
+        model: request.model,
+        count: 1, // One image per prompt for variety
+      });
+
+      if (imageResult.images.length > 0) {
+        // Generate a component ID from the prompt
+        const componentIdBase = prompt
+          .toLowerCase()
+          .replace(/[^a-z0-9]+/g, '_')
+          .replace(/^_|_$/g, '')
+          .slice(0, 30);
+
+        results.push({
+          prompt,
+          images: imageResult.images,
+          componentIdBase: `${request.categoryId}_${componentIdBase}_${i + 1}`,
+        });
+      }
+    } catch (error) {
+      console.warn(`Failed to generate image for prompt: ${prompt}`, error);
+      // Continue with other prompts
+    }
+  }
+
+  return { results };
 }
