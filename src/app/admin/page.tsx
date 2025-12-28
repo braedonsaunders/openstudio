@@ -34,6 +34,7 @@ import {
   Moon,
   Palette,
   Music,
+  Paintbrush,
 } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import {
@@ -41,6 +42,7 @@ import {
   ComponentLibrary,
   CategoryManager,
   UnlockRuleEditor,
+  StyleManager,
 } from '@/components/admin/avatar';
 import type { AvatarCategory, AvatarUnlockRule } from '@/types/avatar';
 import {
@@ -887,7 +889,7 @@ function AnalyticsTab() {
   );
 }
 
-type AvatarSubTab = 'generate' | 'library' | 'categories' | 'unlocks';
+type AvatarSubTab = 'generate' | 'library' | 'categories' | 'styles' | 'unlocks';
 
 function AvatarsTab() {
   const [subTab, setSubTab] = useState<AvatarSubTab>('generate');
@@ -899,10 +901,10 @@ function AvatarsTab() {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const [catRes, rulesRes, configRes] = await Promise.all([
+      const [catRes, rulesRes, libraryRes] = await Promise.all([
         adminGet('/api/admin/avatar/categories'),
         adminGet('/api/admin/avatar/unlock-rules'),
-        adminGet('/api/avatar/config'),
+        fetch('/api/avatar/library'),
       ]);
 
       if (catRes.ok) {
@@ -913,9 +915,9 @@ function AvatarsTab() {
         const rules = await rulesRes.json();
         setUnlockRules(rules);
       }
-      if (configRes.ok) {
-        const config = await configRes.json();
-        setColorPalettes(config.colorPalettes || {});
+      if (libraryRes.ok) {
+        const library = await libraryRes.json();
+        setColorPalettes(library.colorPalettes || {});
       }
     } catch (error) {
       console.error('Failed to load avatar data:', error);
@@ -932,6 +934,7 @@ function AvatarsTab() {
     { id: 'generate' as const, label: 'Generate', icon: Palette },
     { id: 'library' as const, label: 'Library', icon: Eye },
     { id: 'categories' as const, label: 'Categories', icon: BarChart3 },
+    { id: 'styles' as const, label: 'Styles', icon: Paintbrush },
     { id: 'unlocks' as const, label: 'Unlock Rules', icon: Shield },
   ];
 
@@ -991,6 +994,7 @@ function AvatarsTab() {
           onRefresh={loadData}
         />
       )}
+      {subTab === 'styles' && <StyleManager onRefresh={loadData} />}
       {subTab === 'unlocks' && <UnlockRuleEditor onRefresh={loadData} />}
     </div>
   );
