@@ -1,24 +1,40 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import {
   Users,
   Settings2,
   Activity,
+  Shield,
+  ChevronDown,
+  Check,
+  UserX,
+  Ban,
 } from 'lucide-react';
 import type { User, UserPerformanceInfo, JamCompatibility, QualityPresetName, OpusEncodingSettings } from '@/types';
 import { UserPerformanceCard } from './user-performance-card';
 import { JamCompatibilityIndicator } from './jam-compatibility-indicator';
 import { QualitySettingsPanel } from './quality-settings-panel';
 import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
+import { usePermissions } from '@/hooks/usePermissions';
+import { useRoomPermissions } from '@/hooks/useRoomPermissions';
+import { PermissionModal } from './permission-modal';
+import { RolePresetsModal } from './role-presets-modal';
+import {
+  RoomRole,
+  RoomMember,
+  RoomPermissions,
+  ROLE_INFO,
+} from '@/types/permissions';
 
 interface EnhancedRoomUsersPanelProps {
   users: User[];
   currentUser: User | null;
   isMaster: boolean;
   audioLevels: Map<string, number>;
+  roomId: string;
   onMuteUser?: (userId: string, muted: boolean) => void;
   onVolumeChange?: (userId: string, volume: number) => void;
   onPresetChange?: (preset: QualityPresetName) => void;
@@ -34,6 +50,7 @@ export function EnhancedRoomUsersPanel({
   currentUser,
   isMaster,
   audioLevels,
+  roomId,
   onMuteUser,
   onVolumeChange,
   onPresetChange,
@@ -45,6 +62,9 @@ export function EnhancedRoomUsersPanel({
 }: EnhancedRoomUsersPanelProps) {
   const [expandedUserId, setExpandedUserId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'users' | 'settings'>('users');
+  const [openRoleDropdown, setOpenRoleDropdown] = useState<string | null>(null);
+  const [selectedMember, setSelectedMember] = useState<RoomMember | null>(null);
+  const [showRolePresets, setShowRolePresets] = useState(false);
 
   // Get performance data from store
   const {
@@ -53,6 +73,20 @@ export function EnhancedRoomUsersPanel({
     activePreset,
     localPerformance,
   } = usePerformanceSyncStore();
+
+  // Permission hooks
+  const { canManageRoom, isOwner, assignableRoles } = usePermissions();
+  const {
+    members,
+    defaultRole,
+    requireApproval,
+    setDefaultRole,
+    setRequireApproval,
+    updateUserRole,
+    updateUserPermissions,
+    kickUser,
+    banUser,
+  } = useRoomPermissions(roomId);
 
   // Combine current user with other users
   const allUsers = useMemo(() => {
@@ -89,6 +123,54 @@ export function EnhancedRoomUsersPanel({
   // Get current jitter mode and low latency mode from local performance
   const currentJitterMode = localPerformance?.jitterBufferMode || 'balanced';
   const currentLowLatencyMode = activePreset === 'ultra-low-latency' || activePreset === 'low-latency';
+
+  // Get member data for a user
+  const getMemberData = useCallback((user: User): RoomMember => {
+    const memberData = members.find((m: RoomMember) => m.oduserId === user.id);
+    return memberData || {
+      id: user.id,
+      oduserId: user.id,
+      userName: user.name,
+      userAvatar: user.avatar,
+      role: (user.isMaster ? 'owner' : defaultRole) as RoomRole,
+      joinedAt: new Date().toISOString(),
+      lastActiveAt: new Date().toISOString(),
+    };
+  }, [members, defaultRole]);
+
+  const handleRoleChange = useCallback(
+    async (userId: string, newRole: RoomRole) => {
+      await updateUserRole(userId, newRole);
+      setOpenRoleDropdown(null);
+    },
+    [updateUserRole]
+  );
+
+  const handleKickUser = useCallback(
+    async (userId: string) => {
+      if (!confirm('Are you sure you want to kick this user?')) return;
+      await kickUser(userId);
+    },
+    [kickUser]
+  );
+
+  const handleBanUser = useCallback(
+    async (userId: string) => {
+      const reason = prompt('Enter a reason for the ban (optional):');
+      if (reason === null) return;
+      await banUser(userId, reason || undefined);
+    },
+    [banUser]
+  );
+
+  const handleSavePermissions = useCallback(
+    async (customPermissions: Partial<RoomPermissions>) => {
+      if (!selectedMember) return;
+      await updateUserPermissions(selectedMember.oduserId, customPermissions);
+      setSelectedMember(null);
+    },
+    [selectedMember, updateUserPermissions]
+  );
 
   return (
     <div className="h-full flex flex-col bg-white dark:bg-zinc-900">
@@ -128,7 +210,7 @@ export function EnhancedRoomUsersPanel({
             )}
           >
             <Users className="w-3 h-3 inline-block mr-1" />
-            Users
+            Members
           </button>
           <button
             onClick={() => setActiveTab('settings')}
@@ -156,6 +238,49 @@ export function EnhancedRoomUsersPanel({
         </div>
       )}
 
+      {/* Room Permission Settings (for managers) */}
+      {canManageRoom && activeTab === 'users' && (
+        <div className="px-3 py-2 border-b border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-white/5">
+          <div className="flex items-center justify-between mb-2">
+            <div className="flex items-center gap-1.5">
+              <Shield className="w-3.5 h-3.5 text-indigo-500" />
+              <span className="text-xs font-medium text-gray-700 dark:text-zinc-300">Room Settings</span>
+            </div>
+            <button
+              onClick={() => setShowRolePresets(true)}
+              className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+            >
+              View Roles
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-500 dark:text-zinc-500">Default:</span>
+              <select
+                value={defaultRole}
+                onChange={(e) => setDefaultRole(e.target.value as RoomRole)}
+                className="text-[10px] bg-white dark:bg-zinc-800 border border-gray-200 dark:border-white/10 rounded px-1.5 py-0.5 text-gray-700 dark:text-zinc-300"
+              >
+                <option value="performer" className="bg-white dark:bg-zinc-800">Performer</option>
+                <option value="member" className="bg-white dark:bg-zinc-800">Member</option>
+                <option value="listener" className="bg-white dark:bg-zinc-800">Listener</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-1.5 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={requireApproval}
+                onChange={(e) => setRequireApproval(e.target.checked)}
+                className="w-3 h-3 rounded border-gray-300 dark:border-white/20 text-indigo-600"
+              />
+              <span className="text-[10px] text-gray-500 dark:text-zinc-500">
+                Require approval
+              </span>
+            </label>
+          </div>
+        </div>
+      )}
+
       {/* Content area */}
       <div className="flex-1 overflow-y-auto">
         {activeTab === 'users' ? (
@@ -177,22 +302,41 @@ export function EnhancedRoomUsersPanel({
                 {sortedUsers.map((user) => {
                   const performance = participantPerformance.get(user.id) ||
                     (user.id === currentUser?.id ? localPerformance : undefined);
+                  const member = getMemberData(user);
+                  const roleInfo = ROLE_INFO[member.role];
+                  const isCurrentUserCard = user.id === currentUser?.id;
+                  const canModify = canManageRoom && !isCurrentUserCard && (isOwner || member.role !== 'owner');
 
                   return (
-                    <UserPerformanceCard
-                      key={user.id}
-                      user={user}
-                      performance={performance || undefined}
-                      isCurrentUser={user.id === currentUser?.id}
-                      isMasterUser={user.isMaster || false}
-                      audioLevel={audioLevels.get(user.id) || 0}
-                      onMute={() => onMuteUser?.(user.id, !user.isMuted)}
-                      canControl={isMaster}
-                      expanded={expandedUserId === user.id}
-                      onToggleExpand={() => {
-                        setExpandedUserId(expandedUserId === user.id ? null : user.id);
-                      }}
-                    />
+                    <div key={user.id} className="space-y-0">
+                      <UserPerformanceCard
+                        user={user}
+                        performance={performance || undefined}
+                        isCurrentUser={isCurrentUserCard}
+                        isMasterUser={user.isMaster || false}
+                        audioLevel={audioLevels.get(user.id) || 0}
+                        onMute={() => onMuteUser?.(user.id, !user.isMuted)}
+                        canControl={isMaster}
+                        expanded={expandedUserId === user.id}
+                        onToggleExpand={() => {
+                          setExpandedUserId(expandedUserId === user.id ? null : user.id);
+                        }}
+                        // Role props
+                        role={member.role}
+                        roleInfo={roleInfo}
+                        canManageRole={canModify}
+                        isRoleDropdownOpen={openRoleDropdown === user.id}
+                        onToggleRoleDropdown={() => {
+                          setOpenRoleDropdown(openRoleDropdown === user.id ? null : user.id);
+                        }}
+                        assignableRoles={assignableRoles}
+                        onRoleChange={(role) => handleRoleChange(user.id, role)}
+                        onCustomizePermissions={() => setSelectedMember(member)}
+                        onKickUser={() => handleKickUser(user.id)}
+                        onBanUser={() => handleBanUser(user.id)}
+                        hasCustomPermissions={!!member.customPermissions && Object.keys(member.customPermissions).length > 0}
+                      />
+                    </div>
                   );
                 })}
               </AnimatePresence>
@@ -259,6 +403,20 @@ export function EnhancedRoomUsersPanel({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Permission Modal */}
+      {selectedMember && (
+        <PermissionModal
+          member={selectedMember}
+          onClose={() => setSelectedMember(null)}
+          onSave={handleSavePermissions}
+        />
+      )}
+
+      {/* Role Presets Modal */}
+      {showRolePresets && (
+        <RolePresetsModal onClose={() => setShowRolePresets(false)} />
       )}
     </div>
   );
