@@ -9,6 +9,8 @@ import { useAudioStore } from '@/stores/audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAuthStore } from '@/stores/auth-store';
+import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
+import type { QualityPresetName, OpusEncodingSettings } from '@/types';
 import { useAudioEngine } from './useAudioEngine';
 import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
@@ -237,6 +239,31 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         });
       });
 
+      // Wire up performance sync callbacks for world-class latency system
+      cloudflare.setOnClockSync((offset, rtt) => {
+        const perfStore = usePerformanceSyncStore.getState();
+        perfStore.setClockSync(
+          offset,
+          rtt < 30 ? 'excellent' : rtt < 60 ? 'good' : rtt < 100 ? 'fair' : 'poor'
+        );
+      });
+
+      cloudflare.setOnParticipantPerformanceUpdate((userId, info) => {
+        const perfStore = usePerformanceSyncStore.getState();
+        perfStore.updateParticipantPerformance(userId, info);
+      });
+
+      cloudflare.setOnJamCompatibilityChange((compatibility) => {
+        const perfStore = usePerformanceSyncStore.getState();
+        perfStore.setJamCompatibility(compatibility);
+      });
+
+      cloudflare.setOnMasterChange((masterId, isSelf) => {
+        const perfStore = usePerformanceSyncStore.getState();
+        perfStore.setIsMaster(isSelf);
+        perfStore.setMasterId(masterId);
+      });
+
       await cloudflare.joinRoom(stream);
       cloudflareRef.current = cloudflare;
 
@@ -252,6 +279,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         // Will be corrected by presence:sync if needed
         setIsMaster(true);
         updateUser(user.id, { isMaster: true });
+        cloudflare.setAsMaster(true);
+        usePerformanceSyncStore.getState().setIsMaster(true);
+        usePerformanceSyncStore.getState().setMasterId(user.id);
 
         // Load existing tracks from database (includes both file uploads and YouTube tracks)
         try {
@@ -291,6 +321,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         if (allUsers.length === 1 && allUsers[0].id === user.id) {
           setIsMaster(true);
           updateUser(user.id, { isMaster: true });
+          cloudflareRef.current?.setAsMaster(true);
+          usePerformanceSyncStore.getState().setIsMaster(true);
+          usePerformanceSyncStore.getState().setMasterId(user.id);
         }
       });
 
@@ -1019,6 +1052,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastLoopTrackStop(trackId);
   }, []);
 
+  // Quality/Latency settings
+  const setQualityPreset = useCallback((preset: QualityPresetName) => {
+    cloudflareRef.current?.setQualityPreset(preset);
+    usePerformanceSyncStore.getState().setActivePreset(preset);
+  }, []);
+
+  const getCloudflareRef = useCallback(() => cloudflareRef.current, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -1055,5 +1096,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     updateLoopTrack,
     playLoopTrack,
     stopLoopTrack,
+    // Quality/Latency settings
+    setQualityPreset,
+    getCloudflareRef,
   };
 }

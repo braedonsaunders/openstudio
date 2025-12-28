@@ -32,9 +32,10 @@ import { AvatarWorldView } from './avatar-world-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
-import type { BackingTrack, StemType } from '@/types';
+import type { BackingTrack, StemType, QualityPresetName, OpusEncodingSettings } from '@/types';
 import type { SongTrackReference } from '@/types/songs';
 import type { LoopTrackState } from '@/types/loops';
+import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
 
 interface DAWLayoutProps {
   roomId: string;
@@ -118,6 +119,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     // Loop track controls
     playLoopTrack,
     stopLoopTrack,
+    // Quality/Latency settings
+    setQualityPreset,
   } = useRoom(roomId);
 
   const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize } = useAudioEngine();
@@ -775,6 +778,43 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     storeStemVolume(stem as 'vocals' | 'drums' | 'bass' | 'other', volume);
   }, [setStemVolume, storeStemVolume]);
 
+  // Quality/Latency settings handlers
+  const handlePresetChange = useCallback((preset: QualityPresetName) => {
+    setQualityPreset(preset);
+  }, [setQualityPreset]);
+
+  const handleCustomSettingsChange = useCallback((settings: Partial<OpusEncodingSettings>) => {
+    // TODO: Apply custom encoding settings to WebRTC
+    console.log('Custom encoding settings:', settings);
+  }, []);
+
+  const handleJitterModeChange = useCallback((mode: 'live-jamming' | 'balanced' | 'stable') => {
+    const perfStore = usePerformanceSyncStore.getState();
+    if (perfStore.localPerformance) {
+      perfStore.setLocalPerformance({
+        ...perfStore.localPerformance,
+        jitterBufferMode: mode,
+      });
+    }
+  }, []);
+
+  const handleLowLatencyModeChange = useCallback((enabled: boolean) => {
+    // Switch to ultra-low-latency or balanced preset
+    setQualityPreset(enabled ? 'ultra-low-latency' : 'balanced');
+  }, [setQualityPreset]);
+
+  const handleAcceptOptimization = useCallback((type: string) => {
+    const perfStore = usePerformanceSyncStore.getState();
+    const pending = perfStore.optimizationState.pendingOptimizations.find(o => o.type === type);
+    if (pending) {
+      perfStore.applyOptimization(pending);
+    }
+  }, []);
+
+  const handleDismissOptimization = useCallback((type: string) => {
+    usePerformanceSyncStore.getState().removePendingOptimization(type as 'reduce_buffer' | 'increase_buffer' | 'enable_fec' | 'disable_fec' | 'reduce_bitrate' | 'increase_bitrate' | 'bypass_effects' | 'enable_effects' | 'switch_preset');
+  }, []);
+
   return (
     <div className={`h-dvh flex flex-col overflow-hidden transition-colors ${
       isDark
@@ -960,6 +1000,13 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
             audioLevels={audioLevels}
             onMuteUser={muteUser}
             onVolumeChange={setUserVolume}
+            // Quality/Latency settings
+            onPresetChange={handlePresetChange}
+            onCustomSettingsChange={handleCustomSettingsChange}
+            onJitterModeChange={handleJitterModeChange}
+            onLowLatencyModeChange={handleLowLatencyModeChange}
+            onAcceptOptimization={handleAcceptOptimization}
+            onDismissOptimization={handleDismissOptimization}
             width={rightPanelWidth}
           />
         )}
