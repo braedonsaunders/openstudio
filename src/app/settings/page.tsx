@@ -11,7 +11,7 @@ import { AvatarEditor } from '@/components/avatar/AvatarEditor';
 import { SpriteAvatarEditor } from '@/components/avatar/SpriteAvatarEditor';
 import { SavedTrackCard, SavedTrackEditor } from '@/components/settings/SavedTrackCard';
 import { InstrumentIcon } from '@/components/ui/instrument-icon';
-import { INSTRUMENTS, getInstrumentEmoji, type SavedTrackPreset } from '@/types/user';
+import { INSTRUMENTS, getInstrumentEmoji, type SavedTrackPreset, type InstrumentCategory } from '@/types/user';
 import {
   ArrowLeft,
   User,
@@ -28,7 +28,20 @@ import {
   Link as LinkIcon,
   Sliders,
   Loader2,
+  Search,
 } from 'lucide-react';
+
+// Instrument category labels
+const INSTRUMENT_CATEGORY_LABELS: Record<InstrumentCategory, string> = {
+  guitar: 'Guitars',
+  keyboard: 'Keyboards',
+  drums: 'Drums & Percussion',
+  vocals: 'Vocals',
+  strings: 'Strings',
+  wind: 'Wind',
+  electronic: 'Electronic',
+  other: 'Other',
+};
 
 type Tab = 'profile' | 'avatar' | 'instruments' | 'tracks' | 'privacy' | 'notifications';
 
@@ -64,6 +77,10 @@ export default function SettingsPage() {
   // Notifications form state
   const [emailNotifications, setEmailNotifications] = useState(profile?.preferences?.emailNotifications ?? true);
   const [soundNotifications, setSoundNotifications] = useState(profile?.preferences?.soundNotifications ?? true);
+
+  // Instrument filter state
+  const [instrumentSearch, setInstrumentSearch] = useState('');
+  const [instrumentCategory, setInstrumentCategory] = useState<InstrumentCategory | 'all'>('all');
 
   if (!profile) {
     router.push('/');
@@ -357,21 +374,66 @@ export default function SettingsPage() {
                 {/* Add Instrument */}
                 <div className="border-t border-gray-200 dark:border-gray-800 pt-6">
                   <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-4">Add Instrument</h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
+
+                  {/* Search and Filter */}
+                  <div className="flex flex-col sm:flex-row gap-3 mb-4">
+                    <div className="relative flex-1">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+                      <input
+                        type="text"
+                        placeholder="Search instruments..."
+                        value={instrumentSearch}
+                        onChange={(e) => setInstrumentSearch(e.target.value)}
+                        className="w-full pl-10 pr-4 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                    </div>
+                    <select
+                      value={instrumentCategory}
+                      onChange={(e) => setInstrumentCategory(e.target.value as InstrumentCategory | 'all')}
+                      className="px-4 py-2 bg-gray-100 dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                    >
+                      <option value="all">All Categories</option>
+                      {Object.entries(INSTRUMENT_CATEGORY_LABELS).map(([key, label]) => (
+                        <option key={key} value={key}>{label}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {/* Instruments Grid */}
+                  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-2 max-h-[400px] overflow-y-auto pr-1">
                     {Object.entries(INSTRUMENTS)
                       .filter(([id]) => !instruments.find((i) => i.instrumentId === id))
-                      .slice(0, 12)
+                      .filter(([id, inst]) => {
+                        const matchesSearch = instrumentSearch === '' ||
+                          inst.name.toLowerCase().includes(instrumentSearch.toLowerCase());
+                        const matchesCategory = instrumentCategory === 'all' ||
+                          inst.category === instrumentCategory;
+                        return matchesSearch && matchesCategory;
+                      })
                       .map(([id, inst]) => (
                         <button
                           key={id}
                           onClick={() => handleAddInstrument(id)}
-                          className="flex items-center gap-2 p-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
+                          className="flex items-center gap-2 p-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors text-left"
                         >
-                          <span className="text-xl">{inst.emoji}</span>
-                          <span className="text-sm text-gray-700 dark:text-gray-300">{inst.name}</span>
+                          <InstrumentIcon instrumentId={id} size="md" />
+                          <span className="text-sm text-gray-700 dark:text-gray-300 truncate">{inst.name}</span>
                         </button>
                       ))}
                   </div>
+
+                  {/* Show count */}
+                  <p className="text-xs text-gray-500 mt-3">
+                    {Object.entries(INSTRUMENTS)
+                      .filter(([id]) => !instruments.find((i) => i.instrumentId === id))
+                      .filter(([id, inst]) => {
+                        const matchesSearch = instrumentSearch === '' ||
+                          inst.name.toLowerCase().includes(instrumentSearch.toLowerCase());
+                        const matchesCategory = instrumentCategory === 'all' ||
+                          inst.category === instrumentCategory;
+                        return matchesSearch && matchesCategory;
+                      }).length} instruments available
+                  </p>
                 </div>
               </Card>
             )}
