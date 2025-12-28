@@ -16,6 +16,7 @@ import type {
   AvatarComponent,
   AvatarColorPalette,
   UserAvatarConfig,
+  ComponentSelection,
 } from '@/types/avatar';
 
 interface SpriteAvatarEditorProps {
@@ -45,9 +46,8 @@ export function SpriteAvatarEditor({
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Current config state
-  const [selectedComponents, setSelectedComponents] = useState<Record<string, string[]>>({});
-  const [selectedColors, setSelectedColors] = useState<Record<string, string>>({});
+  // Current selections state - uses correct UserAvatarConfig structure
+  const [selections, setSelections] = useState<Record<string, ComponentSelection>>({});
 
   // UI state
   const [activeCategory, setActiveCategory] = useState<string | null>(null);
@@ -70,10 +70,9 @@ export function SpriteAvatarEditor({
           setActiveCategory(data.categories[0].id);
         }
 
-        // Initialize config
-        if (initialConfig) {
-          setSelectedComponents(initialConfig.selectedComponents || {});
-          setSelectedColors(initialConfig.selectedColors || {});
+        // Initialize config from initial config
+        if (initialConfig?.selections) {
+          setSelections(initialConfig.selections);
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load');
@@ -88,13 +87,13 @@ export function SpriteAvatarEditor({
   const currentConfig: UserAvatarConfig | null = useMemo(() => {
     if (!libraryData) return null;
     return {
+      id: initialConfig?.id || '',
       userId,
-      selectedComponents,
-      selectedColors,
-      createdAt: new Date().toISOString(),
+      selections,
+      createdAt: initialConfig?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     };
-  }, [userId, selectedComponents, selectedColors, libraryData]);
+  }, [userId, selections, libraryData, initialConfig]);
 
   // Get components for active category
   const categoryComponents = useMemo(() => {
@@ -108,10 +107,8 @@ export function SpriteAvatarEditor({
   const isUnlocked = useCallback(
     (componentId: string) => {
       if (!libraryData) return false;
-      // If no unlock rules, all components are unlocked
       const component = libraryData.components.find((c) => c.id === componentId);
       if (!component) return false;
-      // Check if in unlocked list or has no rules
       return libraryData.unlockedComponentIds.includes(componentId);
     },
     [libraryData]
@@ -125,25 +122,24 @@ export function SpriteAvatarEditor({
       const category = libraryData?.categories.find((c) => c.id === categoryId);
       if (!category) return;
 
-      setSelectedComponents((prev) => {
-        const current = prev[categoryId] || [];
-        const isSelected = current.includes(componentId);
+      setSelections((prev) => {
+        const currentSelection = prev[categoryId];
+        const isSelected = currentSelection?.componentId === componentId;
 
         if (isSelected) {
-          // Deselect (but keep at least one if required)
-          if (category.isRequired && current.length === 1) return prev;
+          // Deselect (but keep if required)
+          if (category.isRequired) return prev;
+          const { [categoryId]: _, ...rest } = prev;
+          return rest;
+        } else {
+          // Select new component, preserve color variant if exists
           return {
             ...prev,
-            [categoryId]: current.filter((id) => id !== componentId),
+            [categoryId]: {
+              componentId,
+              colorVariant: currentSelection?.colorVariant,
+            },
           };
-        } else {
-          // Select
-          if (category.maxSelections === 1) {
-            return { ...prev, [categoryId]: [componentId] };
-          } else if (current.length < category.maxSelections) {
-            return { ...prev, [categoryId]: [...current, componentId] };
-          }
-          return prev;
         }
       });
     },
@@ -152,20 +148,25 @@ export function SpriteAvatarEditor({
 
   // Handle color selection
   const handleSelectColor = useCallback((categoryId: string, color: string) => {
-    setSelectedColors((prev) => ({
-      ...prev,
-      [categoryId]: color,
-    }));
+    setSelections((prev) => {
+      const currentSelection = prev[categoryId];
+      if (!currentSelection) return prev;
+      return {
+        ...prev,
+        [categoryId]: {
+          ...currentSelection,
+          colorVariant: color,
+        },
+      };
+    });
   }, []);
 
   // Reset to initial config
   const handleReset = useCallback(() => {
-    if (initialConfig) {
-      setSelectedComponents(initialConfig.selectedComponents || {});
-      setSelectedColors(initialConfig.selectedColors || {});
+    if (initialConfig?.selections) {
+      setSelections(initialConfig.selections);
     } else {
-      setSelectedComponents({});
-      setSelectedColors({});
+      setSelections({});
     }
   }, [initialConfig]);
 
@@ -188,8 +189,7 @@ export function SpriteAvatarEditor({
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          selectedComponents,
-          selectedColors,
+          selections,
           previewUrl,
         }),
       });
@@ -286,9 +286,10 @@ export function SpriteAvatarEditor({
         ) : (
           <div className="grid grid-cols-4 sm:grid-cols-5 md:grid-cols-6 lg:grid-cols-8 gap-3">
             {categoryComponents.map((component) => {
-              const isSelected = selectedComponents[activeCategory!]?.includes(component.id);
+              const selection = selections[activeCategory!];
+              const isSelected = selection?.componentId === component.id;
               const unlocked = isUnlocked(component.id);
-              const selectedColor = selectedColors[activeCategory!];
+              const selectedColor = selection?.colorVariant;
               const imageUrl =
                 selectedColor && component.colorVariants?.[selectedColor]
                   ? component.colorVariants[selectedColor]
@@ -328,14 +329,14 @@ export function SpriteAvatarEditor({
         )}
 
         {/* Color Palette */}
-        {activeCategoryPalette && (
+        {activeCategoryPalette && selections[activeCategory!] && (
           <div className="mt-4 pt-4 border-t border-gray-200 dark:border-gray-700">
             <p className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
               {activeCategoryPalette.displayName}
             </p>
             <div className="flex flex-wrap gap-2">
               {activeCategoryPalette.colors.map((color) => {
-                const isSelected = selectedColors[activeCategory!] === color;
+                const isSelected = selections[activeCategory!]?.colorVariant === color;
                 return (
                   <button
                     key={color}

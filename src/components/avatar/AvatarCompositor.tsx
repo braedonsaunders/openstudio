@@ -1,8 +1,27 @@
 'use client';
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { compositeAvatar, preloadImages, type CompositorLayer } from '@/lib/avatar/compositor';
-import type { UserAvatarConfig, AvatarCategory, AvatarComponent } from '@/types/avatar';
+import type { UserAvatarConfig, AvatarCategory, AvatarComponent, ComponentSelection } from '@/types/avatar';
+
+// Image cache to avoid re-fetching
+const imageCache = new Map<string, HTMLImageElement>();
+
+async function loadImage(url: string): Promise<HTMLImageElement> {
+  if (imageCache.has(url)) {
+    return imageCache.get(url)!;
+  }
+
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload = () => {
+      imageCache.set(url, img);
+      resolve(img);
+    };
+    img.onerror = () => reject(new Error(`Failed to load image: ${url}`));
+    img.src = url;
+  });
+}
 
 interface AvatarCompositorProps {
   config: UserAvatarConfig | null;
@@ -28,8 +47,28 @@ export function AvatarCompositor({
   const [error, setError] = useState<string | null>(null);
 
   const renderAvatar = useCallback(async () => {
-    if (!canvasRef.current || !config) {
+    if (!canvasRef.current) {
       setIsLoading(false);
+      return;
+    }
+
+    const ctx = canvasRef.current.getContext('2d');
+    if (!ctx) {
+      setIsLoading(false);
+      return;
+    }
+
+    // Clear canvas
+    ctx.clearRect(0, 0, size, size);
+
+    if (!config || !config.selections || Object.keys(config.selections).length === 0) {
+      // No config - show placeholder
+      ctx.fillStyle = '#374151';
+      ctx.beginPath();
+      ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+      ctx.fill();
+      setIsLoading(false);
+      onRenderComplete?.();
       return;
     }
 
@@ -37,77 +76,53 @@ export function AvatarCompositor({
     setError(null);
 
     try {
-      // Build layers from config
-      const layers: CompositorLayer[] = [];
-      const selectedComponents = config.selectedComponents || {};
-      const selectedColors = config.selectedColors || {};
-
       // Sort categories by layer order
       const sortedCategories = [...categories].sort((a, b) => a.layerOrder - b.layerOrder);
 
+      // Collect layers to render
+      const layers: Array<{ url: string; order: number }> = [];
+
       for (const category of sortedCategories) {
-        const componentIds = selectedComponents[category.id];
-        if (!componentIds || componentIds.length === 0) continue;
+        const selection = config.selections[category.id];
+        if (!selection?.componentId) continue;
 
-        for (const componentId of componentIds) {
-          const component = components.find((c) => c.id === componentId);
-          if (!component || !component.isActive) continue;
+        const component = components.find((c) => c.id === selection.componentId);
+        if (!component || !component.isActive) continue;
 
-          // Check for color variant
-          const colorVariant = selectedColors[category.id];
-          let imageUrl = component.imageUrl;
-
-          if (colorVariant && component.colorVariants) {
-            const variantUrl = component.colorVariants[colorVariant];
-            if (variantUrl) {
-              imageUrl = variantUrl;
-            }
-          }
-
-          layers.push({
-            imageUrl,
-            zIndex: category.layerOrder,
-          });
+        // Get the image URL, considering color variants
+        let imageUrl = component.imageUrl;
+        if (selection.colorVariant && component.colorVariants?.[selection.colorVariant]) {
+          imageUrl = component.colorVariants[selection.colorVariant];
         }
+
+        layers.push({ url: imageUrl, order: category.layerOrder });
       }
 
       if (layers.length === 0) {
-        // No layers to render - show placeholder
-        const ctx = canvasRef.current.getContext('2d');
-        if (ctx) {
-          ctx.clearRect(0, 0, size, size);
-          ctx.fillStyle = '#374151';
-          ctx.beginPath();
-          ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
-          ctx.fill();
-        }
+        // No layers - show placeholder
+        ctx.fillStyle = '#374151';
+        ctx.beginPath();
+        ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2);
+        ctx.fill();
         setIsLoading(false);
         onRenderComplete?.();
         return;
       }
 
-      // Preload images
-      await preloadImages(layers.map((l) => l.imageUrl));
+      // Load all images
+      const images = await Promise.all(layers.map(async (layer) => {
+        const img = await loadImage(layer.url);
+        return { img, order: layer.order };
+      }));
 
-      // Composite the avatar
-      const dataUrl = await compositeAvatar(layers, size, size);
-
-      // Draw to canvas
-      const ctx = canvasRef.current.getContext('2d');
-      if (ctx) {
-        const img = new Image();
-        img.onload = () => {
-          ctx.clearRect(0, 0, size, size);
-          ctx.drawImage(img, 0, 0, size, size);
-          setIsLoading(false);
-          onRenderComplete?.();
-        };
-        img.onerror = () => {
-          setError('Failed to render avatar');
-          setIsLoading(false);
-        };
-        img.src = dataUrl;
+      // Sort by order and draw
+      images.sort((a, b) => a.order - b.order);
+      for (const { img } of images) {
+        ctx.drawImage(img, 0, 0, size, size);
       }
+
+      setIsLoading(false);
+      onRenderComplete?.();
     } catch (err) {
       console.error('Failed to render avatar:', err);
       setError(err instanceof Error ? err.message : 'Failed to render avatar');
@@ -196,35 +211,33 @@ export function useAvatarCompositor() {
       setError(null);
 
       try {
-        const layers: CompositorLayer[] = [];
-        const selectedComponents = config.selectedComponents || {};
-        const selectedColors = config.selectedColors || {};
+        const canvas = document.createElement('canvas');
+        canvas.width = size;
+        canvas.height = size;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          throw new Error('Failed to get canvas context');
+        }
 
+        // Sort categories by layer order
         const sortedCategories = [...categories].sort((a, b) => a.layerOrder - b.layerOrder);
 
+        // Collect layers to render
+        const layers: Array<{ url: string; order: number }> = [];
+
         for (const category of sortedCategories) {
-          const componentIds = selectedComponents[category.id];
-          if (!componentIds || componentIds.length === 0) continue;
+          const selection = config.selections?.[category.id];
+          if (!selection?.componentId) continue;
 
-          for (const componentId of componentIds) {
-            const component = components.find((c) => c.id === componentId);
-            if (!component || !component.isActive) continue;
+          const component = components.find((c) => c.id === selection.componentId);
+          if (!component || !component.isActive) continue;
 
-            const colorVariant = selectedColors[category.id];
-            let imageUrl = component.imageUrl;
-
-            if (colorVariant && component.colorVariants) {
-              const variantUrl = component.colorVariants[colorVariant];
-              if (variantUrl) {
-                imageUrl = variantUrl;
-              }
-            }
-
-            layers.push({
-              imageUrl,
-              zIndex: category.layerOrder,
-            });
+          let imageUrl = component.imageUrl;
+          if (selection.colorVariant && component.colorVariants?.[selection.colorVariant]) {
+            imageUrl = component.colorVariants[selection.colorVariant];
           }
+
+          layers.push({ url: imageUrl, order: category.layerOrder });
         }
 
         if (layers.length === 0) {
@@ -232,9 +245,18 @@ export function useAvatarCompositor() {
           return null;
         }
 
-        await preloadImages(layers.map((l) => l.imageUrl));
-        const dataUrl = await compositeAvatar(layers, size, size);
+        // Load and draw images
+        const images = await Promise.all(layers.map(async (layer) => {
+          const img = await loadImage(layer.url);
+          return { img, order: layer.order };
+        }));
 
+        images.sort((a, b) => a.order - b.order);
+        for (const { img } of images) {
+          ctx.drawImage(img, 0, 0, size, size);
+        }
+
+        const dataUrl = canvas.toDataURL('image/png');
         setIsLoading(false);
         return dataUrl;
       } catch (err) {
