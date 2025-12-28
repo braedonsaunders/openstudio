@@ -80,11 +80,19 @@ export class EQProcessor extends BaseEffect {
   }
 
   private reconnectFilters(): void {
-    // Disconnect all
+    // Disconnect all filters
     for (const filter of this.filters) {
       filter.disconnect();
     }
-    this.inputGain.disconnect(this.wetGain);
+
+    // Disconnect inputGain from the first filter if it exists
+    if (this.filters.length > 0) {
+      try {
+        this.inputGain.disconnect(this.filters[0]);
+      } catch {
+        // Connection may not exist
+      }
+    }
 
     // Reconnect in series
     let prevNode: AudioNode = this.inputGain;
