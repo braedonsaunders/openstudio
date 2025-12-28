@@ -207,14 +207,14 @@ export function LoopCreatorModal({
   };
 
   // Handle save
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!selectedInstrument) return;
 
     const instrument = getInstrument(selectedInstrument);
     const category = (instrument?.category || 'synth') as LoopCategory;
 
     if (editingLoopId) {
-      updateLoop(editingLoopId, {
+      await updateLoop(editingLoopId, {
         name: loopName,
         bars,
         bpm,
@@ -225,7 +225,7 @@ export function LoopCreatorModal({
       const loop = getLoop(editingLoopId);
       if (loop) onSave?.(loop);
     } else {
-      const loop = createLoop({
+      const loop = await createLoop({
         name: loopName,
         category,
         subcategory: 'custom',
