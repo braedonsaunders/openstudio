@@ -1,14 +1,17 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
+import { useSavedTracksStore } from '@/stores/saved-tracks-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { AvatarEditor } from '@/components/avatar/AvatarEditor';
 import { SpriteAvatarEditor } from '@/components/avatar/SpriteAvatarEditor';
-import { INSTRUMENTS } from '@/types/user';
+import { SavedTrackCard, SavedTrackEditor } from '@/components/settings/SavedTrackCard';
+import { InstrumentIcon } from '@/components/ui/instrument-icon';
+import { INSTRUMENTS, getInstrumentEmoji, type SavedTrackPreset } from '@/types/user';
 import {
   ArrowLeft,
   User,
@@ -23,9 +26,11 @@ import {
   Trash2,
   Globe,
   Link as LinkIcon,
+  Sliders,
+  Loader2,
 } from 'lucide-react';
 
-type Tab = 'profile' | 'avatar' | 'instruments' | 'privacy' | 'notifications';
+type Tab = 'profile' | 'avatar' | 'instruments' | 'tracks' | 'privacy' | 'notifications';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -137,6 +142,7 @@ export default function SettingsPage() {
     { id: 'profile', icon: User, label: 'Profile' },
     { id: 'avatar', icon: Palette, label: 'Avatar' },
     { id: 'instruments', icon: Music, label: 'Instruments' },
+    { id: 'tracks', icon: Sliders, label: 'Saved Tracks' },
     { id: 'privacy', icon: Shield, label: 'Privacy' },
     { id: 'notifications', icon: Bell, label: 'Notifications' },
   ];
@@ -312,7 +318,7 @@ export default function SettingsPage() {
                       >
                         <div className="flex items-center gap-3">
                           <span className="text-2xl">
-                            {INSTRUMENTS[inst.instrumentId]?.icon || '🎵'}
+                            {getInstrumentEmoji(inst.instrumentId)}
                           </span>
                           <div>
                             <p className="text-gray-900 dark:text-white font-medium">
@@ -361,13 +367,17 @@ export default function SettingsPage() {
                           onClick={() => handleAddInstrument(id)}
                           className="flex items-center gap-2 p-3 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded-lg transition-colors"
                         >
-                          <span className="text-xl">{inst.icon}</span>
+                          <span className="text-xl">{inst.emoji}</span>
                           <span className="text-sm text-gray-700 dark:text-gray-300">{inst.name}</span>
                         </button>
                       ))}
                   </div>
                 </div>
               </Card>
+            )}
+
+            {activeTab === 'tracks' && (
+              <TracksTab userId={profile.id} />
             )}
 
             {activeTab === 'privacy' && (
@@ -503,5 +513,93 @@ function ToggleSetting({
         />
       </button>
     </div>
+  );
+}
+
+function TracksTab({ userId }: { userId: string }) {
+  const { presets, isLoading, loadPresets } = useSavedTracksStore();
+  const [showEditor, setShowEditor] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<SavedTrackPreset | undefined>();
+
+  useEffect(() => {
+    loadPresets(userId);
+  }, [userId, loadPresets]);
+
+  const handleEditPreset = (preset: SavedTrackPreset) => {
+    setEditingPreset(preset);
+    setShowEditor(true);
+  };
+
+  const handleCloseEditor = () => {
+    setShowEditor(false);
+    setEditingPreset(undefined);
+  };
+
+  return (
+    <Card className="p-6">
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Saved Track Presets</h2>
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
+            Configure your tracks once and bring them into any room
+          </p>
+        </div>
+        <Button onClick={() => setShowEditor(true)}>
+          <Plus className="w-4 h-4 mr-2" />
+          New Preset
+        </Button>
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-6 h-6 animate-spin text-gray-400" />
+        </div>
+      ) : presets.length === 0 ? (
+        <div className="text-center py-12">
+          <Sliders className="w-12 h-12 mx-auto text-gray-300 dark:text-gray-600 mb-4" />
+          <h3 className="text-lg font-medium text-gray-900 dark:text-white mb-2">
+            No saved tracks yet
+          </h3>
+          <p className="text-gray-500 dark:text-gray-400 mb-6 max-w-sm mx-auto">
+            Save your track configurations from the DAW and they&apos;ll appear here.
+            You can also create a new preset to get started.
+          </p>
+          <Button onClick={() => setShowEditor(true)}>
+            <Plus className="w-4 h-4 mr-2" />
+            Create Your First Preset
+          </Button>
+        </div>
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2">
+          {presets.map((preset) => (
+            <SavedTrackCard
+              key={preset.id}
+              preset={preset}
+              onEdit={handleEditPreset}
+            />
+          ))}
+        </div>
+      )}
+
+      <SavedTrackEditor
+        preset={editingPreset}
+        userId={userId}
+        isOpen={showEditor}
+        onClose={handleCloseEditor}
+      />
+
+      {/* Info section */}
+      <div className="mt-8 pt-6 border-t border-gray-200 dark:border-gray-700">
+        <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3">
+          How to save tracks
+        </h3>
+        <div className="space-y-2 text-sm text-gray-500 dark:text-gray-400">
+          <p>1. Join any room and configure your track (input, effects, volume, etc.)</p>
+          <p>2. Click the save icon on your track header in the DAW</p>
+          <p>3. Name your preset and select an instrument type</p>
+          <p>4. When joining rooms, select which presets to bring with you</p>
+        </div>
+      </div>
+    </Card>
   );
 }

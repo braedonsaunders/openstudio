@@ -8,6 +8,9 @@ import { Fader } from './fader';
 import { AdvancedAudioSettingsPopover } from './advanced-audio-settings';
 import { EffectsRack } from './effects-rack';
 import { useUserTracksStore, TRACK_COLORS } from '@/stores/user-tracks-store';
+import { useSavedTracksStore } from '@/stores/saved-tracks-store';
+import { useAuthStore } from '@/stores/auth-store';
+import { InstrumentSelector } from '@/components/ui/instrument-icon';
 import {
   Mic,
   Monitor,
@@ -20,6 +23,8 @@ import {
   X,
   Sparkles,
   Sliders,
+  Save,
+  Loader2,
 } from 'lucide-react';
 import type { UserTrack } from '@/types';
 
@@ -149,10 +154,16 @@ export function UserTrackHeader({
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(false);
   const [showEffects, setShowEffects] = useState(false);
   const [showTrackEditor, setShowTrackEditor] = useState(false);
+  const [showSavePreset, setShowSavePreset] = useState(false);
   const [newName, setNewName] = useState(track.name);
+  const [presetName, setPresetName] = useState('');
+  const [presetDescription, setPresetDescription] = useState('');
+  const [presetInstrument, setPresetInstrument] = useState('other');
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
   const advancedSettingsButtonRef = useRef<HTMLButtonElement>(null);
   const effectsButtonRef = useRef<HTMLButtonElement>(null);
   const trackEditorButtonRef = useRef<HTMLButtonElement>(null);
+  const saveButtonRef = useRef<HTMLButtonElement>(null);
   const renameInputRef = useRef<HTMLInputElement>(null);
 
   const {
@@ -162,6 +173,9 @@ export function UserTrackHeader({
     setTrackArmed,
     updateTrack,
   } = useUserTracksStore();
+
+  const { saveFromTrack } = useSavedTracksStore();
+  const { user } = useAuthStore();
 
   // Count active effects
   const activeEffectsCount = [
@@ -204,6 +218,39 @@ export function UserTrackHeader({
 
   const handleColorChange = (color: string) => {
     updateTrack(track.id, { color });
+  };
+
+  const handleOpenSavePreset = () => {
+    setPresetName(track.name);
+    setPresetDescription('');
+    setPresetInstrument('other');
+    setShowSavePreset(true);
+    setShowEffects(false);
+    setShowAdvancedSettings(false);
+    setShowTrackEditor(false);
+  };
+
+  const handleSavePreset = async () => {
+    if (!user?.id || !presetName.trim()) return;
+
+    setIsSavingPreset(true);
+    try {
+      await saveFromTrack(
+        user.id,
+        track,
+        presetName.trim(),
+        presetDescription.trim() || undefined,
+        presetInstrument
+      );
+      setShowSavePreset(false);
+      setPresetName('');
+      setPresetDescription('');
+      setPresetInstrument('other');
+    } catch (error) {
+      console.error('Failed to save track preset:', error);
+    } finally {
+      setIsSavingPreset(false);
+    }
   };
 
   const handleNameKeyDown = (e: React.KeyboardEvent) => {
@@ -396,6 +443,7 @@ export function UserTrackHeader({
               onClick={() => {
                 setShowAdvancedSettings(!showAdvancedSettings);
                 setShowEffects(false);
+                setShowSavePreset(false);
               }}
               className={cn(
                 'p-1 rounded transition-colors',
@@ -407,6 +455,23 @@ export function UserTrackHeader({
             >
               <Sliders className="w-3 h-3" />
             </button>
+
+            {/* Save Track Preset Button (only show for logged in users) */}
+            {user && (
+              <button
+                ref={saveButtonRef}
+                onClick={handleOpenSavePreset}
+                className={cn(
+                  'p-1 rounded transition-colors',
+                  showSavePreset
+                    ? 'bg-green-500/20 text-green-400'
+                    : 'text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300'
+                )}
+                title="Save Track Preset"
+              >
+                <Save className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
 
@@ -525,6 +590,96 @@ export function UserTrackHeader({
                 ))}
               </div>
             </div>
+          </div>
+        </div>
+      </PopoverPortal>
+
+      {/* Save Track Preset Popover */}
+      <PopoverPortal
+        anchorRef={saveButtonRef}
+        isOpen={showSavePreset}
+        onClose={() => setShowSavePreset(false)}
+      >
+        <div className="w-72 bg-gray-900 border border-white/10 rounded-lg shadow-xl overflow-hidden">
+          {/* Header */}
+          <div className="px-3 py-2 border-b border-white/10 flex items-center justify-between">
+            <span className="text-xs font-medium text-white">Save Track Preset</span>
+            <button
+              onClick={() => setShowSavePreset(false)}
+              className="p-0.5 text-zinc-400 hover:text-white transition-colors"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          <div className="p-3 space-y-3">
+            {/* Preset Name Input */}
+            <div>
+              <label className="text-[10px] text-zinc-500 uppercase tracking-wide block mb-1">
+                Preset Name
+              </label>
+              <input
+                type="text"
+                value={presetName}
+                onChange={(e) => setPresetName(e.target.value)}
+                className="w-full h-7 px-2 bg-white/5 border border-white/10 rounded text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-green-500 transition-colors"
+                placeholder="My Track Setup"
+              />
+            </div>
+
+            {/* Description Input */}
+            <div>
+              <label className="text-[10px] text-zinc-500 uppercase tracking-wide block mb-1">
+                Description (optional)
+              </label>
+              <textarea
+                value={presetDescription}
+                onChange={(e) => setPresetDescription(e.target.value)}
+                className="w-full h-14 px-2 py-1.5 bg-white/5 border border-white/10 rounded text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-green-500 transition-colors resize-none"
+                placeholder="Describe this preset..."
+              />
+            </div>
+
+            {/* Instrument Selector */}
+            <div>
+              <label className="text-[10px] text-zinc-500 uppercase tracking-wide block mb-2">
+                Instrument Type
+              </label>
+              <div className="max-h-32 overflow-y-auto bg-white/5 rounded border border-white/10 p-2">
+                <InstrumentSelector
+                  value={presetInstrument}
+                  onChange={setPresetInstrument}
+                />
+              </div>
+            </div>
+
+            {/* Save Button */}
+            <button
+              onClick={handleSavePreset}
+              disabled={!presetName.trim() || isSavingPreset}
+              className={cn(
+                'w-full h-8 rounded flex items-center justify-center gap-2 text-sm font-medium transition-all',
+                presetName.trim() && !isSavingPreset
+                  ? 'bg-green-500 text-white hover:bg-green-600'
+                  : 'bg-white/5 text-zinc-500 cursor-not-allowed'
+              )}
+            >
+              {isSavingPreset ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4" />
+                  Save Preset
+                </>
+              )}
+            </button>
+
+            <p className="text-[10px] text-zinc-500 text-center">
+              Saves all current settings including effects, volume, and input configuration
+            </p>
           </div>
         </div>
       </PopoverPortal>
