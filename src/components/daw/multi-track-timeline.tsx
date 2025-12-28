@@ -1107,28 +1107,18 @@ export function MultiTrackTimeline({
     <div className="h-full flex flex-col bg-white dark:bg-[#0a0a0f] border-b border-gray-200 dark:border-white/5">
       {/* Header */}
       <div className="h-8 px-3 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
-        <div className="flex items-center gap-3">
-          {/* View Switcher */}
-          {activeView && onViewChange && (
-            <MainViewSwitcher
-              activeView={activeView}
-              onViewChange={onViewChange}
-              isMaster={true}
-            />
+        <div className="flex items-center gap-2">
+          <span className="text-xs font-medium text-gray-900 dark:text-white">
+            {currentSong?.name || 'No Song Selected'}
+          </span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-500">
+            {trackRows.length} track{trackRows.length !== 1 ? 's' : ''}, {unifiedTracks.length} clip{unifiedTracks.length !== 1 ? 's' : ''}
+          </span>
+          {currentSong && (
+            <span className="text-[10px] text-gray-400 dark:text-zinc-600">
+              {currentSong.bpm} BPM
+            </span>
           )}
-          <div className="flex items-center gap-2">
-            <span className="text-xs font-medium text-gray-900 dark:text-white">
-              {currentSong?.name || 'No Song Selected'}
-            </span>
-            <span className="text-[10px] text-gray-500 dark:text-zinc-500">
-              {trackRows.length} track{trackRows.length !== 1 ? 's' : ''}, {unifiedTracks.length} clip{unifiedTracks.length !== 1 ? 's' : ''}
-            </span>
-            {currentSong && (
-              <span className="text-[10px] text-gray-400 dark:text-zinc-600">
-                {currentSong.bpm} BPM
-              </span>
-            )}
-          </div>
         </div>
 
         <div className="flex items-center gap-2">
