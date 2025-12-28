@@ -19,13 +19,15 @@ import {
   Layers,
   ListChecks,
   Plus,
+  Palette,
 } from 'lucide-react';
 import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/auth-store';
 import { createRoom, ROOM_GENRES, MAX_USER_OPTIONS } from '@/lib/rooms/service';
-import type { RoomRules } from '@/types';
+import type { RoomRules, RoomColor, RoomIcon } from '@/types';
+import { ROOM_COLORS, ROOM_ICONS } from '@/types';
 
 interface CreateRoomModalProps {
   isOpen: boolean;
@@ -57,6 +59,8 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [error, setError] = useState('');
+  const [roomColor, setRoomColor] = useState<RoomColor>('indigo');
+  const [roomIcon, setRoomIcon] = useState<RoomIcon>('music');
 
   // Pre-populate name with user's display name
   const defaultName = profile ? `${profile.displayName}'s Jam` : 'New Jam Session';
@@ -112,6 +116,8 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
           genre: genre || undefined,
           tags: tags.length > 0 ? tags : undefined,
           rules,
+          color: roomColor,
+          icon: roomIcon,
         },
         user.id
       );
@@ -148,6 +154,8 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
     setCustomRuleInput('');
     setShowAdvanced(false);
     setError('');
+    setRoomColor('indigo');
+    setRoomIcon('music');
   };
 
   const handleClose = () => {
@@ -190,9 +198,69 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             placeholder="What's this session about? Share the vibe, skill level, or what you're working on..."
-            rows={3}
+            rows={2}
             className="w-full px-4 py-2.5 rounded-xl border border-slate-200 dark:border-gray-700 bg-white dark:bg-gray-800 text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:border-transparent resize-none"
           />
+        </div>
+
+        {/* Room Appearance */}
+        <div>
+          <label className="block text-sm font-medium text-slate-700 dark:text-gray-300 mb-2">
+            <Palette className="inline-block w-4 h-4 mr-1" />
+            Room Appearance
+          </label>
+          <div className="grid grid-cols-2 gap-4">
+            {/* Color Selection */}
+            <div>
+              <p className="text-xs text-slate-500 dark:text-gray-400 mb-2">Color</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ROOM_COLORS.map((color) => (
+                  <button
+                    key={color.value}
+                    onClick={() => setRoomColor(color.value)}
+                    className={`w-7 h-7 rounded-lg ${color.bg} transition-all ${
+                      roomColor === color.value
+                        ? 'ring-2 ring-offset-2 ring-offset-white dark:ring-offset-gray-800 ring-indigo-500 scale-110'
+                        : 'hover:scale-105'
+                    }`}
+                    title={color.label}
+                  />
+                ))}
+              </div>
+            </div>
+
+            {/* Icon Selection */}
+            <div>
+              <p className="text-xs text-slate-500 dark:text-gray-400 mb-2">Icon</p>
+              <div className="flex flex-wrap gap-1.5">
+                {ROOM_ICONS.slice(0, 15).map((icon) => (
+                  <button
+                    key={icon.value}
+                    onClick={() => setRoomIcon(icon.value)}
+                    className={`w-7 h-7 rounded-lg flex items-center justify-center text-sm transition-all ${
+                      roomIcon === icon.value
+                        ? 'bg-indigo-100 dark:bg-indigo-900/50 ring-2 ring-indigo-500 scale-110'
+                        : 'bg-slate-100 dark:bg-gray-800 hover:bg-slate-200 dark:hover:bg-gray-700 hover:scale-105'
+                    }`}
+                    title={icon.label}
+                  >
+                    {icon.icon}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Preview */}
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-xs text-slate-500 dark:text-gray-400">Preview:</span>
+            <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r ${ROOM_COLORS.find(c => c.value === roomColor)?.gradient || 'from-indigo-500 to-indigo-600'}`}>
+              <span className="text-white text-sm">{ROOM_ICONS.find(i => i.value === roomIcon)?.icon || '🎵'}</span>
+              <span className="text-white text-sm font-medium truncate max-w-[150px]">
+                {name.trim() || defaultName}
+              </span>
+            </div>
+          </div>
         </div>
 
         {/* Visibility toggle */}

@@ -310,6 +310,51 @@ export interface UserTrack {
   activeMidiNotes?: number[]; // Currently held MIDI notes
 }
 
+// Room color and icon options
+export const ROOM_COLORS = [
+  { value: 'indigo', label: 'Indigo', gradient: 'from-indigo-500 to-indigo-600', bg: 'bg-indigo-500' },
+  { value: 'purple', label: 'Purple', gradient: 'from-purple-500 to-purple-600', bg: 'bg-purple-500' },
+  { value: 'pink', label: 'Pink', gradient: 'from-pink-500 to-pink-600', bg: 'bg-pink-500' },
+  { value: 'rose', label: 'Rose', gradient: 'from-rose-500 to-rose-600', bg: 'bg-rose-500' },
+  { value: 'red', label: 'Red', gradient: 'from-red-500 to-red-600', bg: 'bg-red-500' },
+  { value: 'orange', label: 'Orange', gradient: 'from-orange-500 to-orange-600', bg: 'bg-orange-500' },
+  { value: 'amber', label: 'Amber', gradient: 'from-amber-500 to-amber-600', bg: 'bg-amber-500' },
+  { value: 'yellow', label: 'Yellow', gradient: 'from-yellow-500 to-yellow-600', bg: 'bg-yellow-500' },
+  { value: 'lime', label: 'Lime', gradient: 'from-lime-500 to-lime-600', bg: 'bg-lime-500' },
+  { value: 'green', label: 'Green', gradient: 'from-green-500 to-green-600', bg: 'bg-green-500' },
+  { value: 'emerald', label: 'Emerald', gradient: 'from-emerald-500 to-emerald-600', bg: 'bg-emerald-500' },
+  { value: 'teal', label: 'Teal', gradient: 'from-teal-500 to-teal-600', bg: 'bg-teal-500' },
+  { value: 'cyan', label: 'Cyan', gradient: 'from-cyan-500 to-cyan-600', bg: 'bg-cyan-500' },
+  { value: 'sky', label: 'Sky', gradient: 'from-sky-500 to-sky-600', bg: 'bg-sky-500' },
+  { value: 'blue', label: 'Blue', gradient: 'from-blue-500 to-blue-600', bg: 'bg-blue-500' },
+] as const;
+
+export const ROOM_ICONS = [
+  { value: 'music', label: 'Music', icon: '🎵' },
+  { value: 'guitar', label: 'Guitar', icon: '🎸' },
+  { value: 'drums', label: 'Drums', icon: '🥁' },
+  { value: 'piano', label: 'Piano', icon: '🎹' },
+  { value: 'microphone', label: 'Microphone', icon: '🎤' },
+  { value: 'headphones', label: 'Headphones', icon: '🎧' },
+  { value: 'saxophone', label: 'Saxophone', icon: '🎷' },
+  { value: 'trumpet', label: 'Trumpet', icon: '🎺' },
+  { value: 'violin', label: 'Violin', icon: '🎻' },
+  { value: 'fire', label: 'Fire', icon: '🔥' },
+  { value: 'star', label: 'Star', icon: '⭐' },
+  { value: 'lightning', label: 'Lightning', icon: '⚡' },
+  { value: 'rocket', label: 'Rocket', icon: '🚀' },
+  { value: 'diamond', label: 'Diamond', icon: '💎' },
+  { value: 'crown', label: 'Crown', icon: '👑' },
+  { value: 'heart', label: 'Heart', icon: '❤️' },
+  { value: 'moon', label: 'Moon', icon: '🌙' },
+  { value: 'sun', label: 'Sun', icon: '☀️' },
+  { value: 'wave', label: 'Wave', icon: '🌊' },
+  { value: 'mountain', label: 'Mountain', icon: '🏔️' },
+] as const;
+
+export type RoomColor = typeof ROOM_COLORS[number]['value'];
+export type RoomIcon = typeof ROOM_ICONS[number]['value'];
+
 // Extended Room types for room management
 export interface RoomListItem {
   id: string;
@@ -329,6 +374,9 @@ export interface RoomListItem {
   tags?: string[];
   rules?: Partial<RoomRules>;
   lastActivity?: string;
+  // New visual customization fields
+  color?: RoomColor;
+  icon?: RoomIcon;
 }
 
 export interface RoomRules {
@@ -349,6 +397,8 @@ export interface CreateRoomInput {
   tags?: string[];
   rules?: Partial<RoomRules>;
   settings?: Partial<RoomSettings>;
+  color?: RoomColor;
+  icon?: RoomIcon;
 }
 
 export interface RoomActivity {
