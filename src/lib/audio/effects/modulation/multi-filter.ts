@@ -21,7 +21,7 @@ export class MultiFilterProcessor extends BaseEffect {
   private envelopeAnalyser: AnalyserNode;
   private envelopeFilter: BiquadFilterNode;
   private animationFrameId: number | null = null;
-  private envelopeData: Float32Array;
+  private envelopeData: Float32Array<ArrayBuffer>;
 
   // Drive/saturation
   private driveWaveshaper: WaveShaperNode;
@@ -70,7 +70,7 @@ export class MultiFilterProcessor extends BaseEffect {
     // Create envelope follower
     this.envelopeAnalyser = audioContext.createAnalyser();
     this.envelopeAnalyser.fftSize = 256;
-    this.envelopeData = new Float32Array(this.envelopeAnalyser.fftSize);
+    this.envelopeData = new Float32Array(this.envelopeAnalyser.fftSize) as Float32Array<ArrayBuffer>;
 
     this.envelopeFilter = audioContext.createBiquadFilter();
     this.envelopeFilter.type = 'lowpass';
