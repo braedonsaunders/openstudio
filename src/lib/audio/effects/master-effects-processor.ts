@@ -242,9 +242,9 @@ export class MasterEffectsProcessor {
   }
 
   // Get EQ frequency response for visualization
-  getEQFrequencyResponse(frequencies: Float32Array): {
-    magnitude: Float32Array;
-    phase: Float32Array;
+  getEQFrequencyResponse(frequencies: Float32Array<ArrayBuffer>): {
+    magnitude: Float32Array<ArrayBuffer>;
+    phase: Float32Array<ArrayBuffer>;
   } {
     return this.eq.getFrequencyResponse(frequencies);
   }
