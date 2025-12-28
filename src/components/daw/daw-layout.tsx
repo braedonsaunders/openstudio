@@ -881,6 +881,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         onLeave={onLeaveRoom || leave}
         loopEnabled={loopEnabled}
         onLoopToggle={() => setLoopEnabled(!loopEnabled)}
+        audioContext={audioContext}
         activeView={mainView}
         onViewChange={setMainView}
       />
