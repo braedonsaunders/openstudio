@@ -254,8 +254,8 @@ async function generateWithGemini(
 
   // Map model names to Gemini model IDs
   const modelMap: Record<string, string> = {
-    'gemini-nano-banana': 'gemini-2.5-flash-preview-05-20',
-    'gemini-nano-banana-pro': 'gemini-2.5-pro-preview-06-05',
+    'gemini-nano-banana': 'gemini-2.5-flash-image',
+    'gemini-nano-banana-pro': 'gemini-3-pro-image-preview',
   };
 
   const geminiModel = modelMap[model];
