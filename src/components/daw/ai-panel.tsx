@@ -122,28 +122,33 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   }, [roomKey, roomKeyScale, sessionState]);
 
   // Add Lyria audio to WebRTC for sharing with room
-  const shareAudioWithRoom = useCallback(async () => {
+  const shareAudioWithRoom = useCallback(async (retryCount = 0): Promise<boolean> => {
     if (!sessionRef.current) {
       console.warn('[Lyria] No session available for sharing');
-      return;
+      return false;
     }
 
     if (!getCloudflareRef) {
       console.warn('[Lyria] getCloudflareRef not provided');
-      return;
+      return false;
     }
 
     const cloudflare = getCloudflareRef();
     if (!cloudflare) {
-      console.warn('[Lyria] CloudflareCalls not ready yet - audio sharing skipped');
-      // Could retry later, but for now just skip
-      return;
+      // Retry up to 3 times with 500ms delay
+      if (retryCount < 3) {
+        console.log(`[Lyria] CloudflareCalls not ready, retrying in 500ms (${retryCount + 1}/3)`);
+        await new Promise(resolve => setTimeout(resolve, 500));
+        return shareAudioWithRoom(retryCount + 1);
+      }
+      console.warn('[Lyria] CloudflareCalls not ready after retries - audio sharing skipped');
+      return false;
     }
 
     const outputStream = sessionRef.current.getOutputStream();
     if (!outputStream) {
       console.warn('[Lyria] No output stream available');
-      return;
+      return false;
     }
 
     try {
@@ -152,8 +157,10 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
       lyriaTrackIdRef.current = trackId;
       setIsSharingAudio(true);
       console.log('[Lyria] Audio shared with room:', trackId);
+      return true;
     } catch (err) {
       console.error('[Lyria] Failed to share audio:', err);
+      return false;
     }
   }, [getCloudflareRef]);
 
