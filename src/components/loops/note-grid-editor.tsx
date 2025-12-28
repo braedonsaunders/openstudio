@@ -8,7 +8,7 @@ import {
   midiToNoteName,
 } from '@/lib/audio/instrument-registry';
 import { SoundEngine } from '@/lib/audio/sound-engine';
-import { Copy, Scissors, Volume2 } from 'lucide-react';
+import { Copy, Scissors, Volume2, Music } from 'lucide-react';
 
 // =============================================================================
 // Types
@@ -46,6 +46,40 @@ const LABEL_WIDTH = 48;
 const HEADER_HEIGHT = 24;
 const MIN_NOTE_WIDTH = 4;
 
+// Musical keys (root notes)
+const KEYS = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'] as const;
+type KeyName = typeof KEYS[number];
+
+// Scale patterns (semitone offsets from root)
+const SCALES: Record<string, { name: string; pattern: number[] }> = {
+  chromatic: { name: 'Chromatic', pattern: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11] },
+  major: { name: 'Major', pattern: [0, 2, 4, 5, 7, 9, 11] },
+  minor: { name: 'Minor', pattern: [0, 2, 3, 5, 7, 8, 10] },
+  pentatonicMajor: { name: 'Pentatonic Maj', pattern: [0, 2, 4, 7, 9] },
+  pentatonicMinor: { name: 'Pentatonic Min', pattern: [0, 3, 5, 7, 10] },
+  blues: { name: 'Blues', pattern: [0, 3, 5, 6, 7, 10] },
+  dorian: { name: 'Dorian', pattern: [0, 2, 3, 5, 7, 9, 10] },
+  phrygian: { name: 'Phrygian', pattern: [0, 1, 3, 5, 7, 8, 10] },
+  lydian: { name: 'Lydian', pattern: [0, 2, 4, 6, 7, 9, 11] },
+  mixolydian: { name: 'Mixolydian', pattern: [0, 2, 4, 5, 7, 9, 10] },
+};
+
+// Check if a MIDI note is in a given scale
+function isNoteInScale(midiNote: number, key: KeyName, scaleId: string): boolean {
+  const scale = SCALES[scaleId];
+  if (!scale) return true;
+
+  const keyOffset = KEYS.indexOf(key);
+  const noteInOctave = (midiNote - keyOffset + 12) % 12;
+  return scale.pattern.includes(noteInOctave);
+}
+
+// Check if a MIDI note is a black key (sharp/flat)
+function isBlackKey(midiNote: number): boolean {
+  const noteInOctave = midiNote % 12;
+  return [1, 3, 6, 8, 10].includes(noteInOctave); // C#, D#, F#, G#, A#
+}
+
 // =============================================================================
 // Component
 // =============================================================================
@@ -71,6 +105,8 @@ export function NoteGridEditor({
   const [selectedVelocity, setSelectedVelocity] = useState(100);
   const [selectedNotes, setSelectedNotes] = useState<Set<number>>(new Set());
   const [hoveredCell, setHoveredCell] = useState<GridCell | null>(null);
+  const [selectedKey, setSelectedKey] = useState<KeyName>('C');
+  const [selectedScale, setSelectedScale] = useState<string>('chromatic');
 
   // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
@@ -383,24 +419,29 @@ export function NoteGridEditor({
       : `rgba(99, 102, 241, ${0.5 + intensity * 0.5})`;
   };
 
+  // Calculate columns per bar for bar boundary detection
+  const columnsPerBar = beatsPerBar * gridResolution;
+
   // Generate column headers
   const columnHeaders = useMemo(() => {
-    const headers: { label: string; isDownbeat: boolean; isBarStart: boolean }[] = [];
+    const headers: { label: string; isDownbeat: boolean; isBarStart: boolean; isBarEnd: boolean }[] = [];
     for (let col = 0; col < totalColumns; col++) {
       const beat = Math.floor(col / gridResolution);
       const subdivision = col % gridResolution;
       const barNum = Math.floor(beat / beatsPerBar) + 1;
       const isBarStart = beat % beatsPerBar === 0 && subdivision === 0;
+      const isBarEnd = (col + 1) % columnsPerBar === 0;
       const isDownbeat = subdivision === 0;
 
       headers.push({
         label: isBarStart ? `${barNum}` : isDownbeat ? `${(beat % beatsPerBar) + 1}` : '',
         isDownbeat,
         isBarStart,
+        isBarEnd,
       });
     }
     return headers;
-  }, [totalColumns, gridResolution, beatsPerBar]);
+  }, [totalColumns, gridResolution, beatsPerBar, columnsPerBar]);
 
   // Calculate playhead position
   const playheadX = playbackPosition * gridWidth;
@@ -409,24 +450,65 @@ export function NoteGridEditor({
     <div className={cn('flex flex-col', className)}>
       {/* Toolbar */}
       <div className={cn(
-        'flex items-center gap-4 mb-3 p-2 rounded-lg',
+        'flex items-center gap-4 mb-3 p-2 rounded-lg flex-wrap',
         isDark ? 'bg-gray-800' : 'bg-slate-100'
       )}>
-        <Volume2 className={cn('w-4 h-4', isDark ? 'text-gray-400' : 'text-slate-500')} />
-        <span className={cn('text-sm font-medium', isDark ? 'text-gray-300' : 'text-slate-700')}>
-          Velocity:
-        </span>
-        <input
-          type="range"
-          min={1}
-          max={127}
-          value={selectedVelocity}
-          onChange={(e) => setSelectedVelocity(parseInt(e.target.value))}
-          className="flex-1 max-w-32 h-2 rounded-lg appearance-none cursor-pointer bg-slate-300 dark:bg-gray-600"
-        />
-        <span className={cn('text-sm w-8 text-center font-mono', isDark ? 'text-gray-400' : 'text-slate-600')}>
-          {selectedVelocity}
-        </span>
+        {/* Velocity control */}
+        <div className="flex items-center gap-2">
+          <Volume2 className={cn('w-4 h-4', isDark ? 'text-gray-400' : 'text-slate-500')} />
+          <span className={cn('text-sm font-medium', isDark ? 'text-gray-300' : 'text-slate-700')}>
+            Velocity:
+          </span>
+          <input
+            type="range"
+            min={1}
+            max={127}
+            value={selectedVelocity}
+            onChange={(e) => setSelectedVelocity(parseInt(e.target.value))}
+            className="w-24 h-2 rounded-lg appearance-none cursor-pointer bg-slate-300 dark:bg-gray-600"
+          />
+          <span className={cn('text-sm w-8 text-center font-mono', isDark ? 'text-gray-400' : 'text-slate-600')}>
+            {selectedVelocity}
+          </span>
+        </div>
+
+        {/* Divider */}
+        {!isDrums && <div className={cn('w-px h-4', isDark ? 'bg-gray-600' : 'bg-slate-300')} />}
+
+        {/* Scale/Key selector (only for melodic instruments) */}
+        {!isDrums && (
+          <div className="flex items-center gap-2">
+            <Music className={cn('w-4 h-4', isDark ? 'text-gray-400' : 'text-slate-500')} />
+            <select
+              value={selectedKey}
+              onChange={(e) => setSelectedKey(e.target.value as KeyName)}
+              className={cn(
+                'text-sm px-2 py-1 rounded border font-medium',
+                isDark
+                  ? 'bg-gray-700 border-gray-600 text-gray-200'
+                  : 'bg-white border-slate-300 text-slate-700'
+              )}
+            >
+              {KEYS.map((key) => (
+                <option key={key} value={key}>{key}</option>
+              ))}
+            </select>
+            <select
+              value={selectedScale}
+              onChange={(e) => setSelectedScale(e.target.value)}
+              className={cn(
+                'text-sm px-2 py-1 rounded border font-medium',
+                isDark
+                  ? 'bg-gray-700 border-gray-600 text-gray-200'
+                  : 'bg-white border-slate-300 text-slate-700'
+              )}
+            >
+              {Object.entries(SCALES).map(([id, scale]) => (
+                <option key={id} value={id}>{scale.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {selectedNotes.size > 0 && (
           <>
@@ -534,11 +616,20 @@ export function NoteGridEditor({
                 key={col}
                 className={cn(
                   'flex items-center justify-center text-xs font-medium border-r border-b',
-                  header.isBarStart
-                    ? isDark ? 'border-r-indigo-500/70 text-indigo-400 bg-indigo-500/10' : 'border-r-indigo-400 text-indigo-600 bg-indigo-50'
+                  // Left border for first column (start of bar 1)
+                  col === 0 && (isDark ? 'border-l-2 border-l-indigo-500/70' : 'border-l-2 border-l-indigo-400'),
+                  // Right border: strong at bar END, medium at downbeat, light otherwise
+                  header.isBarEnd
+                    ? isDark ? 'border-r-2 border-r-indigo-500/70' : 'border-r-2 border-r-indigo-400'
                     : header.isDownbeat
-                      ? isDark ? 'border-r-gray-500 text-gray-400' : 'border-r-slate-400 text-slate-500'
-                      : isDark ? 'border-r-gray-700 text-gray-500' : 'border-r-slate-200 text-slate-400',
+                      ? isDark ? 'border-r-gray-500' : 'border-r-slate-400'
+                      : isDark ? 'border-r-gray-700' : 'border-r-slate-200',
+                  // Text styling for bar labels
+                  header.isBarStart
+                    ? isDark ? 'text-indigo-400 bg-indigo-500/10' : 'text-indigo-600 bg-indigo-50'
+                    : header.isDownbeat
+                      ? isDark ? 'text-gray-400' : 'text-slate-500'
+                      : isDark ? 'text-gray-500' : 'text-slate-400',
                   isDark ? 'border-b-gray-700' : 'border-b-slate-200'
                 )}
                 style={{ width: CELL_WIDTH, height: HEADER_HEIGHT }}
@@ -551,26 +642,60 @@ export function NoteGridEditor({
           {/* Grid rows */}
           {noteRows.map((row, rowIndex) => {
             const isC = !isDrums && row.label.startsWith('C') && !row.label.includes('#');
+            const isBlack = !isDrums && isBlackKey(row.note);
+            const inScale = !isDrums && isNoteInScale(row.note, selectedKey, selectedScale);
+            const isRootNote = !isDrums && (row.note % 12) === KEYS.indexOf(selectedKey);
 
             return (
               <div key={row.note} className="flex" style={{ height: CELL_HEIGHT }}>
                 {/* Row label */}
                 <div
                   className={cn(
-                    'sticky left-0 z-10 flex items-center justify-end pr-2 text-xs font-mono border-r border-b',
-                    isDark ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-slate-50 text-slate-600 border-slate-200',
-                    isC && (isDark ? 'bg-gray-700 text-gray-300 font-semibold' : 'bg-slate-100 text-slate-700 font-semibold')
+                    'sticky left-0 z-10 flex items-center gap-1 pr-2 text-xs font-mono border-r border-b',
+                    // Base styling
+                    isDark ? 'border-gray-700' : 'border-slate-200',
+                    // Background based on key type (black/white) and scale membership
+                    isDrums
+                      ? isDark ? 'bg-gray-800 text-gray-400' : 'bg-slate-50 text-slate-600'
+                      : isRootNote
+                        ? isDark ? 'bg-indigo-900/40 text-indigo-300 font-bold' : 'bg-indigo-100 text-indigo-700 font-bold'
+                        : inScale
+                          ? isBlack
+                            ? isDark ? 'bg-gray-700 text-gray-300' : 'bg-slate-200 text-slate-700'
+                            : isDark ? 'bg-gray-750 text-gray-200' : 'bg-slate-100 text-slate-800'
+                          : isBlack
+                            ? isDark ? 'bg-gray-800/60 text-gray-500' : 'bg-slate-300/60 text-slate-400'
+                            : isDark ? 'bg-gray-800/40 text-gray-500' : 'bg-slate-200/60 text-slate-400',
+                    // C note emphasis
+                    isC && inScale && (isDark ? 'font-semibold' : 'font-semibold')
                   )}
                   style={{ width: LABEL_WIDTH, height: CELL_HEIGHT }}
                 >
-                  {row.label}
+                  {/* Piano key indicator */}
+                  {!isDrums && (
+                    <div
+                      className={cn(
+                        'w-1.5 h-3 rounded-sm ml-1 flex-shrink-0',
+                        isRootNote
+                          ? isDark ? 'bg-indigo-400' : 'bg-indigo-500'
+                          : inScale
+                            ? isBlack
+                              ? isDark ? 'bg-gray-500' : 'bg-slate-500'
+                              : isDark ? 'bg-gray-300' : 'bg-slate-700'
+                            : isBlack
+                              ? isDark ? 'bg-gray-600/50' : 'bg-slate-400/50'
+                              : isDark ? 'bg-gray-500/50' : 'bg-slate-300/50'
+                      )}
+                    />
+                  )}
+                  <span className="flex-1 text-right">{row.label}</span>
                 </div>
 
                 {/* Grid cells */}
                 {Array.from({ length: totalColumns }, (_, col) => {
                   const beat = Math.floor(col / gridResolution);
                   const subdivision = col % gridResolution;
-                  const isBarStart = beat % beatsPerBar === 0 && subdivision === 0;
+                  const isBarEnd = (col + 1) % columnsPerBar === 0;
                   const isDownbeat = subdivision === 0;
                   const t = col / totalColumns;
                   const barNum = Math.floor(beat / beatsPerBar);
@@ -593,18 +718,39 @@ export function NoteGridEditor({
                       key={col}
                       className={cn(
                         'relative border-r border-b cursor-crosshair transition-colors',
-                        isBarStart
-                          ? isDark ? 'border-r-indigo-500/50' : 'border-r-indigo-300'
+                        // Left border for first column (start of bar 1)
+                        col === 0 && (isDark ? 'border-l-2 border-l-indigo-500/50' : 'border-l-2 border-l-indigo-300'),
+                        // Right border: strong at bar END, medium at downbeat, light otherwise
+                        isBarEnd
+                          ? isDark ? 'border-r-2 border-r-indigo-500/50' : 'border-r-2 border-r-indigo-300'
                           : isDownbeat
                             ? isDark ? 'border-r-gray-500/70' : 'border-r-slate-300'
                             : isDark ? 'border-r-gray-700/50' : 'border-r-slate-200',
                         isDark ? 'border-b-gray-700/50' : 'border-b-slate-200',
-                        // Row highlighting
-                        isC && !noteAtCell && (isDark ? 'bg-gray-800/40' : 'bg-slate-50/60'),
-                        // Bar alternation
-                        barNum % 2 === 1 && !noteAtCell && (isDark ? 'bg-gray-800/20' : 'bg-slate-50/40'),
-                        // Hover
-                        !noteAtCell && (isDark ? 'hover:bg-indigo-500/10' : 'hover:bg-indigo-50')
+                        // Scale-based row highlighting (for melodic instruments)
+                        !isDrums && !noteAtCell && (
+                          isRootNote
+                            ? isDark ? 'bg-indigo-900/20' : 'bg-indigo-50/80'
+                            : inScale
+                              ? isBlack
+                                ? isDark ? 'bg-gray-800/60' : 'bg-slate-100/80'
+                                : barNum % 2 === 1
+                                  ? isDark ? 'bg-gray-800/30' : 'bg-slate-50/60'
+                                  : ''
+                              : isBlack
+                                ? isDark ? 'bg-gray-900/60' : 'bg-slate-200/40'
+                                : isDark ? 'bg-gray-900/40' : 'bg-slate-100/40'
+                        ),
+                        // Drum row highlighting (just bar alternation)
+                        isDrums && !noteAtCell && barNum % 2 === 1 && (isDark ? 'bg-gray-800/20' : 'bg-slate-50/40'),
+                        // C note row emphasis (when in scale)
+                        isC && inScale && !noteAtCell && (isDark ? 'bg-gray-700/30' : 'bg-slate-100/80'),
+                        // Hover effect - different for in-scale vs out-of-scale
+                        !noteAtCell && (
+                          inScale || isDrums
+                            ? isDark ? 'hover:bg-indigo-500/20' : 'hover:bg-indigo-100'
+                            : isDark ? 'hover:bg-gray-700/30' : 'hover:bg-slate-200/50'
+                        )
                       )}
                       style={{ width: CELL_WIDTH, height: CELL_HEIGHT }}
                       onMouseDown={(e) => handleCellMouseDown(cell, e)}
