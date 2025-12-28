@@ -154,6 +154,16 @@ export function TracksPanel({
     async (trackRef: SongTrackReference) => {
       if (!currentSong) return;
 
+      // Import audio store to reset playback state
+      const { useAudioStore } = await import('@/stores/audio-store');
+      const { isPlaying, setPlaying, setCurrentTime } = useAudioStore.getState();
+
+      // Stop playback when removing tracks to avoid orphaned state
+      if (isPlaying) {
+        setPlaying(false);
+      }
+      setCurrentTime(0);
+
       removeTrackFromSong(currentSong.id, trackRef.id);
 
       // If it's a loop, also remove from loop tracks store
@@ -432,15 +442,26 @@ export function TracksPanel({
               <>
                 <div className="px-3 py-1 mt-1 border-t border-gray-100 dark:border-white/5">
                   <span className="text-[9px] text-gray-400 dark:text-zinc-600 uppercase tracking-wider">
-                    Unassigned Audio
+                    Unassigned Audio - Drag to timeline
                   </span>
                 </div>
                 {orphanAudioTracks.map((track) => (
                   <div
                     key={track.id}
-                    className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer opacity-60"
+                    className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-grab active:cursor-grabbing opacity-60 hover:opacity-100"
                     onClick={() => onTrackSelect(track)}
+                    draggable
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData('application/x-track', JSON.stringify({
+                        type: 'audio',
+                        trackId: track.id,
+                        name: track.name,
+                        duration: track.duration,
+                      }));
+                      e.dataTransfer.effectAllowed = 'copy';
+                    }}
                   >
+                    <GripVertical className="w-3 h-3 text-gray-300 dark:text-zinc-700 opacity-0 group-hover:opacity-100 shrink-0" />
                     <div className="w-5 h-5 rounded bg-indigo-500/20 flex items-center justify-center shrink-0">
                       <Music className="w-3 h-3 text-indigo-500" />
                     </div>
@@ -479,16 +500,28 @@ export function TracksPanel({
               <>
                 <div className="px-3 py-1 mt-1 border-t border-gray-100 dark:border-white/5">
                   <span className="text-[9px] text-gray-400 dark:text-zinc-600 uppercase tracking-wider">
-                    Unassigned Loops
+                    Unassigned Loops - Drag to timeline
                   </span>
                 </div>
                 {orphanLoopTracks.map((track) => {
                   const loopDef = getLoopById(track.loopId);
+                  const loopDuration = getLoopDuration(loopDef);
                   return (
                     <div
                       key={track.id}
-                      className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-pointer opacity-60"
+                      className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-grab active:cursor-grabbing opacity-60 hover:opacity-100"
+                      draggable
+                      onDragStart={(e) => {
+                        e.dataTransfer.setData('application/x-track', JSON.stringify({
+                          type: 'loop',
+                          trackId: track.id,
+                          name: track.name || loopDef?.name || 'Loop',
+                          duration: loopDuration,
+                        }));
+                        e.dataTransfer.effectAllowed = 'copy';
+                      }}
                     >
+                      <GripVertical className="w-3 h-3 text-gray-300 dark:text-zinc-700 opacity-0 group-hover:opacity-100 shrink-0" />
                       <div
                         className="w-5 h-5 rounded flex items-center justify-center shrink-0"
                         style={{ backgroundColor: `${track.color}20` }}
@@ -501,7 +534,7 @@ export function TracksPanel({
                         </div>
                       </div>
                       <span className="text-[10px] text-gray-500 dark:text-zinc-500 tabular-nums">
-                        {formatTime(getLoopDuration(loopDef))}
+                        {formatTime(loopDuration)}
                       </span>
                       {isMaster && currentSong && (
                         <button

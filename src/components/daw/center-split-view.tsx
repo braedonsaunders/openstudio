@@ -16,6 +16,9 @@ interface CenterSplitViewProps {
   onPlay?: () => void;
   onStop?: () => void;
   sessionStartTime?: number;
+  // Shared split position (synced with left panel)
+  splitPosition?: number;
+  onSplitPositionChange?: (position: number) => void;
 }
 
 export function CenterSplitView({
@@ -28,9 +31,14 @@ export function CenterSplitView({
   onPlay,
   onStop,
   sessionStartTime,
+  splitPosition: externalSplitPosition,
+  onSplitPositionChange,
 }: CenterSplitViewProps) {
-  // Split position - defaults to 33% for top (multi-track timeline)
-  const [splitPosition, setSplitPosition] = useState(33);
+  // Split position - use external if provided, otherwise local state
+  const [localSplitPosition, setLocalSplitPosition] = useState(33);
+  const splitPosition = externalSplitPosition ?? localSplitPosition;
+  const setSplitPosition = onSplitPositionChange ?? setLocalSplitPosition;
+
   const [isDragging, setIsDragging] = useState(false);
 
   // Handle split resize
@@ -63,7 +71,7 @@ export function CenterSplitView({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [isDragging]);
+  }, [isDragging, setSplitPosition]);
 
   return (
     <div

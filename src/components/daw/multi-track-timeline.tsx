@@ -36,12 +36,106 @@ interface ContextMenuState {
   trackType: 'audio' | 'loop';
 }
 
+// Loop copy dialog state
+interface LoopCopyDialogState {
+  isOpen: boolean;
+  trackRef: SongTrackReference | null;
+  trackDuration: number;
+  copyCount: number;
+}
+
 // Drag state for moving track clips
 interface DragState {
   isDragging: boolean;
   trackRefId: string | null;
   startX: number;
   originalOffset: number;
+}
+
+// Snap settings
+const SNAP_THRESHOLD = 10; // pixels - how close before snapping
+
+// Calculate snap points based on BPM and other tracks
+function calculateSnapPoints(
+  bpm: number,
+  tracks: { startOffset: number; duration: number; id: string }[],
+  currentTrackId: string,
+  zoom: number
+): { time: number; type: 'beat' | 'bar' | 'track-end' }[] {
+  const snapPoints: { time: number; type: 'beat' | 'bar' | 'track-end' }[] = [];
+
+  // Add beat/bar grid snap points
+  const beatsPerSecond = bpm / 60;
+  const secondsPerBeat = 60 / bpm;
+  const secondsPerBar = secondsPerBeat * 4; // Assume 4/4 time
+
+  // Only add grid points that are reasonably spaced at current zoom
+  const minPixelsBetweenPoints = 20;
+  const minSecondsBetweenPoints = minPixelsBetweenPoints / zoom;
+
+  // Add bar markers (higher priority snap points)
+  for (let bar = 0; bar < 100; bar++) {
+    const barTime = bar * secondsPerBar;
+    if (barTime > 300) break; // Limit to 5 minutes
+    snapPoints.push({ time: barTime, type: 'bar' });
+  }
+
+  // Add beat markers if zoom is high enough
+  if (secondsPerBeat >= minSecondsBetweenPoints) {
+    for (let beat = 0; beat < 400; beat++) {
+      const beatTime = beat * secondsPerBeat;
+      if (beatTime > 300) break;
+      // Skip bar positions (already added)
+      if (beat % 4 !== 0) {
+        snapPoints.push({ time: beatTime, type: 'beat' });
+      }
+    }
+  }
+
+  // Add track end snap points (for seamless looping)
+  tracks.forEach((track) => {
+    if (track.id !== currentTrackId) {
+      const trackEnd = track.startOffset + track.duration;
+      snapPoints.push({ time: trackEnd, type: 'track-end' });
+      snapPoints.push({ time: track.startOffset, type: 'track-end' });
+    }
+  });
+
+  return snapPoints;
+}
+
+// Find nearest snap point
+function findNearestSnap(
+  offset: number,
+  snapPoints: { time: number; type: 'beat' | 'bar' | 'track-end' }[],
+  zoom: number,
+  threshold: number
+): { snappedOffset: number; snapType: 'beat' | 'bar' | 'track-end' | null } {
+  let nearestSnap: { time: number; type: 'beat' | 'bar' | 'track-end' } | null = null;
+  let nearestDistance = Infinity;
+
+  // Prioritize track-end snaps, then bar, then beat
+  const priorityOrder = { 'track-end': 0, 'bar': 1, 'beat': 2 };
+
+  for (const point of snapPoints) {
+    const distance = Math.abs(offset - point.time) * zoom;
+    if (distance < threshold && distance < nearestDistance) {
+      // Use priority to prefer track-end > bar > beat when distances are similar
+      const priorityBonus = (threshold - distance) * 0.1 * (2 - priorityOrder[point.type]);
+      const effectiveDistance = distance - priorityBonus;
+
+      if (effectiveDistance < nearestDistance || (effectiveDistance === nearestDistance && priorityOrder[point.type] < priorityOrder[nearestSnap?.type || 'beat'])) {
+        nearestSnap = point;
+        nearestDistance = distance;
+      }
+    }
+  }
+
+  if (nearestSnap) {
+    return { snappedOffset: nearestSnap.time, snapType: nearestSnap.type };
+  }
+
+  return { snappedOffset: offset, snapType: null };
 }
 
 interface MultiTrackTimelineProps {
@@ -208,6 +302,14 @@ export function MultiTrackTimeline({
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const dragOffsetRef = useRef<number | null>(null);
   const isProgrammaticScroll = useRef(false);
+  const [snapType, setSnapType] = useState<'beat' | 'bar' | 'track-end' | null>(null);
+  const [loopCopyDialog, setLoopCopyDialog] = useState<LoopCopyDialogState>({
+    isOpen: false,
+    trackRef: null,
+    trackDuration: 0,
+    copyCount: 2,
+  });
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const { getCurrentSong } = useSongsStore();
   const { queue, setCurrentTrack } = useRoomStore();
@@ -308,13 +410,13 @@ export function MultiTrackTimeline({
     setScrollLeft(e.currentTarget.scrollLeft);
   }, []);
 
-  // Handle zoom
+  // Handle zoom - allow minimum of 2 pixels per second (much more zoomed out)
   const handleZoomIn = useCallback(() => {
     setZoom((z) => Math.min(200, z * 1.25));
   }, []);
 
   const handleZoomOut = useCallback(() => {
-    setZoom((z) => Math.max(10, z / 1.25));
+    setZoom((z) => Math.max(2, z / 1.25));
   }, []);
 
   // Context menu handlers
@@ -358,13 +460,16 @@ export function MultiTrackTimeline({
 
     const trackRef = contextMenu.trackRef;
 
-    // If this is an audio track and it's currently playing, stop playback
-    const { currentTrack } = useRoomStore.getState();
-    if (trackRef.type === 'audio' && currentTrack?.id === trackRef.trackId) {
-      // Stop playback
+    // Always stop playback when deleting a track to avoid orphaned state
+    const { isPlaying: wasPlaying } = useAudioStore.getState();
+    if (wasPlaying) {
       if (onStop) onStop();
       setPlaying(false);
-      // Clear current track
+    }
+
+    // If this is an audio track and it's currently playing, clear current track
+    const { currentTrack } = useRoomStore.getState();
+    if (trackRef.type === 'audio' && currentTrack?.id === trackRef.trackId) {
       setCurrentTrack(null);
     }
 
@@ -375,6 +480,10 @@ export function MultiTrackTimeline({
     if (trackRef.type === 'loop') {
       removeLoopTrack(trackRef.trackId);
     }
+
+    // Reset current time to avoid being past the end of remaining content
+    const { setCurrentTime } = useAudioStore.getState();
+    setCurrentTime(0);
 
     closeContextMenu();
   }, [contextMenu.trackRef, onStop, setPlaying, setCurrentTrack, removeLoopTrack, closeContextMenu]);
@@ -417,6 +526,63 @@ export function MultiTrackTimeline({
     closeContextMenu();
   }, [contextMenu.trackRef, closeContextMenu]);
 
+  // Open loop copy dialog
+  const handleOpenLoopCopyDialog = useCallback(() => {
+    if (!contextMenu.trackRef) return;
+
+    // Find the track duration
+    const trackRef = contextMenu.trackRef;
+    let duration = 0;
+
+    if (trackRef.type === 'loop') {
+      const loopTrack = loopTracks.find((t) => t.id === trackRef.trackId);
+      const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+      duration = getLoopDuration(loopDef);
+    } else {
+      const audioTrack = queue.tracks.find((t) => t.id === trackRef.trackId);
+      duration = audioTrack?.duration || 0;
+    }
+
+    setLoopCopyDialog({
+      isOpen: true,
+      trackRef,
+      trackDuration: duration,
+      copyCount: 2,
+    });
+    closeContextMenu();
+  }, [contextMenu.trackRef, loopTracks, queue.tracks, getLoopDuration, closeContextMenu]);
+
+  // Execute loop copy
+  const handleExecuteLoopCopy = useCallback(() => {
+    if (!loopCopyDialog.trackRef || loopCopyDialog.copyCount < 1) return;
+
+    const { getCurrentSong, addTrackToSong } = useSongsStore.getState();
+    const song = getCurrentSong();
+    if (!song) return;
+
+    const trackRef = loopCopyDialog.trackRef;
+    const duration = loopCopyDialog.trackDuration;
+    const endOfOriginal = trackRef.startOffset + duration;
+
+    // Create copies placed back-to-back after the original
+    for (let i = 0; i < loopCopyDialog.copyCount; i++) {
+      addTrackToSong(song.id, {
+        type: trackRef.type,
+        trackId: trackRef.trackId,
+        startOffset: endOfOriginal + (i * duration),
+        muted: trackRef.muted,
+        volume: trackRef.volume,
+      });
+    }
+
+    setLoopCopyDialog({
+      isOpen: false,
+      trackRef: null,
+      trackDuration: 0,
+      copyCount: 2,
+    });
+  }, [loopCopyDialog]);
+
   // Drag handlers for moving clips along timeline
   const handleDragStart = useCallback(
     (e: React.MouseEvent, trackRef: SongTrackReference) => {
@@ -434,6 +600,15 @@ export function MultiTrackTimeline({
     []
   );
 
+  // Build track info for snap calculations
+  const trackInfoForSnap = useMemo(() => {
+    return unifiedTracks.map((t) => ({
+      startOffset: t.ref.startOffset,
+      duration: t.duration,
+      id: t.ref.id,
+    }));
+  }, [unifiedTracks]);
+
   // Handle drag move - use refs and getState() to avoid dependency loops
   useEffect(() => {
     if (!dragState.isDragging) return;
@@ -441,9 +616,37 @@ export function MultiTrackTimeline({
     const handleMouseMove = (e: MouseEvent) => {
       const deltaX = e.clientX - dragState.startX;
       const deltaTime = deltaX / zoom;
-      const newOffset = Math.max(0, dragState.originalOffset + deltaTime);
-      setDragOffset(newOffset);
-      dragOffsetRef.current = newOffset;
+      const rawOffset = Math.max(0, dragState.originalOffset + deltaTime);
+
+      // Calculate snap points based on current song BPM
+      const song = useSongsStore.getState().getCurrentSong();
+      const bpm = song?.bpm || 120;
+
+      const snapPoints = calculateSnapPoints(
+        bpm,
+        trackInfoForSnap,
+        dragState.trackRefId || '',
+        zoom
+      );
+
+      // Check if holding Shift to disable snapping
+      const snapEnabled = !e.shiftKey;
+
+      if (snapEnabled) {
+        const { snappedOffset, snapType: newSnapType } = findNearestSnap(
+          rawOffset,
+          snapPoints,
+          zoom,
+          SNAP_THRESHOLD
+        );
+        setDragOffset(snappedOffset);
+        dragOffsetRef.current = snappedOffset;
+        setSnapType(newSnapType);
+      } else {
+        setDragOffset(rawOffset);
+        dragOffsetRef.current = rawOffset;
+        setSnapType(null);
+      }
     };
 
     const handleMouseUp = () => {
@@ -453,9 +656,9 @@ export function MultiTrackTimeline({
       const song = getCurrentSong();
 
       if (dragState.trackRefId && song && finalOffset !== null) {
-        // Update the track's start offset
+        // Update the track's start offset (already snapped, just round for precision)
         updateTrack(song.id, dragState.trackRefId, {
-          startOffset: Math.round(finalOffset * 10) / 10, // Round to 0.1s
+          startOffset: Math.round(finalOffset * 1000) / 1000, // Round to 0.001s
         });
       }
       setDragState({
@@ -466,6 +669,7 @@ export function MultiTrackTimeline({
       });
       setDragOffset(null);
       dragOffsetRef.current = null;
+      setSnapType(null);
     };
 
     window.addEventListener('mousemove', handleMouseMove);
@@ -475,12 +679,71 @@ export function MultiTrackTimeline({
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
     };
-  }, [dragState, zoom]);
+  }, [dragState, zoom, trackInfoForSnap]);
 
-  // Generate time markers
+  // Handle drag over for drop zone
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer.types.includes('application/x-track')) {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+      setIsDragOver(true);
+    }
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    // Only set false if leaving the container entirely
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragOver(false);
+    }
+  }, []);
+
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const trackData = e.dataTransfer.getData('application/x-track');
+    if (!trackData) return;
+
+    try {
+      const { type, trackId } = JSON.parse(trackData) as {
+        type: 'audio' | 'loop';
+        trackId: string;
+        name: string;
+        duration: number;
+      };
+
+      // Calculate drop position in timeline
+      const rect = containerRef.current?.getBoundingClientRect();
+      if (!rect) return;
+
+      const x = e.clientX - rect.left + scrollLeft - 96; // Account for track label width
+      const dropTime = Math.max(0, x / zoom);
+
+      // Get BPM for snapping
+      const song = useSongsStore.getState().getCurrentSong();
+      if (!song) return;
+
+      const bpm = song.bpm || 120;
+      const snapPoints = calculateSnapPoints(bpm, trackInfoForSnap, '', zoom);
+      const { snappedOffset } = findNearestSnap(dropTime, snapPoints, zoom, SNAP_THRESHOLD);
+
+      // Add track to song at drop position
+      const { addTrackToSong } = useSongsStore.getState();
+      addTrackToSong(song.id, {
+        type,
+        trackId,
+        startOffset: snappedOffset,
+      });
+    } catch (err) {
+      console.error('Failed to handle drop:', err);
+    }
+  }, [scrollLeft, zoom, trackInfoForSnap]);
+
+  // Generate time markers - adapt intervals for all zoom levels
   const timeMarkers = useMemo(() => {
     const markers: { time: number; label: string }[] = [];
-    const interval = zoom > 100 ? 1 : zoom > 50 ? 5 : zoom > 25 ? 10 : 30;
+    // More granular intervals for different zoom levels
+    const interval = zoom > 100 ? 1 : zoom > 50 ? 5 : zoom > 25 ? 10 : zoom > 10 ? 30 : zoom > 5 ? 60 : 120;
 
     for (let t = 0; t <= songDuration; t += interval) {
       const mins = Math.floor(t / 60);
@@ -579,9 +842,15 @@ export function MultiTrackTimeline({
       {/* Timeline Area */}
       <div
         ref={containerRef}
-        className="flex-1 overflow-x-auto overflow-y-auto relative"
+        className={cn(
+          'flex-1 overflow-x-auto overflow-y-auto relative transition-colors',
+          isDragOver && 'bg-indigo-500/10 ring-2 ring-inset ring-indigo-500/50'
+        )}
         onScroll={handleScroll}
         onClick={handleTimelineClick}
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
       >
         <div className="min-h-full" style={{ width: timelineWidth }}>
           {/* Time Ruler */}
@@ -603,12 +872,25 @@ export function MultiTrackTimeline({
           {/* Track Lanes */}
           <div className="relative">
             {unifiedTracks.length === 0 ? (
-              <div className="h-32 flex items-center justify-center">
+              <div className={cn(
+                'h-32 flex items-center justify-center border-2 border-dashed rounded-lg m-2 transition-colors',
+                isDragOver
+                  ? 'border-indigo-500 bg-indigo-500/10'
+                  : 'border-gray-200 dark:border-zinc-700'
+              )}>
                 <div className="text-center">
-                  <Layers className="w-8 h-8 mx-auto mb-2 text-gray-300 dark:text-zinc-700" />
-                  <p className="text-sm text-gray-400 dark:text-zinc-600">No tracks in song</p>
+                  <Layers className={cn(
+                    'w-8 h-8 mx-auto mb-2 transition-colors',
+                    isDragOver ? 'text-indigo-500' : 'text-gray-300 dark:text-zinc-700'
+                  )} />
+                  <p className={cn(
+                    'text-sm transition-colors',
+                    isDragOver ? 'text-indigo-500 font-medium' : 'text-gray-400 dark:text-zinc-600'
+                  )}>
+                    {isDragOver ? 'Drop to add track' : 'No tracks in song'}
+                  </p>
                   <p className="text-xs text-gray-300 dark:text-zinc-700 mt-1">
-                    Add audio or loops from the left panel
+                    {isDragOver ? 'Release to place at this position' : 'Drag tracks here or add from left panel'}
                   </p>
                 </div>
               </div>
@@ -644,7 +926,11 @@ export function MultiTrackTimeline({
                       className={cn(
                         'absolute top-1 bottom-1 rounded-md overflow-hidden transition-opacity cursor-grab hover:ring-1 hover:ring-white/20',
                         track.muted ? 'opacity-40' : 'opacity-100',
-                        isDraggingThis && 'cursor-grabbing ring-2 ring-indigo-500 z-20'
+                        isDraggingThis && 'cursor-grabbing z-20',
+                        isDraggingThis && snapType === 'track-end' && 'ring-2 ring-green-500 shadow-lg shadow-green-500/30',
+                        isDraggingThis && snapType === 'bar' && 'ring-2 ring-amber-500 shadow-lg shadow-amber-500/30',
+                        isDraggingThis && snapType === 'beat' && 'ring-2 ring-indigo-400 shadow-lg shadow-indigo-400/20',
+                        isDraggingThis && !snapType && 'ring-2 ring-indigo-500'
                       )}
                       style={{
                         left: clipLeft + 96,
@@ -655,6 +941,18 @@ export function MultiTrackTimeline({
                       onMouseDown={(e) => handleDragStart(e, track.ref)}
                       onContextMenu={(e) => handleContextMenu(e, track)}
                     >
+                      {/* Snap indicator */}
+                      {isDraggingThis && snapType && (
+                        <div className={cn(
+                          'absolute -top-6 left-1/2 -translate-x-1/2 px-2 py-0.5 rounded text-[10px] font-medium whitespace-nowrap',
+                          snapType === 'track-end' && 'bg-green-500 text-white',
+                          snapType === 'bar' && 'bg-amber-500 text-white',
+                          snapType === 'beat' && 'bg-indigo-400 text-white'
+                        )}>
+                          {snapType === 'track-end' ? 'Snap to track' : snapType === 'bar' ? 'Snap to bar' : 'Snap to beat'}
+                        </div>
+                      )}
+
                       {/* Content visualization */}
                       {track.type === 'loop' && track.loopDef ? (
                         <MidiNoteVisualization
@@ -743,6 +1041,14 @@ export function MultiTrackTimeline({
             <span>Duplicate</span>
           </button>
 
+          <button
+            onClick={handleOpenLoopCopyDialog}
+            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <Repeat className="w-4 h-4" />
+            <span>New Loop...</span>
+          </button>
+
           <div className="my-1 border-t border-gray-100 dark:border-zinc-800" />
 
           <button
@@ -752,6 +1058,81 @@ export function MultiTrackTimeline({
             <Trash2 className="w-4 h-4" />
             <span>Delete</span>
           </button>
+        </div>
+      )}
+
+      {/* Loop Copy Dialog */}
+      {loopCopyDialog.isOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div
+            className="bg-white dark:bg-zinc-900 rounded-xl shadow-2xl border border-gray-200 dark:border-zinc-700 p-4 w-72"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+              <Repeat className="w-4 h-4 text-amber-500" />
+              Create Loop Copies
+            </h3>
+
+            <div className="mb-4">
+              <label className="block text-xs text-gray-500 dark:text-zinc-400 mb-1.5">
+                Number of copies
+              </label>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setLoopCopyDialog((prev) => ({
+                    ...prev,
+                    copyCount: Math.max(1, prev.copyCount - 1),
+                  }))}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
+                >
+                  -
+                </button>
+                <input
+                  type="number"
+                  min="1"
+                  max="32"
+                  value={loopCopyDialog.copyCount}
+                  onChange={(e) => setLoopCopyDialog((prev) => ({
+                    ...prev,
+                    copyCount: Math.min(32, Math.max(1, parseInt(e.target.value) || 1)),
+                  }))}
+                  className="flex-1 h-8 px-3 text-center text-sm bg-gray-100 dark:bg-zinc-800 border-0 rounded-lg text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                />
+                <button
+                  onClick={() => setLoopCopyDialog((prev) => ({
+                    ...prev,
+                    copyCount: Math.min(32, prev.copyCount + 1),
+                  }))}
+                  className="w-8 h-8 flex items-center justify-center rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
+                >
+                  +
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-400 dark:text-zinc-500 mt-1.5">
+                {loopCopyDialog.copyCount} cop{loopCopyDialog.copyCount === 1 ? 'y' : 'ies'} × {loopCopyDialog.trackDuration.toFixed(1)}s = {(loopCopyDialog.copyCount * loopCopyDialog.trackDuration).toFixed(1)}s total
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setLoopCopyDialog({
+                  isOpen: false,
+                  trackRef: null,
+                  trackDuration: 0,
+                  copyCount: 2,
+                })}
+                className="flex-1 px-3 py-2 text-sm rounded-lg bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-300 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleExecuteLoopCopy}
+                className="flex-1 px-3 py-2 text-sm rounded-lg bg-indigo-500 text-white hover:bg-indigo-600 transition-colors"
+              >
+                Create
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
