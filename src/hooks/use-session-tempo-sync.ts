@@ -86,7 +86,7 @@ export function useSessionTempoSync(): void {
   }, []);
 
   // ==========================================================================
-  // Sync song BPM to session tempo when song changes
+  // Sync song BPM and Key to session tempo when song changes
   // ==========================================================================
   const previousSongIdRef = useRef<string | null>(null);
 
@@ -101,12 +101,23 @@ export function useSessionTempoSync(): void {
         prevSongId = currentSongId;
         if (currentSongId && currentSongId !== previousSongIdRef.current) {
           const song = state.getSongById(currentSongId);
-          if (song && song.bpm) {
+          if (song) {
+            const { setManualTempo, setManualKey } = useSessionTempoStore.getState();
+
             // Set the song's BPM as the manual tempo (base tempo)
             // Don't change the source mode - if user is in analyzer mode, let analyzer control
             // If in manual mode, this sets the tempo directly
-            const { setManualTempo } = useSessionTempoStore.getState();
-            setManualTempo(song.bpm);
+            if (song.bpm) {
+              setManualTempo(song.bpm);
+            }
+
+            // Set the song's key as the manual key
+            // Parse key string (e.g., "Am" -> key: "A", scale: "minor")
+            if (song.key) {
+              const isMinor = song.key.endsWith('m');
+              const keyRoot = isMinor ? song.key.slice(0, -1) : song.key;
+              setManualKey(keyRoot, isMinor ? 'minor' : 'major');
+            }
           }
         }
         previousSongIdRef.current = currentSongId;

@@ -5,9 +5,9 @@ import { cn, formatLatency } from '@/lib/utils';
 import { useAudioStore } from '@/stores/audio-store';
 import { Tooltip } from '@/components/ui/tooltip';
 import { useRoomStore } from '@/stores/room-store';
-import { useAnalysisStore } from '@/stores/analysis-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useSongsStore } from '@/stores/songs-store';
+import { useSessionTempoStore, selectTempo, selectKey, selectSource, type TempoSource } from '@/stores/session-tempo-store';
 import {
   Play,
   Pause,
@@ -25,7 +25,12 @@ import {
   WifiOff,
   Zap,
   Timer,
+  Activity,
+  Lock,
+  Music2,
+  Hand,
 } from 'lucide-react';
+import { useShallow } from 'zustand/react/shallow';
 import { MetronomeInline } from '@/components/daw/metronome-controls';
 import { UserMenu } from '@/components/auth/UserMenu';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
@@ -70,9 +75,14 @@ export function TransportBar({
 
   const { isPlaying, currentTime, duration, isMuted, jitterStats, webrtcStats, connectionQuality, currentBufferSize, performanceMetrics, settings } = useAudioStore();
   const { currentTrack, isMaster, currentUser } = useRoomStore();
-  const { syncedAnalysis, localAnalysis } = useAnalysisStore();
   const getTracksByUser = useUserTracksStore((s) => s.getTracksByUser);
   const currentSong = useSongsStore((s) => s.getCurrentSong());
+
+  // Session tempo store - single source of truth for BPM and Key
+  const sessionTempo = useSessionTempoStore(selectTempo);
+  const tempoSource = useSessionTempoStore(selectSource);
+  const { key: sessionKey, scale: sessionKeyScale } = useSessionTempoStore(useShallow(selectKey));
+  const keySource = useSessionTempoStore((s) => s.keySource);
 
   // Check if there's something to play - either legacy queue track or song with tracks
   const hasPlayableContent = currentTrack || (currentSong && currentSong.tracks.length > 0);
@@ -87,9 +97,13 @@ export function TransportBar({
     return audioTrack?.audioSettings.bufferSize ?? settings.bufferSize;
   }, [currentUser, getTracksByUser, settings.bufferSize]);
 
-  const displayKey = syncedAnalysis?.key || localAnalysis?.key;
-  const displayScale = syncedAnalysis?.keyScale || localAnalysis?.keyScale;
-  const displayBPM = syncedAnalysis?.bpm || localAnalysis?.bpm;
+  // Source icons mapping
+  const sourceIcons: Record<TempoSource | 'manual' | 'track' | 'analyzer', typeof Lock> = {
+    manual: Lock,
+    track: Music2,
+    analyzer: Activity,
+    tap: Hand,
+  };
 
   const handleCopyRoomId = useCallback(() => {
     navigator.clipboard.writeText(roomId);
@@ -126,7 +140,9 @@ export function TransportBar({
     'B': 'bg-purple-500',
   };
 
-  const keyColor = displayKey ? keyColors[displayKey] || 'bg-zinc-500' : 'bg-zinc-600';
+  const keyColor = sessionKey ? keyColors[sessionKey] || 'bg-zinc-500' : 'bg-zinc-600';
+  const TempoSourceIcon = sourceIcons[tempoSource];
+  const KeySourceIcon = sourceIcons[keySource];
 
   return (
     <header className="h-14 bg-white dark:bg-[#12121a] border-b border-gray-200 dark:border-white/5 flex items-center px-4 gap-4 z-40 shrink-0">
@@ -358,34 +374,71 @@ export function TransportBar({
         </div>
       </div>
 
-      {/* Right Section - Analysis & Controls */}
+      {/* Right Section - BPM, Key & Controls */}
       <div className="flex items-center gap-3">
-        {/* Metronome */}
-        {audioContext && (
+        {/* Metronome (with full controls when audioContext available) */}
+        {audioContext ? (
           <MetronomeInline
             audioContext={audioContext}
             masterGain={masterGain}
           />
+        ) : (
+          /* BPM Badge (always visible - shows session tempo with source indicator) */
+          <Tooltip
+            content={
+              <div className="text-xs">
+                <div className="font-medium mb-1">Session Tempo</div>
+                <div className="text-zinc-400">
+                  Source: {tempoSource === 'manual' ? 'Manual' : tempoSource === 'track' ? 'Track' : tempoSource === 'analyzer' ? 'Auto-Detect' : 'Tap'}
+                </div>
+              </div>
+            }
+          >
+            <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
+              <TempoSourceIcon className={cn(
+                'w-3.5 h-3.5',
+                tempoSource === 'analyzer' ? 'text-indigo-500 dark:text-indigo-400' :
+                tempoSource === 'track' ? 'text-emerald-500 dark:text-emerald-400' :
+                'text-gray-400 dark:text-zinc-500'
+              )} />
+              <span className="text-sm font-semibold text-gray-900 dark:text-white">{Math.round(sessionTempo)}</span>
+              <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
+            </div>
+          </Tooltip>
         )}
 
-        {/* BPM Badge (shows detected BPM when metronome not active) */}
-        {displayBPM && !audioContext && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">{Math.round(displayBPM)}</span>
-            <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
+        {/* Key Badge (always visible - shows session key with source indicator) */}
+        <Tooltip
+          content={
+            <div className="text-xs">
+              <div className="font-medium mb-1">Session Key</div>
+              <div className="text-zinc-400">
+                Source: {keySource === 'manual' ? 'Manual' : keySource === 'track' ? 'Track' : 'Auto-Detect'}
+              </div>
+              {!sessionKey && <div className="text-zinc-500 mt-1">No key detected</div>}
+            </div>
+          }
+        >
+          <div className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
+            <KeySourceIcon className={cn(
+              'w-3.5 h-3.5',
+              keySource === 'analyzer' ? 'text-indigo-500 dark:text-indigo-400' :
+              keySource === 'track' ? 'text-emerald-500 dark:text-emerald-400' :
+              'text-gray-400 dark:text-zinc-500'
+            )} />
+            {sessionKey ? (
+              <>
+                <div className={cn('w-2.5 h-2.5 rounded-full', keyColor)} />
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">
+                  {sessionKey}
+                  <span className="text-gray-500 dark:text-zinc-400">{sessionKeyScale === 'minor' ? 'm' : ''}</span>
+                </span>
+              </>
+            ) : (
+              <span className="text-sm text-gray-400 dark:text-zinc-500">Key</span>
+            )}
           </div>
-        )}
-
-        {/* Key Badge */}
-        {displayKey && (
-          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/5">
-            <div className={cn('w-2.5 h-2.5 rounded-full', keyColor)} />
-            <span className="text-sm font-semibold text-gray-900 dark:text-white">
-              {displayKey}
-              <span className="text-gray-500 dark:text-zinc-400">{displayScale === 'minor' ? 'm' : ''}</span>
-            </span>
-          </div>
-        )}
+        </Tooltip>
 
         <div className="h-5 w-px bg-gray-200 dark:bg-white/10" />
 

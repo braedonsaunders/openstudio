@@ -52,9 +52,15 @@ export function useLoopPlayback() {
       const scheduler = new LoopScheduler(context, soundEngine);
       schedulerRef.current = scheduler;
 
-      // Set master tempo from session tempo store (single source of truth)
-      const tempo = useSessionTempoStore.getState().tempo;
-      scheduler.setMasterTempo(tempo);
+      // Set master tempo and key from session tempo store (single source of truth)
+      const tempoState = useSessionTempoStore.getState();
+      scheduler.setMasterTempo(tempoState.tempo);
+
+      // Set master key if available
+      if (tempoState.key) {
+        const keyString = tempoState.keyScale === 'minor' ? `${tempoState.key}m` : tempoState.key;
+        scheduler.setMasterKey(keyString);
+      }
 
       isInitializedRef.current = true;
       return true;
@@ -339,6 +345,35 @@ export function useLoopPlayback() {
     );
 
     return () => unsubTempo();
+  }, []);
+
+  // Sync master key with session tempo store (the single source of truth)
+  useEffect(() => {
+    // Build key string from session tempo store (e.g., "Am" for A minor)
+    const getKeyString = () => {
+      const state = useSessionTempoStore.getState();
+      if (!state.key) return undefined;
+      return state.keyScale === 'minor' ? `${state.key}m` : state.key;
+    };
+
+    let prevKey = getKeyString();
+
+    // Subscribe to both key and keyScale changes
+    const unsubKey = useSessionTempoStore.subscribe(
+      (state) => ({ key: state.key, keyScale: state.keyScale }),
+      ({ key, keyScale }) => {
+        const keyString = key ? (keyScale === 'minor' ? `${key}m` : key) : undefined;
+        if (keyString !== prevKey) {
+          prevKey = keyString;
+          if (schedulerRef.current) {
+            schedulerRef.current.setMasterKey(keyString);
+          }
+        }
+      },
+      { fireImmediately: true, equalityFn: (a, b) => a.key === b.key && a.keyScale === b.keyScale }
+    );
+
+    return () => unsubKey();
   }, []);
 
   // Cleanup on unmount
