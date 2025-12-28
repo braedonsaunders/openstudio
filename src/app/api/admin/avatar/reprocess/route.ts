@@ -6,11 +6,15 @@ import { downloadAvatarComponent, uploadAvatarComponentWithThumbnail, getAvatarU
 
 interface ReprocessBody {
   componentId: string;
+  removeBackground?: boolean;
   backgroundThreshold?: number;
   specSizeThreshold?: number;
   cleanupSpecs?: boolean;
   feathering?: number;
   eraserMask?: string; // Base64 PNG mask
+  bgColor?: { r: number; g: number; b: number };
+  colorTolerance?: number;
+  useFloodFill?: boolean;
   previewOnly?: boolean;
 }
 
@@ -29,11 +33,15 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as ReprocessBody;
     const {
       componentId,
+      removeBackground = true,
       backgroundThreshold = 220,
       specSizeThreshold = 100,
       cleanupSpecs = true,
       feathering = 0,
       eraserMask,
+      bgColor = { r: 255, g: 255, b: 255 },
+      colorTolerance = 30,
+      useFloodFill = true,
       previewOnly = false,
     } = body;
 
@@ -86,11 +94,14 @@ export async function POST(req: NextRequest) {
 
     // Reprocess with new settings
     let processed = await processAvatarComponent(originalBuffer, {
-      removeBackground: true,
+      removeBackground,
       backgroundThreshold,
       cleanupSpecs,
       specSizeThreshold,
       feathering,
+      targetColor: bgColor,
+      colorTolerance,
+      useFloodFill,
     });
 
     // Apply eraser mask if provided

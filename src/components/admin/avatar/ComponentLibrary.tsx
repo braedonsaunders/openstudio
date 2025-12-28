@@ -21,6 +21,10 @@ import {
   Eraser,
   Undo2,
   Paintbrush,
+  Check,
+  Palette,
+  ToggleLeft,
+  ToggleRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Slider } from '@/components/ui/slider';
@@ -91,6 +95,12 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
   const [isSavingImage, setIsSavingImage] = useState(false);
   const [bgType, setBgType] = useState<BackgroundType>('checkerboard');
 
+  // Advanced background removal options
+  const [bgColor, setBgColor] = useState({ r: 255, g: 255, b: 255 });
+  const [colorTolerance, setColorTolerance] = useState(30);
+  const [useFloodFill, setUseFloodFill] = useState(true);
+  const [removeBackground, setRemoveBackground] = useState(true);
+
   // Eraser state
   const [isErasing, setIsErasing] = useState(false);
   const [brushSize, setBrushSize] = useState(20);
@@ -99,6 +109,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
   const maskCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [canvasReady, setCanvasReady] = useState(false);
+  const [pendingEraserMask, setPendingEraserMask] = useState(false);
 
   // Delete modal
   const [deletingComponent, setDeletingComponent] = useState<AvatarComponent | null>(null);
@@ -171,6 +182,11 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     setEraserMask(null);
     setIsErasing(false);
     setCanvasReady(false);
+    setBgColor({ r: 255, g: 255, b: 255 });
+    setColorTolerance(30);
+    setUseFloodFill(true);
+    setRemoveBackground(true);
+    setPendingEraserMask(false);
   };
 
   const handleCloseEdit = () => {
@@ -250,15 +266,20 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
   const handlePreviewProcessing = useCallback(async () => {
     if (!editingComponent) return;
     setIsProcessing(true);
+    setPendingEraserMask(false);
 
     try {
       const response = await adminPost('/api/admin/avatar/reprocess', {
         componentId: editingComponent.id,
+        removeBackground,
         backgroundThreshold: bgThreshold,
         specSizeThreshold: specThreshold,
         cleanupSpecs,
         feathering,
         eraserMask,
+        bgColor,
+        colorTolerance,
+        useFloodFill,
         previewOnly: true,
       });
 
@@ -275,7 +296,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     } finally {
       setIsProcessing(false);
     }
-  }, [editingComponent, bgThreshold, specThreshold, cleanupSpecs, feathering, eraserMask]);
+  }, [editingComponent, removeBackground, bgThreshold, specThreshold, cleanupSpecs, feathering, eraserMask, bgColor, colorTolerance, useFloodFill]);
 
   // Real-time preview with debouncing
   const triggerPreview = useCallback(() => {
@@ -287,9 +308,9 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     }, 500);
   }, [handlePreviewProcessing]);
 
-  // Auto-preview when sliders change
+  // Auto-preview when settings change
   useEffect(() => {
-    if (editTab === 'image' && editingComponent) {
+    if (editTab === 'image' && editingComponent && !isErasing) {
       triggerPreview();
     }
     return () => {
@@ -297,7 +318,15 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
         clearTimeout(previewTimerRef.current);
       }
     };
-  }, [bgThreshold, specThreshold, cleanupSpecs, feathering, editTab, editingComponent, triggerPreview]);
+  }, [bgThreshold, specThreshold, cleanupSpecs, feathering, editTab, editingComponent, triggerPreview, removeBackground, bgColor, colorTolerance, useFloodFill, isErasing]);
+
+  // Apply eraser mask when user clicks apply
+  const applyEraserMask = useCallback(() => {
+    if (eraserMask && !isProcessing) {
+      setIsErasing(false);
+      triggerPreview();
+    }
+  }, [eraserMask, isProcessing, triggerPreview]);
 
   const handleSaveProcessedImage = async () => {
     if (!editingComponent) return;
@@ -306,11 +335,15 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     try {
       const response = await adminPost('/api/admin/avatar/reprocess', {
         componentId: editingComponent.id,
+        removeBackground,
         backgroundThreshold: bgThreshold,
         specSizeThreshold: specThreshold,
         cleanupSpecs,
         feathering,
         eraserMask,
+        bgColor,
+        colorTolerance,
+        useFloodFill,
         previewOnly: false,
       });
 
@@ -387,6 +420,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
       // Save mask as base64
       if (maskCanvasRef.current) {
         setEraserMask(maskCanvasRef.current.toDataURL('image/png'));
+        setPendingEraserMask(true);
       }
     }
   };
@@ -429,6 +463,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
       }
     }
     setEraserMask(null);
+    setPendingEraserMask(false);
     initCanvas();
   };
 
@@ -823,77 +858,187 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
                       <Undo2 className="w-4 h-4 mr-1" />
                       Reset
                     </Button>
+                    {pendingEraserMask && (
+                      <Button
+                        size="sm"
+                        onClick={applyEraserMask}
+                        className="bg-green-500 hover:bg-green-600"
+                      >
+                        <Check className="w-4 h-4 mr-1" />
+                        Apply
+                      </Button>
+                    )}
                   </>
                 )}
               </div>
 
               {/* Background Removal Settings */}
               <div className="space-y-4 p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg">
-                <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
-                  <Paintbrush className="w-4 h-4" />
-                  Auto Background Removal
-                </h4>
-
-                <div>
-                  <Slider
-                    label="White Threshold"
-                    showValue
-                    min={150}
-                    max={255}
-                    value={bgThreshold}
-                    onChange={(e) => setBgThreshold(parseInt(e.target.value))}
-                    formatValue={(v) => `${v}`}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Lower = more aggressive. Removes pixels brighter than this.
-                  </p>
+                <div className="flex items-center justify-between">
+                  <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
+                    <Paintbrush className="w-4 h-4" />
+                    Background Removal
+                  </h4>
+                  <button
+                    onClick={() => setRemoveBackground(!removeBackground)}
+                    className={`flex items-center gap-1 text-sm px-2 py-1 rounded ${
+                      removeBackground
+                        ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                        : 'bg-gray-100 text-gray-500 dark:bg-gray-700 dark:text-gray-400'
+                    }`}
+                  >
+                    {removeBackground ? (
+                      <ToggleRight className="w-4 h-4" />
+                    ) : (
+                      <ToggleLeft className="w-4 h-4" />
+                    )}
+                    {removeBackground ? 'On' : 'Off'}
+                  </button>
                 </div>
 
-                <div className="flex items-center gap-3">
-                  <label className="flex items-center gap-2 cursor-pointer">
-                    <input
-                      type="checkbox"
-                      checked={cleanupSpecs}
-                      onChange={(e) => setCleanupSpecs(e.target.checked)}
-                      className="rounded"
-                    />
-                    <span className="text-sm text-gray-700 dark:text-gray-300">
-                      Remove white specs
-                    </span>
-                  </label>
-                </div>
+                {removeBackground && (
+                  <>
+                    {/* Background Color */}
+                    <div>
+                      <div className="flex items-center justify-between mb-2">
+                        <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                          <Palette className="w-4 h-4" />
+                          Target Color
+                        </label>
+                        <div className="flex items-center gap-2">
+                          <input
+                            type="color"
+                            value={`#${bgColor.r.toString(16).padStart(2, '0')}${bgColor.g.toString(16).padStart(2, '0')}${bgColor.b.toString(16).padStart(2, '0')}`}
+                            onChange={(e) => {
+                              const hex = e.target.value.slice(1);
+                              setBgColor({
+                                r: parseInt(hex.slice(0, 2), 16),
+                                g: parseInt(hex.slice(2, 4), 16),
+                                b: parseInt(hex.slice(4, 6), 16),
+                              });
+                            }}
+                            className="w-8 h-8 rounded cursor-pointer border border-gray-300"
+                          />
+                          <button
+                            onClick={() => setBgColor({ r: 255, g: 255, b: 255 })}
+                            className="text-xs px-2 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 dark:bg-gray-700 dark:border-gray-600"
+                          >
+                            White
+                          </button>
+                          <button
+                            onClick={() => setBgColor({ r: 0, g: 0, b: 0 })}
+                            className="text-xs px-2 py-1 bg-black text-white border border-gray-600 rounded hover:bg-gray-900"
+                          >
+                            Black
+                          </button>
+                        </div>
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        Select the background color to remove.
+                      </p>
+                    </div>
 
-                {cleanupSpecs && (
-                  <div>
-                    <Slider
-                      label="Max Spec Size"
-                      showValue
-                      min={10}
-                      max={500}
-                      value={specThreshold}
-                      onChange={(e) => setSpecThreshold(parseInt(e.target.value))}
-                      formatValue={(v) => `${v}px`}
-                    />
-                    <p className="text-xs text-gray-500 mt-1">
-                      Remove isolated white areas smaller than this.
+                    {/* Color Tolerance */}
+                    <div>
+                      <Slider
+                        label="Color Tolerance"
+                        showValue
+                        min={5}
+                        max={100}
+                        value={colorTolerance}
+                        onChange={(e) => setColorTolerance(parseInt(e.target.value))}
+                        formatValue={(v) => `${v}`}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Higher = remove more similar colors. Lower = exact match only.
+                      </p>
+                    </div>
+
+                    {/* Brightness Threshold (for white-like colors) */}
+                    <div>
+                      <Slider
+                        label="Brightness Threshold"
+                        showValue
+                        min={150}
+                        max={255}
+                        value={bgThreshold}
+                        onChange={(e) => setBgThreshold(parseInt(e.target.value))}
+                        formatValue={(v) => `${v}`}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        For white backgrounds: pixels brighter than this are removed.
+                      </p>
+                    </div>
+
+                    {/* Flood Fill Toggle */}
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={useFloodFill}
+                          onChange={(e) => setUseFloodFill(e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                          Only remove from edges (flood fill)
+                        </span>
+                      </label>
+                    </div>
+                    <p className="text-xs text-gray-500 -mt-2">
+                      {useFloodFill
+                        ? 'Only removes background connected to image edges.'
+                        : 'Removes all matching pixels anywhere in image.'}
                     </p>
-                  </div>
-                )}
 
-                <div>
-                  <Slider
-                    label="Edge Feathering"
-                    showValue
-                    min={0}
-                    max={10}
-                    value={feathering}
-                    onChange={(e) => setFeathering(parseInt(e.target.value))}
-                    formatValue={(v) => `${v}px`}
-                  />
-                  <p className="text-xs text-gray-500 mt-1">
-                    Soften edges for smoother transparency.
-                  </p>
-                </div>
+                    {/* Spec Cleanup */}
+                    <div className="flex items-center gap-3">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={cleanupSpecs}
+                          onChange={(e) => setCleanupSpecs(e.target.checked)}
+                          className="rounded"
+                        />
+                        <span className="text-sm text-gray-700 dark:text-gray-300">
+                          Remove isolated specs
+                        </span>
+                      </label>
+                    </div>
+
+                    {cleanupSpecs && (
+                      <div>
+                        <Slider
+                          label="Max Spec Size"
+                          showValue
+                          min={10}
+                          max={500}
+                          value={specThreshold}
+                          onChange={(e) => setSpecThreshold(parseInt(e.target.value))}
+                          formatValue={(v) => `${v}px`}
+                        />
+                        <p className="text-xs text-gray-500 mt-1">
+                          Remove isolated matching areas smaller than this.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Edge Feathering */}
+                    <div>
+                      <Slider
+                        label="Edge Feathering"
+                        showValue
+                        min={0}
+                        max={10}
+                        value={feathering}
+                        onChange={(e) => setFeathering(parseInt(e.target.value))}
+                        formatValue={(v) => `${v}px`}
+                      />
+                      <p className="text-xs text-gray-500 mt-1">
+                        Soften edges for smoother transparency.
+                      </p>
+                    </div>
+                  </>
+                )}
               </div>
 
               {/* Actions */}
