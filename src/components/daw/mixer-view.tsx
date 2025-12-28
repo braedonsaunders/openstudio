@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
+import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
 import {
   Mic,
@@ -96,7 +97,7 @@ function ConnectionIndicator({ quality }: { quality: User['connectionQuality'] }
             i === 0 ? 'h-1' : i === 1 ? 'h-1.5' : i === 2 ? 'h-2' : 'h-2.5',
             quality === 'excellent' || (quality === 'good' && i < 3) || (quality === 'fair' && i < 2) || (quality === 'poor' && i < 1)
               ? colors[quality]
-              : 'bg-zinc-700'
+              : 'bg-gray-400 dark:bg-zinc-700'
           )}
         />
       ))}
@@ -196,9 +197,9 @@ function VerticalFader({
       ref={trackRef}
       className={cn(
         'relative w-4 h-full rounded cursor-pointer',
-        'bg-gradient-to-b from-zinc-800 via-zinc-900 to-zinc-800',
-        'border border-zinc-700/50',
-        'shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)]',
+        'bg-gradient-to-b from-gray-300 via-gray-200 to-gray-300 dark:from-zinc-800 dark:via-zinc-900 dark:to-zinc-800',
+        'border border-gray-400/50 dark:border-zinc-700/50',
+        'shadow-[inset_0_2px_8px_rgba(0,0,0,0.2)] dark:shadow-[inset_0_2px_8px_rgba(0,0,0,0.5)]',
         disabled && 'cursor-not-allowed opacity-40'
       )}
       onMouseDown={handleMouseDown}
@@ -215,7 +216,7 @@ function VerticalFader({
 
       {/* Unity Gain Line (0dB) */}
       <div
-        className="absolute left-0 right-0 h-px bg-zinc-500/50"
+        className="absolute left-0 right-0 h-px bg-gray-500/50 dark:bg-zinc-500/50"
         style={{ bottom: '79.4%' }}
       />
 
@@ -224,19 +225,19 @@ function VerticalFader({
         className={cn(
           'absolute left-1/2 -translate-x-1/2 w-6 h-5',
           'rounded cursor-grab active:cursor-grabbing',
-          'shadow-lg border-t border-zinc-500/50',
-          isDragging && 'ring-1 ring-white/30'
+          'shadow-lg border-t border-gray-400/50 dark:border-zinc-500/50',
+          isDragging && 'ring-1 ring-black/30 dark:ring-white/30'
         )}
         style={{
           bottom: `calc(${value * 100}% - 10px)`,
-          background: 'linear-gradient(180deg, #555 0%, #333 50%, #222 100%)',
+          background: 'linear-gradient(180deg, #888 0%, #666 50%, #555 100%)',
         }}
         animate={{ scale: isDragging ? 1.1 : 1 }}
       >
         {/* Grip Lines */}
         <div className="absolute inset-x-1 top-1/2 -translate-y-1/2 space-y-[2px]">
-          <div className="h-px bg-zinc-600" />
-          <div className="h-px bg-zinc-600" />
+          <div className="h-px bg-gray-400 dark:bg-zinc-600" />
+          <div className="h-px bg-gray-400 dark:bg-zinc-600" />
         </div>
       </motion.div>
     </div>
@@ -279,18 +280,18 @@ function PanKnob({ value = 0.5, onChange, disabled }: { value?: number; onChange
   return (
     <div className="relative">
       {/* Pan markers */}
-      <div className="absolute -left-2 top-1/2 -translate-y-1/2 text-[7px] text-zinc-600 font-mono">L</div>
-      <div className="absolute -right-2 top-1/2 -translate-y-1/2 text-[7px] text-zinc-600 font-mono">R</div>
+      <div className="absolute -left-2 top-1/2 -translate-y-1/2 text-[7px] text-gray-500 dark:text-zinc-600 font-mono">L</div>
+      <div className="absolute -right-2 top-1/2 -translate-y-1/2 text-[7px] text-gray-500 dark:text-zinc-600 font-mono">R</div>
 
       <div
         ref={knobRef}
         className={cn(
           'w-7 h-7 rounded-full cursor-pointer',
-          'bg-gradient-to-b from-zinc-500 to-zinc-700',
-          'border border-zinc-400/30',
+          'bg-gradient-to-b from-gray-400 to-gray-500 dark:from-zinc-500 dark:to-zinc-700',
+          'border border-gray-500/30 dark:border-zinc-400/30',
           'shadow-md',
           disabled && 'opacity-40 cursor-not-allowed',
-          isDragging && 'ring-1 ring-white/30'
+          isDragging && 'ring-1 ring-black/30 dark:ring-white/30'
         )}
         onMouseDown={handleMouseDown}
       >
@@ -337,15 +338,15 @@ function UserChannelStrip({
       animate={{ opacity: 1, scale: 1 }}
       className={cn(
         'flex flex-col h-full rounded-xl overflow-hidden',
-        'bg-gradient-to-b from-zinc-800/90 to-zinc-900/95',
-        'border border-zinc-700/40',
-        'shadow-xl shadow-black/30',
+        'bg-gradient-to-b from-gray-200/90 to-gray-100/95 dark:from-zinc-800/90 dark:to-zinc-900/95',
+        'border border-gray-300/40 dark:border-zinc-700/40',
+        'shadow-xl shadow-black/10 dark:shadow-black/30',
         isCurrentUser && 'ring-1 ring-indigo-500/50'
       )}
       style={{ width: '90px', minWidth: '90px' }}
     >
       {/* Channel Header */}
-      <div className="p-2 border-b border-zinc-800/80 bg-zinc-900/50">
+      <div className="p-2 border-b border-gray-300/80 dark:border-zinc-800/80 bg-gray-100/50 dark:bg-zinc-900/50">
         <div className="flex flex-col items-center gap-1.5">
           {/* Avatar */}
           <div className="relative">
@@ -372,7 +373,7 @@ function UserChannelStrip({
 
           {/* Name */}
           <div className="w-full text-center">
-            <div className="text-[10px] font-semibold text-zinc-200 truncate px-1">
+            <div className="text-[10px] font-semibold text-gray-800 dark:text-zinc-200 truncate px-1">
               {isCurrentUser ? 'YOU' : user.name.split(' ')[0]}
             </div>
           </div>
@@ -392,14 +393,14 @@ function UserChannelStrip({
       </div>
 
       {/* Pan Section */}
-      <div className="flex justify-center py-2 border-b border-zinc-800/50">
+      <div className="flex justify-center py-2 border-b border-gray-300/50 dark:border-zinc-800/50">
         <PanKnob disabled={!isMaster || isCurrentUser} />
       </div>
 
       {/* Fader + Meter Section */}
       <div className="flex-1 flex items-stretch gap-1 px-2 py-2 min-h-0">
         {/* Left dB Scale */}
-        <div className="flex flex-col justify-between text-[6px] text-zinc-600 font-mono py-1">
+        <div className="flex flex-col justify-between text-[6px] text-gray-500 dark:text-zinc-600 font-mono py-1">
           {METER_DB_MARKS.map((mark) => (
             <span key={mark}>{mark}</span>
           ))}
@@ -426,8 +427,8 @@ function UserChannelStrip({
       {/* dB Display */}
       <div className="px-2 pb-1">
         <div className="flex justify-center">
-          <div className="px-2 py-0.5 rounded bg-black/60 border border-zinc-800">
-            <span className="text-[9px] font-mono text-green-400">
+          <div className="px-2 py-0.5 rounded bg-white/60 dark:bg-black/60 border border-gray-300 dark:border-zinc-800">
+            <span className="text-[9px] font-mono text-green-600 dark:text-green-400">
               {formatDb(user.volume)}
             </span>
           </div>
@@ -435,7 +436,7 @@ function UserChannelStrip({
       </div>
 
       {/* Mute/Solo */}
-      <div className="flex gap-1 p-2 border-t border-zinc-800/50">
+      <div className="flex gap-1 p-2 border-t border-gray-300/50 dark:border-zinc-800/50">
         <button
           onClick={() => !isCurrentUser && isMaster && onMuteChange?.(!user.isMuted)}
           disabled={isCurrentUser || !isMaster}
@@ -443,7 +444,7 @@ function UserChannelStrip({
             'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
             user.isMuted
               ? 'bg-red-600 text-white shadow-[0_0_8px_rgba(220,38,38,0.4)]'
-              : 'bg-zinc-700/80 text-zinc-400 hover:bg-zinc-600',
+              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
             (isCurrentUser || !isMaster) && 'cursor-not-allowed opacity-50'
           )}
         >
@@ -456,7 +457,7 @@ function UserChannelStrip({
             'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
             isSolo
               ? 'bg-amber-500 text-black shadow-[0_0_8px_rgba(245,158,11,0.4)]'
-              : 'bg-zinc-700/80 text-zinc-400 hover:bg-zinc-600',
+              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
             (isCurrentUser || !isMaster) && 'cursor-not-allowed opacity-50'
           )}
         >
@@ -465,9 +466,9 @@ function UserChannelStrip({
       </div>
 
       {/* Connection Quality */}
-      <div className="flex items-center justify-center gap-1.5 py-1.5 border-t border-zinc-800/50 bg-zinc-900/30">
+      <div className="flex items-center justify-center gap-1.5 py-1.5 border-t border-gray-300/50 dark:border-zinc-800/50 bg-gray-100/30 dark:bg-zinc-900/30">
         <ConnectionIndicator quality={user.connectionQuality} />
-        <span className="text-[7px] text-zinc-600">{user.latency}ms</span>
+        <span className="text-[7px] text-gray-500 dark:text-zinc-600">{user.latency}ms</span>
       </div>
     </motion.div>
   );
@@ -496,14 +497,14 @@ function TrackChannelStrip({
       animate={{ opacity: 1, scale: 1 }}
       className={cn(
         'flex flex-col h-full rounded-xl overflow-hidden',
-        'bg-gradient-to-b from-indigo-900/40 to-zinc-900/95',
-        'border border-indigo-500/30',
-        'shadow-xl shadow-black/30'
+        'bg-gradient-to-b from-indigo-200/40 to-gray-100/95 dark:from-indigo-900/40 dark:to-zinc-900/95',
+        'border border-indigo-400/30 dark:border-indigo-500/30',
+        'shadow-xl shadow-black/10 dark:shadow-black/30'
       )}
       style={{ width: '100px', minWidth: '100px' }}
     >
       {/* Channel Header */}
-      <div className="p-2 border-b border-indigo-900/50 bg-indigo-950/30">
+      <div className="p-2 border-b border-indigo-300/50 dark:border-indigo-900/50 bg-indigo-100/30 dark:bg-indigo-950/30">
         <div className="flex flex-col items-center gap-1.5">
           {/* Track Icon */}
           <div className="relative">
@@ -515,7 +516,7 @@ function TrackChannelStrip({
                   className="w-full h-full rounded-lg object-cover"
                 />
               ) : (
-                <Disc3 className="w-5 h-5 text-indigo-400" />
+                <Disc3 className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
               )}
             </div>
             <motion.div
@@ -527,18 +528,18 @@ function TrackChannelStrip({
 
           {/* Track Name */}
           <div className="w-full text-center">
-            <div className="text-[9px] font-semibold text-indigo-200 truncate px-1">
+            <div className="text-[9px] font-semibold text-indigo-700 dark:text-indigo-200 truncate px-1">
               {track.name}
             </div>
             {track.artist && (
-              <div className="text-[7px] text-indigo-400/70 truncate px-1">
+              <div className="text-[7px] text-indigo-500/70 dark:text-indigo-400/70 truncate px-1">
                 {track.artist}
               </div>
             )}
           </div>
 
           {/* Track Type Badge */}
-          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-[8px] font-medium text-indigo-300">
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-[8px] font-medium text-indigo-600 dark:text-indigo-300">
             <Radio className="w-2.5 h-2.5" />
             <span>TRACK</span>
           </div>
@@ -546,14 +547,14 @@ function TrackChannelStrip({
       </div>
 
       {/* Pan Section */}
-      <div className="flex justify-center py-2 border-b border-indigo-900/30">
+      <div className="flex justify-center py-2 border-b border-indigo-300/30 dark:border-indigo-900/30">
         <PanKnob disabled={!isMaster} />
       </div>
 
       {/* Fader + Meter Section */}
       <div className="flex-1 flex items-stretch gap-1 px-2 py-2 min-h-0">
         {/* Left dB Scale */}
-        <div className="flex flex-col justify-between text-[6px] text-zinc-600 font-mono py-1">
+        <div className="flex flex-col justify-between text-[6px] text-gray-500 dark:text-zinc-600 font-mono py-1">
           {METER_DB_MARKS.map((mark) => (
             <span key={mark}>{mark}</span>
           ))}
@@ -580,8 +581,8 @@ function TrackChannelStrip({
       {/* dB Display */}
       <div className="px-2 pb-1">
         <div className="flex justify-center">
-          <div className="px-2 py-0.5 rounded bg-black/60 border border-indigo-800/50">
-            <span className="text-[9px] font-mono text-indigo-300">
+          <div className="px-2 py-0.5 rounded bg-white/60 dark:bg-black/60 border border-indigo-300/50 dark:border-indigo-800/50">
+            <span className="text-[9px] font-mono text-indigo-600 dark:text-indigo-300">
               {formatDb(backingTrackVolume)}
             </span>
           </div>
@@ -589,7 +590,7 @@ function TrackChannelStrip({
       </div>
 
       {/* Mute/Solo */}
-      <div className="flex gap-1 p-2 border-t border-indigo-900/30">
+      <div className="flex gap-1 p-2 border-t border-indigo-300/30 dark:border-indigo-900/30">
         <button
           onClick={() => isMaster && setIsMuted(!isMuted)}
           disabled={!isMaster}
@@ -597,7 +598,7 @@ function TrackChannelStrip({
             'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
             isMuted
               ? 'bg-red-600 text-white shadow-[0_0_8px_rgba(220,38,38,0.4)]'
-              : 'bg-zinc-700/80 text-zinc-400 hover:bg-zinc-600',
+              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
             !isMaster && 'cursor-not-allowed opacity-50'
           )}
         >
@@ -610,7 +611,7 @@ function TrackChannelStrip({
             'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
             isSolo
               ? 'bg-amber-500 text-black shadow-[0_0_8px_rgba(245,158,11,0.4)]'
-              : 'bg-zinc-700/80 text-zinc-400 hover:bg-zinc-600',
+              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
             !isMaster && 'cursor-not-allowed opacity-50'
           )}
         >
@@ -619,8 +620,8 @@ function TrackChannelStrip({
       </div>
 
       {/* Stereo Label */}
-      <div className="flex items-center justify-center py-1.5 border-t border-indigo-900/30 bg-indigo-950/20">
-        <span className="text-[7px] text-indigo-400/60 font-mono">STEREO</span>
+      <div className="flex items-center justify-center py-1.5 border-t border-indigo-300/30 dark:border-indigo-900/30 bg-indigo-100/20 dark:bg-indigo-950/20">
+        <span className="text-[7px] text-indigo-500/60 dark:text-indigo-400/60 font-mono">STEREO</span>
       </div>
     </motion.div>
   );
@@ -681,23 +682,23 @@ function MasterChannelStrip({
     <div
       className={cn(
         'flex flex-col h-full rounded-xl overflow-hidden',
-        'bg-gradient-to-b from-amber-900/30 to-zinc-900/95',
-        'border-2 border-amber-600/40',
-        'shadow-xl shadow-black/30'
+        'bg-gradient-to-b from-amber-200/30 to-gray-100/95 dark:from-amber-900/30 dark:to-zinc-900/95',
+        'border-2 border-amber-500/40 dark:border-amber-600/40',
+        'shadow-xl shadow-black/10 dark:shadow-black/30'
       )}
       style={{ width: '110px', minWidth: '110px' }}
     >
       {/* Master Header */}
-      <div className="p-3 border-b border-amber-900/40 bg-amber-950/30">
+      <div className="p-3 border-b border-amber-300/40 dark:border-amber-900/40 bg-amber-100/30 dark:bg-amber-950/30">
         <div className="flex flex-col items-center gap-2">
           <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-amber-500/30 to-orange-500/30 border border-amber-500/50 flex items-center justify-center">
-            <Crown className="w-6 h-6 text-amber-400" />
+            <Crown className="w-6 h-6 text-amber-500 dark:text-amber-400" />
           </div>
-          <div className="text-xs font-bold text-amber-300 tracking-wider">MASTER</div>
+          <div className="text-xs font-bold text-amber-600 dark:text-amber-300 tracking-wider">MASTER</div>
 
           {/* Stereo Link */}
           <div className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-500/30">
-            <span className="text-[7px] text-amber-300 font-mono">STEREO LINK</span>
+            <span className="text-[7px] text-amber-600 dark:text-amber-300 font-mono">STEREO LINK</span>
           </div>
         </div>
       </div>
@@ -705,7 +706,7 @@ function MasterChannelStrip({
       {/* Fader + Meter Section */}
       <div className="flex-1 flex items-stretch gap-2 px-3 py-2 min-h-0">
         {/* Left dB Scale */}
-        <div className="flex flex-col justify-between text-[6px] text-zinc-600 font-mono py-1">
+        <div className="flex flex-col justify-between text-[6px] text-gray-500 dark:text-zinc-600 font-mono py-1">
           {METER_DB_MARKS.map((mark) => (
             <span key={mark}>{mark}</span>
           ))}
@@ -739,8 +740,8 @@ function MasterChannelStrip({
       {/* dB Display */}
       <div className="px-2 pb-2">
         <div className="flex justify-center">
-          <div className="px-3 py-1 rounded bg-black/60 border border-amber-700/50">
-            <span className="text-[10px] font-mono text-amber-300 font-bold">
+          <div className="px-3 py-1 rounded bg-white/60 dark:bg-black/60 border border-amber-400/50 dark:border-amber-700/50">
+            <span className="text-[10px] font-mono text-amber-600 dark:text-amber-300 font-bold">
               {formatDb(masterVolume)}
             </span>
           </div>
@@ -757,7 +758,7 @@ function MasterChannelStrip({
             'w-full py-1.5 rounded text-[8px] font-bold tracking-wider flex items-center justify-center gap-1 transition-all border',
             fxEnabled
               ? 'bg-indigo-500/80 text-white border-indigo-400/50 shadow-lg shadow-indigo-500/20'
-              : 'bg-zinc-700/60 text-zinc-400 border-transparent hover:bg-zinc-600',
+              : 'bg-gray-300/60 dark:bg-zinc-700/60 text-gray-600 dark:text-zinc-400 border-transparent hover:bg-gray-400 dark:hover:bg-zinc-600',
             !isRoomMaster && 'opacity-50 cursor-not-allowed'
           )}
         >
@@ -767,7 +768,7 @@ function MasterChannelStrip({
 
         {/* Gain Reduction Indicator (when FX enabled) */}
         {fxEnabled && gainReduction > 0.5 && (
-          <div className="flex items-center justify-center gap-1 text-[7px] text-amber-400">
+          <div className="flex items-center justify-center gap-1 text-[7px] text-amber-500 dark:text-amber-400">
             <span>GR: -{gainReduction.toFixed(1)}dB</span>
           </div>
         )}
@@ -779,8 +780,8 @@ function MasterChannelStrip({
           className={cn(
             'w-full py-1 rounded text-[7px] font-medium tracking-wider transition-colors',
             fxEnabled
-              ? 'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
-              : 'bg-zinc-800/40 text-zinc-600',
+              ? 'bg-gray-200/60 dark:bg-zinc-800/60 text-gray-600 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-zinc-700 hover:text-gray-800 dark:hover:text-zinc-300'
+              : 'bg-gray-200/40 dark:bg-zinc-800/40 text-gray-500 dark:text-zinc-600',
             (!isRoomMaster || !fxEnabled) && 'opacity-50 cursor-not-allowed'
           )}
         >
@@ -789,24 +790,39 @@ function MasterChannelStrip({
       </div>
 
       {/* Output Label */}
-      <div className="flex items-center justify-center py-2 border-t border-amber-900/40 bg-amber-950/20">
-        <span className="text-[7px] text-amber-400/60 font-mono">MAIN OUT L/R</span>
+      <div className="flex items-center justify-center py-2 border-t border-amber-300/40 dark:border-amber-900/40 bg-amber-100/20 dark:bg-amber-950/20">
+        <span className="text-[7px] text-amber-500/60 dark:text-amber-400/60 font-mono">MAIN OUT L/R</span>
       </div>
     </div>
   );
 }
 
 // Performance display component - shows real latency metrics
-function PerformanceDisplay() {
-  const { performanceMetrics } = useAudioStore();
+// Uses same buffer logic as transport-bar for consistency
+function PerformanceDisplay({ currentUser }: { currentUser: User | null }) {
+  const { performanceMetrics, settings } = useAudioStore();
+  const getTracksByUser = useUserTracksStore((s) => s.getTracksByUser);
 
   // Calculate total latency (context + output + effects)
   const totalLatency = performanceMetrics.totalLatency || 0;
 
+  // Use same buffer logic as transport-bar for unified display
+  const userBufferSize = useMemo(() => {
+    if (!currentUser) return settings.bufferSize;
+    const userTracks = getTracksByUser(currentUser.id);
+    if (userTracks.length === 0) return settings.bufferSize;
+    // Use the first audio track's buffer setting
+    const audioTrack = userTracks.find((t) => t.type !== 'midi');
+    return audioTrack?.audioSettings.bufferSize ?? settings.bufferSize;
+  }, [currentUser, getTracksByUser, settings.bufferSize]);
+
+  // Calculate buffer latency in ms (buffer samples / sample rate * 1000)
+  const bufferLatencyMs = (userBufferSize / settings.sampleRate) * 1000;
+
   return (
-    <div className="flex items-center gap-3 text-[9px] text-zinc-600">
+    <div className="flex items-center gap-3 text-[9px] text-gray-500 dark:text-zinc-500">
       <span>Latency: ~{Math.round(totalLatency)}ms</span>
-      <span>Buffer: {performanceMetrics.currentBufferSize || 256} samples</span>
+      <span>Buffer: {userBufferSize} samples ({bufferLatencyMs.toFixed(1)}ms)</span>
     </div>
   );
 }
@@ -1218,13 +1234,13 @@ function MasterEffectsPanel({
 function SectionDivider({ label }: { label: string }) {
   return (
     <div className="flex flex-col items-center justify-center px-2 h-full">
-      <div className="w-px flex-1 bg-gradient-to-b from-transparent via-zinc-600 to-transparent" />
+      <div className="w-px flex-1 bg-gradient-to-b from-transparent via-gray-400 dark:via-zinc-600 to-transparent" />
       <div className="py-2">
-        <div className="-rotate-90 whitespace-nowrap text-[8px] text-zinc-600 font-medium tracking-wider">
+        <div className="-rotate-90 whitespace-nowrap text-[8px] text-gray-500 dark:text-zinc-600 font-medium tracking-wider">
           {label}
         </div>
       </div>
-      <div className="w-px flex-1 bg-gradient-to-b from-transparent via-zinc-600 to-transparent" />
+      <div className="w-px flex-1 bg-gradient-to-b from-transparent via-gray-400 dark:via-zinc-600 to-transparent" />
     </div>
   );
 }
@@ -1258,23 +1274,23 @@ export function MixerView({
   }, [users, currentUser]);
 
   return (
-    <div className="h-full flex flex-col bg-gradient-to-b from-zinc-900 via-zinc-950 to-black overflow-hidden">
+    <div className="h-full flex flex-col bg-gradient-to-b from-gray-100 via-gray-50 to-white dark:from-zinc-900 dark:via-zinc-950 dark:to-black overflow-hidden">
       {/* Mixer Header */}
-      <div className="h-8 flex items-center justify-between px-4 border-b border-zinc-800/80 bg-zinc-900/90 backdrop-blur-sm">
+      <div className="h-8 flex items-center justify-between px-4 border-b border-gray-200 dark:border-zinc-800/80 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-sm">
         <div className="flex items-center gap-2">
-          <h2 className="text-xs font-bold text-zinc-100 tracking-wide flex items-center gap-2">
-            <Signal className="w-3.5 h-3.5 text-indigo-400" />
+          <h2 className="text-xs font-bold text-gray-900 dark:text-zinc-100 tracking-wide flex items-center gap-2">
+            <Signal className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
             LIVE MIXER
           </h2>
           {!isMaster && (
-            <span className="text-[9px] text-amber-400/70">(view only)</span>
+            <span className="text-[9px] text-amber-600/70 dark:text-amber-400/70">(view only)</span>
           )}
         </div>
 
-        <div className="flex items-center gap-3 text-[10px] text-zinc-500">
+        <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-zinc-500">
           <span>{allUsers.length} channels</span>
           <div className="flex items-center gap-1.5">
-            <span className="text-[9px] text-zinc-600 font-mono">48kHz</span>
+            <span className="text-[9px] text-gray-500 dark:text-zinc-600 font-mono">48kHz</span>
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
           </div>
         </div>
@@ -1297,10 +1313,10 @@ export function MixerView({
               />
             ))
           ) : (
-            <div className="flex items-center justify-center px-8 py-4 rounded-xl bg-zinc-800/30 border border-zinc-700/30">
+            <div className="flex items-center justify-center px-8 py-4 rounded-xl bg-gray-200/30 dark:bg-zinc-800/30 border border-gray-300/30 dark:border-zinc-700/30">
               <div className="text-center">
-                <Music2 className="w-8 h-8 text-zinc-600 mx-auto mb-2" />
-                <p className="text-xs text-zinc-500">Waiting for musicians...</p>
+                <Music2 className="w-8 h-8 text-gray-500 dark:text-zinc-600 mx-auto mb-2" />
+                <p className="text-xs text-gray-500 dark:text-zinc-500">Waiting for musicians...</p>
               </div>
             </div>
           )}
@@ -1339,24 +1355,24 @@ export function MixerView({
       </AnimatePresence>
 
       {/* Bottom Status Bar */}
-      <div className="flex items-center justify-between px-4 py-2 border-t border-zinc-800/80 bg-zinc-900/80 backdrop-blur-sm">
+      <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-sm">
         <div className="flex items-center gap-4">
           {currentTrack ? (
             <div className="flex items-center gap-2">
-              <Disc3 className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="text-[10px] text-zinc-400">
-                Now Playing: <span className="text-zinc-200">{currentTrack.name}</span>
+              <Disc3 className="w-3.5 h-3.5 text-indigo-500 dark:text-indigo-400" />
+              <span className="text-[10px] text-gray-500 dark:text-zinc-400">
+                Now Playing: <span className="text-gray-800 dark:text-zinc-200">{currentTrack.name}</span>
                 {currentTrack.artist && (
-                  <span className="text-zinc-500"> — {currentTrack.artist}</span>
+                  <span className="text-gray-500 dark:text-zinc-500"> — {currentTrack.artist}</span>
                 )}
               </span>
             </div>
           ) : (
-            <span className="text-[10px] text-zinc-500">No track selected</span>
+            <span className="text-[10px] text-gray-500 dark:text-zinc-500">No track selected</span>
           )}
         </div>
 
-        <PerformanceDisplay />
+        <PerformanceDisplay currentUser={currentUser} />
       </div>
     </div>
   );
