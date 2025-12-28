@@ -420,82 +420,79 @@ export interface RoomSearchParams {
   offset?: number;
 }
 
-// Mureka AI Music Generation Types
-export type MurekaStyle =
-  | 'pop'
-  | 'rock'
-  | 'hiphop'
-  | 'rnb'
-  | 'electronic'
-  | 'jazz'
-  | 'classical'
-  | 'folk'
-  | 'country'
-  | 'metal'
-  | 'reggae'
-  | 'latin'
-  | 'ambient'
-  | 'lofi'
-  | 'cinematic'
-  | 'funk'
-  | 'soul'
-  | 'blues';
+// Google Lyria RealTime AI Music Generation Types
+// WebSocket-based real-time streaming music generation
 
-export type MurekaMood =
-  | 'happy'
-  | 'sad'
-  | 'energetic'
-  | 'chill'
-  | 'romantic'
-  | 'dark'
-  | 'uplifting'
-  | 'melancholic'
-  | 'aggressive'
-  | 'peaceful'
-  | 'mysterious'
-  | 'epic'
-  | 'dreamy'
-  | 'nostalgic';
+/**
+ * Musical scale options for Lyria
+ * Each enum corresponds to relative major/minor keys
+ */
+export type LyriaScale =
+  | 'C_MAJOR_A_MINOR'      // All white keys
+  | 'G_MAJOR_E_MINOR'      // F#
+  | 'D_MAJOR_B_MINOR'      // F#, C#
+  | 'A_MAJOR_F_SHARP_MINOR'// F#, C#, G#
+  | 'E_MAJOR_C_SHARP_MINOR'// F#, C#, G#, D#
+  | 'B_MAJOR_G_SHARP_MINOR'// F#, C#, G#, D#, A#
+  | 'F_MAJOR_D_MINOR'      // Bb
+  | 'B_FLAT_MAJOR_G_MINOR' // Bb, Eb
+  | 'E_FLAT_MAJOR_C_MINOR' // Bb, Eb, Ab
+  | 'A_FLAT_MAJOR_F_MINOR' // Bb, Eb, Ab, Db
+  | 'CHROMATIC';           // All notes
 
-export interface MurekaGenerationRequest {
-  prompt: string;
-  lyrics?: string;
-  style?: MurekaStyle;
-  mood?: MurekaMood;
-  tempo?: 'slow' | 'medium' | 'fast' | 'very_fast';
-  duration?: number;
-  instrumental?: boolean;
-  model?: 'standard' | 'pro' | 'ultra';
-  referenceAudioUrl?: string;
-  key?: string;
-  customTags?: string[];
+/**
+ * Lyria RealTime session configuration
+ */
+export interface LyriaConfig {
+  bpm: number;              // 60-200 BPM
+  scale?: LyriaScale;       // Musical scale/key
+  density: number;          // 0.0-1.0 note density
+  brightness: number;       // 0.0-1.0 spectral brightness
+  guidance: number;         // 0.0-6.0 prompt adherence
+  temperature: number;      // 0.0-3.0 creativity/chaos
+  drums: number;            // 0.0-1.0 drum presence
+  bass: number;             // 0.0-1.0 bass presence
+  topK?: number;            // 1-1000 sampling parameter
+  seed?: number;            // Random seed for reproducibility
 }
 
-export interface MurekaTrack {
-  id: string;
-  title: string;
-  audioUrl: string;
-  duration: number;
-  style: MurekaStyle;
-  mood?: MurekaMood;
-  prompt: string;
-  lyrics?: string;
-  hasVocals: boolean;
-  createdAt: string;
-  waveformUrl?: string;
-  coverArtUrl?: string;
-  stems?: {
-    vocals?: string;
-    instrumental?: string;
-  };
+/**
+ * Weighted prompt for blending multiple musical influences
+ */
+export interface LyriaWeightedPrompt {
+  text: string;
+  weight: number;           // 0.0-1.0
 }
 
-export interface MurekaGenerationProgress {
-  stage: 'queued' | 'composing' | 'arranging' | 'vocals' | 'mixing' | 'mastering' | 'complete' | 'error';
-  progress: number;
-  message: string;
-  estimatedTimeRemaining?: number;
-  currentStep?: string;
+/**
+ * Lyria session state
+ */
+export type LyriaSessionState =
+  | 'disconnected'
+  | 'connecting'
+  | 'connected'
+  | 'playing'
+  | 'paused'
+  | 'error';
+
+/**
+ * Lyria audio chunk received from WebSocket
+ */
+export interface LyriaAudioChunk {
+  data: ArrayBuffer;        // Raw PCM audio data
+  timestamp: number;        // Timestamp in ms
+  sampleRate: 48000;        // Always 48kHz
+  channels: 2;              // Always stereo
+}
+
+/**
+ * Lyria session events
+ */
+export interface LyriaSessionEvents {
+  onStateChange: (state: LyriaSessionState) => void;
+  onAudioChunk: (chunk: LyriaAudioChunk) => void;
+  onError: (error: Error) => void;
+  onConfigApplied: (config: LyriaConfig) => void;
 }
 
 // AudioDec (Facebook SAM Audio) Types - Stem Separation & Audio Manipulation
@@ -531,7 +528,7 @@ export interface TextToSongModification {
   audioUrl: string;
   modification: 'style-transfer' | 'tempo-change' | 'key-change' | 'remix' | 'extend';
   parameters: {
-    targetStyle?: MurekaStyle;
+    targetStyle?: string;
     targetTempo?: number;
     targetKey?: string;
     extensionDuration?: number;
@@ -540,18 +537,15 @@ export interface TextToSongModification {
 }
 
 // AI Generation Provider Union Type
-export type AIGenerationProvider = 'mureka' | 'musicgen';
+export type AIGenerationProvider = 'lyria';
 
 export interface AIGenerationConfig {
   provider: AIGenerationProvider;
   prompt: string;
-  duration?: number;
-  style?: string;
-  tempo?: number;
-  key?: string;
-  instrumental?: boolean;
-  // Provider-specific options
-  murekaOptions?: Partial<MurekaGenerationRequest>;
+  bpm?: number;
+  scale?: LyriaScale;
+  // Lyria-specific options
+  lyriaConfig?: Partial<LyriaConfig>;
 }
 
 // ============================================================================
