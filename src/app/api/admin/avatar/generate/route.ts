@@ -1,21 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser, getUserProfile } from '@/lib/supabase/auth';
+import { verifyAdminRequest } from '@/lib/supabase/server';
 import { generateAvatarImages, getAvailableModels, buildPromptFromPreset, getConfiguredProviders } from '@/lib/avatar/generator';
 import { getGenerationPresets } from '@/lib/avatar/supabase';
 import type { GenerateImageRequest } from '@/types/avatar';
 
-// Check if user is admin
-async function isAdmin(): Promise<boolean> {
-  const user = await getUser();
-  if (!user) return false;
-  const profile = await getUserProfile(user.id);
-  return profile?.accountType === 'admin';
-}
-
 // GET /api/admin/avatar/generate - Get available models and presets
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -60,7 +53,8 @@ export async function GET() {
 // POST /api/admin/avatar/generate - Generate images
 export async function POST(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
