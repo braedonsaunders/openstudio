@@ -168,40 +168,28 @@ export function NoteGridEditor({
     return null;
   }, [notes]);
 
-  // Check if position is near the end of a note (for extend handle)
-  const isNearNoteEnd = useCallback((t: number, noteNumber: number): { index: number; note: MidiNote } | null => {
-    for (let i = 0; i < notes.length; i++) {
-      const n = notes[i];
-      if (n.n === noteNumber) {
-        const noteEnd = n.t + n.d;
-        // Check if we're in the last cell of the note
-        if (t >= noteEnd - cellDuration && t < noteEnd + cellDuration * 0.5) {
-          return { index: i, note: n };
-        }
-      }
-    }
-    return null;
-  }, [notes, cellDuration]);
-
   // Handle cell mouse down
   const handleCellMouseDown = useCallback((cell: GridCell, e: React.MouseEvent) => {
     e.preventDefault();
 
     const existingNote = getNoteAtCell(cell.t, cell.noteNumber);
-    const nearEnd = isNearNoteEnd(cell.t, cell.noteNumber);
-
-    // Check if clicking near the end of a note to extend it
-    if (nearEnd && existingNote && Math.abs((existingNote.note.t + existingNote.note.d) - (cell.t + cellDuration)) < cellDuration) {
-      setIsExtending(true);
-      setExtendNoteIndex(existingNote.index);
-      setExtendOriginalDuration(existingNote.note.d); // KEY FIX: Store original duration
-      setExtendStartX(e.clientX);
-      return;
-    }
 
     if (existingNote) {
-      // CLICK-TO-PLAY: Always play the note sound when clicking on it
+      // CLICK-TO-PLAY: ALWAYS play the note sound when clicking on it
       playPreview(existingNote.note.n, existingNote.note.v);
+
+      // Check if clicking near the end of a note to extend it
+      const noteEnd = existingNote.note.t + existingNote.note.d;
+      const cellEnd = cell.t + cellDuration;
+      const isNearEnd = Math.abs(noteEnd - cellEnd) < cellDuration * 0.5;
+
+      if (isNearEnd && existingNote.note.d >= cellDuration) {
+        setIsExtending(true);
+        setExtendNoteIndex(existingNote.index);
+        setExtendOriginalDuration(existingNote.note.d);
+        setExtendStartX(e.clientX);
+        return;
+      }
 
       if (e.shiftKey) {
         // Shift+click: Toggle selection
@@ -246,7 +234,7 @@ export function NoteGridEditor({
       setIsDrawing(true);
       setSelectedNotes(new Set());
     }
-  }, [notes, onChange, getNoteAtCell, isNearNoteEnd, selectedVelocity, cellDuration, playPreview, selectedNotes]);
+  }, [notes, onChange, getNoteAtCell, selectedVelocity, cellDuration, playPreview, selectedNotes]);
 
   // Handle cell mouse enter (for drawing)
   const handleCellEnter = useCallback((cell: GridCell) => {

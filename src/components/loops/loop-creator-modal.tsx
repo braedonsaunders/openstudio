@@ -131,11 +131,11 @@ export function LoopCreatorModal({
     }
   }, []);
 
-  // Track scheduled notes to avoid duplicates
-  const scheduledNotesRef = useRef<Set<string>>(new Set());
-  const currentLoopRef = useRef<number>(0);
+  // Track which notes have been triggered in current loop
+  const triggeredNotesRef = useRef<Set<number>>(new Set());
+  const lastPositionRef = useRef<number>(0);
 
-  // Playback with playhead
+  // Playback with playhead - simplified approach
   const startPlayback = useCallback(async () => {
     if (!selectedInstrument || notes.length === 0) return;
 
@@ -151,66 +151,57 @@ export function LoopCreatorModal({
     const loopDuration = totalBeats * beatDuration;
 
     loopStartTimeRef.current = context.currentTime;
-    scheduledNotesRef.current.clear();
-    currentLoopRef.current = 0;
+    triggeredNotesRef.current.clear();
+    lastPositionRef.current = 0;
 
-    const scheduleLoop = () => {
-      const now = context.currentTime;
-      const elapsed = now - loopStartTimeRef.current;
-      const currentLoop = Math.floor(elapsed / loopDuration);
-      const lookahead = 0.15; // Schedule 150ms ahead
-
-      // Check if we've moved to a new loop iteration
-      if (currentLoop > currentLoopRef.current) {
-        // Clear old scheduled notes for previous loops
-        scheduledNotesRef.current.clear();
-        currentLoopRef.current = currentLoop;
-      }
-
-      // Schedule notes for current and upcoming window
-      for (const note of notes) {
-        // Calculate the absolute time for this note in the current loop
-        const loopOffset = currentLoop * loopDuration;
-        const noteAbsoluteTime = loopStartTimeRef.current + loopOffset + note.t * loopDuration;
-
-        // Also check next loop iteration for seamless looping
-        const noteAbsoluteTimeNext = noteAbsoluteTime + loopDuration;
-
-        const noteKey = `${currentLoop}-${note.t}-${note.n}`;
-        const noteKeyNext = `${currentLoop + 1}-${note.t}-${note.n}`;
-
-        // Schedule if within lookahead window and not already scheduled
-        if (noteAbsoluteTime >= now && noteAbsoluteTime < now + lookahead && !scheduledNotesRef.current.has(noteKey)) {
-          const noteDuration = Math.max(0.05, note.d * loopDuration);
-          engine.playNote(selectedInstrument, note.n, note.v, noteAbsoluteTime, noteDuration);
-          scheduledNotesRef.current.add(noteKey);
-        }
-
-        // Schedule next loop's notes for seamless looping
-        if (noteAbsoluteTimeNext >= now && noteAbsoluteTimeNext < now + lookahead && !scheduledNotesRef.current.has(noteKeyNext)) {
-          const noteDuration = Math.max(0.05, note.d * loopDuration);
-          engine.playNote(selectedInstrument, note.n, note.v, noteAbsoluteTimeNext, noteDuration);
-          scheduledNotesRef.current.add(noteKeyNext);
-        }
-      }
-    };
-
-    // Animation frame for smooth playhead
-    const updatePlayhead = () => {
+    // Combined update function for both playhead and note triggering
+    const update = () => {
       if (!audioContextRef.current) return;
 
       const now = audioContextRef.current.currentTime;
       const elapsed = now - loopStartTimeRef.current;
       const loopPosition = (elapsed % loopDuration) / loopDuration;
+
+      // Check if we've looped back to the start
+      if (loopPosition < lastPositionRef.current - 0.5) {
+        // We've wrapped around, clear triggered notes
+        triggeredNotesRef.current.clear();
+      }
+
+      // Trigger notes that the playhead has passed over
+      for (let i = 0; i < notes.length; i++) {
+        const note = notes[i];
+        // Check if playhead just crossed this note's start position
+        if (note.t >= lastPositionRef.current && note.t < loopPosition + 0.01) {
+          if (!triggeredNotesRef.current.has(i)) {
+            // Play this note NOW (undefined time = immediate)
+            const noteDuration = Math.max(0.08, note.d * loopDuration);
+            engine.playNote(selectedInstrument, note.n, note.v, undefined, noteDuration);
+            triggeredNotesRef.current.add(i);
+          }
+        }
+      }
+
+      // Also check notes at the very beginning when we loop
+      if (lastPositionRef.current > 0.9 && loopPosition < 0.1) {
+        for (let i = 0; i < notes.length; i++) {
+          const note = notes[i];
+          if (note.t < loopPosition + 0.01 && !triggeredNotesRef.current.has(i)) {
+            const noteDuration = Math.max(0.08, note.d * loopDuration);
+            engine.playNote(selectedInstrument, note.n, note.v, undefined, noteDuration);
+            triggeredNotesRef.current.add(i);
+          }
+        }
+      }
+
+      lastPositionRef.current = loopPosition;
       setPlaybackPosition(loopPosition);
 
-      animationFrameRef.current = requestAnimationFrame(updatePlayhead);
+      animationFrameRef.current = requestAnimationFrame(update);
     };
 
-    // Run scheduler more frequently for tighter timing
-    playbackIntervalRef.current = setInterval(scheduleLoop, 20);
-    scheduleLoop();
-    animationFrameRef.current = requestAnimationFrame(updatePlayhead);
+    // Start the animation loop
+    animationFrameRef.current = requestAnimationFrame(update);
   }, [selectedInstrument, notes, bars, timeSignature, bpm, initAudio]);
 
   const stopPlayback = useCallback(() => {
@@ -222,9 +213,9 @@ export function LoopCreatorModal({
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    // Clear scheduled notes
-    scheduledNotesRef.current.clear();
-    currentLoopRef.current = 0;
+    // Clear triggered notes
+    triggeredNotesRef.current.clear();
+    lastPositionRef.current = 0;
     // Use killAll for immediate stop
     soundEngineRef.current?.killAll();
     setIsPlaying(false);
