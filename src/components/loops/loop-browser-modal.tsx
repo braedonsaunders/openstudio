@@ -15,6 +15,8 @@ import {
 } from '@/lib/audio/loop-library';
 import { SoundEngine } from '@/lib/audio/sound-engine';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { useCustomLoopsStore } from '@/stores/custom-loops-store';
+import { LoopCreatorModal } from './loop-creator-modal';
 import type { LoopDefinition, LoopCategory } from '@/types/loops';
 import {
   Search,
@@ -27,6 +29,10 @@ import {
   ChevronRight,
   Gauge,
   Layers,
+  PenTool,
+  Heart,
+  Trash2,
+  Edit3,
 } from 'lucide-react';
 
 interface LoopBrowserModalProps {
@@ -47,6 +53,7 @@ export function LoopBrowserModal({
   onAddLoop,
 }: LoopBrowserModalProps) {
   const { previewingLoopId, setPreviewingLoop, masterTempo } = useLoopTracksStore();
+  const { getAllLoops: getAllCustomLoops, deleteLoop: deleteCustomLoop, setUserId, syncFromServer } = useCustomLoopsStore();
 
   // Dark mode detection
   const [isDark, setIsDark] = useState(false);
@@ -55,14 +62,28 @@ export function LoopBrowserModal({
     setIsDark(document.documentElement.classList.contains('dark'));
   }, [isOpen]);
 
+  // Sync user ID and fetch loops from server when modal opens
+  useEffect(() => {
+    if (isOpen && userId) {
+      setUserId(userId);
+    }
+  }, [isOpen, userId, setUserId]);
+
   // State
-  const [selectedCategory, setSelectedCategory] = useState<LoopCategory | null>('drums');
+  const [selectedCategory, setSelectedCategory] = useState<LoopCategory | 'my-loops' | null>('drums');
   const [selectedSubcategory, setSelectedSubcategory] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [bpmRange, setBpmRange] = useState<[number, number]>([60, 180]);
   const [intensityFilter, setIntensityFilter] = useState<number | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
   const [previewVolume, setPreviewVolume] = useState(0.7);
+
+  // Creator modal state
+  const [showCreator, setShowCreator] = useState(false);
+  const [editingLoopId, setEditingLoopId] = useState<string | undefined>(undefined);
+
+  // Get custom loops
+  const customLoops = getAllCustomLoops();
 
   // Audio refs
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -93,15 +114,19 @@ export function LoopBrowserModal({
 
   // Get filtered loops
   const filteredLoops = useMemo(() => {
-    let loops = LOOP_LIBRARY;
+    let loops: LoopDefinition[] = [];
 
-    // Apply category filter
-    if (selectedCategory) {
+    // Handle "my-loops" category
+    if (selectedCategory === 'my-loops') {
+      loops = customLoops;
+    } else if (selectedCategory) {
       loops = getLoopsByCategory(selectedCategory);
+    } else {
+      loops = LOOP_LIBRARY;
     }
 
-    // Apply subcategory filter
-    if (selectedSubcategory) {
+    // Apply subcategory filter (skip for custom loops)
+    if (selectedSubcategory && selectedCategory !== 'my-loops') {
       loops = getLoopsBySubcategory(selectedSubcategory);
     }
 
@@ -124,7 +149,7 @@ export function LoopBrowserModal({
     }
 
     return loops;
-  }, [selectedCategory, selectedSubcategory, searchQuery, bpmRange, intensityFilter]);
+  }, [selectedCategory, selectedSubcategory, searchQuery, bpmRange, intensityFilter, customLoops]);
 
   // Preview a loop
   const playPreview = useCallback(
@@ -177,7 +202,8 @@ export function LoopBrowserModal({
       clearInterval(previewIntervalRef.current);
       previewIntervalRef.current = null;
     }
-    soundEngineRef.current?.allNotesOff();
+    // Use killAll for immediate stop without release envelope
+    soundEngineRef.current?.killAll();
     setPreviewingLoop(null);
     setIsPlaying(false);
   }, [setPreviewingLoop]);
@@ -220,6 +246,50 @@ export function LoopBrowserModal({
           </div>
 
           <div className="flex-1 overflow-y-auto p-2">
+            {/* Create Loop Button */}
+            <button
+              onClick={() => {
+                setEditingLoopId(undefined);
+                setShowCreator(true);
+              }}
+              className={cn(
+                'w-full flex items-center gap-2 px-3 py-2 mb-3 rounded-lg text-left transition-colors',
+                'bg-indigo-500 hover:bg-indigo-600 text-white'
+              )}
+            >
+              <PenTool className="w-4 h-4" />
+              <span className="font-medium text-sm">Create Loop</span>
+            </button>
+
+            {/* My Loops Section */}
+            {customLoops.length > 0 && (
+              <div className="mb-3">
+                <button
+                  onClick={() => {
+                    setSelectedCategory('my-loops');
+                    setSelectedSubcategory(null);
+                  }}
+                  className={cn(
+                    'w-full flex items-center gap-2 px-3 py-2 rounded-lg text-left transition-colors',
+                    selectedCategory === 'my-loops'
+                      ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/50 dark:text-indigo-300'
+                      : isDark
+                        ? 'hover:bg-gray-700 text-gray-300'
+                        : 'hover:bg-slate-100 text-slate-700'
+                  )}
+                >
+                  <Heart className="w-4 h-4 text-pink-500" />
+                  <span className="font-medium text-sm">My Loops</span>
+                  <span className={cn('ml-auto text-xs', isDark ? 'text-gray-500' : 'text-slate-400')}>
+                    {customLoops.length}
+                  </span>
+                </button>
+              </div>
+            )}
+
+            {/* Divider */}
+            <div className={cn('mb-3 border-b', isDark ? 'border-gray-700' : 'border-slate-200')} />
+
             {LOOP_CATEGORIES.map((category) => (
               <div key={category.id} className="mb-1">
                 <button
@@ -408,22 +478,35 @@ export function LoopBrowserModal({
               </div>
             ) : (
               <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
-                {filteredLoops.map((loop) => (
-                  <LoopCard
-                    key={loop.id}
-                    loop={loop}
-                    isPlaying={previewingLoopId === loop.id}
-                    isDark={isDark}
-                    onPlay={() => {
-                      if (previewingLoopId === loop.id) {
-                        stopPreview();
-                      } else {
-                        playPreview(loop);
-                      }
-                    }}
-                    onAdd={() => handleAddLoop(loop)}
-                  />
-                ))}
+                {filteredLoops.map((loop) => {
+                  const isCustom = 'isCustom' in loop && loop.isCustom === true;
+                  return (
+                    <LoopCard
+                      key={loop.id}
+                      loop={loop}
+                      isPlaying={previewingLoopId === loop.id}
+                      isDark={isDark}
+                      isCustom={isCustom}
+                      onPlay={() => {
+                        if (previewingLoopId === loop.id) {
+                          stopPreview();
+                        } else {
+                          playPreview(loop);
+                        }
+                      }}
+                      onAdd={() => handleAddLoop(loop)}
+                      onEdit={isCustom ? () => {
+                        setEditingLoopId(loop.id);
+                        setShowCreator(true);
+                      } : undefined}
+                      onDelete={isCustom ? () => {
+                        if (confirm('Delete this loop? This cannot be undone.')) {
+                          deleteCustomLoop(loop.id);
+                        }
+                      } : undefined}
+                    />
+                  );
+                })}
               </div>
             )}
           </div>
@@ -442,6 +525,20 @@ export function LoopBrowserModal({
           </div>
         </div>
       </div>
+
+      {/* Loop Creator Modal */}
+      <LoopCreatorModal
+        isOpen={showCreator}
+        onClose={() => {
+          setShowCreator(false);
+          setEditingLoopId(undefined);
+        }}
+        editingLoopId={editingLoopId}
+        onSave={(loop) => {
+          // Optionally add the newly created loop to the session
+          // handleAddLoop(loop);
+        }}
+      />
     </Modal>
   );
 }
@@ -451,11 +548,14 @@ interface LoopCardProps {
   loop: LoopDefinition;
   isPlaying: boolean;
   isDark: boolean;
+  isCustom?: boolean;
   onPlay: () => void;
   onAdd: () => void;
+  onEdit?: () => void;
+  onDelete?: () => void;
 }
 
-function LoopCard({ loop, isPlaying, isDark, onPlay, onAdd }: LoopCardProps) {
+function LoopCard({ loop, isPlaying, isDark, isCustom, onPlay, onAdd, onEdit, onDelete }: LoopCardProps) {
   const categoryIcon =
     LOOP_CATEGORIES.find((c) => c.id === loop.category)?.icon || '🎵';
 
@@ -471,7 +571,7 @@ function LoopCard({ loop, isPlaying, isDark, onPlay, onAdd }: LoopCardProps) {
     >
       {/* Header */}
       <div className="flex items-start gap-2 mb-2">
-        <span className="text-lg">{categoryIcon}</span>
+        <span className="text-lg">{isCustom ? '✏️' : categoryIcon}</span>
         <div className="flex-1 min-w-0">
           <div className={cn("font-medium truncate", isDark ? "text-white" : "text-slate-900")}>{loop.name}</div>
           <div className={cn("text-xs", isDark ? "text-gray-400" : "text-slate-500")}>
@@ -479,6 +579,31 @@ function LoopCard({ loop, isPlaying, isDark, onPlay, onAdd }: LoopCardProps) {
             {loop.key && ` • ${loop.key}`}
           </div>
         </div>
+        {/* Edit/Delete buttons for custom loops */}
+        {isCustom && (
+          <div className="flex gap-1">
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit?.(); }}
+              className={cn(
+                'p-1 rounded hover:bg-slate-200 dark:hover:bg-gray-700 transition-colors',
+                isDark ? 'text-gray-400 hover:text-white' : 'text-slate-400 hover:text-slate-700'
+              )}
+              title="Edit loop"
+            >
+              <Edit3 className="w-3.5 h-3.5" />
+            </button>
+            <button
+              onClick={(e) => { e.stopPropagation(); onDelete?.(); }}
+              className={cn(
+                'p-1 rounded hover:bg-red-100 dark:hover:bg-red-900/30 transition-colors',
+                'text-red-400 hover:text-red-600'
+              )}
+              title="Delete loop"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Tags */}
