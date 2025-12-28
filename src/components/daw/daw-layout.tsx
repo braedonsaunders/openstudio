@@ -595,7 +595,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       }
       playStartTimeRef.current = null;
     };
-  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration, songTracks.length]);
+  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
