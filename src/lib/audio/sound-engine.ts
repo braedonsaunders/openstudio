@@ -234,6 +234,23 @@ export class WebAudioSynth {
       voiceId: ++this.voiceIdCounter,
     };
 
+    // CRITICAL FIX: Stop any existing voice on this note before replacing it.
+    // Otherwise the old oscillators become orphaned and can never be stopped,
+    // causing notes to drone forever (the "synth loop won't stop" bug).
+    const existingVoice = this.activeVoices.get(noteNumber);
+    if (existingVoice) {
+      // Immediately kill the old voice's oscillators
+      existingVoice.ampGain.gain.cancelScheduledValues(startTime);
+      existingVoice.ampGain.gain.setValueAtTime(0, startTime);
+      existingVoice.oscillators.forEach((osc) => {
+        try {
+          osc.stop(startTime);
+        } catch {
+          // Already stopped
+        }
+      });
+    }
+
     this.activeVoices.set(noteNumber, voice);
 
     // Return the voice ID so caller can verify identity when stopping
