@@ -88,8 +88,9 @@ export function useLoopPlayback() {
       await audioContext.resume();
     }
 
-    console.log('[useLoopPlayback] Audio context state:', audioContext?.state);
+    console.log('[useLoopPlayback] Audio context state:', audioContext?.state, 'currentTime:', audioContext?.currentTime);
     console.log('[useLoopPlayback] Starting loop:', track.name, 'preset:', track.soundPreset, 'midiNotes:', loopDef.midiData?.length);
+    console.log('[useLoopPlayback] Track details:', { id: track.id, loopId: track.loopId, soundPreset: track.soundPreset });
 
     // Start the loop
     const syncTimestamp = track.startTime || Date.now();
