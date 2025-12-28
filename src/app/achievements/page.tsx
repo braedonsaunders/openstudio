@@ -25,6 +25,7 @@ import {
   Sparkles,
   Star,
 } from 'lucide-react';
+import { UserMenu } from '@/components/auth/UserMenu';
 import { motion, AnimatePresence } from 'framer-motion';
 
 type FilterType = 'all' | 'unlocked' | 'locked' | AchievementCategory;
@@ -48,7 +49,7 @@ export default function AchievementsPage() {
     uniqueCollaborators: stats?.uniqueCollaborators || 0,
     totalJamSeconds: stats?.totalJamSeconds || 0,
     longestSessionSeconds: stats?.longestSessionSeconds || 0,
-    messagessSent: stats?.messagesSent || 0,
+    messagesSent: stats?.messagesSent || 0,
     friendsCount: friends?.length || 0,
     reactionsReceived: stats?.reactionsReceived || 0,
     reactionsGiven: stats?.reactionsGiven || 0,
@@ -132,7 +133,7 @@ export default function AchievementsPage() {
             <Trophy className="w-5 h-5 text-yellow-500" />
             Achievements
           </h1>
-          <div className="w-20" /> {/* Spacer for centering */}
+          <UserMenu />
         </div>
       </header>
 
@@ -221,7 +222,7 @@ export default function AchievementsPage() {
         </div>
 
         {/* Achievements Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 auto-rows-fr">
           <AnimatePresence mode="popLayout">
             {filteredAchievements.map((achievement) => {
               const isUnlocked = unlockedIds.has(achievement.id);
@@ -238,9 +239,10 @@ export default function AchievementsPage() {
                   animate={{ opacity: 1, scale: 1 }}
                   exit={{ opacity: 0, scale: 0.9 }}
                   transition={{ duration: 0.2 }}
+                  className="h-full"
                 >
                   <Card
-                    className={`p-4 cursor-pointer transition-all hover:shadow-lg ${
+                    className={`h-full p-4 cursor-pointer transition-all hover:shadow-lg flex flex-col ${
                       isUnlocked
                         ? `${tierStyle.bgColor} ${tierStyle.borderColor} border-2`
                         : achievement.isHidden && !isUnlocked
@@ -249,9 +251,9 @@ export default function AchievementsPage() {
                     }`}
                     onClick={() => setSelectedAchievement(achievement)}
                   >
-                    <div className="flex items-start gap-4">
+                    <div className="flex items-start gap-4 flex-1">
                       {/* Icon */}
-                      <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl ${
+                      <div className={`w-14 h-14 rounded-xl flex items-center justify-center text-2xl shrink-0 ${
                         isUnlocked
                           ? tierStyle.bgColor
                           : 'bg-gray-100 dark:bg-gray-800'
@@ -264,7 +266,7 @@ export default function AchievementsPage() {
                       </div>
 
                       {/* Content */}
-                      <div className="flex-1 min-w-0">
+                      <div className="flex-1 min-w-0 flex flex-col">
                         <div className="flex items-center gap-2 mb-1">
                           <h3 className={`font-semibold truncate ${
                             isUnlocked ? tierStyle.textColor : 'text-gray-900 dark:text-white'
@@ -274,10 +276,10 @@ export default function AchievementsPage() {
                               : achievement.name}
                           </h3>
                           {isUnlocked && (
-                            <Check className={`w-4 h-4 ${tierStyle.textColor}`} />
+                            <Check className={`w-4 h-4 shrink-0 ${tierStyle.textColor}`} />
                           )}
                         </div>
-                        <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2">
+                        <p className="text-sm text-gray-500 dark:text-gray-400 line-clamp-2 flex-1">
                           {achievement.isHidden && !isUnlocked
                             ? achievement.hint || 'Keep exploring to discover this achievement...'
                             : achievement.description}
@@ -295,7 +297,7 @@ export default function AchievementsPage() {
                         )}
 
                         {/* XP Reward */}
-                        <div className="flex items-center gap-2 mt-2">
+                        <div className="flex items-center gap-2 mt-auto pt-2">
                           <span className={`text-xs px-2 py-0.5 rounded-full ${
                             isUnlocked
                               ? 'bg-green-500/20 text-green-600 dark:text-green-400'

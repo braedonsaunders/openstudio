@@ -904,7 +904,7 @@ export function getAchievementProgress(
     uniqueCollaborators?: number;
     totalJamSeconds?: number;
     longestSessionSeconds?: number;
-    messagessSent?: number;
+    messagesSent?: number;
     friendsCount?: number;
     reactionsReceived?: number;
     reactionsGiven?: number;
@@ -937,7 +937,7 @@ export function getAchievementProgress(
       target = criteria.count || 1;
       break;
     case 'messages_sent':
-      current = stats.messagessSent || 0;
+      current = stats.messagesSent || 0;
       break;
     case 'friends_count':
       current = stats.friendsCount || 0;

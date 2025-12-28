@@ -416,6 +416,27 @@ export const useAuthStore = create<AuthState>()(
                 const year = new Date(profile.createdAt).getFullYear();
                 shouldUnlock = (criteria.years as number[])?.includes(year);
                 break;
+              case 'tracks_uploaded':
+                shouldUnlock = stats.tracksUploaded >= (criteria.count || 1);
+                break;
+              case 'tracks_generated':
+                shouldUnlock = stats.tracksGenerated >= (criteria.count || 1);
+                break;
+              case 'stems_separated':
+                shouldUnlock = stats.stemsSeparated >= (criteria.count || 1);
+                break;
+              case 'reactions_received':
+                shouldUnlock = stats.reactionsReceived >= (criteria.count || 1);
+                break;
+              case 'reactions_given':
+                shouldUnlock = stats.reactionsGiven >= (criteria.count || 1);
+                break;
+              case 'longest_session_hours':
+                shouldUnlock = stats.longestSessionSeconds / 3600 >= (criteria.count || 1);
+                break;
+              case 'instruments_played':
+                shouldUnlock = instruments.length >= (criteria.count || 1);
+                break;
             }
 
             if (shouldUnlock) {
