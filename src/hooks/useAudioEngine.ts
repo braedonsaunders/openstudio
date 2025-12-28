@@ -16,7 +16,8 @@ export function useAudioEngine() {
   const animationFrameRef = useRef<number | null>(null);
   const performanceIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Get analyser nodes from the global store (shared across all hook instances)
+  // Get values from stores - only subscribe to values we need reactively
+  // For setter functions, use getState() inside callbacks to avoid dependency issues
   const {
     settings,
     isInitialized,
@@ -24,34 +25,30 @@ export function useAudioEngine() {
     audioContext,
     backingTrackAnalyser,
     masterAnalyser,
-    setInitialized,
-    setCapturing,
-    setMuted,
-    setLocalLevel,
-    setJitterStats,
-    setConnectionQuality,
-    setCurrentBufferSize,
-    setPerformanceMetrics,
-    setPlaying,
-    setCurrentTime,
-    setDuration,
-    setAudioContext,
-    setBackingTrackAnalyser,
-    setMasterAnalyser,
-    setInputDevices,
-    setOutputDevices,
   } = useAudioStore();
 
   const {
     currentTrack,
     stemMixState,
     stemsAvailable,
-    setAudioLevels,
-    setWaveformData,
   } = useRoomStore();
 
   // Initialize audio engine (singleton pattern)
+  // Uses getState() for all store setters to avoid dependency issues
   const initialize = useCallback(async () => {
+    // Get store setters via getState() to avoid infinite loop issues
+    const {
+      setInitialized,
+      setLocalLevel,
+      setPerformanceMetrics,
+      setInputDevices,
+      setOutputDevices,
+      setAudioContext,
+      setBackingTrackAnalyser,
+      setMasterAnalyser,
+    } = useAudioStore.getState();
+    const { setAudioLevels } = useRoomStore.getState();
+
     // Return existing engine if already initialized
     if (globalEngine) {
       console.log('Audio engine already initialized (singleton)');
@@ -87,11 +84,11 @@ export function useAudioEngine() {
       await engine.initialize();
       console.log('Audio engine initialized successfully');
 
-      // Set up level monitoring
+      // Set up level monitoring - use getState() inside callback
       engine.setOnLevelUpdate((levels) => {
-        setAudioLevels(levels);
+        useRoomStore.getState().setAudioLevels(levels);
         const localLevel = levels.get('local') || 0;
-        setLocalLevel(localLevel);
+        useAudioStore.getState().setLocalLevel(localLevel);
       });
 
       globalEngine = engine;
@@ -122,7 +119,7 @@ export function useAudioEngine() {
               effectsProcessingTime = isProcessing ? 0.2 : 0.05;
             }
 
-            setPerformanceMetrics({
+            useAudioStore.getState().setPerformanceMetrics({
               audioContextLatency: contextLatency,
               outputLatency: outputLatency,
               effectsProcessingTime,
@@ -136,8 +133,8 @@ export function useAudioEngine() {
       // Get available devices
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
-        setInputDevices(devices.filter((d) => d.kind === 'audioinput'));
-        setOutputDevices(devices.filter((d) => d.kind === 'audiooutput'));
+        useAudioStore.getState().setInputDevices(devices.filter((d) => d.kind === 'audioinput'));
+        useAudioStore.getState().setOutputDevices(devices.filter((d) => d.kind === 'audiooutput'));
       } catch (err) {
         console.warn('Failed to enumerate devices:', err);
       }
@@ -149,9 +146,11 @@ export function useAudioEngine() {
       const engine = await globalEngineInitPromise;
 
       // Store analyser nodes in state so they trigger re-renders
-      setAudioContext(engine.getAudioContext());
-      setBackingTrackAnalyser(engine.getBackingTrackAnalyser());
-      setMasterAnalyser(engine.getMasterAnalyser());
+      // Get fresh setters in case state changed during async operations
+      const audioStore = useAudioStore.getState();
+      audioStore.setAudioContext(engine.getAudioContext());
+      audioStore.setBackingTrackAnalyser(engine.getBackingTrackAnalyser());
+      audioStore.setMasterAnalyser(engine.getMasterAnalyser());
 
       console.log('Audio engine analysers ready:', {
         backingTrackAnalyser: !!engine.getBackingTrackAnalyser(),
@@ -162,7 +161,7 @@ export function useAudioEngine() {
     } finally {
       globalEngineInitPromise = null;
     }
-  }, [settings, setInitialized, setAudioLevels, setLocalLevel, setInputDevices, setOutputDevices, setAudioContext, setBackingTrackAnalyser, setMasterAnalyser]);
+  }, [settings]);
 
   // Capture local audio
   const startCapture = useCallback(async (trackSettings?: TrackAudioSettings) => {
@@ -181,15 +180,16 @@ export function useAudioEngine() {
     } : {};
 
     const stream = await globalEngine!.captureLocalAudio(captureOptions);
-    setCapturing(true);
+    useAudioStore.getState().setCapturing(true);
     return stream;
-  }, [initialize, setCapturing]);
+  }, [initialize]);
 
   // Stop capture
   const stopCapture = useCallback(() => {
+    const { setCapturing, setMuted } = useAudioStore.getState();
     setCapturing(false);
     setMuted(true);
-  }, [setCapturing, setMuted]);
+  }, []);
 
   // Recapture audio with new settings (e.g., when user changes device or channel config)
   const recaptureWithSettings = useCallback(async (trackSettings: TrackAudioSettings) => {
@@ -218,8 +218,8 @@ export function useAudioEngine() {
 
   // Mute/unmute local audio
   const toggleMute = useCallback((muted: boolean) => {
-    setMuted(muted);
-  }, [setMuted]);
+    useAudioStore.getState().setMuted(muted);
+  }, []);
 
   // Add remote stream
   const addRemoteStream = useCallback((userId: string, stream: MediaStream) => {
@@ -292,6 +292,9 @@ export function useAudioEngine() {
       return false;
     }
 
+    const { setDuration } = useAudioStore.getState();
+    const { setWaveformData } = useRoomStore.getState();
+
     // Skip loading for YouTube tracks (handled by iframe)
     if (track.youtubeId) {
       console.log('YouTube track - skipping audio engine load');
@@ -343,7 +346,7 @@ export function useAudioEngine() {
     }
 
     return true; // Loading succeeded
-  }, [setDuration, setWaveformData]);
+  }, []);
 
   // Play backing track with sync
   const playBackingTrack = useCallback((syncTimestamp: number, offset: number = 0) => {
@@ -366,17 +369,17 @@ export function useAudioEngine() {
     } else {
       globalEngine.playBackingTrack(syncTimestamp, offset);
     }
-    setPlaying(true);
+    useAudioStore.getState().setPlaying(true);
 
     // Start time update loop
     const updateTime = () => {
       if (globalEngine?.isCurrentlyPlaying()) {
-        setCurrentTime(globalEngine.getCurrentTime());
+        useAudioStore.getState().setCurrentTime(globalEngine.getCurrentTime());
         animationFrameRef.current = requestAnimationFrame(updateTime);
       }
     };
     updateTime();
-  }, [stemsAvailable, setPlaying, setCurrentTime]);
+  }, [stemsAvailable]);
 
   // Pause backing track
   const pauseBackingTrack = useCallback(() => {
@@ -387,19 +390,19 @@ export function useAudioEngine() {
     } else {
       globalEngine.stopBackingTrack();
     }
-    setPlaying(false);
+    useAudioStore.getState().setPlaying(false);
 
     if (animationFrameRef.current) {
       cancelAnimationFrame(animationFrameRef.current);
     }
-  }, [stemsAvailable, setPlaying]);
+  }, [stemsAvailable]);
 
   // Seek to position
   const seekTo = useCallback((time: number, syncTimestamp: number) => {
     pauseBackingTrack();
     playBackingTrack(syncTimestamp, time);
-    setCurrentTime(time);
-  }, [pauseBackingTrack, playBackingTrack, setCurrentTime]);
+    useAudioStore.getState().setCurrentTime(time);
+  }, [pauseBackingTrack, playBackingTrack]);
 
   // Toggle stem
   const toggleStem = useCallback((stem: string, enabled: boolean) => {
@@ -424,10 +427,10 @@ export function useAudioEngine() {
         cancelAnimationFrame(animationFrameRef.current);
         animationFrameRef.current = null;
       }
-      setPlaying(false);
+      useAudioStore.getState().setPlaying(false);
       callback();
     });
-  }, [setPlaying]);
+  }, []);
 
   // Update jitter buffer from stats
   const updateFromStats = useCallback((stats: { jitter: number; packetLoss: number; roundTripTime: number }) => {
@@ -442,10 +445,11 @@ export function useAudioEngine() {
     };
 
     const newBufferSize = globalEngine.updateJitterBuffer(jitterStats);
+    const { setCurrentBufferSize, setJitterStats, setConnectionQuality } = useAudioStore.getState();
     setCurrentBufferSize(newBufferSize);
     setJitterStats(globalEngine.getJitterStats());
     setConnectionQuality(globalEngine.getConnectionQuality());
-  }, [setCurrentBufferSize, setJitterStats, setConnectionQuality]);
+  }, []);
 
   // Cleanup animation frame on unmount
   // Note: We don't dispose the global engine here since it's shared across components
@@ -491,13 +495,15 @@ export function useAudioEngine() {
       globalEngine.dispose();
       globalEngine = null;
       globalEngineInitPromise = null;
+      // Use getState() to avoid dependency issues
+      const { setInitialized, setAudioContext, setBackingTrackAnalyser, setMasterAnalyser } = useAudioStore.getState();
       setInitialized(false);
       // Clear analyser state from the store
       setAudioContext(null);
       setBackingTrackAnalyser(null);
       setMasterAnalyser(null);
     }
-  }, [setInitialized, setAudioContext, setBackingTrackAnalyser, setMasterAnalyser]);
+  }, []);
 
   // Get the master gain node for external connections (like track processors)
   const getMasterGain = useCallback((): GainNode | null => {
