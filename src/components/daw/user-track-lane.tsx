@@ -66,7 +66,7 @@ export function UserTrackLane({
       <DynamicWaveform
         audioLevel={effectiveLevel}
         trackColor={track.color}
-        isMuted={isMuted}
+        isMuted={isMuted ?? false}
         isArmed={isArmed}
         zoom={zoom}
         historySeconds={historySeconds}
