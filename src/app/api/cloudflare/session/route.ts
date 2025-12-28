@@ -193,6 +193,19 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ tracks });
       }
 
+      case 'syncClock': {
+        // Return server time for clock synchronization
+        return NextResponse.json({
+          serverTime: Date.now(),
+        });
+      }
+
+      case 'removeTrack': {
+        // Remove a specific track (similar to close but for individual tracks)
+        // For now, just acknowledge - actual track removal handled by renegotiation
+        return NextResponse.json({ success: true });
+      }
+
       default:
         return NextResponse.json(
           { error: `Unknown action: ${action}` },
