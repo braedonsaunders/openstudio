@@ -320,7 +320,6 @@ export class DrumKitSampler {
     this.masterGain = context.createGain();
     this.masterGain.gain.value = 0.8;
     this.masterGain.connect(outputNode);
-    console.log('[DrumKitSampler] Created with kitId:', kitId, 'context state:', context.state);
   }
 
   async loadKit(kitId: string): Promise<void> {
@@ -536,29 +535,16 @@ export class DrumKitSampler {
   }
 
   trigger(noteNumber: number, velocity: number, time?: number): void {
-    // Check if context is running
+    // Resume context if not running
     if (this.context.state !== 'running') {
-      console.warn('[DrumKitSampler] Context not running:', this.context.state, '- attempting to resume');
       this.context.resume();
     }
 
     const sample = this.samples.get(noteNumber);
-    if (!sample) {
-      console.warn('[DrumKitSampler] No sample for note:', noteNumber, 'available:', Array.from(this.samples.keys()));
-      return;
-    }
+    if (!sample) return;
 
     const startTime = time ?? this.context.currentTime;
     const velocityGain = (velocity / 127) * 0.9;
-
-    // Check if the scheduled time is in the past
-    if (startTime < this.context.currentTime) {
-      console.warn('[DrumKitSampler] Scheduled time is in the past:', {
-        startTime: startTime.toFixed(3),
-        currentTime: this.context.currentTime.toFixed(3),
-        delta: (this.context.currentTime - startTime).toFixed(3)
-      });
-    }
 
     const source = this.context.createBufferSource();
     source.buffer = sample;
@@ -570,7 +556,6 @@ export class DrumKitSampler {
     gain.connect(this.masterGain);
 
     source.start(startTime);
-    console.log('[DrumKitSampler] Triggered note:', noteNumber, 'at:', startTime.toFixed(3), 'contextTime:', this.context.currentTime.toFixed(3), 'velocity:', velocity, 'state:', this.context.state);
 
     const voice: SamplerVoice = {
       source,
@@ -628,16 +613,13 @@ export class SoundEngine {
     this.masterGain.gain.value = 0.8;
     this.outputNode = outputNode || context.destination;
     this.masterGain.connect(this.outputNode);
-    console.log('[SoundEngine] Created with context state:', context.state, 'outputNode:', outputNode ? 'custom' : 'destination');
   }
 
   async initialize(): Promise<void> {
-    console.log('[SoundEngine] Initializing - pre-loading drum kits');
     // Pre-create common instruments
     await this.getOrCreateDrumKit('acoustic-kit');
     await this.getOrCreateDrumKit('808-kit');
     this.getOrCreateSynth('synth-bass-1');
-    console.log('[SoundEngine] Initialized - loaded kits:', Array.from(this.drumKits.keys()));
   }
 
   getSynth(presetId: string): WebAudioSynth {
@@ -688,12 +670,10 @@ export class SoundEngine {
     if (category === 'drums') {
       // Use synchronous access for pre-loaded kits (critical for timing)
       const kit = this.getDrumKitSync(preset);
-      console.log('[SoundEngine] playNote drums:', { preset, hasKit: !!kit, noteNumber, velocity, time });
       if (kit) {
         kit.trigger(noteNumber, velocity, time);
       } else {
         // Kit not loaded yet - load and trigger (may miss timing)
-        console.warn('[SoundEngine] Drum kit not pre-loaded:', preset);
         this.getDrumKit(preset).then((loadedKit) => {
           loadedKit.trigger(noteNumber, velocity, time);
         });

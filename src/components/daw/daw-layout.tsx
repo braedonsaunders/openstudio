@@ -182,6 +182,10 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     return maxDuration;
   }, [songTracks]);
 
+  // Memoize track type checks to avoid recalculating on every render
+  const hasAudioTracks = useMemo(() => songTracks.some((t) => t.type === 'audio'), [songTracks]);
+  const hasLoopTracks = useMemo(() => songTracks.some((t) => t.type === 'loop'), [songTracks]);
+
   // Check if Song has any tracks to play
   const hasSongTracks = songTracks.length > 0;
 
@@ -370,6 +374,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     // Set the new time
     setCurrentTime(seekTime);
 
+    // Trigger time tracking reset for loop-only playback
+    if (wasPlaying && hasLoopTracks && !hasAudioTracks) {
+      setSeekVersion((v) => v + 1);
+    }
+
     // If was playing, restart at new position
     if (wasPlaying && songTracks.length > 0) {
       // Initialize audio systems
@@ -412,7 +421,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         }
       }
     }
-  }, [isMaster, isPlaying, songTracks, pauseBackingTrack, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setPlaying]);
+  }, [isMaster, isPlaying, songTracks, hasLoopTracks, hasAudioTracks, pauseBackingTrack, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setPlaying]);
 
   // Playback handlers - Song system only, no legacy fallback
   const handlePlay = useCallback(() => {
@@ -521,23 +530,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const playStartTimeRef = useRef<number | null>(null);
   const playStartPositionRef = useRef<number>(0);
   const loopTimeAnimationRef = useRef<number | null>(null);
-
-  // Memoize track type checks to avoid recalculating on every render
-  const hasAudioTracks = useMemo(() => songTracks.some((t) => t.type === 'audio'), [songTracks]);
-  const hasLoopTracks = useMemo(() => songTracks.some((t) => t.type === 'loop'), [songTracks]);
+  const [seekVersion, setSeekVersion] = useState(0);
 
   useEffect(() => {
-    console.log('[LoopTimeUpdate] Effect running:', {
-      isPlaying,
-      hasLoopTracks,
-      hasAudioTracks,
-      songDuration,
-    });
-
     // Only run for loop-only playback (no audio tracks to drive time)
     if (!isPlaying || !hasLoopTracks || hasAudioTracks) {
-      console.log('[LoopTimeUpdate] Conditions not met for loop time tracking');
-      // Not in loop-only mode - cleanup
       playStartTimeRef.current = null;
       if (loopTimeAnimationRef.current) {
         cancelAnimationFrame(loopTimeAnimationRef.current);
@@ -546,37 +543,22 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       return;
     }
 
-    console.log('[LoopTimeUpdate] Starting loop-only time tracking');
-
     // Start time tracking for loop-only playback
-    // Use getState() to get current time without adding to dependencies
     const startPosition = useAudioStore.getState().currentTime;
     playStartTimeRef.current = performance.now();
     playStartPositionRef.current = startPosition;
 
-    let frameCount = 0;
     const updateLoopTime = () => {
-      if (playStartTimeRef.current === null) {
-        console.log('[LoopTimeUpdate] playStartTimeRef is null, stopping');
-        return;
-      }
+      if (playStartTimeRef.current === null) return;
 
       const elapsed = (performance.now() - playStartTimeRef.current) / 1000;
       const newTime = playStartPositionRef.current + elapsed;
 
-      // Log every 60 frames (roughly once per second)
-      frameCount++;
-      if (frameCount % 60 === 0) {
-        console.log('[LoopTimeUpdate] Updating time:', newTime.toFixed(2), 'duration:', songDuration);
-      }
-
-      // Update time if we haven't exceeded song duration
       if (newTime < songDuration) {
         useAudioStore.getState().setCurrentTime(newTime);
         loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
       } else {
         // Song ended - loop back to start
-        console.log('[LoopTimeUpdate] Looping back to start');
         useAudioStore.getState().setCurrentTime(0);
         playStartTimeRef.current = performance.now();
         playStartPositionRef.current = 0;
@@ -585,17 +567,15 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     };
 
     loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
-    console.log('[LoopTimeUpdate] Started animation frame loop');
 
     return () => {
-      console.log('[LoopTimeUpdate] Cleanup - stopping animation');
       if (loopTimeAnimationRef.current) {
         cancelAnimationFrame(loopTimeAnimationRef.current);
         loopTimeAnimationRef.current = null;
       }
       playStartTimeRef.current = null;
     };
-  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration]);
+  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration, seekVersion]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
