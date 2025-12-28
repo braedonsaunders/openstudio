@@ -5,6 +5,7 @@ import {
   createComponent,
   updateComponent,
   deleteComponent,
+  changeComponentId,
 } from '@/lib/avatar/supabase';
 import type { CreateComponentRequest, UpdateComponentRequest } from '@/types/avatar';
 
@@ -70,14 +71,24 @@ export async function PATCH(req: NextRequest) {
       return NextResponse.json({ error: 'Component ID required' }, { status: 400 });
     }
 
-    const body = await req.json() as UpdateComponentRequest;
-    const component = await updateComponent(id, body);
+    const body = await req.json() as UpdateComponentRequest & { newId?: string };
+
+    // Handle ID change separately
+    let currentId = id;
+    if (body.newId && body.newId !== id) {
+      await changeComponentId(id, body.newId);
+      currentId = body.newId;
+    }
+
+    // Update other fields if any
+    const { newId: _, ...updateFields } = body;
+    const component = await updateComponent(currentId, updateFields);
 
     return NextResponse.json(component);
   } catch (error) {
     console.error('Failed to update component:', error);
     return NextResponse.json(
-      { error: 'Failed to update component' },
+      { error: error instanceof Error ? error.message : 'Failed to update component' },
       { status: 500 }
     );
   }

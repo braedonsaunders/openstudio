@@ -411,6 +411,36 @@ export async function deleteComponent(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function changeComponentId(oldId: string, newId: string): Promise<void> {
+  const adminClient = getAdminSupabase();
+  if (!adminClient) throw new Error('Admin client not configured');
+
+  // Update the component ID directly (PostgreSQL supports updating PKs)
+  const { error } = await adminClient
+    .from('avatar_components')
+    .update({ id: newId, updated_at: new Date().toISOString() })
+    .eq('id', oldId);
+
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error(`Component ID "${newId}" already exists`);
+    }
+    throw error;
+  }
+
+  // Also update any references in avatar_component_unlocks
+  await adminClient
+    .from('avatar_component_unlocks')
+    .update({ component_id: newId })
+    .eq('component_id', oldId);
+
+  // Update references in user_unlocked_components
+  await adminClient
+    .from('user_unlocked_components')
+    .update({ component_id: newId })
+    .eq('component_id', oldId);
+}
+
 // ============================================
 // ADMIN: UNLOCK RULE FUNCTIONS
 // ============================================
