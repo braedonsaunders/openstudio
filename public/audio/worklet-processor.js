@@ -17,6 +17,10 @@ class OpenStudioProcessor extends AudioWorkletProcessor {
     this.jitterWritePos = 0;
     this.jitterReadPos = 0;
 
+    // Packet Loss Concealment - hold last sample for smooth underruns
+    this.lastSample = 0;
+    this.plcDecayFactor = 0.95; // Decay factor for held samples
+
     // Stats
     this.underruns = 0;
     this.overruns = 0;
@@ -87,6 +91,7 @@ class OpenStudioProcessor extends AudioWorkletProcessor {
     this.bufferFilled = false;
     this.underruns = 0;
     this.overruns = 0;
+    this.lastSample = 0;
   }
 
   getBufferFillLevel() {
@@ -115,11 +120,14 @@ class OpenStudioProcessor extends AudioWorkletProcessor {
 
     for (let i = 0; i < numSamples; i++) {
       if (this.jitterReadPos === this.jitterWritePos) {
-        // Buffer underrun - output silence
-        output[i] = 0;
+        // Buffer underrun - use Packet Loss Concealment
+        // Hold last sample with decay instead of silence to avoid clicks
+        output[i] = this.lastSample * this.plcDecayFactor;
+        this.lastSample = output[i]; // Continue decaying
         this.underruns++;
       } else {
         output[i] = this.jitterBuffer[this.jitterReadPos];
+        this.lastSample = output[i]; // Store for potential PLC
         this.jitterReadPos = (this.jitterReadPos + 1) % this.jitterBuffer.length;
       }
     }

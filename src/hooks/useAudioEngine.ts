@@ -242,6 +242,11 @@ export function useAudioEngine() {
     globalEngine?.setRemoteMuted(userId, muted);
   }, []);
 
+  // Set remote user latency compensation delay
+  const setRemoteCompensationDelay = useCallback((userId: string, delayMs: number) => {
+    globalEngine?.setRemoteCompensationDelay(userId, delayMs);
+  }, []);
+
   // Set master volume
   const setMasterVolume = useCallback((volume: number) => {
     globalEngine?.setMasterVolume(volume);
@@ -554,6 +559,7 @@ export function useAudioEngine() {
     removeRemoteStream,
     setRemoteVolume,
     setRemoteMuted,
+    setRemoteCompensationDelay,
     setMasterVolume,
     setBackingTrackVolume,
     setOutputDevice,

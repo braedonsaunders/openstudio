@@ -85,6 +85,7 @@ export interface AudioStream {
   stream: MediaStream;
   analyser?: AnalyserNode;
   gainNode?: GainNode;
+  delayNode?: DelayNode; // For per-user latency compensation on incoming streams
   level: number;
   preMuteVolume?: number; // Store volume before muting so it can be restored
 }

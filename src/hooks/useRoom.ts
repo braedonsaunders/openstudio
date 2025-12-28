@@ -52,6 +52,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     removeRemoteStream,
     setRemoteVolume: audioSetRemoteVolume,
     setRemoteMuted: audioSetRemoteMuted,
+    setRemoteCompensationDelay,
     loadBackingTrack,
     playBackingTrack,
     pauseBackingTrack,
@@ -266,6 +267,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         perfStore.setMasterId(masterId);
       });
 
+      // Wire up latency compensation for incoming remote streams
+      // This ensures each remote user's audio is delayed appropriately
+      // for proper bidirectional synchronization
+      cloudflare.setOnRemoteStreamCompensation((userId, delayMs) => {
+        setRemoteCompensationDelay(userId, delayMs);
+      });
+
       await cloudflare.joinRoom(stream);
       cloudflareRef.current = cloudflare;
 
@@ -342,6 +350,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('presence:leave', (data) => {
         const { users: leftUsers } = data as { users: User[] };
         const userTracksStore = useUserTracksStore.getState();
+        const roomStore = useRoomStore.getState();
+
         leftUsers.forEach((u) => {
           removeUser(u.id);
           removeRemoteStream(u.id);
@@ -349,6 +359,33 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           userTracksStore.setUserTracksActive(u.id, false);
           options.onUserLeft?.(u.id);
         });
+
+        // Master failover: if a leaving user was master, elect new master
+        const leftUserIds = new Set(leftUsers.map(u => u.id));
+        const wasMasterAmongLeft = leftUsers.some(u => u.isMaster);
+
+        if (wasMasterAmongLeft) {
+          // Get remaining users (excluding those who just left)
+          const remainingUsers = Array.from(roomStore.users.values())
+            .filter(u => !leftUserIds.has(u.id));
+
+          if (remainingUsers.length > 0) {
+            // Elect new master: first by join order (lowest index), or alphabetically by ID as tiebreaker
+            const newMaster = remainingUsers.sort((a, b) => a.id.localeCompare(b.id))[0];
+
+            console.log(`[useRoom] Master failover: electing ${newMaster.id} as new master`);
+
+            // Update the new master's isMaster flag
+            updateUser(newMaster.id, { isMaster: true });
+
+            // If we are the new master, update our state and CloudflareCalls
+            if (newMaster.id === user.id) {
+              setIsMaster(true);
+              cloudflareRef.current?.setAsMaster(true);
+              console.log('[useRoom] We are now the room master');
+            }
+          }
+        }
       });
 
       realtime.on('track:play', async (data) => {

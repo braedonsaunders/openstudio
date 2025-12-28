@@ -308,7 +308,14 @@ export class AudioEngine {
     const analyser = this.audioContext.createAnalyser();
     analyser.fftSize = 256;
 
-    source.connect(gainNode);
+    // Create delay node for per-user latency compensation
+    // Max delay of 200ms to match LatencyCompensator's maxCompensation
+    const delayNode = this.audioContext.createDelay(0.2);
+    delayNode.delayTime.value = 0; // Initially no delay, will be set by compensation system
+
+    // Signal flow: source -> delayNode -> gainNode -> analyser & masterGain
+    source.connect(delayNode);
+    delayNode.connect(gainNode);
     gainNode.connect(analyser);
     gainNode.connect(this.masterGain);
 
@@ -317,13 +324,43 @@ export class AudioEngine {
       stream,
       analyser,
       gainNode,
+      delayNode,
       level: 0,
     });
+  }
+
+  /**
+   * Set the latency compensation delay for a specific remote user's stream.
+   * This is used to synchronize audio from users with different network latencies.
+   * @param userId The user ID to set compensation for
+   * @param delayMs Delay in milliseconds (0-200)
+   */
+  setRemoteCompensationDelay(userId: string, delayMs: number): void {
+    const streamData = this.remoteStreams.get(userId);
+    if (streamData?.delayNode && this.audioContext) {
+      const clampedDelay = Math.max(0, Math.min(0.2, delayMs / 1000)); // Clamp to 0-200ms
+      streamData.delayNode.delayTime.setTargetAtTime(
+        clampedDelay,
+        this.audioContext.currentTime,
+        0.05 // Smooth transition over 50ms
+      );
+    }
+  }
+
+  /**
+   * Get the current compensation delay for a remote user
+   * @param userId The user ID
+   * @returns Delay in milliseconds, or 0 if not found
+   */
+  getRemoteCompensationDelay(userId: string): number {
+    const streamData = this.remoteStreams.get(userId);
+    return streamData?.delayNode ? streamData.delayNode.delayTime.value * 1000 : 0;
   }
 
   removeRemoteStream(userId: string): void {
     const streamData = this.remoteStreams.get(userId);
     if (streamData) {
+      streamData.delayNode?.disconnect();
       streamData.gainNode?.disconnect();
       streamData.stream.getTracks().forEach((track) => track.stop());
       this.remoteStreams.delete(userId);
