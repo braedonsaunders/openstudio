@@ -1,0 +1,123 @@
+import { NextRequest, NextResponse } from 'next/server';
+import { getUser, getUserProfile } from '@/lib/supabase/auth';
+import {
+  getAllCategories,
+  createCategory,
+  updateCategory,
+  updateCategoryOrder,
+  deleteCategory,
+} from '@/lib/avatar/supabase';
+import type { CreateCategoryRequest, UpdateCategoryRequest } from '@/types/avatar';
+
+// Check if user is admin
+async function isAdmin(): Promise<boolean> {
+  const user = await getUser();
+  if (!user) return false;
+  const profile = await getUserProfile(user.id);
+  return profile?.accountType === 'admin';
+}
+
+// GET /api/admin/avatar/categories - List all categories
+export async function GET() {
+  try {
+    if (!(await isAdmin())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const categories = await getAllCategories();
+    return NextResponse.json(categories);
+  } catch (error) {
+    console.error('Failed to get categories:', error);
+    return NextResponse.json(
+      { error: 'Failed to get categories' },
+      { status: 500 }
+    );
+  }
+}
+
+// POST /api/admin/avatar/categories - Create a new category
+export async function POST(req: NextRequest) {
+  try {
+    if (!(await isAdmin())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const body = await req.json() as CreateCategoryRequest;
+
+    if (!body.id || !body.displayName || body.layerOrder === undefined) {
+      return NextResponse.json(
+        { error: 'Missing required fields: id, displayName, layerOrder' },
+        { status: 400 }
+      );
+    }
+
+    const category = await createCategory(body);
+    return NextResponse.json(category, { status: 201 });
+  } catch (error) {
+    console.error('Failed to create category:', error);
+    return NextResponse.json(
+      { error: 'Failed to create category' },
+      { status: 500 }
+    );
+  }
+}
+
+// PATCH /api/admin/avatar/categories - Update a category or reorder
+export async function PATCH(req: NextRequest) {
+  try {
+    if (!(await isAdmin())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+    const action = searchParams.get('action');
+
+    const body = await req.json();
+
+    // Handle reordering
+    if (action === 'reorder' && Array.isArray(body.orderedIds)) {
+      await updateCategoryOrder(body.orderedIds);
+      return NextResponse.json({ success: true });
+    }
+
+    // Handle single category update
+    if (!id) {
+      return NextResponse.json({ error: 'Category ID required' }, { status: 400 });
+    }
+
+    const category = await updateCategory(id, body as UpdateCategoryRequest);
+    return NextResponse.json(category);
+  } catch (error) {
+    console.error('Failed to update category:', error);
+    return NextResponse.json(
+      { error: 'Failed to update category' },
+      { status: 500 }
+    );
+  }
+}
+
+// DELETE /api/admin/avatar/categories - Delete a category
+export async function DELETE(req: NextRequest) {
+  try {
+    if (!(await isAdmin())) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+
+    const { searchParams } = new URL(req.url);
+    const id = searchParams.get('id');
+
+    if (!id) {
+      return NextResponse.json({ error: 'Category ID required' }, { status: 400 });
+    }
+
+    await deleteCategory(id);
+    return NextResponse.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete category:', error);
+    return NextResponse.json(
+      { error: 'Failed to delete category' },
+      { status: 500 }
+    );
+  }
+}
