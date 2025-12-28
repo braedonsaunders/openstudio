@@ -8,6 +8,7 @@ import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { getLoopById } from '@/lib/audio/loop-library';
+import { getCachedLoopById } from '@/hooks/use-loop-library';
 import { generateWaveformFromUrl } from '@/lib/audio/waveform-generator';
 import {
   Music,
@@ -380,6 +381,7 @@ export function MultiTrackTimeline({
   const { getTracksByRoom } = useLoopTracksStore();
   const { isPlaying, currentTime, duration, setPlaying } = useAudioStore();
   const sessionTempo = useSessionTempoStore((s) => s.tempo);
+  const { getLoop: getCustomLoop } = useCustomLoopsStore();
 
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
@@ -416,7 +418,11 @@ export function MultiTrackTimeline({
     return currentSong.tracks.map((trackRef) => {
       if (trackRef.type === 'loop') {
         const loopTrack = loopTracks.find((t) => t.id === trackRef.trackId);
-        const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+        // Check: 1) cached library (database-fetched), 2) custom loops store, 3) hardcoded library
+        let loopDef = loopTrack ? getCachedLoopById(loopTrack.loopId) : undefined;
+        if (!loopDef && loopTrack) {
+          loopDef = getCustomLoop(loopTrack.loopId);
+        }
         const loopDuration = getLoopDuration(loopDef, loopTrack?.tempoLocked);
         const midiNotes = loopTrack?.customMidiData || loopDef?.midiData || [];
 
@@ -446,7 +452,7 @@ export function MultiTrackTimeline({
         };
       }
     });
-  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, waveformDataCache]);
+  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, waveformDataCache, getCustomLoop]);
 
   // Group tracks by position (track row) for rendering multiple clips on same row
   const trackRows = useMemo(() => {

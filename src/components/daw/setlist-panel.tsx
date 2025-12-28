@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useSongsStore } from '@/stores/songs-store';
+import { useTrackPermissions } from '@/hooks/usePermissions';
 import {
   Music2,
   Plus,
@@ -14,6 +15,7 @@ import {
   Play,
   ChevronRight,
   Clock,
+  Lock,
 } from 'lucide-react';
 import type { Song } from '@/types/songs';
 
@@ -40,11 +42,16 @@ export function SetlistPanel({
     reorderSongs,
   } = useSongsStore();
 
+  // Permission checks
+  const { canCreate, canEditMetadata, canDelete, canReorder } = useTrackPermissions();
+
   const songs = getSongsByRoom(roomId);
   const currentSong = getCurrentSong();
 
   const [editingSongId, setEditingSongId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [editingBpmSongId, setEditingBpmSongId] = useState<string | null>(null);
+  const [editingBpm, setEditingBpm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [newSongName, setNewSongName] = useState('');
   const [draggedSongId, setDraggedSongId] = useState<string | null>(null);
@@ -84,6 +91,47 @@ export function SetlistPanel({
   const handleCancelEdit = useCallback(() => {
     setEditingSongId(null);
     setEditingName('');
+  }, []);
+
+  // Start editing BPM
+  const handleStartBpmEdit = useCallback((song: Song) => {
+    setEditingBpmSongId(song.id);
+    setEditingBpm(song.bpm.toString());
+  }, []);
+
+  // Save edited BPM
+  const handleSaveBpm = useCallback(async () => {
+    if (!editingBpmSongId) return;
+
+    const bpmValue = parseInt(editingBpm, 10);
+    if (isNaN(bpmValue) || bpmValue < 40 || bpmValue > 240) {
+      // Invalid BPM, cancel edit
+      setEditingBpmSongId(null);
+      setEditingBpm('');
+      return;
+    }
+
+    updateSong(editingBpmSongId, { bpm: bpmValue });
+
+    // Persist to database
+    try {
+      await fetch(`/api/rooms/${roomId}/songs`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId: editingBpmSongId, bpm: bpmValue }),
+      });
+    } catch (err) {
+      console.error('Failed to update song BPM:', err);
+    }
+
+    setEditingBpmSongId(null);
+    setEditingBpm('');
+  }, [editingBpmSongId, editingBpm, roomId, updateSong]);
+
+  // Cancel BPM editing
+  const handleCancelBpmEdit = useCallback(() => {
+    setEditingBpmSongId(null);
+    setEditingBpm('');
   }, []);
 
   // Create new song
@@ -221,11 +269,11 @@ export function SetlistPanel({
             {songs.map((song, index) => (
               <div
                 key={song.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, song.id)}
-                onDragOver={(e) => handleDragOver(e, index)}
+                draggable={canReorder}
+                onDragStart={(e) => canReorder && handleDragStart(e, song.id)}
+                onDragOver={(e) => canReorder && handleDragOver(e, index)}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, index)}
+                onDrop={(e) => canReorder && handleDrop(e, index)}
                 onDragEnd={handleDragEnd}
                 className={cn(
                   'group relative mx-2 px-2 py-2 rounded-lg transition-all cursor-pointer',
@@ -239,7 +287,11 @@ export function SetlistPanel({
               >
                 <div className="flex items-center gap-2">
                   {/* Drag Handle */}
-                  <GripVertical className="w-3.5 h-3.5 text-gray-300 dark:text-zinc-700 cursor-grab opacity-0 group-hover:opacity-100 shrink-0" />
+                  {canReorder ? (
+                    <GripVertical className="w-3.5 h-3.5 text-gray-300 dark:text-zinc-700 cursor-grab opacity-0 group-hover:opacity-100 shrink-0" />
+                  ) : (
+                    <div className="w-3.5 shrink-0" />
+                  )}
 
                   {/* Song Color Indicator */}
                   <div
@@ -296,9 +348,50 @@ export function SetlistPanel({
                           <span className="text-[10px] text-gray-500 dark:text-zinc-500">
                             {song.tracks.length} track{song.tracks.length !== 1 ? 's' : ''}
                           </span>
-                          <span className="text-[10px] text-gray-400 dark:text-zinc-600">
-                            {song.bpm} BPM
-                          </span>
+                          {editingBpmSongId === song.id ? (
+                            <span
+                              className="inline-flex items-center gap-0.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="number"
+                                min={40}
+                                max={240}
+                                value={editingBpm}
+                                onChange={(e) => setEditingBpm(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveBpm();
+                                  if (e.key === 'Escape') handleCancelBpmEdit();
+                                }}
+                                className="w-10 px-1 py-0 text-[10px] bg-white dark:bg-[#0d0d14] border border-gray-300 dark:border-white/20 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                autoFocus
+                              />
+                              <span className="text-[10px] text-gray-400 dark:text-zinc-600">BPM</span>
+                              <button
+                                onClick={handleSaveBpm}
+                                className="p-0.5 text-green-500 hover:text-green-400"
+                              >
+                                <Check className="w-2.5 h-2.5" />
+                              </button>
+                              <button
+                                onClick={handleCancelBpmEdit}
+                                className="p-0.5 text-red-500 hover:text-red-400"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartBpmEdit(song);
+                              }}
+                              className="text-[10px] text-gray-400 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+                              title="Click to edit BPM"
+                            >
+                              {song.bpm} BPM
+                            </button>
+                          )}
                           {song.duration > 0 && (
                             <span className="text-[10px] text-gray-400 dark:text-zinc-600 tabular-nums">
                               {formatDuration(song.duration)}
@@ -325,26 +418,30 @@ export function SetlistPanel({
                           <Play className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartEdit(song);
-                        }}
-                        className="p-1 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/10 rounded"
-                        title="Rename"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteSong(song.id);
-                        }}
-                        className="p-1 text-gray-400 dark:text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      {canEditMetadata && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartEdit(song);
+                          }}
+                          className="p-1 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/10 rounded"
+                          title="Rename"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSong(song.id);
+                          }}
+                          className="p-1 text-gray-400 dark:text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -356,25 +453,32 @@ export function SetlistPanel({
 
       {/* Create New Song */}
       <div className="px-3 py-3 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={newSongName}
-            onChange={(e) => setNewSongName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreateSong()}
-            placeholder="New song name..."
-            className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-[#12121a] border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            disabled={isCreating}
-          />
-          <button
-            onClick={handleCreateSong}
-            disabled={!newSongName.trim() || isCreating}
-            className="p-1.5 rounded-lg bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-600 transition-colors"
-            title="Create song"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
+        {canCreate ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newSongName}
+              onChange={(e) => setNewSongName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateSong()}
+              placeholder="New song name..."
+              className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-[#12121a] border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              disabled={isCreating}
+            />
+            <button
+              onClick={handleCreateSong}
+              disabled={!newSongName.trim() || isCreating}
+              className="p-1.5 rounded-lg bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-600 transition-colors"
+              title="Create song"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500">
+            <Lock className="w-3 h-3" />
+            <span>You don&apos;t have permission to create songs</span>
+          </div>
+        )}
       </div>
 
       {/* Footer Stats */}

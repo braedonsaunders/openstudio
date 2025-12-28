@@ -2,11 +2,6 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import type { LoopDefinition, LoopCategoryInfo, InstantBandPreset } from '@/types/loops';
-import {
-  LOOP_LIBRARY,
-  LOOP_CATEGORIES,
-  INSTANT_BAND_PRESETS,
-} from '@/lib/audio/loop-library';
 
 interface LoopLibrary {
   categories: LoopCategoryInfo[];
@@ -33,9 +28,9 @@ export function useLoopLibrary(): LoopLibrary {
     loops: LoopDefinition[];
     presets: InstantBandPreset[];
   }>({
-    categories: cachedData?.categories || LOOP_CATEGORIES,
-    loops: cachedData?.loops || LOOP_LIBRARY,
-    presets: cachedData?.presets || INSTANT_BAND_PRESETS,
+    categories: cachedData?.categories || [],
+    loops: cachedData?.loops || [],
+    presets: cachedData?.presets || [],
   });
   const [isLoading, setIsLoading] = useState(!cachedData);
   const [error, setError] = useState<Error | null>(null);
@@ -60,31 +55,16 @@ export function useLoopLibrary(): LoopLibrary {
 
       const libraryData = await response.json();
 
-      // Validate the response has expected structure
-      if (libraryData.loops && libraryData.loops.length > 0) {
-        cachedData = libraryData;
-        cacheTimestamp = Date.now();
-        setData(libraryData);
-      } else {
-        // If database is empty, use fallback data
-        cachedData = {
-          categories: LOOP_CATEGORIES,
-          loops: LOOP_LIBRARY,
-          presets: INSTANT_BAND_PRESETS,
-        };
-        cacheTimestamp = Date.now();
-        setData(cachedData);
-      }
+      cachedData = {
+        categories: libraryData.categories || [],
+        loops: libraryData.loops || [],
+        presets: libraryData.presets || [],
+      };
+      cacheTimestamp = Date.now();
+      setData(cachedData);
     } catch (err) {
-      console.error('Failed to fetch loop library, using fallback:', err);
+      console.error('Failed to fetch loop library:', err);
       setError(err instanceof Error ? err : new Error('Unknown error'));
-
-      // Use fallback data
-      setData({
-        categories: LOOP_CATEGORIES,
-        loops: LOOP_LIBRARY,
-        presets: INSTANT_BAND_PRESETS,
-      });
     } finally {
       setIsLoading(false);
     }
@@ -160,4 +140,19 @@ export function getLoopsBySubcategory(loops: LoopDefinition[], subcategory: stri
 export function invalidateLoopLibraryCache(): void {
   cachedData = null;
   cacheTimestamp = 0;
+}
+
+/**
+ * Get a loop by ID from the cached library data.
+ * This searches the database-fetched loops (cached) and falls back to hardcoded loops.
+ * Can be called from anywhere without needing React hooks.
+ */
+export function getCachedLoopById(id: string): LoopDefinition | undefined {
+  // First check the cached data from the API (includes database loops)
+  if (cachedData?.loops) {
+    const found = cachedData.loops.find((loop) => loop.id === id);
+    if (found) return found;
+  }
+  // Fall back to hardcoded library
+  return LOOP_LIBRARY.find((loop) => loop.id === id);
 }

@@ -1,6 +1,7 @@
 import { supabase, getRealtimeChannel, RealtimeChannel } from './client';
 import type { User, BackingTrack, RoomMessage, TrackQueue, TrackAudioSettings, TrackEffectsChain, UserTrack } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
+import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
 
 export interface RoomState {
   users: Record<string, User>;
@@ -121,6 +122,27 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'looptrack:sync' }, ({ payload }) => {
       this.emit('looptrack:sync', payload);
+    });
+
+    // Permission events
+    this.channel.on('broadcast', { event: 'permissions:role_update' }, ({ payload }) => {
+      this.emit('permissions:role_update', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'permissions:custom_update' }, ({ payload }) => {
+      this.emit('permissions:custom_update', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'permissions:member_kick' }, ({ payload }) => {
+      this.emit('permissions:member_kick', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'permissions:member_ban' }, ({ payload }) => {
+      this.emit('permissions:member_ban', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'permissions:sync' }, ({ payload }) => {
+      this.emit('permissions:sync', payload);
     });
 
     await this.channel.subscribe(async (status) => {
@@ -312,6 +334,50 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'looptrack:sync',
       payload: { tracks, userId: this.userId },
+    });
+  }
+
+  // Permission broadcasts
+  async broadcastRoleUpdate(targetUserId: string, role: RoomRole): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'permissions:role_update',
+      payload: { targetUserId, role, userId: this.userId },
+    });
+  }
+
+  async broadcastCustomPermissionsUpdate(
+    targetUserId: string,
+    customPermissions: Partial<RoomPermissions> | null
+  ): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'permissions:custom_update',
+      payload: { targetUserId, customPermissions, userId: this.userId },
+    });
+  }
+
+  async broadcastMemberKick(targetUserId: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'permissions:member_kick',
+      payload: { targetUserId, userId: this.userId },
+    });
+  }
+
+  async broadcastMemberBan(targetUserId: string, reason?: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'permissions:member_ban',
+      payload: { targetUserId, reason, userId: this.userId },
+    });
+  }
+
+  async broadcastPermissionsSync(members: RoomMember[], defaultRole: RoomRole): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'permissions:sync',
+      payload: { members, defaultRole, userId: this.userId },
     });
   }
 

@@ -14,6 +14,8 @@ import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { getLoopById } from '@/lib/audio/loop-library';
+import { getCachedLoopById } from '@/hooks/use-loop-library';
+import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
 import { LeftPanel } from './left-panel';
@@ -42,7 +44,7 @@ interface DAWLayoutProps {
   onLeaveRoom?: () => void;
 }
 
-export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' kept for backwards compat
+export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai' | 'permissions'; // Note: 'queue' kept for backwards compat
 
 export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   // Theme
@@ -133,6 +135,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   // Song system - the primary track/playback system
   const { getCurrentSong } = useSongsStore();
   const { getTracksByRoom } = useLoopTracksStore();
+  const { getLoop: getCustomLoop } = useCustomLoopsStore();
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
 
@@ -151,7 +154,11 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     return currentSong.tracks.map((trackRef: SongTrackReference) => {
       if (trackRef.type === 'loop') {
         const loopTrack = loopTracks.find((t: LoopTrackState) => t.id === trackRef.trackId);
-        const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+        // Check: 1) cached library (database-fetched), 2) custom loops store, 3) hardcoded library
+        let loopDef = loopTrack ? getCachedLoopById(loopTrack.loopId) : undefined;
+        if (!loopDef && loopTrack) {
+          loopDef = getCustomLoop(loopTrack.loopId);
+        }
         const loopDuration = getLoopDuration(loopDef);
 
         return {
@@ -173,7 +180,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         };
       }
     });
-  }, [currentSong, loopTracks, queue.tracks, getLoopDuration]);
+  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, getCustomLoop]);
 
   // Calculate Song duration (max end time of all tracks)
   const songDuration = useMemo(() => {
