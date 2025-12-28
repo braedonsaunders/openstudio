@@ -336,12 +336,17 @@ export async function addUserInstrument(userId: string, instrumentId: string, ca
 
   const { data, error } = await supabaseAuth
     .from('user_instruments')
-    .upsert({
-      user_id: userId,
-      instrument_id: instrumentId,
-      category,
-      is_primary: isPrimary,
-    })
+    .upsert(
+      {
+        user_id: userId,
+        instrument_id: instrumentId,
+        category,
+        is_primary: isPrimary,
+      },
+      {
+        onConflict: 'user_id,instrument_id',
+      }
+    )
     .select()
     .single();
 
@@ -360,6 +365,16 @@ export async function addUserInstrument(userId: string, instrumentId: string, ca
     xp: data.xp,
     lastPlayedAt: data.last_played_at,
   };
+}
+
+export async function removeUserInstrument(userId: string, instrumentId: string): Promise<void> {
+  const { error } = await supabaseAuth
+    .from('user_instruments')
+    .delete()
+    .eq('user_id', userId)
+    .eq('instrument_id', instrumentId);
+
+  if (error) throw error;
 }
 
 // ============================================

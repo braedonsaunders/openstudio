@@ -40,6 +40,7 @@ interface AuthState {
   // Actions - Instruments
   addInstrument: (instrumentId: string, category: string, isPrimary?: boolean) => Promise<void>;
   setPrimaryInstrument: (instrumentId: string) => Promise<void>;
+  removeInstrument: (instrumentId: string) => Promise<void>;
 
   // Actions - XP & Achievements
   addXP: (amount: number, reason: string, sourceType?: string, sourceId?: string) => Promise<{ leveledUp: boolean; newLevel: number }>;
@@ -351,6 +352,17 @@ export const useAuthStore = create<AuthState>()(
               ...i,
               isPrimary: i.instrumentId === instrumentId,
             })),
+          });
+        },
+
+        removeInstrument: async (instrumentId) => {
+          const { user, instruments } = get();
+          if (!user) return;
+
+          await authApi.removeUserInstrument(user.id, instrumentId);
+
+          set({
+            instruments: instruments.filter((i) => i.instrumentId !== instrumentId),
           });
         },
 

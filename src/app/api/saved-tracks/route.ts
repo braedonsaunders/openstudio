@@ -129,13 +129,27 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Build database record - let DB handle timestamps with defaults
     const dbRecord = {
       id,
-      ...transformPresetToDb(preset),
+      user_id: preset.userId,
+      name: preset.name,
+      description: preset.description || null,
+      track_type: preset.type || 'audio',
+      instrument_id: preset.instrumentId || 'other',
+      color: preset.color || '#a78bfa',
+      volume: preset.volume ?? 1,
+      is_muted: preset.isMuted ?? false,
+      is_solo: preset.isSolo ?? false,
+      audio_settings: preset.audioSettings || null,
+      midi_settings: preset.midiSettings || null,
+      effects: preset.effects || {},
+      active_effect_preset: preset.activeEffectPreset || null,
+      is_default: preset.isDefault ?? false,
       use_count: 0,
-      created_at: now,
-      updated_at: now,
     };
+
+    console.log('Inserting saved track preset:', JSON.stringify(dbRecord, null, 2));
 
     const { data, error } = await supabase
       .from('saved_track_presets')
@@ -144,7 +158,7 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (error) {
-      console.error('Error saving track preset:', error);
+      console.error('Error saving track preset:', error.message, error.details, error.hint);
       // Handle table not existing - return mock response
       if (error.code === '42P01') {
         return NextResponse.json({
@@ -155,7 +169,7 @@ export async function POST(request: NextRequest) {
           updatedAt: now,
         });
       }
-      return NextResponse.json({ error: 'Failed to save track preset' }, { status: 500 });
+      return NextResponse.json({ error: 'Failed to save track preset', details: error.message }, { status: 500 });
     }
 
     return NextResponse.json(transformDbToPreset(data));
