@@ -123,11 +123,20 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
 
   // Add Lyria audio to WebRTC for sharing with room
   const shareAudioWithRoom = useCallback(async () => {
-    if (!sessionRef.current || !getCloudflareRef) return;
+    if (!sessionRef.current) {
+      console.warn('[Lyria] No session available for sharing');
+      return;
+    }
+
+    if (!getCloudflareRef) {
+      console.warn('[Lyria] getCloudflareRef not provided');
+      return;
+    }
 
     const cloudflare = getCloudflareRef();
     if (!cloudflare) {
-      console.warn('[Lyria] No CloudflareCalls connection available');
+      console.warn('[Lyria] CloudflareCalls not ready yet - audio sharing skipped');
+      // Could retry later, but for now just skip
       return;
     }
 
