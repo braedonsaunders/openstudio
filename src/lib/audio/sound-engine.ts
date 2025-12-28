@@ -173,7 +173,7 @@ export class WebAudioSynth {
     // Create oscillators
     const oscillators: OscillatorNode[] = [];
     const oscGain = this.context.createGain();
-    oscGain.gain.value = 0;
+    oscGain.gain.value = 1.0; // Mix all oscillators at unity gain
 
     for (const oscConfig of this.config.oscillators) {
       const osc = this.context.createOscillator();
