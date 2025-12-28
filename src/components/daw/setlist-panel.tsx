@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useSongsStore } from '@/stores/songs-store';
+import { useTrackPermissions } from '@/hooks/usePermissions';
 import {
   Music2,
   Plus,
@@ -14,6 +15,7 @@ import {
   Play,
   ChevronRight,
   Clock,
+  Lock,
 } from 'lucide-react';
 import type { Song } from '@/types/songs';
 
@@ -39,6 +41,9 @@ export function SetlistPanel({
     deleteSong,
     reorderSongs,
   } = useSongsStore();
+
+  // Permission checks
+  const { canCreate, canEditMetadata, canDelete, canReorder } = useTrackPermissions();
 
   const songs = getSongsByRoom(roomId);
   const currentSong = getCurrentSong();
@@ -264,11 +269,11 @@ export function SetlistPanel({
             {songs.map((song, index) => (
               <div
                 key={song.id}
-                draggable
-                onDragStart={(e) => handleDragStart(e, song.id)}
-                onDragOver={(e) => handleDragOver(e, index)}
+                draggable={canReorder}
+                onDragStart={(e) => canReorder && handleDragStart(e, song.id)}
+                onDragOver={(e) => canReorder && handleDragOver(e, index)}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, index)}
+                onDrop={(e) => canReorder && handleDrop(e, index)}
                 onDragEnd={handleDragEnd}
                 className={cn(
                   'group relative mx-2 px-2 py-2 rounded-lg transition-all cursor-pointer',
@@ -282,7 +287,11 @@ export function SetlistPanel({
               >
                 <div className="flex items-center gap-2">
                   {/* Drag Handle */}
-                  <GripVertical className="w-3.5 h-3.5 text-gray-300 dark:text-zinc-700 cursor-grab opacity-0 group-hover:opacity-100 shrink-0" />
+                  {canReorder ? (
+                    <GripVertical className="w-3.5 h-3.5 text-gray-300 dark:text-zinc-700 cursor-grab opacity-0 group-hover:opacity-100 shrink-0" />
+                  ) : (
+                    <div className="w-3.5 shrink-0" />
+                  )}
 
                   {/* Song Color Indicator */}
                   <div
@@ -409,26 +418,30 @@ export function SetlistPanel({
                           <Play className="w-3.5 h-3.5" />
                         </button>
                       )}
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleStartEdit(song);
-                        }}
-                        className="p-1 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/10 rounded"
-                        title="Rename"
-                      >
-                        <Edit2 className="w-3 h-3" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDeleteSong(song.id);
-                        }}
-                        className="p-1 text-gray-400 dark:text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded"
-                        title="Delete"
-                      >
-                        <Trash2 className="w-3 h-3" />
-                      </button>
+                      {canEditMetadata && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleStartEdit(song);
+                          }}
+                          className="p-1 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/10 rounded"
+                          title="Rename"
+                        >
+                          <Edit2 className="w-3 h-3" />
+                        </button>
+                      )}
+                      {canDelete && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteSong(song.id);
+                          }}
+                          className="p-1 text-gray-400 dark:text-zinc-500 hover:text-red-500 hover:bg-red-500/10 rounded"
+                          title="Delete"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                        </button>
+                      )}
                     </div>
                   )}
                 </div>
@@ -440,25 +453,32 @@ export function SetlistPanel({
 
       {/* Create New Song */}
       <div className="px-3 py-3 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
-        <div className="flex items-center gap-2">
-          <input
-            type="text"
-            value={newSongName}
-            onChange={(e) => setNewSongName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleCreateSong()}
-            placeholder="New song name..."
-            className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-[#12121a] border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-            disabled={isCreating}
-          />
-          <button
-            onClick={handleCreateSong}
-            disabled={!newSongName.trim() || isCreating}
-            className="p-1.5 rounded-lg bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-600 transition-colors"
-            title="Create song"
-          >
-            <Plus className="w-4 h-4" />
-          </button>
-        </div>
+        {canCreate ? (
+          <div className="flex items-center gap-2">
+            <input
+              type="text"
+              value={newSongName}
+              onChange={(e) => setNewSongName(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleCreateSong()}
+              placeholder="New song name..."
+              className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-[#12121a] border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              disabled={isCreating}
+            />
+            <button
+              onClick={handleCreateSong}
+              disabled={!newSongName.trim() || isCreating}
+              className="p-1.5 rounded-lg bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-600 transition-colors"
+              title="Create song"
+            >
+              <Plus className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500">
+            <Lock className="w-3 h-3" />
+            <span>You don&apos;t have permission to create songs</span>
+          </div>
+        )}
       </div>
 
       {/* Footer Stats */}

@@ -3,6 +3,7 @@
 import { cn, formatTime } from '@/lib/utils';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
+import { useTransportPermissions } from '@/hooks/usePermissions';
 import { Button } from '../ui/button';
 import { Slider } from '../ui/slider';
 import { Waveform } from '../audio/waveform';
@@ -34,8 +35,11 @@ export function TransportControls({
   className,
 }: TransportControlsProps) {
   const { isPlaying, currentTime, duration, backingTrackVolume, setBackingTrackVolume } = useAudioStore();
-  const { currentTrack, isMaster, queue } = useRoomStore();
+  const { currentTrack, queue } = useRoomStore();
+  const { canPlay, canPause, canSeek, canSkip } = useTransportPermissions();
 
+  // Combined permission for play/pause button
+  const canControl = canPlay || canPause;
   const progress = duration > 0 ? (currentTime / duration) * 100 : 0;
 
   return (
@@ -55,8 +59,8 @@ export function TransportControls({
         currentTime={currentTime}
         duration={duration}
         isPlaying={isPlaying}
-        onSeek={isMaster ? onSeek : undefined}
-        className={cn(!isMaster && 'cursor-default')}
+        onSeek={canSeek ? onSeek : undefined}
+        className={cn(!canSeek && 'cursor-default')}
       />
 
       {/* Time display */}
@@ -71,8 +75,9 @@ export function TransportControls({
           variant="ghost"
           size="icon"
           onClick={onPrevious}
-          disabled={!isMaster || queue.currentIndex <= 0}
+          disabled={!canSkip || queue.currentIndex <= 0}
           className="text-slate-600"
+          title={!canSkip ? 'You don\'t have permission to skip tracks' : undefined}
         >
           <SkipBack className="w-5 h-5" />
         </Button>
@@ -81,8 +86,9 @@ export function TransportControls({
           variant="primary"
           size="lg"
           onClick={isPlaying ? onPause : onPlay}
-          disabled={!isMaster || !currentTrack}
+          disabled={!canControl || !currentTrack}
           className="w-16 h-16 rounded-full shadow-lg shadow-indigo-200"
+          title={!canControl ? 'You don\'t have permission to control playback' : undefined}
         >
           {isPlaying ? (
             <Pause className="w-7 h-7" />
@@ -95,8 +101,9 @@ export function TransportControls({
           variant="ghost"
           size="icon"
           onClick={onNext}
-          disabled={!isMaster || queue.currentIndex >= queue.tracks.length - 1}
+          disabled={!canSkip || queue.currentIndex >= queue.tracks.length - 1}
           className="text-slate-600"
+          title={!canSkip ? 'You don\'t have permission to skip tracks' : undefined}
         >
           <SkipForward className="w-5 h-5" />
         </Button>
@@ -125,10 +132,10 @@ export function TransportControls({
         </div>
       </div>
 
-      {/* Non-master notice */}
-      {!isMaster && (
+      {/* Permission notice */}
+      {!canControl && (
         <p className="text-xs text-slate-400 text-center">
-          Only the room master can control playback
+          You don&apos;t have permission to control playback
         </p>
       )}
     </div>

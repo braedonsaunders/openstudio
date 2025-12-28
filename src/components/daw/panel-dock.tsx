@@ -6,6 +6,8 @@ import { AnalysisPanel } from './analysis-panel';
 import { ChatPanel } from './chat-panel';
 import { AIPanel } from './ai-panel';
 import { SetlistPanel } from './setlist-panel';
+import { PermissionsPanel } from './permissions-panel';
+import { usePermissions } from '@/hooks/usePermissions';
 import type { PanelType } from './daw-layout';
 import type { StemType, User, QualityPresetName, OpusEncodingSettings } from '@/types';
 import {
@@ -15,6 +17,7 @@ import {
   Sparkles,
   ChevronLeft,
   Music2,
+  Shield,
 } from 'lucide-react';
 
 interface PanelDockProps {
@@ -47,12 +50,13 @@ interface PanelDockProps {
   width?: number;
 }
 
-const panels: { id: PanelType; icon: typeof Users; label: string }[] = [
+const basePanels: { id: PanelType; icon: typeof Users; label: string; requiresPermission?: boolean }[] = [
   { id: 'users', icon: Users, label: 'Members' },
   { id: 'setlist', icon: Music2, label: 'Setlist' },
   { id: 'analysis', icon: Activity, label: 'Analysis' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
   { id: 'ai', icon: Sparkles, label: 'AI' },
+  { id: 'permissions', icon: Shield, label: 'Permissions', requiresPermission: true },
 ];
 
 export function PanelDock({
@@ -79,6 +83,13 @@ export function PanelDock({
   onDismissOptimization,
   width,
 }: PanelDockProps) {
+  const { canManageRoom } = usePermissions();
+
+  // Filter panels based on permissions
+  const panels = basePanels.filter(
+    (panel) => !panel.requiresPermission || (panel.requiresPermission && canManageRoom)
+  );
+
   // Redirect old panel types to new ones
   const validPanel = activePanel === 'queue' ? 'setlist' : activePanel === 'mixer' ? 'users' : activePanel;
   return (
@@ -152,6 +163,10 @@ export function PanelDock({
 
         {validPanel === 'ai' && (
           <AIPanel />
+        )}
+
+        {validPanel === 'permissions' && (
+          <PermissionsPanel roomId={roomId} />
         )}
       </div>
     </div>
