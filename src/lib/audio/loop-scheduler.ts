@@ -125,9 +125,11 @@ export class LoopScheduler {
     }
   }
 
-  // Schedule one iteration of the loop
+  // Schedule notes within the lookahead window, called repeatedly
   private scheduleLoopIteration(loop: ActiveLoop, loopDuration: number): void {
-    const { loopDef, trackState, nextLoopTime, iteration } = loop;
+    const { loopDef, trackState } = loop;
+    const currentTime = this.context.currentTime;
+    const lookaheadEnd = currentTime + this.lookaheadTime;
 
     // Get sound preset - use loopDef as fallback if trackState doesn't have it
     const soundPreset = trackState.soundPreset || loopDef.soundPreset;
@@ -135,14 +137,13 @@ export class LoopScheduler {
     // Get MIDI data (possibly with humanization)
     let midiData = trackState.customMidiData || loopDef.midiData;
 
-    if (iteration === 0) {
-      console.log('[LoopScheduler] First iteration:', {
+    if (loop.iteration === 0 && loop.scheduledNotes.length === 0) {
+      console.log('[LoopScheduler] First scheduling call:', {
         trackId: loop.trackId,
         loopDuration,
-        nextLoopTime: nextLoopTime.toFixed(3),
-        currentTime: this.context.currentTime.toFixed(3),
-        delta: (nextLoopTime - this.context.currentTime).toFixed(3),
-        lookahead: this.lookaheadTime,
+        loopStartTime: loop.nextLoopTime.toFixed(3),
+        currentTime: currentTime.toFixed(3),
+        lookaheadEnd: lookaheadEnd.toFixed(3),
         midiNotes: midiData?.length,
         preset: soundPreset,
         muted: trackState.muted,
@@ -150,7 +151,7 @@ export class LoopScheduler {
       });
     }
 
-    // Apply humanization if enabled
+    // Apply humanization if enabled (only on first pass of each iteration)
     if (trackState.humanizeEnabled) {
       midiData = this.humanizeMidi(midiData, trackState.humanizeTiming, trackState.humanizeVelocity);
     }
@@ -162,14 +163,27 @@ export class LoopScheduler {
     }
 
     let scheduledCount = 0;
+    let loopStartTime = loop.nextLoopTime;
 
-    // Schedule each note
-    for (const note of midiData) {
-      const noteTime = nextLoopTime + note.t * loopDuration;
-      const noteDuration = note.d * loopDuration;
+    // Schedule notes across multiple loop iterations if needed
+    // This handles cases where lookahead spans multiple loops
+    while (loopStartTime <= lookaheadEnd) {
+      for (const note of midiData) {
+        const noteTime = loopStartTime + note.t * loopDuration;
+        const noteDuration = note.d * loopDuration;
 
-      // Only schedule notes within the lookahead window (use <= for edge case)
-      if (noteTime <= this.context.currentTime + this.lookaheadTime) {
+        // Skip notes in the past
+        if (noteTime < currentTime - 0.01) continue;
+
+        // Skip notes beyond lookahead
+        if (noteTime > lookaheadEnd) continue;
+
+        // Check if this note was already scheduled (by time)
+        const alreadyScheduled = loop.scheduledNotes.some(
+          (sn) => Math.abs(sn.startTime - noteTime) < 0.001 && sn.noteNumber === (loopDef.category === 'drums' ? note.n : note.n + transpose)
+        );
+        if (alreadyScheduled) continue;
+
         // Apply volume
         const velocity = Math.round(note.v * trackState.volume);
 
@@ -197,25 +211,32 @@ export class LoopScheduler {
           soundPreset: soundPreset,
         });
       }
+
+      // Move to next loop iteration
+      loopStartTime += loopDuration;
     }
 
-    if (iteration === 0) {
-      console.log('[LoopScheduler] Scheduled notes in first iteration:', scheduledCount);
+    // Update nextLoopTime to the start of the next unscheduled iteration
+    // This is the iteration that starts after our current lookahead window
+    while (loop.nextLoopTime + loopDuration <= currentTime) {
+      loop.nextLoopTime += loopDuration;
+      loop.iteration++;
+      // Clean up old scheduled notes to prevent memory growth
+      loop.scheduledNotes = loop.scheduledNotes.filter(
+        (sn) => sn.startTime >= currentTime - 0.5
+      );
     }
 
-    // Schedule next iteration
-    const nextIterationTime = nextLoopTime + loopDuration;
-    loop.nextLoopTime = nextIterationTime;
-    loop.iteration++;
+    if (scheduledCount > 0) {
+      console.log('[LoopScheduler] Scheduled', scheduledCount, 'notes, total scheduled:', loop.scheduledNotes.length);
+    }
 
-    // Set up lookahead timer
-    const timeUntilNextCheck = Math.max(10, (nextLoopTime - this.context.currentTime) * 1000 - this.scheduleInterval);
-
+    // Set up next scheduling check - always check at regular intervals
     loop.lookaheadTimer = setTimeout(() => {
       if (this.activeLoops.has(loop.trackId)) {
         this.scheduleLoopIteration(loop, loopDuration);
       }
-    }, timeUntilNextCheck);
+    }, this.scheduleInterval);
   }
 
   // Apply humanization to MIDI data
