@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { Modal } from '../ui/modal';
 import { Button } from '../ui/button';
 import { Slider } from '../ui/slider';
+import { useContextMenu } from '../ui/context-menu';
 import {
   LOOP_LIBRARY,
   LOOP_CATEGORIES,
@@ -33,6 +34,7 @@ import {
   Heart,
   Trash2,
   Edit3,
+  Copy,
 } from 'lucide-react';
 
 interface LoopBrowserModalProps {
@@ -53,7 +55,8 @@ export function LoopBrowserModal({
   onAddLoop,
 }: LoopBrowserModalProps) {
   const { previewingLoopId, setPreviewingLoop, masterTempo } = useLoopTracksStore();
-  const { getAllLoops: getAllCustomLoops, deleteLoop: deleteCustomLoop, setUserId, syncFromServer } = useCustomLoopsStore();
+  const { getAllLoops: getAllCustomLoops, deleteLoop: deleteCustomLoop, createLoop: createCustomLoop, setUserId, syncFromServer } = useCustomLoopsStore();
+  const { showContextMenu, ContextMenuComponent } = useContextMenu();
 
   // Dark mode detection
   const [isDark, setIsDark] = useState(false);
@@ -214,6 +217,80 @@ export function LoopBrowserModal({
       onAddLoop(loop);
     },
     [onAddLoop, stopPreview]
+  );
+
+  // Duplicate a loop as a custom loop for editing
+  const handleDuplicateAsCustom = useCallback(
+    async (loop: LoopDefinition) => {
+      const newLoop = await createCustomLoop({
+        name: `${loop.name} (Copy)`,
+        category: loop.category,
+        subcategory: 'custom',
+        bars: loop.bars,
+        bpm: loop.bpm,
+        timeSignature: loop.timeSignature,
+        midiData: [...loop.midiData],
+        soundPreset: loop.soundPreset,
+        tags: ['custom', ...loop.tags],
+        intensity: loop.intensity,
+        complexity: loop.complexity,
+        key: loop.key,
+      });
+      // Open editor for the new custom loop
+      setEditingLoopId(newLoop.id);
+      setShowCreator(true);
+    },
+    [createCustomLoop]
+  );
+
+  // Handle right-click on a loop
+  const handleLoopContextMenu = useCallback(
+    (e: React.MouseEvent, loop: LoopDefinition, isCustom: boolean) => {
+      const items = [];
+
+      if (isCustom) {
+        items.push({
+          label: 'Edit Loop',
+          icon: <Edit3 className="w-4 h-4" />,
+          onClick: () => {
+            setEditingLoopId(loop.id);
+            setShowCreator(true);
+          },
+        });
+        items.push({
+          label: 'Duplicate',
+          icon: <Copy className="w-4 h-4" />,
+          onClick: () => handleDuplicateAsCustom(loop),
+        });
+        items.push({ divider: true, label: '', onClick: () => {} });
+        items.push({
+          label: 'Delete Loop',
+          icon: <Trash2 className="w-4 h-4" />,
+          danger: true,
+          onClick: () => {
+            if (confirm('Delete this loop? This cannot be undone.')) {
+              deleteCustomLoop(loop.id);
+            }
+          },
+        });
+      } else {
+        items.push({
+          label: 'Duplicate & Edit',
+          icon: <Copy className="w-4 h-4" />,
+          onClick: () => handleDuplicateAsCustom(loop),
+        });
+      }
+
+      items.push({ divider: true, label: '', onClick: () => {} });
+      items.push({
+        label: 'Add to Session',
+        icon: <Plus className="w-4 h-4" />,
+        onClick: () => handleAddLoop(loop),
+      });
+
+      showContextMenu(e, items);
+    },
+    [showContextMenu, handleDuplicateAsCustom, handleAddLoop, deleteCustomLoop]
   );
 
   // Get current category info
@@ -504,6 +581,7 @@ export function LoopBrowserModal({
                           deleteCustomLoop(loop.id);
                         }
                       } : undefined}
+                      onContextMenu={(e) => handleLoopContextMenu(e, loop, isCustom)}
                     />
                   );
                 })}
@@ -539,6 +617,9 @@ export function LoopBrowserModal({
           // handleAddLoop(loop);
         }}
       />
+
+      {/* Context Menu */}
+      {ContextMenuComponent}
     </Modal>
   );
 }
@@ -553,9 +634,10 @@ interface LoopCardProps {
   onAdd: () => void;
   onEdit?: () => void;
   onDelete?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }
 
-function LoopCard({ loop, isPlaying, isDark, isCustom, onPlay, onAdd, onEdit, onDelete }: LoopCardProps) {
+function LoopCard({ loop, isPlaying, isDark, isCustom, onPlay, onAdd, onEdit, onDelete, onContextMenu }: LoopCardProps) {
   const categoryIcon =
     LOOP_CATEGORIES.find((c) => c.id === loop.category)?.icon || '🎵';
 
@@ -568,6 +650,7 @@ function LoopCard({ loop, isPlaying, isDark, isCustom, onPlay, onAdd, onEdit, on
           ? isDark ? 'border-indigo-500 ring-2 ring-indigo-900/50' : 'border-indigo-400 ring-2 ring-indigo-100'
           : isDark ? 'border-gray-700 hover:border-gray-600' : 'border-slate-200 hover:border-slate-300'
       )}
+      onContextMenu={onContextMenu}
     >
       {/* Header */}
       <div className="flex items-start gap-2 mb-2">
