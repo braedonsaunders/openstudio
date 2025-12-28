@@ -6,8 +6,6 @@ import { AnalysisPanel } from './analysis-panel';
 import { ChatPanel } from './chat-panel';
 import { AIPanel } from './ai-panel';
 import { SetlistPanel } from './setlist-panel';
-import { PermissionsPanel } from './permissions-panel';
-import { usePermissions } from '@/hooks/usePermissions';
 import type { PanelType } from './daw-layout';
 import type { StemType, User, QualityPresetName, OpusEncodingSettings } from '@/types';
 import type { CloudflareCalls } from '@/lib/cloudflare/calls';
@@ -18,7 +16,6 @@ import {
   Sparkles,
   ChevronLeft,
   Music2,
-  Shield,
 } from 'lucide-react';
 
 interface PanelDockProps {
@@ -53,13 +50,12 @@ interface PanelDockProps {
   getCloudflareRef?: () => CloudflareCalls | null;
 }
 
-const basePanels: { id: PanelType; icon: typeof Users; label: string; requiresPermission?: boolean }[] = [
+const panels: { id: PanelType; icon: typeof Users; label: string }[] = [
   { id: 'users', icon: Users, label: 'Members' },
   { id: 'setlist', icon: Music2, label: 'Setlist' },
   { id: 'analysis', icon: Activity, label: 'Analysis' },
   { id: 'chat', icon: MessageSquare, label: 'Chat' },
   { id: 'ai', icon: Sparkles, label: 'AI' },
-  { id: 'permissions', icon: Shield, label: 'Permissions', requiresPermission: true },
 ];
 
 export function PanelDock({
@@ -87,15 +83,9 @@ export function PanelDock({
   width,
   getCloudflareRef,
 }: PanelDockProps) {
-  const { canManageRoom } = usePermissions();
-
-  // Filter panels based on permissions
-  const panels = basePanels.filter(
-    (panel) => !panel.requiresPermission || (panel.requiresPermission && canManageRoom)
-  );
-
   // Redirect old panel types to new ones
-  const validPanel = activePanel === 'queue' ? 'setlist' : activePanel === 'mixer' ? 'users' : activePanel;
+  const validPanel = activePanel === 'queue' ? 'setlist' : activePanel === 'mixer' ? 'users' : activePanel === 'permissions' ? 'users' : activePanel;
+
   return (
     <div
       className="bg-gray-50 dark:bg-[#0d0d14] border-l border-gray-200 dark:border-white/5 flex flex-col shrink-0 z-10 panel-slide-right"
@@ -138,6 +128,7 @@ export function PanelDock({
             currentUser={currentUser}
             isMaster={isMaster}
             audioLevels={audioLevels}
+            roomId={roomId}
             onMuteUser={onMuteUser}
             onVolumeChange={onVolumeChange}
             onPresetChange={onPresetChange}
@@ -167,10 +158,6 @@ export function PanelDock({
 
         {validPanel === 'ai' && (
           <AIPanel getCloudflareRef={getCloudflareRef} />
-        )}
-
-        {validPanel === 'permissions' && (
-          <PermissionsPanel roomId={roomId} users={users} currentUser={currentUser} />
         )}
       </div>
     </div>

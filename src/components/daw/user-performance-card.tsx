@@ -21,11 +21,16 @@ import {
   ChevronDown,
   ChevronUp,
   AlertTriangle,
+  Check,
+  UserX,
+  Ban,
+  Shield,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
 import type { User, UserPerformanceInfo, LatencyBreakdown } from '@/types';
 import { getConnectionQualityColor } from '@/stores/performance-sync-store';
 import { QUALITY_PRESETS } from '@/lib/audio/quality-presets';
+import { RoomRole, ROLE_INFO } from '@/types/permissions';
 
 interface UserPerformanceCardProps {
   user: User;
@@ -37,6 +42,18 @@ interface UserPerformanceCardProps {
   canControl: boolean;
   expanded?: boolean;
   onToggleExpand?: () => void;
+  // Role management props
+  role?: RoomRole;
+  roleInfo?: typeof ROLE_INFO[RoomRole];
+  canManageRole?: boolean;
+  isRoleDropdownOpen?: boolean;
+  onToggleRoleDropdown?: () => void;
+  assignableRoles?: RoomRole[];
+  onRoleChange?: (role: RoomRole) => void;
+  onCustomizePermissions?: () => void;
+  onKickUser?: () => void;
+  onBanUser?: () => void;
+  hasCustomPermissions?: boolean;
 }
 
 // Instrument icons
@@ -156,6 +173,18 @@ export function UserPerformanceCard({
   canControl,
   expanded = false,
   onToggleExpand,
+  // Role props
+  role,
+  roleInfo,
+  canManageRole,
+  isRoleDropdownOpen,
+  onToggleRoleDropdown,
+  assignableRoles,
+  onRoleChange,
+  onCustomizePermissions,
+  onKickUser,
+  onBanUser,
+  hasCustomPermissions,
 }: UserPerformanceCardProps) {
   const instrument = user.instrument || 'other';
   const instrumentIcon = instrumentIcons[instrument.toLowerCase()] || instrumentIcons.other;
@@ -236,12 +265,83 @@ export function UserPerformanceCard({
               )}
             </div>
 
-            {/* Instrument */}
+            {/* Instrument + Role */}
             <div className="flex items-center gap-2 mt-0.5">
               <div className={cn('flex items-center gap-1', instrumentColor)}>
                 {instrumentIcon}
                 <span className="text-xs capitalize">{instrument}</span>
               </div>
+              {/* Role badge */}
+              {roleInfo && (
+                <div className="relative">
+                  <button
+                    onClick={canManageRole ? onToggleRoleDropdown : undefined}
+                    disabled={!canManageRole}
+                    className={cn(
+                      'flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium transition-colors',
+                      canManageRole
+                        ? 'hover:bg-gray-200 dark:hover:bg-white/10 cursor-pointer'
+                        : 'cursor-default',
+                      roleInfo.color
+                    )}
+                  >
+                    <span>{roleInfo.icon}</span>
+                    <span>{roleInfo.name}</span>
+                    {canManageRole && <ChevronDown className="w-2.5 h-2.5" />}
+                  </button>
+
+                  {/* Role dropdown */}
+                  {isRoleDropdownOpen && canManageRole && assignableRoles && (
+                    <div className="absolute left-0 top-full mt-1 w-36 bg-white dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg shadow-lg z-[100] py-1">
+                      {assignableRoles.map((r) => {
+                        const info = ROLE_INFO[r];
+                        return (
+                          <button
+                            key={r}
+                            onClick={() => onRoleChange?.(r)}
+                            className={cn(
+                              'w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-white/5 text-left',
+                              role === r && 'bg-gray-100 dark:bg-white/10'
+                            )}
+                          >
+                            <span>{info.icon}</span>
+                            <span className="flex-1 text-gray-800 dark:text-zinc-200">{info.name}</span>
+                            {role === r && <Check className="w-3 h-3 text-indigo-500" />}
+                          </button>
+                        );
+                      })}
+                      <div className="border-t border-gray-200 dark:border-white/10 my-1" />
+                      <button
+                        onClick={onCustomizePermissions}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-gray-100 dark:hover:bg-white/5 text-left text-gray-600 dark:text-zinc-400"
+                      >
+                        <Settings2 className="w-3 h-3" />
+                        <span>Customize...</span>
+                      </button>
+                      <div className="border-t border-gray-200 dark:border-white/10 my-1" />
+                      <button
+                        onClick={onKickUser}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-amber-50 dark:hover:bg-amber-500/10 text-left text-amber-600 dark:text-amber-400"
+                      >
+                        <UserX className="w-3 h-3" />
+                        <span>Kick</span>
+                      </button>
+                      <button
+                        onClick={onBanUser}
+                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-500/10 text-left text-red-600 dark:text-red-400"
+                      >
+                        <Ban className="w-3 h-3" />
+                        <span>Ban</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {hasCustomPermissions && (
+                <span className="text-[10px] text-amber-500" title="Has custom permissions">
+                  ★
+                </span>
+              )}
             </div>
           </div>
 
