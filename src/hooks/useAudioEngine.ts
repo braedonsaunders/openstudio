@@ -274,9 +274,19 @@ export function useAudioEngine() {
     globalEngine?.setLocalTrackVolume(volume);
   }, []);
 
-  // Update local track effects
+  // Update local track effects (standard effects like compressor, reverb, etc.)
   const updateLocalTrackEffects = useCallback((effects: Partial<import('@/types').TrackEffectsChain>) => {
     globalEngine?.updateLocalTrackEffects(effects);
+  }, []);
+
+  // Update local guitar effects (distortion, overdrive, chorus, etc.)
+  const updateLocalGuitarEffects = useCallback((effects: Partial<import('@/types').GuitarEffectsChain>) => {
+    globalEngine?.updateLocalGuitarEffects(effects);
+  }, []);
+
+  // Enable/disable guitar effects mode
+  const setGuitarMode = useCallback((enabled: boolean) => {
+    globalEngine?.setGuitarMode(enabled);
   }, []);
 
   // Check if backing track audio is available for analysis
@@ -529,6 +539,8 @@ export function useAudioEngine() {
     setLocalTrackMuted,
     setLocalTrackVolume,
     updateLocalTrackEffects,
+    updateLocalGuitarEffects,
+    setGuitarMode,
     // Analyser nodes as state (triggers re-render when available)
     audioContext,
     backingTrackAnalyser,
