@@ -1,16 +1,23 @@
 'use client';
 
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useMetronomeStore } from '@/stores/metronome-store';
 import { useSessionTempoStore, selectTempo, selectTimeSignature } from '@/stores/session-tempo-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { MetronomeEngine } from '@/lib/audio/metronome-engine';
+import type { MasterClockSync } from '@/lib/audio/latency-sync-engine';
 
 interface UseMetronomeOptions {
   audioContext: AudioContext | null;
   masterGain?: AudioNode | null;
+  /** Master clock sync for WebRTC synchronization */
+  clockSync?: MasterClockSync | null;
+  /** Whether this client is the room master */
+  isMaster?: boolean;
+  /** Callback when broadcast stream is ready */
   onBroadcastStreamReady?: (stream: MediaStream) => void;
+  /** Callback when broadcast stream ends */
   onBroadcastStreamEnded?: () => void;
 }
 
@@ -23,8 +30,13 @@ interface UseMetronomeResult {
   currentBeat: number;
   tempo: number;
 
+  // Sync state
+  isSynced: boolean;
+  syncQuality: 'excellent' | 'good' | 'fair' | 'poor' | null;
+
   // Controls
   start: (syncTimestamp?: number, offset?: number) => void;
+  startSynced: (masterStartTime: number, offset?: number) => void;
   stop: () => void;
   toggle: () => void;
 
@@ -42,11 +54,14 @@ interface UseMetronomeResult {
  * - Metronome store for settings (volume, click type, etc.)
  * - Session Tempo store for BPM and time signature
  * - Audio store for playback state sync
+ * - Master clock sync for WebRTC synchronization
  */
 export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
-  const { audioContext, masterGain, onBroadcastStreamReady, onBroadcastStreamEnded } = options;
+  const { audioContext, masterGain, clockSync, isMaster, onBroadcastStreamReady, onBroadcastStreamEnded } = options;
 
   const engineRef = useRef<MetronomeEngine | null>(null);
+  const [isSynced, setIsSynced] = useState(false);
+  const [syncQuality, setSyncQuality] = useState<'excellent' | 'good' | 'fair' | 'poor' | null>(null);
 
   // Metronome settings store - only subscribe to values, not functions
   const {
@@ -93,6 +108,48 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
       engineRef.current = null;
     };
   }, [audioContext, masterGain]);
+
+  // ==========================================================================
+  // Clock Sync Integration
+  // ==========================================================================
+
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    // Set clock sync for network synchronization
+    if (clockSync) {
+      engine.setClockSync(clockSync);
+      setIsSynced(true);
+
+      // Monitor sync quality
+      const qualityCheck = setInterval(() => {
+        if (clockSync) {
+          setSyncQuality(clockSync.getSyncQuality());
+        }
+      }, 1000);
+
+      return () => clearInterval(qualityCheck);
+    } else {
+      engine.setClockSync(null);
+      setIsSynced(false);
+      setSyncQuality(null);
+    }
+  }, [clockSync]);
+
+  // Enable master sync mode when we have a clock sync and are not master
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    if (clockSync && !isMaster) {
+      // Non-masters sync to master's clock
+      engine.enableMasterSync();
+    } else {
+      // Masters run the clock, don't sync to themselves
+      engine.disableMasterSync();
+    }
+  }, [clockSync, isMaster]);
 
   // ==========================================================================
   // Settings Sync
@@ -158,6 +215,18 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     useMetronomeStore.getState().setIsPlaying(true);
   }, []);
 
+  /**
+   * Start metronome synced to master clock.
+   * This ensures all participants hear the metronome at the same beat position.
+   */
+  const startSynced = useCallback((masterStartTime: number, offset: number = 0) => {
+    const engine = engineRef.current;
+    if (!engine) return;
+
+    engine.startSyncedToMaster(masterStartTime, offset);
+    useMetronomeStore.getState().setIsPlaying(true);
+  }, []);
+
   const stop = useCallback(() => {
     const engine = engineRef.current;
     if (!engine) return;
@@ -211,7 +280,10 @@ export function useMetronome(options: UseMetronomeOptions): UseMetronomeResult {
     isPlaying,
     currentBeat: useMetronomeStore((s) => s.currentBeat),
     tempo,
+    isSynced,
+    syncQuality,
     start,
+    startSynced,
     stop,
     toggle: handleToggle,
     tap,
