@@ -132,7 +132,7 @@ export const usePermissionsStore = create<PermissionsState>()(
       ];
       if (!category || !action) return false;
 
-      const categoryPerms = myPermissions[category] as Record<string, boolean> | undefined;
+      const categoryPerms = myPermissions[category] as unknown as Record<string, boolean> | undefined;
       return categoryPerms?.[action] ?? false;
     },
 
