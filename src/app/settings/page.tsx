@@ -9,7 +9,8 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { AvatarEditor } from '@/components/avatar/AvatarEditor';
 import { SpriteAvatarEditor } from '@/components/avatar/SpriteAvatarEditor';
-import { SavedTrackCard, SavedTrackEditor } from '@/components/settings/SavedTrackCard';
+import { SavedTrackCard } from '@/components/settings/SavedTrackCard';
+import { SavedTrackEditor } from '@/components/settings/SavedTrackEditor';
 import { InstrumentIcon } from '@/components/ui/instrument-icon';
 import { INSTRUMENTS, getInstrumentEmoji, type SavedTrackPreset, type InstrumentCategory } from '@/types/user';
 import {
@@ -54,6 +55,7 @@ export default function SettingsPage() {
     updateProfile,
     addInstrument,
     setPrimaryInstrument,
+    removeInstrument,
   } = useAuthStore();
 
   const [activeTab, setActiveTab] = useState<Tab>('profile');
@@ -357,10 +359,20 @@ export default function SettingsPage() {
                               variant="ghost"
                               size="sm"
                               onClick={() => setPrimaryInstrument(inst.instrumentId)}
+                              title="Set as primary"
                             >
                               <Star className="w-4 h-4" />
                             </Button>
                           )}
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => removeInstrument(inst.instrumentId)}
+                            className="text-gray-400 hover:text-red-500"
+                            title="Remove instrument"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
                         </div>
                       </div>
                     ))
