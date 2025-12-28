@@ -148,7 +148,7 @@ export function TrackHeader({
               onClick={() => onMute(!user.isMuted)}
               className={cn(
                 'w-6 h-6 rounded flex items-center justify-center text-[10px] font-bold transition-all',
-                user.isMuted
+                user.isMuted || isGlobalMuted
                   ? 'bg-red-500/20 text-red-400'
                   : 'bg-white/5 text-zinc-400 hover:bg-white/10 hover:text-white'
               )}
