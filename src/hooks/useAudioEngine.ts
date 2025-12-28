@@ -134,8 +134,23 @@ export function useAudioEngine() {
       // Get available devices
       try {
         const devices = await navigator.mediaDevices.enumerateDevices();
+        const outputDevices = devices.filter((d) => d.kind === 'audiooutput');
         useAudioStore.getState().setInputDevices(devices.filter((d) => d.kind === 'audioinput'));
-        useAudioStore.getState().setOutputDevices(devices.filter((d) => d.kind === 'audiooutput'));
+        useAudioStore.getState().setOutputDevices(outputDevices);
+
+        // Auto-apply saved output device if it exists and is still available
+        const savedOutputDeviceId = useAudioStore.getState().outputDeviceId;
+        if (savedOutputDeviceId && savedOutputDeviceId !== 'default') {
+          const deviceExists = outputDevices.some((d) => d.deviceId === savedOutputDeviceId);
+          if (deviceExists) {
+            console.log('[AudioEngine] Restoring saved output device:', savedOutputDeviceId);
+            await engine.setOutputDevice(savedOutputDeviceId);
+          } else {
+            console.warn('[AudioEngine] Saved output device no longer available:', savedOutputDeviceId);
+            // Clear invalid device ID
+            useAudioStore.getState().setOutputDevice('default');
+          }
+        }
       } catch (err) {
         console.warn('Failed to enumerate devices:', err);
       }
