@@ -764,6 +764,311 @@ export interface GuitarEffectPreset {
 export type ExtendedTrackAudioSettings = TrackAudioSettings;
 
 // ============================================================================
+// Extended Effects Types (New Effects)
+// ============================================================================
+
+// Pitch Correction / Auto-Tune Settings
+export type PitchCorrectionScale = 'major' | 'minor' | 'chromatic' | 'pentatonicMajor' | 'pentatonicMinor' | 'blues' | 'dorian' | 'mixolydian' | 'harmonicMinor';
+
+export interface PitchCorrectionSettings {
+  enabled: boolean;
+  key: string; // C, C#, D, etc.
+  scale: PitchCorrectionScale;
+  speed: number; // 0-100 (correction speed)
+  humanize: number; // 0-100 (natural variation)
+  formantPreserve: boolean;
+  detune: number; // -100 to +100 cents
+  mix: number; // 0-100
+}
+
+// Vocal Doubler Settings
+export interface VocalDoublerSettings {
+  enabled: boolean;
+  detune: number; // 0-50 cents
+  delay: number; // 0-50 ms
+  spread: number; // 0-100 (stereo width)
+  depth: number; // 0-100 (modulation depth)
+  mix: number; // 0-100
+  voices: number; // 1-4
+}
+
+// De-Esser Settings
+export type DeEsserMode = 'split' | 'wideband';
+
+export interface DeEsserSettings {
+  enabled: boolean;
+  frequency: number; // 2000-10000 Hz
+  threshold: number; // -60 to 0 dB
+  reduction: number; // 0-24 dB
+  range: number; // 0-24 dB
+  attack: number; // 0.1-10 ms
+  release: number; // 10-500 ms
+  mode: DeEsserMode;
+  listenMode: boolean;
+}
+
+// Formant Shifter Settings
+export interface FormantShifterSettings {
+  enabled: boolean;
+  shift: number; // -12 to +12 semitones
+  gender: number; // -100 to +100
+  preservePitch: boolean;
+  mix: number; // 0-100
+}
+
+// Harmonizer Settings
+export type HarmonyType = 'octave' | 'fifth' | 'fourth' | 'third' | 'minorThird' | 'sixth' | 'powerChord' | 'majorChord' | 'minorChord' | 'thirdAndFifth' | 'thirdBelow' | 'fifthBelow' | 'octaveBelow' | 'custom';
+
+export interface HarmonizerSettings {
+  enabled: boolean;
+  key: string;
+  scale: 'major' | 'minor';
+  harmonyType: HarmonyType;
+  customIntervals: number[]; // Semitones
+  voices: number; // 1-4
+  spread: number; // 0-100
+  shift: number; // -1200 to +1200 cents
+  mix: number; // 0-100
+  keyLock: boolean;
+}
+
+// Bitcrusher Settings
+export interface BitcrusherSettings {
+  enabled: boolean;
+  bits: number; // 1-16
+  sampleRate: number; // 100-44100 Hz
+  mix: number; // 0-100
+  dither: boolean;
+}
+
+// Ring Modulator Settings
+export type RingModWaveform = 'sine' | 'square' | 'triangle' | 'sawtooth';
+
+export interface RingModulatorSettings {
+  enabled: boolean;
+  frequency: number; // 20-5000 Hz
+  waveform: RingModWaveform;
+  mix: number; // 0-100
+  lfoRate: number; // 0-10 Hz
+  lfoDepth: number; // 0-100
+}
+
+// Frequency Shifter Settings
+export interface FrequencyShifterSettings {
+  enabled: boolean;
+  shift: number; // -2000 to +2000 Hz
+  feedback: number; // 0-100
+  mix: number; // 0-100
+  direction: 'up' | 'down' | 'both';
+}
+
+// Granular Delay Settings
+export interface GranularDelaySettings {
+  enabled: boolean;
+  grainSize: number; // 10-500 ms
+  density: number; // 0-100
+  pitch: number; // -24 to +24 semitones
+  pitchRandom: number; // 0-100
+  position: number; // 0-2000 ms
+  positionRandom: number; // 0-100
+  feedback: number; // 0-100
+  spread: number; // 0-100
+  reverse: number; // 0-100 (probability)
+  mix: number; // 0-100
+  freeze: boolean;
+}
+
+// Rotary Speaker (Leslie) Settings
+export type RotarySpeed = 'slow' | 'fast' | 'brake';
+
+export interface RotarySpeakerSettings {
+  enabled: boolean;
+  speed: RotarySpeed;
+  hornLevel: number; // 0-100
+  drumLevel: number; // 0-100
+  distance: number; // 0-100
+  drive: number; // 0-100
+  mix: number; // 0-100
+}
+
+// Auto-Pan Settings
+export type AutoPanWaveform = 'sine' | 'triangle' | 'square' | 'sawtooth';
+
+export interface AutoPanSettings {
+  enabled: boolean;
+  rate: number; // 0.1-20 Hz
+  depth: number; // 0-100
+  waveform: AutoPanWaveform;
+  phase: number; // 0-360 degrees
+  tempoSync: boolean;
+  subdivision: DelaySubdivision;
+  width: number; // 0-100
+}
+
+// Multi-Mode Filter Settings
+export type MultiFilterType = 'lowpass' | 'highpass' | 'bandpass' | 'notch' | 'allpass';
+export type MultiFilterWaveform = 'sine' | 'triangle' | 'square' | 'sawtooth';
+
+export interface MultiFilterSettings {
+  enabled: boolean;
+  type: MultiFilterType;
+  frequency: number; // 20-20000 Hz
+  resonance: number; // 0.1-30
+  drive: number; // 0-100
+  lfoRate: number; // 0-20 Hz
+  lfoDepth: number; // 0-100
+  lfoWaveform: MultiFilterWaveform;
+  envelopeAmount: number; // -100 to +100
+  envelopeSensitivity: number; // 0-100
+  envelopeAttack: number; // ms
+  envelopeRelease: number; // ms
+  keyTrack: number; // -100 to +100
+  tempoSync: boolean;
+  subdivision: DelaySubdivision;
+  mix: number; // 0-100
+}
+
+// Vibrato Settings
+export interface VibratoSettings {
+  enabled: boolean;
+  rate: number; // 0.1-20 Hz
+  depth: number; // 0-100
+  waveform: AutoPanWaveform;
+  stereo: number; // 0-180 degrees
+  tempoSync: boolean;
+  subdivision: DelaySubdivision;
+}
+
+// Transient Shaper Settings
+export interface TransientShaperSettings {
+  enabled: boolean;
+  attack: number; // -100 to +100
+  sustain: number; // -100 to +100
+  attackTime: number; // 1-50 ms
+  releaseTime: number; // 10-500 ms
+  output: number; // -12 to +12 dB
+}
+
+// Stereo Imager Settings
+export interface StereoImagerSettings {
+  enabled: boolean;
+  width: number; // 0-200 (100 = normal)
+  midLevel: number; // -12 to +12 dB
+  sideLevel: number; // -12 to +12 dB
+  bassMonoFreq: number; // 20-500 Hz
+  bassMonoAmount: number; // 0-100
+  balance: number; // -100 to +100
+}
+
+// Exciter Settings
+export type ExciterHarmonics = 'odd' | 'even' | 'both';
+
+export interface ExciterSettings {
+  enabled: boolean;
+  frequency: number; // 1000-10000 Hz
+  amount: number; // 0-100
+  harmonics: ExciterHarmonics;
+  color: number; // 0-100
+  mix: number; // 0-100
+}
+
+// Multiband Compressor Settings
+export interface MultibandBandSettings {
+  threshold: number; // -60 to 0 dB
+  ratio: number; // 1-20
+  attack: number; // 0-1000 ms
+  release: number; // 0-3000 ms
+  gain: number; // -12 to +12 dB
+  solo: boolean;
+  bypass: boolean;
+}
+
+export interface MultibandCompressorSettings {
+  enabled: boolean;
+  lowCrossover: number; // 20-500 Hz
+  highCrossover: number; // 500-10000 Hz
+  low: MultibandBandSettings;
+  mid: MultibandBandSettings;
+  high: MultibandBandSettings;
+  outputGain: number; // -12 to +12 dB
+}
+
+// Stereo Delay Settings
+export interface StereoDelaySettings {
+  enabled: boolean;
+  leftTime: number; // 0-2000 ms
+  rightTime: number; // 0-2000 ms
+  leftFeedback: number; // 0-100
+  rightFeedback: number; // 0-100
+  crossFeed: number; // 0-100
+  tone: number; // 0-100
+  tempoSync: boolean;
+  leftSubdivision: DelaySubdivision;
+  rightSubdivision: DelaySubdivision;
+  pingPong: boolean;
+  mix: number; // 0-100
+}
+
+// Room Simulator Settings
+export type RoomSize = 'small' | 'medium' | 'large' | 'hall';
+
+export interface RoomSimulatorSettings {
+  enabled: boolean;
+  size: RoomSize;
+  damping: number; // 0-100
+  earlyLevel: number; // 0-100
+  lateLevel: number; // 0-100
+  decay: number; // 0.1-5 seconds
+  preDelay: number; // 0-100 ms
+  diffusion: number; // 0-100
+  modulation: number; // 0-100
+  mix: number; // 0-100
+}
+
+// Shimmer Reverb Settings
+export interface ShimmerReverbSettings {
+  enabled: boolean;
+  decay: number; // 0.5-10 seconds
+  shimmer: number; // 0-100
+  pitch: number; // 0, 5, 7, 12, 19, 24 semitones
+  damping: number; // 0-100
+  tone: number; // 0-100
+  modulation: number; // 0-100
+  preDelay: number; // 0-100 ms
+  diffusion: number; // 0-100
+  mix: number; // 0-100
+}
+
+// Extended Unified Effects Chain with all new effects
+export interface ExtendedEffectsChain extends UnifiedEffectsChain {
+  // Vocal effects
+  pitchCorrection: PitchCorrectionSettings;
+  vocalDoubler: VocalDoublerSettings;
+  deEsser: DeEsserSettings;
+  formantShifter: FormantShifterSettings;
+  harmonizer: HarmonizerSettings;
+  // Creative effects
+  bitcrusher: BitcrusherSettings;
+  ringModulator: RingModulatorSettings;
+  frequencyShifter: FrequencyShifterSettings;
+  granularDelay: GranularDelaySettings;
+  // Additional modulation
+  rotarySpeaker: RotarySpeakerSettings;
+  autoPan: AutoPanSettings;
+  multiFilter: MultiFilterSettings;
+  vibrato: VibratoSettings;
+  // Dynamics/Utility
+  transientShaper: TransientShaperSettings;
+  stereoImager: StereoImagerSettings;
+  exciter: ExciterSettings;
+  multibandCompressor: MultibandCompressorSettings;
+  // Spatial
+  stereoDelay: StereoDelaySettings;
+  roomSimulator: RoomSimulatorSettings;
+  shimmerReverb: ShimmerReverbSettings;
+}
+
+// ============================================================================
 // World-Class Latency & Synchronization Types
 // ============================================================================
 
