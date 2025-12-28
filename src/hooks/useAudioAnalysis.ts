@@ -23,7 +23,10 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   const analyzerRef = useRef(getEssentiaAnalyzer());
   const isInitializedRef = useRef(false);
   const visualizationFrameRef = useRef<number | null>(null);
+  const didStartAnalysisRef = useRef(false);
 
+  // Subscribe to store values we need to read reactively
+  // For store functions, we use getState() inside callbacks/effects to avoid dependency issues
   const {
     localAnalysis,
     syncedAnalysis,
@@ -33,20 +36,9 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     spectrumData,
     waveformData,
     tunerEnabled,
-    setLocalAnalysis,
-    setSyncedAnalysis,
-    setAnalysisSource,
-    setIsAnalyzing,
     setWorkerReady,
-    setAnalysisError,
     setBackingTrackAvailable,
-    setSpectrumData,
-    setWaveformData,
-    setTunerEnabled,
-    clearAnalysisData,
   } = useAnalysisStore();
-
-  const { addMessage, currentUser } = useRoomStore();
 
   // Initialize the analyzer in background - doesn't block audio
   useEffect(() => {
@@ -99,12 +91,21 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   }, [backingTrackAnalyser, setBackingTrackAvailable]);
 
   // Handle analysis data updates
+  // Use getState() to avoid recreating callback when room state changes
   const handleAnalysisData = useCallback(
     (data: AnalysisData) => {
+      const { setLocalAnalysis, setSyncedAnalysis } = useAnalysisStore.getState();
+      const { addMessage } = useRoomStore.getState();
+
       setLocalAnalysis(data);
 
       // If master and key/BPM changed significantly, broadcast to room
-      if (isMaster && userId) {
+      // Get fresh values from options ref to avoid stale closures
+      const currentIsMaster = isMaster;
+      const currentUserId = userId;
+      const currentRoomId = roomId;
+
+      if (currentIsMaster && currentUserId) {
         const currentSynced = useAnalysisStore.getState().syncedAnalysis;
         const shouldSync =
           !currentSynced ||
@@ -117,17 +118,17 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
             key: data.key,
             keyScale: data.keyScale,
             bpm: data.bpm,
-            updatedBy: userId,
+            updatedBy: currentUserId,
             updatedAt: Date.now(),
           };
 
           setSyncedAnalysis(syncData);
 
           // Broadcast via room message
-          if (roomId) {
+          if (currentRoomId) {
             addMessage({
               type: 'sync',
-              userId,
+              userId: currentUserId,
               content: '',
               timestamp: new Date().toISOString(),
               data: {
@@ -139,7 +140,8 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
         }
       }
     },
-    [isMaster, userId, roomId, setLocalAnalysis, setSyncedAnalysis, addMessage]
+    // Only depend on the actual option values, not store functions
+    [isMaster, userId, roomId]
   );
 
   // Set up analysis callback
@@ -152,6 +154,10 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   // - User is master (only master analyzes, results are synced to others)
   // - Audio is playing
   // - Analyser is ready
+  //
+  // IMPORTANT: We avoid having store setters and volatile props like isMaster in
+  // the dependency array to prevent infinite loops during room initialization.
+  // Use getState() for store functions and refs for values we need to read.
   useEffect(() => {
     console.log('Analysis effect running:', {
       isWorkerReady,
@@ -165,15 +171,22 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
     if (!isWorkerReady || !audioContext) {
       console.log('Analysis effect early return - not ready');
-      return;
+      return; // Don't set up cleanup if we didn't start anything
     }
 
+    // Reset the ref at the start of each effect run
+    didStartAnalysisRef.current = false;
+
     const startAnalysis = async () => {
+      // Get store functions via getState() to avoid dependency array issues
+      const { setIsAnalyzing, setAnalysisError } = useAnalysisStore.getState();
+
       try {
         if (analysisSource === 'local' && localStream) {
           // Local microphone analysis - always available
           await analyzerRef.current.analyzeStream(localStream);
           setIsAnalyzing(true);
+          didStartAnalysisRef.current = true;
         } else if (analysisSource === 'backing' && backingTrackAnalyser) {
           // Backing track analysis from audio engine
           // Only analyze when playing and user is master
@@ -182,6 +195,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
             console.log('Calling analyzeFromAnalyserNode...');
             analyzerRef.current.analyzeFromAnalyserNode(backingTrackAnalyser);
             setIsAnalyzing(true);
+            didStartAnalysisRef.current = true;
             console.log('Started backing track analysis (master)');
           } else if (!isPlaying) {
             // Stop analysis when not playing
@@ -194,6 +208,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
           if (isMaster) {
             analyzerRef.current.analyzeFromAnalyserNode(masterAnalyser);
             setIsAnalyzing(true);
+            didStartAnalysisRef.current = true;
             console.log('Started mixed audio analysis (master) - analyzing all audio');
           }
         }
@@ -205,12 +220,16 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
 
     startAnalysis();
 
-    // Cleanup when dependencies change
+    // Cleanup when dependencies change - only if we actually started analysis
     return () => {
-      console.log('Analysis effect cleanup running');
-      if (analysisSource === 'backing' || analysisSource === 'mixed') {
-        analyzerRef.current.stopAnalysis();
-        setIsAnalyzing(false);
+      if (didStartAnalysisRef.current) {
+        console.log('Analysis effect cleanup running');
+        const { setIsAnalyzing } = useAnalysisStore.getState();
+        if (analysisSource === 'backing' || analysisSource === 'mixed') {
+          analyzerRef.current.stopAnalysis();
+          setIsAnalyzing(false);
+        }
+        didStartAnalysisRef.current = false;
       }
     };
   }, [
@@ -222,17 +241,18 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     isMaster,
     audioContext,
     isWorkerReady,
-    setIsAnalyzing,
-    setAnalysisError,
+    // Removed setIsAnalyzing and setAnalysisError - use getState() instead
   ]);
 
   // Update visualization data
+  // Use getState() for store functions to avoid dependency issues
   useEffect(() => {
     if (!isAnalyzing) return;
 
     const updateVisualization = () => {
       const spectrum = analyzerRef.current.getSpectrumData();
       const waveform = analyzerRef.current.getWaveformData();
+      const { setSpectrumData, setWaveformData } = useAnalysisStore.getState();
 
       if (spectrum) setSpectrumData(spectrum);
       if (waveform) setWaveformData(waveform);
@@ -247,9 +267,10 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
         cancelAnimationFrame(visualizationFrameRef.current);
       }
     };
-  }, [isAnalyzing, setSpectrumData, setWaveformData]);
+  }, [isAnalyzing]);
 
   // Listen for synced analysis from other users
+  // Use getState() for store functions to avoid dependency issues
   useEffect(() => {
     const unsubscribe = useRoomStore.subscribe(
       (state) => state.messages,
@@ -263,6 +284,7 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
           lastMessage.userId !== userId
         ) {
           const data = lastMessage.data as unknown as SyncedAnalysis & { type: string };
+          const { setSyncedAnalysis } = useAnalysisStore.getState();
 
           setSyncedAnalysis({
             key: data.key,
@@ -276,36 +298,38 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     );
 
     return () => unsubscribe();
-  }, [userId, setSyncedAnalysis]);
+  }, [userId]);
 
-  // Stop analysis
+  // Stop analysis - use getState() to avoid dependency issues
   const stopAnalysis = useCallback(() => {
     analyzerRef.current.stopAnalysis();
-    setIsAnalyzing(false);
-  }, [setIsAnalyzing]);
+    useAnalysisStore.getState().setIsAnalyzing(false);
+  }, []);
 
   // Reset analysis - clears all buffers and stored key/BPM data
   // Call this when switching backing tracks
   const resetAnalysis = useCallback(() => {
     analyzerRef.current.stopAnalysis();
     analyzerRef.current.resetAnalysis();
+    const { clearAnalysisData, setIsAnalyzing } = useAnalysisStore.getState();
     clearAnalysisData();
     setIsAnalyzing(false);
     console.log('Analysis reset - ready for new track');
-  }, [clearAnalysisData, setIsAnalyzing]);
+  }, []);
 
   // Toggle tuner mode
   const toggleTuner = useCallback(() => {
+    const { tunerEnabled, setTunerEnabled } = useAnalysisStore.getState();
     setTunerEnabled(!tunerEnabled);
-  }, [tunerEnabled, setTunerEnabled]);
+  }, []);
 
   // Switch analysis source
   const switchSource = useCallback(
     (source: 'backing' | 'local' | 'mixed') => {
       analyzerRef.current.stopAnalysis();
-      setAnalysisSource(source);
+      useAnalysisStore.getState().setAnalysisSource(source);
     },
-    [setAnalysisSource]
+    []
   );
 
   // Get the effective analysis (synced or local)
