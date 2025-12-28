@@ -3,7 +3,6 @@
 import { useEffect, useRef } from 'react';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useAudioEngine } from './useAudioEngine';
-import type { GuitarEffectsChain } from '@/types';
 
 /**
  * Hook that synchronizes user track state (mute, solo, volume, effects)
@@ -13,13 +12,12 @@ import type { GuitarEffectsChain } from '@/types';
  * (e.g., DAWLayout or a track component).
  */
 export function useTrackAudioSync(currentUserId: string | undefined) {
-  const { setLocalTrackMuted, setLocalTrackVolume, updateLocalTrackEffects, updateLocalGuitarEffects, setGuitarMode } = useAudioEngine();
+  const { setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects } = useAudioEngine();
   const lastSyncRef = useRef<{
     isMuted: boolean;
     isSolo: boolean;
     volume: number;
     effects: unknown;
-    guitarEffects: unknown;
   } | null>(null);
 
   useEffect(() => {
@@ -48,14 +46,11 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         (hasSoloedTracks && !primaryTrack.isSolo);
 
       // Check if state has changed
-      // Note: guitarEffects is added via type extension in the store
-      const audioSettings = primaryTrack.audioSettings as typeof primaryTrack.audioSettings & { guitarEffects?: GuitarEffectsChain };
       const currentState = {
         isMuted: isEffectivelyMuted,
         isSolo: primaryTrack.isSolo,
         volume: primaryTrack.volume,
-        effects: audioSettings.effects,
-        guitarEffects: audioSettings.guitarEffects,
+        effects: primaryTrack.audioSettings.effects,
       };
 
       const lastState = lastSyncRef.current;
@@ -70,33 +65,10 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         setLocalTrackVolume(currentState.volume);
       }
 
-      // Apply effects if changed (deep comparison would be too expensive, just apply)
+      // Apply effects if changed (unified chain - all 15 effects)
       if (!lastState || lastState.effects !== currentState.effects) {
         if (currentState.effects) {
-          updateLocalTrackEffects(currentState.effects);
-        }
-      }
-
-      // Apply guitar effects if changed
-      if (!lastState || lastState.guitarEffects !== currentState.guitarEffects) {
-        if (currentState.guitarEffects) {
-          const guitarEffects = currentState.guitarEffects as GuitarEffectsChain;
-          updateLocalGuitarEffects(guitarEffects);
-
-          // Auto-enable guitar mode if any guitar effect is enabled
-          const hasEnabledGuitarEffect =
-            guitarEffects.distortion?.enabled ||
-            guitarEffects.overdrive?.enabled ||
-            guitarEffects.ampSimulator?.enabled ||
-            guitarEffects.cabinet?.enabled ||
-            guitarEffects.chorus?.enabled ||
-            guitarEffects.delay?.enabled ||
-            guitarEffects.flanger?.enabled ||
-            guitarEffects.phaser?.enabled ||
-            guitarEffects.tremolo?.enabled ||
-            guitarEffects.wah?.enabled;
-
-          setGuitarMode(!!hasEnabledGuitarEffect);
+          updateLocalEffects(currentState.effects);
         }
       }
 
@@ -106,5 +78,5 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
     return () => {
       unsubscribe();
     };
-  }, [currentUserId, setLocalTrackMuted, setLocalTrackVolume, updateLocalTrackEffects, updateLocalGuitarEffects, setGuitarMode]);
+  }, [currentUserId, setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects]);
 }
