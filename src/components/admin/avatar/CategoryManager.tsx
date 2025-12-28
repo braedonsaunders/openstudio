@@ -38,6 +38,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
   const [formMaxSelections, setFormMaxSelections] = useState(1);
   const [formSupportsColorVariants, setFormSupportsColorVariants] = useState(false);
   const [formDefaultPalette, setFormDefaultPalette] = useState<string>('');
+  const [formPromptAddition, setFormPromptAddition] = useState('');
   const [formRenderX, setFormRenderX] = useState(0);
   const [formRenderY, setFormRenderY] = useState(0);
   const [formRenderWidth, setFormRenderWidth] = useState(512);
@@ -97,6 +98,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
     setFormMaxSelections(1);
     setFormSupportsColorVariants(false);
     setFormDefaultPalette('');
+    setFormPromptAddition('');
     setFormRenderX(0);
     setFormRenderY(0);
     setFormRenderWidth(512);
@@ -112,6 +114,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
     setFormMaxSelections(category.maxSelections);
     setFormSupportsColorVariants(category.supportsColorVariants);
     setFormDefaultPalette(category.defaultColorPalette || '');
+    setFormPromptAddition(category.promptAddition || '');
     setFormRenderX(category.renderX);
     setFormRenderY(category.renderY);
     setFormRenderWidth(category.renderWidth);
@@ -132,6 +135,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
           maxSelections: formMaxSelections,
           supportsColorVariants: formSupportsColorVariants,
           defaultColorPalette: formDefaultPalette || null,
+          promptAddition: formPromptAddition || null,
           renderX: formRenderX,
           renderY: formRenderY,
           renderWidth: formRenderWidth,
@@ -152,6 +156,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
           maxSelections: formMaxSelections,
           supportsColorVariants: formSupportsColorVariants,
           defaultColorPalette: formDefaultPalette || undefined,
+          promptAddition: formPromptAddition || undefined,
           renderX: formRenderX,
           renderY: formRenderY,
           renderWidth: formRenderWidth,
@@ -352,6 +357,23 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
                 ))}
               </select>
             </div>
+          </div>
+
+          {/* Prompt Addition for AI Generation */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              AI Generation Prompt Rules
+            </label>
+            <textarea
+              value={formPromptAddition}
+              onChange={(e) => setFormPromptAddition(e.target.value)}
+              placeholder="e.g., Always show the full hat shape. Include decorative details like ribbons or buttons. Use pastel colors for cute styles."
+              rows={3}
+              className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white resize-none text-sm"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Custom rules passed to AI when generating components for this category.
+            </p>
           </div>
 
           <div className="space-y-2">

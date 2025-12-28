@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminRequest } from '@/lib/supabase/server';
 import { generateVariedPrompts, generateAvatarImages, buildPromptFromPreset } from '@/lib/avatar/generator';
-import { getGenerationPresets } from '@/lib/avatar/supabase';
+import { getGenerationPresets, getAllCategories } from '@/lib/avatar/supabase';
 
 interface BatchGenerateBody {
   theme: string;
@@ -38,12 +38,23 @@ export async function POST(req: NextRequest) {
       styleSuffix = preset?.styleSuffix;
     }
 
+    // Get category's custom prompt addition
+    let categoryPromptAddition: string | undefined;
+    try {
+      const categories = await getAllCategories();
+      const category = categories.find((c) => c.id === categoryId);
+      categoryPromptAddition = category?.promptAddition;
+    } catch (e) {
+      console.warn('Failed to load category prompt addition:', e);
+    }
+
     // Step 1: Generate varied prompts using LLM
     const { prompts, error: promptError } = await generateVariedPrompts(
       theme,
       categoryName,
       count,
-      styleSuffix
+      styleSuffix,
+      categoryPromptAddition
     );
 
     if (promptError || prompts.length === 0) {

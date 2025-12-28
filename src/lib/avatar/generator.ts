@@ -239,9 +239,11 @@ export function getAvailableModels(): Array<{ id: AIModel; name: string; provide
   ];
 }
 
-// Default requirements for avatar asset generation - stylized/animated look
-const ASSET_PROMPT_SUFFIX = ', isolated object on plain white background, front-facing view, centered composition, no shadows, clean flat colors, game asset style, single item only, 2D illustration';
-const ASSET_NEGATIVE_PROMPT = 'photorealistic, photograph, photo, realistic, hyperrealistic, 3D render, CGI, person, human, character, body, face, background scenery, complex background, shadows, multiple objects, side view, angled view, perspective distortion, depth of field, bokeh, film grain';
+// Default requirements for avatar asset generation - EXTREMELY UNIFORM style
+// All assets must be identical in format: centered, white bg, same visual style
+const ASSET_PROMPT_SUFFIX = `, isolated single object, pure white background #FFFFFF, perfectly centered in frame, front-facing symmetric view, no shadows, no gradients, flat solid colors, clean vector-style illustration, 2D game asset sprite, uniform consistent art style, same scale as other assets, crisp clean edges, no anti-aliasing artifacts, professional game art quality`;
+
+const ASSET_NEGATIVE_PROMPT = `photorealistic, photograph, photo, realistic, hyperrealistic, 3D render, 3D, CGI, person, human, character, body, face, hands, portrait, background scenery, complex background, colored background, gradient background, textured background, shadows, drop shadow, cast shadow, ambient occlusion, multiple objects, additional items, side view, three-quarter view, angled view, perspective, depth, depth of field, bokeh, film grain, noise, blur, blurry, watermark, signature, text, logo, frame, border, vignette, lighting effects, lens flare, glow, reflection, glossy, shiny highlights, metallic sheen, transparency issues, cropped, cut off, partial object, off-center`;
 
 /**
  * Build a full prompt from a preset template
@@ -286,12 +288,14 @@ export function getConfiguredProviders(): { cloudflare: boolean; replicate: bool
 
 /**
  * Generate varied prompts for a theme/category using Cloudflare LLM
+ * @param categoryPromptAddition - Optional category-specific prompt rules/guidelines
  */
 export async function generateVariedPrompts(
   theme: string,
   categoryName: string,
   count: number = 10,
-  styleSuffix?: string
+  styleSuffix?: string,
+  categoryPromptAddition?: string
 ): Promise<{ prompts: string[]; error?: string }> {
   const accountId = process.env.CLOUDFLARE_R2_ACCOUNT_ID;
   const apiToken = process.env.CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_R2_ACCESS_KEY_ID;
@@ -300,26 +304,38 @@ export async function generateVariedPrompts(
     return { prompts: [], error: 'Cloudflare credentials not configured' };
   }
 
-  const systemPrompt = `You are an asset generation assistant for a 2D avatar customization system.
-You generate SHORT, SPECIFIC image prompts for individual avatar components/accessories.
-Each prompt should describe a SINGLE isolated item - NOT a person wearing it.
-Focus on variety in style, color, material, and design.
-All items should be stylized, cartoon, anime, or pixel art style - NEVER photorealistic.
-The items will be rendered on white backgrounds as 2D game assets.`;
+  const systemPrompt = `You are a professional 2D game asset prompt engineer. You create EXTREMELY UNIFORM and CONSISTENT image generation prompts for avatar customization items.
 
-  const userPrompt = `Generate exactly ${count} unique image prompts for "${categoryName}" avatar components with the theme: "${theme}"
+CRITICAL UNIFORMITY RULES - ALL prompts MUST follow these EXACTLY:
+1. Every item is a SINGLE ISOLATED OBJECT - never a person, never worn/held
+2. PURE WHITE BACKGROUND (#FFFFFF) - no exceptions, no gradients, no textures
+3. PERFECTLY CENTERED - object fills 70-80% of frame, equal margins
+4. FRONT-FACING SYMMETRIC VIEW - no angles, no 3/4 views, no perspective
+5. FLAT SOLID COLORS - no gradients, no shading, no highlights, no shadows
+6. CLEAN VECTOR STYLE - crisp edges, no anti-aliasing artifacts, professional quality
+7. CONSISTENT ART STYLE - all items look like they belong in the same game
+8. 2D ILLUSTRATION ONLY - never 3D, never photorealistic, never rendered
 
-Requirements:
-- Each prompt is for ONE isolated item only (e.g., "a red baseball cap, cartoon style" not "a person wearing a cap")
-- Include variety in colors, materials, patterns, and visual styles (anime, cartoon, pixel art, chibi, flat design, vector, cel-shaded)
-- Keep each prompt to 1-2 sentences max
-- Make them specific and descriptive
-- ALWAYS include an art style keyword (anime, cartoon, pixel art, flat design, vector, cel-shaded, chibi, etc.)
-- NEVER use photorealistic or 3D rendered styles
-${styleSuffix ? `- Apply this style to all: ${styleSuffix}` : ''}
+You generate prompts that will create assets looking like professional mobile game UI elements.`;
 
-Return ONLY a JSON array of prompt strings, no other text. Example:
-["a red baseball cap with white stitching, cartoon flat design style", "an elegant black top hat with silk ribbon, anime cel-shaded style", "a cute bunny ear headband, chibi kawaii style"]`;
+  const userPrompt = `Generate exactly ${count} unique image prompts for "${categoryName}" avatar components with theme: "${theme}"
+
+MANDATORY FORMAT for EVERY prompt:
+- Start with "a" or "an" + the item name
+- Include 1-2 distinctive visual features (color, pattern, material)
+- End with "flat vector illustration style" or "clean 2D game art style"
+- Keep under 20 words total
+
+UNIFORMITY REQUIREMENTS:
+- All prompts describe the ISOLATED ITEM ONLY (e.g., "a red cap" NOT "person wearing cap")
+- Vary colors, patterns, and details - but maintain the SAME art style across all
+- Use flat, solid colors - no gradients or shading descriptions
+- Describe simple, clean designs suitable for small avatar display
+${styleSuffix ? `- Apply this visual style to all: ${styleSuffix}` : ''}
+${categoryPromptAddition ? `\nCATEGORY-SPECIFIC RULES:\n${categoryPromptAddition}` : ''}
+
+Return ONLY a valid JSON array of prompt strings. Example format:
+["a bright red baseball cap with white stitching, flat vector illustration style", "an elegant black top hat with gold band, clean 2D game art style", "a cozy purple beanie with pom-pom, flat vector illustration style"]`;
 
   try {
     const response = await fetch(

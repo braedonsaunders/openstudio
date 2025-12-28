@@ -25,6 +25,8 @@ export interface AvatarCategory {
   maxSelections: number;
   supportsColorVariants: boolean;
   defaultColorPalette?: string;
+  // Custom prompt addition for AI generation - category-specific rules
+  promptAddition?: string;
   // Fixed render position on 512x512 canvas
   renderX: number; // X position to render component
   renderY: number; // Y position to render component
@@ -163,6 +165,7 @@ export interface CreateCategoryRequest {
   maxSelections?: number;
   supportsColorVariants?: boolean;
   defaultColorPalette?: string;
+  promptAddition?: string;
   renderX?: number;
   renderY?: number;
   renderWidth?: number;
@@ -176,6 +179,7 @@ export interface UpdateCategoryRequest {
   maxSelections?: number;
   supportsColorVariants?: boolean;
   defaultColorPalette?: string;
+  promptAddition?: string;
   isActive?: boolean;
   renderX?: number;
   renderY?: number;
