@@ -123,7 +123,13 @@ export class LoopScheduler {
   updateLoopTrack(trackId: string, updates: Partial<LoopTrackState>): void {
     const loop = this.activeLoops.get(trackId);
     if (loop) {
+      const wasMuted = loop.trackState.muted;
       loop.trackState = { ...loop.trackState, ...updates };
+
+      // If mute was toggled ON, immediately kill all notes to prevent scheduled notes from playing
+      if (updates.muted === true && !wasMuted) {
+        this.soundEngine.killAll();
+      }
     }
   }
 

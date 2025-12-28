@@ -25,6 +25,7 @@ import {
   VolumeX,
   MoreHorizontal,
   Pencil,
+  Grid3X3,
 } from 'lucide-react';
 import type { SongTrackReference } from '@/types/songs';
 import type { MidiNote, LoopDefinition, LoopTrackState } from '@/types/loops';
@@ -72,7 +73,7 @@ interface DragState {
 }
 
 // Layout constants
-const TRACK_LABEL_WIDTH = 144; // w-36 = 144px for track labels with mixer controls
+const TRACK_LABEL_WIDTH = 160; // w-40 = 160px for track labels with mixer controls
 const SNAP_THRESHOLD = 10; // pixels - how close before snapping
 
 // Calculate snap points based on BPM and other tracks
@@ -367,6 +368,9 @@ export function MultiTrackTimeline({
 
   // Waveform data cache by track URL
   const [waveformDataCache, setWaveformDataCache] = useState<Map<string, number[]>>(new Map());
+
+  // Gridlines visibility
+  const [showGridlines, setShowGridlines] = useState(true);
 
   // Container width for responsive timeline
   const [containerWidth, setContainerWidth] = useState(800);
@@ -1221,6 +1225,20 @@ export function MultiTrackTimeline({
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Gridlines toggle */}
+          <button
+            onClick={() => setShowGridlines(!showGridlines)}
+            className={cn(
+              'p-1 rounded transition-colors',
+              showGridlines
+                ? 'text-indigo-500 bg-indigo-500/10'
+                : 'text-gray-500 hover:text-gray-700 dark:text-zinc-500 dark:hover:text-zinc-300 hover:bg-gray-200 dark:hover:bg-white/10'
+            )}
+            title={showGridlines ? 'Hide grid' : 'Show grid'}
+          >
+            <Grid3X3 className="w-3.5 h-3.5" />
+          </button>
+
           {/* Zoom controls */}
           <div className="flex items-center gap-1">
             <button
@@ -1279,6 +1297,41 @@ export function MultiTrackTimeline({
 
           {/* Track Lanes */}
           <div className="relative">
+            {/* Gridlines - render behind content */}
+            {showGridlines && trackRows.length > 0 && (
+              <div
+                className="absolute inset-0 pointer-events-none z-0"
+                style={{ left: TRACK_LABEL_WIDTH }}
+              >
+                {/* Bar lines (every bar) */}
+                {Array.from({ length: Math.ceil(songDuration / (60 / (currentSong?.bpm || 120) * 4)) + 1 }).map((_, i) => {
+                  const barDuration = (60 / (currentSong?.bpm || 120)) * 4; // 4 beats per bar
+                  const x = i * barDuration * zoom;
+                  return (
+                    <div
+                      key={`bar-${i}`}
+                      className="absolute top-0 bottom-0 w-px bg-gray-200/50 dark:bg-zinc-700/30"
+                      style={{ left: x }}
+                    />
+                  );
+                })}
+                {/* Beat lines (every beat, lighter) */}
+                {Array.from({ length: Math.ceil(songDuration / (60 / (currentSong?.bpm || 120))) + 1 }).map((_, i) => {
+                  const beatDuration = 60 / (currentSong?.bpm || 120);
+                  const x = i * beatDuration * zoom;
+                  // Skip bar positions (every 4th beat)
+                  if (i % 4 === 0) return null;
+                  return (
+                    <div
+                      key={`beat-${i}`}
+                      className="absolute top-0 bottom-0 w-px bg-gray-100/30 dark:bg-zinc-800/20"
+                      style={{ left: x }}
+                    />
+                  );
+                })}
+              </div>
+            )}
+
             {trackRows.length === 0 ? (
               <div className={cn(
                 'h-32 flex items-center justify-center border-2 border-dashed rounded-lg m-2 transition-colors',
@@ -1311,7 +1364,7 @@ export function MultiTrackTimeline({
                 >
                   {/* Track label on left - with mixer controls */}
                   <div
-                    className="absolute left-0 top-0 bottom-0 w-36 flex flex-col justify-center gap-1 px-2 py-1 bg-gray-50/80 dark:bg-[#0d0d14]/80 border-r border-gray-100 dark:border-white/5 z-10"
+                    className="absolute left-0 top-0 bottom-0 w-40 flex flex-col justify-center gap-0.5 px-2 py-1 bg-gray-50/80 dark:bg-[#0d0d14]/80 border-r border-gray-100 dark:border-white/5 z-10"
                     onContextMenu={(e) => handleTrackRowContextMenu(e, row)}
                   >
                     {/* Top row: icon + name */}
@@ -1326,7 +1379,7 @@ export function MultiTrackTimeline({
                         {row.name}
                       </span>
                       {row.clips.length > 1 && (
-                        <span className="text-[9px] text-gray-400 dark:text-zinc-500">
+                        <span className="text-[9px] text-gray-400 dark:text-zinc-500 shrink-0">
                           ×{row.clips.length}
                         </span>
                       )}
@@ -1341,7 +1394,7 @@ export function MultiTrackTimeline({
                           handleRowMute(row);
                         }}
                         className={cn(
-                          'w-5 h-5 flex items-center justify-center rounded text-[9px] font-bold transition-colors',
+                          'w-6 h-5 flex items-center justify-center rounded text-[9px] font-bold transition-colors shrink-0',
                           row.muted
                             ? 'bg-red-500 text-white'
                             : 'bg-gray-200 dark:bg-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-zinc-600'
@@ -1358,7 +1411,7 @@ export function MultiTrackTimeline({
                           handleRowSolo(row);
                         }}
                         className={cn(
-                          'w-5 h-5 flex items-center justify-center rounded text-[9px] font-bold transition-colors',
+                          'w-6 h-5 flex items-center justify-center rounded text-[9px] font-bold transition-colors shrink-0',
                           row.solo
                             ? 'bg-amber-500 text-white'
                             : 'bg-gray-200 dark:bg-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-zinc-600'
@@ -1369,23 +1422,20 @@ export function MultiTrackTimeline({
                       </button>
 
                       {/* Volume slider */}
-                      <div className="flex-1 flex items-center gap-1 ml-1">
-                        <Volume2 className="w-3 h-3 text-gray-400 dark:text-zinc-500 shrink-0" />
-                        <input
-                          type="range"
-                          min="0"
-                          max="1.5"
-                          step="0.01"
-                          value={row.volume}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleRowVolume(row, parseFloat(e.target.value));
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="flex-1 h-1 bg-gray-200 dark:bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gray-500 dark:[&::-webkit-slider-thumb]:bg-zinc-400"
-                          title={`Volume: ${Math.round(row.volume * 100)}%`}
-                        />
-                      </div>
+                      <input
+                        type="range"
+                        min="0"
+                        max="1.5"
+                        step="0.01"
+                        value={row.volume}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          handleRowVolume(row, parseFloat(e.target.value));
+                        }}
+                        onClick={(e) => e.stopPropagation()}
+                        className="w-16 h-1 ml-1 bg-gray-200 dark:bg-zinc-700 rounded-full appearance-none cursor-pointer shrink-0 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gray-500 dark:[&::-webkit-slider-thumb]:bg-zinc-400"
+                        title={`Volume: ${Math.round(row.volume * 100)}%`}
+                      />
                     </div>
                   </div>
 
