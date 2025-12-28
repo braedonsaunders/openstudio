@@ -42,7 +42,7 @@ interface DAWLayoutProps {
   onLeaveRoom?: () => void;
 }
 
-export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai'; // Note: 'queue' kept for backwards compat
+export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai' | 'permissions'; // Note: 'queue' kept for backwards compat
 
 export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   // Theme

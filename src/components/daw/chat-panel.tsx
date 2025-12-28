@@ -5,9 +5,10 @@ import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { saveChatMessage, getRoomChatMessages } from '@/lib/supabase/auth';
+import { useChatPermissions } from '@/hooks/usePermissions';
 import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
 import { REACTION_TYPES, type ReactionType } from '@/types/user';
-import { Send, MessageSquare, Link2, Video, VideoOff, X, ExternalLink, Mic, MicOff, Phone, PhoneOff, ChevronLeft, Headphones } from 'lucide-react';
+import { Send, MessageSquare, Link2, Video, VideoOff, X, ExternalLink, Mic, MicOff, Phone, PhoneOff, ChevronLeft, Headphones, Lock } from 'lucide-react';
 import { AudioChatPanel } from './audio-chat-panel';
 import { useAudioChatStore } from '@/stores/audio-chat-store';
 
@@ -47,6 +48,9 @@ function parseMessageContent(content: string): React.ReactNode {
 }
 
 export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelProps) {
+  // Permission checks
+  const { canSendMessages, canShareLinks, canVoice, canVideo, canReact } = useChatPermissions();
+
   const [message, setMessage] = useState('');
   const [showReactions, setShowReactions] = useState<string | null>(null);
   const [showLinkInput, setShowLinkInput] = useState(false);
@@ -422,14 +426,17 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
         <div className="flex items-center gap-1">
           {/* Voice Chat Button */}
           <button
-            onClick={() => setShowAudioChat(true)}
+            onClick={() => canVoice && setShowAudioChat(true)}
+            disabled={!canVoice}
             className={cn(
               'flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-lg transition-colors',
-              isAudioChatConnected
-                ? 'bg-emerald-500/20 text-emerald-500'
-                : 'text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10'
+              !canVoice
+                ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+                : isAudioChatConnected
+                  ? 'bg-emerald-500/20 text-emerald-500'
+                  : 'text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10'
             )}
-            title="Voice chat"
+            title={canVoice ? 'Voice chat' : 'You don\'t have permission for voice chat'}
           >
             <Headphones className="w-3.5 h-3.5" />
             <span>Voice</span>
@@ -439,9 +446,15 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
           </button>
           {/* Video Chat Button */}
           <button
-            onClick={() => setShowVideoChat(true)}
-            className="flex items-center gap-1.5 px-2 py-1 text-xs font-medium text-indigo-500 dark:text-indigo-400 hover:bg-indigo-500/10 rounded-lg transition-colors"
-            title="Start video chat"
+            onClick={() => canVideo && setShowVideoChat(true)}
+            disabled={!canVideo}
+            className={cn(
+              'flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-lg transition-colors',
+              !canVideo
+                ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+                : 'text-indigo-500 dark:text-indigo-400 hover:bg-indigo-500/10'
+            )}
+            title={canVideo ? 'Start video chat' : 'You don\'t have permission for video chat'}
           >
             <Video className="w-3.5 h-3.5" />
             <span>Video</span>
@@ -576,42 +589,51 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
 
       {/* Input */}
       <form onSubmit={handleSubmit} className="p-3 border-t border-gray-200 dark:border-white/5">
-        <div className="flex items-center gap-2">
-          {/* Share Link Button */}
-          <button
-            type="button"
-            onClick={() => setShowLinkInput(!showLinkInput)}
-            className={cn(
-              'p-2.5 rounded-xl transition-all',
-              showLinkInput
-                ? 'bg-indigo-500/20 text-indigo-500 dark:text-indigo-400'
-                : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300'
+        {canSendMessages ? (
+          <div className="flex items-center gap-2">
+            {/* Share Link Button */}
+            {canShareLinks && (
+              <button
+                type="button"
+                onClick={() => setShowLinkInput(!showLinkInput)}
+                className={cn(
+                  'p-2.5 rounded-xl transition-all',
+                  showLinkInput
+                    ? 'bg-indigo-500/20 text-indigo-500 dark:text-indigo-400'
+                    : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300'
+                )}
+                title="Share a link"
+              >
+                <Link2 className="w-4 h-4" />
+              </button>
             )}
-            title="Share a link"
-          >
-            <Link2 className="w-4 h-4" />
-          </button>
 
-          <input
-            type="text"
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Type a message..."
-            className="flex-1 px-3 py-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
-          />
-          <button
-            type="submit"
-            disabled={!message.trim()}
-            className={cn(
-              'p-2.5 rounded-xl transition-all',
-              message.trim()
-                ? 'neon-button text-white'
-                : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-zinc-600 cursor-not-allowed'
-            )}
-          >
-            <Send className="w-4 h-4" />
-          </button>
-        </div>
+            <input
+              type="text"
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder="Type a message..."
+              className="flex-1 px-3 py-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-500 focus:outline-none focus:border-indigo-500/50 transition-colors"
+            />
+            <button
+              type="submit"
+              disabled={!message.trim()}
+              className={cn(
+                'p-2.5 rounded-xl transition-all',
+                message.trim()
+                  ? 'neon-button text-white'
+                  : 'bg-gray-100 dark:bg-white/5 text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+              )}
+            >
+              <Send className="w-4 h-4" />
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center justify-center gap-2 py-2 text-gray-500 dark:text-zinc-500">
+            <Lock className="w-3 h-3" />
+            <span className="text-xs">You don&apos;t have permission to send messages</span>
+          </div>
+        )}
       </form>
     </div>
   );

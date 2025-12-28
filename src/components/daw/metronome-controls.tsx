@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useMetronomeStore } from '@/stores/metronome-store';
 import { useSessionTempoStore, type TempoSource, selectTempo, selectTimeSignature, selectSource } from '@/stores/session-tempo-store';
 import { useMetronome } from '@/hooks/use-metronome';
+import { useTempoPermissions } from '@/hooks/usePermissions';
 import { Tooltip } from '@/components/ui/tooltip';
 import {
   Timer,
@@ -19,6 +20,7 @@ import {
   Volume2,
   Wifi,
   Settings,
+  Ban,
 } from 'lucide-react';
 
 interface MetronomeControlsProps {
@@ -69,6 +71,9 @@ export function MetronomeControls({
 }: MetronomeControlsProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
+
+  // Permission checks
+  const { canSetBpm, canSetSource, canSetTimeSignature, canMetronome } = useTempoPermissions();
 
   // Metronome settings store
   const {
@@ -269,15 +274,18 @@ export function MetronomeControls({
               type="number"
               value={Math.round(tempo)}
               onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
-              disabled={source === 'analyzer' || source === 'track'}
+              disabled={!canSetBpm || source === 'analyzer' || source === 'track'}
               className={cn(
                 'w-16 px-2 py-1 text-xl font-bold bg-transparent border-none outline-none text-center',
-                (source === 'analyzer' || source === 'track')
-                  ? 'text-indigo-400'
-                  : 'text-white'
+                !canSetBpm
+                  ? 'text-zinc-500 cursor-not-allowed'
+                  : (source === 'analyzer' || source === 'track')
+                    ? 'text-indigo-400'
+                    : 'text-white'
               )}
               min={40}
               max={240}
+              title={!canSetBpm ? 'You don\'t have permission to change BPM' : undefined}
             />
             <span className="text-sm text-zinc-400">BPM</span>
 
@@ -318,9 +326,18 @@ export function MetronomeControls({
         <button
           onClick={(e) => {
             e.stopPropagation();
-            setShowModeDropdown(!showModeDropdown);
+            if (canSetSource) {
+              setShowModeDropdown(!showModeDropdown);
+            }
           }}
-          className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 transition-all"
+          disabled={!canSetSource}
+          className={cn(
+            'w-full flex items-center justify-between px-3 py-2 rounded-lg transition-all',
+            canSetSource
+              ? 'bg-white/5 hover:bg-white/10'
+              : 'bg-white/5 opacity-50 cursor-not-allowed'
+          )}
+          title={!canSetSource ? 'You don\'t have permission to change tempo source' : undefined}
         >
           <div className="flex items-center gap-2">
             <SourceIcon className="w-4 h-4 text-zinc-400" />
@@ -409,7 +426,12 @@ export function MetronomeControls({
             <select
               value={beatsPerBar}
               onChange={(e) => setTimeSignature(parseInt(e.target.value), 4)}
-              className="flex-1 px-2 py-1 rounded bg-white/5 text-white text-sm border border-white/10 outline-none"
+              disabled={!canSetTimeSignature}
+              className={cn(
+                'flex-1 px-2 py-1 rounded bg-white/5 text-white text-sm border border-white/10 outline-none',
+                !canSetTimeSignature && 'opacity-50 cursor-not-allowed'
+              )}
+              title={!canSetTimeSignature ? 'You don\'t have permission to change time signature' : undefined}
             >
               {[2, 3, 4, 5, 6, 7, 8].map((beats) => (
                 <option key={beats} value={beats}>
@@ -474,6 +496,9 @@ export function MetronomeInline({
   className?: string;
 }) {
   const [showPopover, setShowPopover] = useState(false);
+
+  // Permission checks
+  const { canSetBpm, canSetSource, canSetTimeSignature, canMetronome } = useTempoPermissions();
 
   // Metronome settings store
   const {
@@ -620,15 +645,18 @@ export function MetronomeInline({
                 type="number"
                 value={Math.round(tempo)}
                 onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
-                disabled={source === 'analyzer' || source === 'track'}
+                disabled={!canSetBpm || source === 'analyzer' || source === 'track'}
                 className={cn(
                   'w-full px-3 py-2 text-lg font-bold rounded-lg bg-white/5 border border-white/10 outline-none',
-                  (source === 'analyzer' || source === 'track')
-                    ? 'text-indigo-400 cursor-not-allowed'
-                    : 'text-white focus:border-orange-500/50'
+                  !canSetBpm
+                    ? 'text-zinc-500 cursor-not-allowed'
+                    : (source === 'analyzer' || source === 'track')
+                      ? 'text-indigo-400 cursor-not-allowed'
+                      : 'text-white focus:border-orange-500/50'
                 )}
                 min={40}
                 max={240}
+                title={!canSetBpm ? 'You don\'t have permission to change BPM' : undefined}
               />
             </div>
 
@@ -649,7 +677,7 @@ export function MetronomeInline({
             <div className="grid grid-cols-2 gap-1">
               {(Object.keys(TEMPO_SOURCE_LABELS) as TempoSource[]).map((src) => {
                 const { label, icon: Icon } = TEMPO_SOURCE_LABELS[src];
-                const isDisabled = (src === 'track' && !trackTempo) || (src === 'analyzer' && !analyzerTempo);
+                const isDisabled = !canSetSource || (src === 'track' && !trackTempo) || (src === 'analyzer' && !analyzerTempo);
 
                 return (
                   <button
@@ -665,6 +693,7 @@ export function MetronomeInline({
                         ? 'opacity-40 cursor-not-allowed'
                         : 'hover:bg-white/10 hover:text-white'
                     )}
+                    title={!canSetSource ? 'You don\'t have permission to change tempo source' : undefined}
                   >
                     <Icon className="w-4 h-4" />
                     <span className="text-xs font-medium">{label}</span>
@@ -698,7 +727,12 @@ export function MetronomeInline({
             <select
               value={beatsPerBar}
               onChange={(e) => setTimeSignature(parseInt(e.target.value), 4)}
-              className="flex-1 px-2 py-1.5 rounded-lg bg-white/5 text-white text-sm border border-white/10 outline-none"
+              disabled={!canSetTimeSignature}
+              className={cn(
+                'flex-1 px-2 py-1.5 rounded-lg bg-white/5 text-white text-sm border border-white/10 outline-none',
+                !canSetTimeSignature && 'opacity-50 cursor-not-allowed'
+              )}
+              title={!canSetTimeSignature ? 'You don\'t have permission to change time signature' : undefined}
             >
               {[2, 3, 4, 5, 6, 7, 8].map((beats) => (
                 <option key={beats} value={beats}>
