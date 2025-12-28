@@ -215,6 +215,10 @@ export async function createCategory(request: CreateCategoryRequest): Promise<Av
       max_selections: request.maxSelections ?? 1,
       supports_color_variants: request.supportsColorVariants ?? false,
       default_color_palette: request.defaultColorPalette,
+      render_x: request.renderX ?? 0,
+      render_y: request.renderY ?? 0,
+      render_width: request.renderWidth ?? 512,
+      render_height: request.renderHeight ?? 512,
     })
     .select()
     .single();
@@ -236,6 +240,10 @@ export async function updateCategory(
   if (request.supportsColorVariants !== undefined) updates.supports_color_variants = request.supportsColorVariants;
   if (request.defaultColorPalette !== undefined) updates.default_color_palette = request.defaultColorPalette;
   if (request.isActive !== undefined) updates.is_active = request.isActive;
+  if (request.renderX !== undefined) updates.render_x = request.renderX;
+  if (request.renderY !== undefined) updates.render_y = request.renderY;
+  if (request.renderWidth !== undefined) updates.render_width = request.renderWidth;
+  if (request.renderHeight !== undefined) updates.render_height = request.renderHeight;
 
   const { data, error } = await supabaseAuth
     .from('avatar_categories')
