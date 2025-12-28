@@ -109,7 +109,7 @@ export async function compositeAvatar(
     (a, b) => a.layerOrder - b.layerOrder
   );
 
-  // Draw each layer
+  // Draw each layer at its fixed position
   for (const category of sortedCategories) {
     const selection = config.selections[category.id];
     if (!selection?.componentId) continue;
@@ -122,7 +122,15 @@ export async function compositeAvatar(
 
     try {
       const img = await loadImage(imageUrl);
-      ctx.drawImage(img, 0, 0, dimension, dimension);
+
+      // Scale positions from 512x512 base to target dimension
+      const scale = dimension / 512;
+      const x = category.renderX * scale;
+      const y = category.renderY * scale;
+      const w = category.renderWidth * scale;
+      const h = category.renderHeight * scale;
+
+      ctx.drawImage(img, x, y, w, h);
     } catch (error) {
       console.warn(`Failed to load component: ${component.id}`, error);
     }
@@ -193,10 +201,19 @@ export async function compositeAvatarWithProgress(
   canvas.height = dimension;
   const ctx = canvas.getContext('2d')!;
 
-  for (const img of images) {
-    if (img) {
-      ctx.drawImage(img, 0, 0, dimension, dimension);
-    }
+  // Draw each layer at its fixed position
+  for (let i = 0; i < images.length; i++) {
+    const img = images[i];
+    if (!img) continue;
+
+    const { category } = layersToRender[i];
+    const scale = dimension / 512;
+    const x = category.renderX * scale;
+    const y = category.renderY * scale;
+    const w = category.renderWidth * scale;
+    const h = category.renderHeight * scale;
+
+    ctx.drawImage(img, x, y, w, h);
   }
 
   return canvas.toDataURL('image/png');
@@ -254,9 +271,20 @@ export async function createPreviewComposite(
     });
 
   for (const component of componentsToRender) {
+    const category = categories.find((c) => c.id === component.categoryId);
+    if (!category) continue;
+
     try {
       const img = await loadImage(component.imageUrl);
-      ctx.drawImage(img, 0, 0, dimension, dimension);
+
+      // Scale positions from 512x512 base to target dimension
+      const scale = dimension / 512;
+      const x = category.renderX * scale;
+      const y = category.renderY * scale;
+      const w = category.renderWidth * scale;
+      const h = category.renderHeight * scale;
+
+      ctx.drawImage(img, x, y, w, h);
     } catch (error) {
       console.warn(`Failed to load component: ${component.id}`, error);
     }
