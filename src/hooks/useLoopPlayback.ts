@@ -243,83 +243,98 @@ export function useLoopPlayback() {
   }, [stopLoopInternal]);
 
   // Subscribe to playback state changes
+  // Note: useAudioStore doesn't use subscribeWithSelector, so we use standard subscribe
   useEffect(() => {
-    const unsubAudio = useAudioStore.subscribe(
-      (state) => state.isPlaying,
-      (isPlaying) => {
-        if (!isPlaying) {
+    let prevIsPlaying = useAudioStore.getState().isPlaying;
+
+    const unsubAudio = useAudioStore.subscribe((state) => {
+      if (state.isPlaying !== prevIsPlaying) {
+        prevIsPlaying = state.isPlaying;
+        if (!state.isPlaying) {
           stopAll();
         } else {
           playbackSyncTimeRef.current = Date.now();
           syncPlaybackWithSong();
         }
       }
-    );
+    });
 
     return () => unsubAudio();
   }, [stopAll, syncPlaybackWithSong]);
 
   // Subscribe to song tracks changes - this is the BULLETPROOF part
   useEffect(() => {
-    const unsubSongs = useSongsStore.subscribe(
-      (state) => state.songs,
-      () => {
+    let prevSongsSize = useSongsStore.getState().songs.size;
+    let prevCurrentSongTracks: string | null = null;
+
+    const unsubSongs = useSongsStore.subscribe((state) => {
+      const currentSong = state.getCurrentSong();
+      const currentTracksKey = currentSong ? JSON.stringify(currentSong.tracks) : null;
+
+      // Check if songs changed or current song tracks changed
+      if (state.songs.size !== prevSongsSize || currentTracksKey !== prevCurrentSongTracks) {
+        prevSongsSize = state.songs.size;
+        prevCurrentSongTracks = currentTracksKey;
+
         // Song tracks changed - sync playback
         const { isPlaying } = useAudioStore.getState();
         if (isPlaying) {
           syncPlaybackWithSong();
         }
       }
-    );
+    });
 
     return () => unsubSongs();
   }, [syncPlaybackWithSong]);
 
   // Also subscribe to loop tracks store for track-level changes (volume, effects, etc.)
   useEffect(() => {
-    const unsubLoopTracks = useLoopTracksStore.subscribe(
-      (state) => state.tracks,
-      async (tracks) => {
-        const { isPlaying } = useAudioStore.getState();
-        if (!isPlaying) return;
+    let prevTracksSize = useLoopTracksStore.getState().tracks.size;
 
-        // Update any playing loops with new track state
-        const scheduler = schedulerRef.current;
-        if (!scheduler) return;
+    const unsubLoopTracks = useLoopTracksStore.subscribe((state) => {
+      const { isPlaying } = useAudioStore.getState();
+      if (!isPlaying) return;
 
-        for (const [trackId, track] of tracks) {
-          if (scheduledLoopsRef.current.has(trackId)) {
-            // Update the loop's parameters
-            scheduler.updateLoopTrack(trackId, {
-              volume: track.volume,
-              muted: track.muted,
-              soundPreset: track.soundPreset,
-              tempoLocked: track.tempoLocked,
-              keyLocked: track.keyLocked,
-              transposeAmount: track.transposeAmount,
-              humanizeEnabled: track.humanizeEnabled,
-              humanizeTiming: track.humanizeTiming,
-              humanizeVelocity: track.humanizeVelocity,
-            });
-          }
+      // Update any playing loops with new track state
+      const scheduler = schedulerRef.current;
+      if (!scheduler) return;
+
+      for (const [trackId, track] of state.tracks) {
+        if (scheduledLoopsRef.current.has(trackId)) {
+          // Update the loop's parameters
+          scheduler.updateLoopTrack(trackId, {
+            volume: track.volume,
+            muted: track.muted,
+            soundPreset: track.soundPreset,
+            tempoLocked: track.tempoLocked,
+            keyLocked: track.keyLocked,
+            transposeAmount: track.transposeAmount,
+            humanizeEnabled: track.humanizeEnabled,
+            humanizeTiming: track.humanizeTiming,
+            humanizeVelocity: track.humanizeVelocity,
+          });
         }
       }
-    );
+
+      prevTracksSize = state.tracks.size;
+    });
 
     return () => unsubLoopTracks();
   }, []);
 
   // Update master tempo when song changes
   useEffect(() => {
-    const unsubSongChange = useSongsStore.subscribe(
-      (state) => state.currentSongId,
-      () => {
-        const song = useSongsStore.getState().getCurrentSong();
+    let prevSongId = useSongsStore.getState().currentSongId;
+
+    const unsubSongChange = useSongsStore.subscribe((state) => {
+      if (state.currentSongId !== prevSongId) {
+        prevSongId = state.currentSongId;
+        const song = state.getCurrentSong();
         if (song?.bpm && schedulerRef.current) {
           schedulerRef.current.setMasterTempo(song.bpm);
         }
       }
-    );
+    });
 
     return () => unsubSongChange();
   }, []);
