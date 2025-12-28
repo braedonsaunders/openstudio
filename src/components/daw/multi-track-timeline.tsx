@@ -23,10 +23,13 @@ import {
   Volume2,
   VolumeX,
   MoreHorizontal,
+  Pencil,
 } from 'lucide-react';
 import type { SongTrackReference } from '@/types/songs';
-import type { MidiNote, LoopDefinition } from '@/types/loops';
+import type { MidiNote, LoopDefinition, LoopTrackState } from '@/types/loops';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
+import { LoopCreatorModal } from '@/components/loops/loop-creator-modal';
+import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 
 // Context menu state
 interface ContextMenuState {
@@ -67,7 +70,8 @@ interface DragState {
   currentTargetRow: number | null; // Row being hovered over during drag
 }
 
-// Snap settings
+// Layout constants
+const TRACK_LABEL_WIDTH = 144; // w-36 = 144px for track labels with mixer controls
 const SNAP_THRESHOLD = 10; // pixels - how close before snapping
 
 // Calculate snap points based on BPM and other tracks
@@ -339,8 +343,8 @@ export function MultiTrackTimeline({
   const [snapType, setSnapType] = useState<'beat' | 'bar' | 'track-end' | null>(null);
   const [isPlayheadDragging, setIsPlayheadDragging] = useState(false);
 
-  // Track row height constant
-  const trackHeight = 48;
+  // Track row height constant - increased to accommodate mixer controls
+  const trackHeight = 64;
   const [loopCopyDialog, setLoopCopyDialog] = useState<LoopCopyDialogState>({
     isOpen: false,
     trackRef: null,
@@ -348,6 +352,17 @@ export function MultiTrackTimeline({
     copyCount: 2,
   });
   const [isDragOver, setIsDragOver] = useState(false);
+
+  // Loop editor state
+  const [loopEditorState, setLoopEditorState] = useState<{
+    isOpen: boolean;
+    loopId: string | null;
+    loopTrackId: string | null;
+  }>({
+    isOpen: false,
+    loopId: null,
+    loopTrackId: null,
+  });
 
   // Waveform data cache by track URL
   const [waveformDataCache, setWaveformDataCache] = useState<Map<string, number[]>>(new Map());
@@ -441,14 +456,27 @@ export function MultiTrackTimeline({
     // Sort rows by position and return as array
     return Array.from(rows.entries())
       .sort((a, b) => a[0] - b[0])
-      .map(([position, clips]) => ({
-        position,
-        clips,
-        // Use first clip's properties for row metadata
-        name: clips[0]?.name || 'Track',
-        color: clips[0]?.color || '#6366f1',
-        type: clips[0]?.type || 'audio',
-      }));
+      .map(([position, clips]) => {
+        // Aggregate mute/solo/volume from clips in this row
+        // If ANY clip is muted, show as muted; if ANY is solo'd, show as solo
+        const anyMuted = clips.some((c) => c.ref.muted);
+        const anySolo = clips.some((c) => c.ref.solo);
+        // Use first clip's volume as representative (or average)
+        const avgVolume = clips.reduce((sum, c) => sum + (c.ref.volume ?? 1), 0) / clips.length;
+
+        return {
+          position,
+          clips,
+          // Use first clip's properties for row metadata
+          name: clips[0]?.name || 'Track',
+          color: clips[0]?.color || '#6366f1',
+          type: clips[0]?.type || 'audio',
+          // Row-level mixer state
+          muted: anyMuted,
+          solo: anySolo,
+          volume: avgVolume,
+        };
+      });
   }, [unifiedTracks]);
 
   // Generate waveforms for audio tracks that don't have waveform data yet
@@ -486,14 +514,14 @@ export function MultiTrackTimeline({
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        const width = entry.contentRect.width - 96; // Account for track labels
+        const width = entry.contentRect.width - TRACK_LABEL_WIDTH; // Account for track labels
         setContainerWidth(Math.max(400, width));
       }
     });
 
     observer.observe(containerRef.current);
     // Set initial width
-    setContainerWidth(Math.max(400, containerRef.current.clientWidth - 96));
+    setContainerWidth(Math.max(400, containerRef.current.clientWidth - TRACK_LABEL_WIDTH));
 
     return () => observer.disconnect();
   }, []);
@@ -547,7 +575,7 @@ export function MultiTrackTimeline({
   }, [unifiedTracks, duration]);
 
   // Timeline width should be at least the container width or the content width
-  const timelineWidth = Math.max(songDuration * zoom, containerWidth + 96, 800);
+  const timelineWidth = Math.max(songDuration * zoom, containerWidth + TRACK_LABEL_WIDTH, 800);
 
   // Get track icon
   const getTrackIcon = (track: typeof unifiedTracks[0]) => {
@@ -569,7 +597,7 @@ export function MultiTrackTimeline({
 
       const rect = containerRef.current.getBoundingClientRect();
       // Account for the 96px track label width offset
-      const x = e.clientX - rect.left + scrollLeft - 96;
+      const x = e.clientX - rect.left + scrollLeft - TRACK_LABEL_WIDTH;
       const time = Math.max(0, x / zoom);
       // Precise seek - no rounding or snapping
       onSeek(Math.min(songDuration, time));
@@ -592,7 +620,7 @@ export function MultiTrackTimeline({
       if (!onSeek || !containerRef.current) return;
 
       const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left + scrollLeft - 96;
+      const x = e.clientX - rect.left + scrollLeft - TRACK_LABEL_WIDTH;
       const time = Math.max(0, Math.min(songDuration, x / zoom));
 
       // Update time immediately for responsive feel
@@ -762,7 +790,7 @@ export function MultiTrackTimeline({
     closeContextMenu();
   }, [contextMenu.trackRef, onStop, setPlaying, setCurrentTrack, closeContextMenu]);
 
-  // Toggle mute handler
+  // Toggle mute handler (for context menu)
   const handleToggleMute = useCallback(() => {
     if (!contextMenu.trackRef) return;
 
@@ -777,6 +805,80 @@ export function MultiTrackTimeline({
 
     closeContextMenu();
   }, [contextMenu.trackRef, closeContextMenu]);
+
+  // Edit loop handler - opens the loop editor modal
+  const handleEditLoop = useCallback(async () => {
+    if (!contextMenu.trackRef || contextMenu.trackRef.type !== 'loop') return;
+
+    // Find the loop track
+    const loopTrack = loopTracks.find((t) => t.id === contextMenu.trackRef!.trackId);
+    if (!loopTrack) return;
+
+    // Check if it's a custom loop by looking in the custom loops store
+    const { duplicateLoop, getLoop } = useCustomLoopsStore.getState();
+    const existingCustomLoop = getLoop(loopTrack.loopId);
+
+    if (existingCustomLoop) {
+      // It's already a custom loop - edit directly
+      setLoopEditorState({
+        isOpen: true,
+        loopId: loopTrack.loopId,
+        loopTrackId: loopTrack.id,
+      });
+    } else {
+      // It's a built-in loop - duplicate it first to make it editable
+      const newCustomLoop = await duplicateLoop(loopTrack.loopId);
+      if (newCustomLoop) {
+        // Update the loop track to use the new custom loop
+        useLoopTracksStore.getState().updateTrack(loopTrack.id, {
+          loopId: newCustomLoop.id,
+        });
+        // Open the editor with the new custom loop
+        setLoopEditorState({
+          isOpen: true,
+          loopId: newCustomLoop.id,
+          loopTrackId: loopTrack.id,
+        });
+      }
+    }
+
+    closeContextMenu();
+  }, [contextMenu.trackRef, loopTracks, closeContextMenu]);
+
+  // Toggle mute for all clips in a row
+  const handleRowMute = useCallback((row: { clips: typeof unifiedTracks; muted: boolean }) => {
+    const { getCurrentSong, updateTrackInSong } = useSongsStore.getState();
+    const song = getCurrentSong();
+    if (!song) return;
+
+    const newMuted = !row.muted;
+    for (const clip of row.clips) {
+      updateTrackInSong(song.id, clip.ref.id, { muted: newMuted });
+    }
+  }, []);
+
+  // Toggle solo for all clips in a row
+  const handleRowSolo = useCallback((row: { clips: typeof unifiedTracks; solo: boolean }) => {
+    const { getCurrentSong, updateTrackInSong } = useSongsStore.getState();
+    const song = getCurrentSong();
+    if (!song) return;
+
+    const newSolo = !row.solo;
+    for (const clip of row.clips) {
+      updateTrackInSong(song.id, clip.ref.id, { solo: newSolo });
+    }
+  }, []);
+
+  // Set volume for all clips in a row
+  const handleRowVolume = useCallback((row: { clips: typeof unifiedTracks }, volume: number) => {
+    const { getCurrentSong, updateTrackInSong } = useSongsStore.getState();
+    const song = getCurrentSong();
+    if (!song) return;
+
+    for (const clip of row.clips) {
+      updateTrackInSong(song.id, clip.ref.id, { volume });
+    }
+  }, []);
 
   // Duplicate track handler - keeps clip on same track row
   const handleDuplicateTrack = useCallback(() => {
@@ -1045,7 +1147,7 @@ export function MultiTrackTimeline({
       const rect = containerRef.current?.getBoundingClientRect();
       if (!rect) return;
 
-      const x = e.clientX - rect.left + scrollLeft - 96; // Account for track label width
+      const x = e.clientX - rect.left + scrollLeft - TRACK_LABEL_WIDTH; // Account for track label width
       const dropTime = Math.max(0, x / zoom);
 
       // Get BPM for snapping
@@ -1210,25 +1312,84 @@ export function MultiTrackTimeline({
                   className="relative border-b border-gray-100 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02]"
                   style={{ height: trackHeight }}
                 >
-                  {/* Track label on left - right-click for context menu */}
+                  {/* Track label on left - with mixer controls */}
                   <div
-                    className="absolute left-0 top-0 bottom-0 w-24 flex items-center gap-1.5 px-2 bg-gray-50/80 dark:bg-[#0d0d14]/80 border-r border-gray-100 dark:border-white/5 z-10 cursor-context-menu"
+                    className="absolute left-0 top-0 bottom-0 w-36 flex flex-col justify-center gap-1 px-2 py-1 bg-gray-50/80 dark:bg-[#0d0d14]/80 border-r border-gray-100 dark:border-white/5 z-10"
                     onContextMenu={(e) => handleTrackRowContextMenu(e, row)}
                   >
-                    <div
-                      className="w-4 h-4 rounded flex items-center justify-center shrink-0"
-                      style={{ backgroundColor: row.color, color: 'white' }}
-                    >
-                      {getTrackIcon(row.clips[0])}
-                    </div>
-                    <span className="text-[10px] font-medium text-gray-700 dark:text-zinc-300 truncate">
-                      {row.name}
-                    </span>
-                    {row.clips.length > 1 && (
-                      <span className="text-[9px] text-gray-400 dark:text-zinc-500">
-                        ×{row.clips.length}
+                    {/* Top row: icon + name */}
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <div
+                        className="w-4 h-4 rounded flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: row.color, color: 'white' }}
+                      >
+                        {getTrackIcon(row.clips[0])}
+                      </div>
+                      <span className="text-[10px] font-medium text-gray-700 dark:text-zinc-300 truncate flex-1">
+                        {row.name}
                       </span>
-                    )}
+                      {row.clips.length > 1 && (
+                        <span className="text-[9px] text-gray-400 dark:text-zinc-500">
+                          ×{row.clips.length}
+                        </span>
+                      )}
+                    </div>
+
+                    {/* Bottom row: mute, solo, volume */}
+                    <div className="flex items-center gap-1">
+                      {/* Mute button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRowMute(row);
+                        }}
+                        className={cn(
+                          'w-5 h-5 flex items-center justify-center rounded text-[9px] font-bold transition-colors',
+                          row.muted
+                            ? 'bg-red-500 text-white'
+                            : 'bg-gray-200 dark:bg-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-zinc-600'
+                        )}
+                        title="Mute"
+                      >
+                        M
+                      </button>
+
+                      {/* Solo button */}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRowSolo(row);
+                        }}
+                        className={cn(
+                          'w-5 h-5 flex items-center justify-center rounded text-[9px] font-bold transition-colors',
+                          row.solo
+                            ? 'bg-amber-500 text-white'
+                            : 'bg-gray-200 dark:bg-zinc-700 text-gray-500 dark:text-zinc-400 hover:bg-gray-300 dark:hover:bg-zinc-600'
+                        )}
+                        title="Solo"
+                      >
+                        S
+                      </button>
+
+                      {/* Volume slider */}
+                      <div className="flex-1 flex items-center gap-1 ml-1">
+                        <Volume2 className="w-3 h-3 text-gray-400 dark:text-zinc-500 shrink-0" />
+                        <input
+                          type="range"
+                          min="0"
+                          max="1.5"
+                          step="0.01"
+                          value={row.volume}
+                          onChange={(e) => {
+                            e.stopPropagation();
+                            handleRowVolume(row, parseFloat(e.target.value));
+                          }}
+                          onClick={(e) => e.stopPropagation()}
+                          className="flex-1 h-1 bg-gray-200 dark:bg-zinc-700 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-2 [&::-webkit-slider-thumb]:h-2 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-gray-500 dark:[&::-webkit-slider-thumb]:bg-zinc-400"
+                          title={`Volume: ${Math.round(row.volume * 100)}%`}
+                        />
+                      </div>
+                    </div>
                   </div>
 
                   {/* All clips on this row */}
@@ -1252,7 +1413,7 @@ export function MultiTrackTimeline({
                           isDraggingThis && !snapType && 'ring-2 ring-indigo-500'
                         )}
                         style={{
-                          left: clipLeft + 96,
+                          left: clipLeft + TRACK_LABEL_WIDTH,
                           width: clipWidth,
                           backgroundColor: `${track.color}20`,
                           borderLeft: `3px solid ${track.color}`,
@@ -1304,7 +1465,7 @@ export function MultiTrackTimeline({
               'absolute top-0 bottom-0 z-30 group',
               isPlayheadDragging ? 'cursor-grabbing' : 'cursor-grab'
             )}
-            style={{ left: currentTime * zoom + 96 - 6 }}
+            style={{ left: currentTime * zoom + TRACK_LABEL_WIDTH - 6 }}
             onMouseDown={handlePlayheadDragStart}
           >
             {/* Wider hit area for easier grabbing */}
@@ -1352,6 +1513,17 @@ export function MultiTrackTimeline({
           <div className="px-3 py-1.5 text-xs text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800 truncate">
             {contextMenu.trackName}
           </div>
+
+          {/* Edit Loop - only shown for loop clips */}
+          {contextMenu.trackRef?.type === 'loop' && (
+            <button
+              onClick={handleEditLoop}
+              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors text-amber-600 dark:text-amber-400"
+            >
+              <Pencil className="w-4 h-4" />
+              <span>Edit Loop</span>
+            </button>
+          )}
 
           <button
             onClick={handleToggleMute}
@@ -1496,6 +1668,22 @@ export function MultiTrackTimeline({
           </div>
         </div>
       )}
+
+      {/* Loop Editor Modal */}
+      <LoopCreatorModal
+        isOpen={loopEditorState.isOpen}
+        onClose={() => setLoopEditorState({ isOpen: false, loopId: null, loopTrackId: null })}
+        editingLoopId={loopEditorState.loopId || undefined}
+        onSave={(savedLoop) => {
+          // Update the loop track to use the saved loop's MIDI data
+          if (loopEditorState.loopTrackId) {
+            useLoopTracksStore.getState().updateTrack(loopEditorState.loopTrackId, {
+              loopId: savedLoop.id,
+            });
+          }
+          setLoopEditorState({ isOpen: false, loopId: null, loopTrackId: null });
+        }}
+      />
     </div>
   );
 }
