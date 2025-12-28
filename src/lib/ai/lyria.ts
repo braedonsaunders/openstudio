@@ -352,8 +352,9 @@ export class LyriaSession {
    */
   resetContext(): void {
     if (this.ws?.readyState === WebSocket.OPEN) {
+      // playback_control is a scalar enum field
       this.sendMessage({
-        playback_control: { reset_context: true },
+        playback_control: 'RESET_CONTEXT',
       });
     }
   }
@@ -387,9 +388,9 @@ export class LyriaSession {
         },
       });
 
-      // Send play command
+      // Send play command - playback_control is a scalar enum
       this.sendMessage({
-        playback_control: {},
+        playback_control: 'PLAY',
       });
 
       this.setState('playing');
@@ -402,10 +403,10 @@ export class LyriaSession {
   pause(): void {
     if (this.state !== 'playing') return;
 
-    // Send pause command
+    // Send pause command - playback_control is a scalar enum
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendMessage({
-        playback_control: { pause: true },
+        playback_control: 'PAUSE',
       });
     }
 
@@ -421,10 +422,10 @@ export class LyriaSession {
    * Stop music playback
    */
   stop(): void {
-    // Send stop command
+    // Send stop command - playback_control is a scalar enum
     if (this.ws?.readyState === WebSocket.OPEN) {
       this.sendMessage({
-        playback_control: { stop: true },
+        playback_control: 'STOP',
       });
     }
 
