@@ -91,13 +91,16 @@ export function useSessionTempoSync(): void {
   const previousSongIdRef = useRef<string | null>(null);
 
   useEffect(() => {
-    // Subscribe to current song changes
-    const unsubscribe = useSongsStore.subscribe(
-      (state) => state.currentSongId,
-      (currentSongId) => {
-        // Only sync when actually changing to a different song (not on initial load with same song)
+    // Subscribe to current song changes (standard zustand subscribe, not subscribeWithSelector)
+    let prevSongId = useSongsStore.getState().currentSongId;
+
+    const unsubscribe = useSongsStore.subscribe((state) => {
+      const currentSongId = state.currentSongId;
+      // Only sync when actually changing to a different song
+      if (currentSongId !== prevSongId) {
+        prevSongId = currentSongId;
         if (currentSongId && currentSongId !== previousSongIdRef.current) {
-          const song = useSongsStore.getState().getSongById(currentSongId);
+          const song = state.getSongById(currentSongId);
           if (song && song.bpm) {
             // Set the song's BPM as the manual tempo and switch to manual mode
             // This ensures the song's tempo becomes the session tempo
@@ -107,9 +110,8 @@ export function useSessionTempoSync(): void {
           }
         }
         previousSongIdRef.current = currentSongId;
-      },
-      { fireImmediately: true }
-    );
+      }
+    });
 
     return unsubscribe;
   }, []);
