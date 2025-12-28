@@ -38,8 +38,8 @@ export class PitchCorrectionProcessor extends BaseEffect {
 
   // Pitch detection buffers
   private fftSize = 2048;
-  private timeData: Float32Array;
-  private correlationBuffer: Float32Array;
+  private timeData: Float32Array<ArrayBuffer>;
+  private correlationBuffer: Float32Array<ArrayBuffer>;
 
   // State
   private currentPitch: number = 0;
@@ -73,8 +73,8 @@ export class PitchCorrectionProcessor extends BaseEffect {
     this.analyser.smoothingTimeConstant = 0.8;
 
     // Create buffers
-    this.timeData = new Float32Array(this.fftSize);
-    this.correlationBuffer = new Float32Array(this.fftSize);
+    this.timeData = new Float32Array(this.fftSize) as Float32Array<ArrayBuffer>;
+    this.correlationBuffer = new Float32Array(this.fftSize) as Float32Array<ArrayBuffer>;
 
     // Create gain nodes for mixing
     this.dryGain = audioContext.createGain();
@@ -156,7 +156,7 @@ export class PitchCorrectionProcessor extends BaseEffect {
     }
   }
 
-  private detectPitchAutocorrelation(buffer: Float32Array): number {
+  private detectPitchAutocorrelation(buffer: Float32Array<ArrayBuffer>): number {
     // Simple autocorrelation-based pitch detection
     const sampleRate = this.audioContext.sampleRate;
     const minPeriod = Math.floor(sampleRate / 1000); // 1000 Hz max

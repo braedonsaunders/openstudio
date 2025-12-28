@@ -25,7 +25,7 @@ export class DeEsserProcessor extends BaseEffect {
   // State
   private gainReduction: number = 0;
   private animationFrameId: number | null = null;
-  private analysisData: Float32Array;
+  private analysisData: Float32Array<ArrayBuffer>;
 
   constructor(audioContext: AudioContext, settings?: Partial<DeEsserSettings>) {
     super(audioContext);
@@ -54,7 +54,7 @@ export class DeEsserProcessor extends BaseEffect {
     // Analyser for level detection
     this.analyser = audioContext.createAnalyser();
     this.analyser.fftSize = 256;
-    this.analysisData = new Float32Array(this.analyser.fftSize);
+    this.analysisData = new Float32Array(this.analyser.fftSize) as Float32Array<ArrayBuffer>;
 
     // Dynamics compressor for fast sibilance reduction
     this.dynamicRange = audioContext.createDynamicsCompressor();

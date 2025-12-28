@@ -41,7 +41,7 @@ export class HarmonizerProcessor extends BaseEffect {
   // Pitch detection
   private analyser: AnalyserNode;
   private fftSize = 2048;
-  private timeData: Float32Array;
+  private timeData: Float32Array<ArrayBuffer>;
 
   // Harmony voices (simulated via delay-based pitch shifting)
   private harmonyDelays: DelayNode[] = [];
@@ -84,7 +84,7 @@ export class HarmonizerProcessor extends BaseEffect {
     this.analyser = audioContext.createAnalyser();
     this.analyser.fftSize = this.fftSize;
     this.analyser.smoothingTimeConstant = 0.8;
-    this.timeData = new Float32Array(this.fftSize);
+    this.timeData = new Float32Array(this.fftSize) as Float32Array<ArrayBuffer>;
 
     // Create dry/wet mixing
     this.dryGain = audioContext.createGain();
@@ -172,7 +172,7 @@ export class HarmonizerProcessor extends BaseEffect {
     }
   }
 
-  private detectPitch(buffer: Float32Array): number {
+  private detectPitch(buffer: Float32Array<ArrayBuffer>): number {
     const sampleRate = this.audioContext.sampleRate;
     const minPeriod = Math.floor(sampleRate / 1000);
     const maxPeriod = Math.floor(sampleRate / 50);
