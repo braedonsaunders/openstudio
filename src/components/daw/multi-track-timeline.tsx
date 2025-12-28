@@ -336,30 +336,6 @@ export function MultiTrackTimeline({
     previousSongIdRef.current = songId;
   }, [currentSong?.id, onStop]);
 
-  // Auto-zoom to fit content when tracks are first added
-  useEffect(() => {
-    if (!containerRef.current || hasSetInitialZoom.current) return;
-
-    // If we have tracks, zoom to fit the content
-    if (unifiedTracks.length > 0) {
-      const containerWidth = containerRef.current.clientWidth - 96; // Account for track labels
-      // Calculate max end time
-      let maxEndTime = 0;
-      unifiedTracks.forEach((track) => {
-        const endTime = track.ref.startOffset + track.duration;
-        maxEndTime = Math.max(maxEndTime, endTime);
-      });
-
-      if (maxEndTime > 0) {
-        // Zoom to fit content with some padding
-        const idealZoom = containerWidth / (maxEndTime * 1.2);
-        // Clamp zoom to reasonable range
-        setZoom(Math.min(100, Math.max(10, idealZoom)));
-        hasSetInitialZoom.current = true;
-      }
-    }
-  }, [unifiedTracks]);
-
   // Calculate loop duration from definition
   const getLoopDuration = useCallback((loopDef: LoopDefinition | undefined): number => {
     if (!loopDef) return 0;
@@ -405,6 +381,30 @@ export function MultiTrackTimeline({
       }
     });
   }, [currentSong, loopTracks, queue.tracks, getLoopDuration]);
+
+  // Auto-zoom to fit content when tracks are first added
+  useEffect(() => {
+    if (!containerRef.current || hasSetInitialZoom.current) return;
+
+    // If we have tracks, zoom to fit the content
+    if (unifiedTracks.length > 0) {
+      const containerWidth = containerRef.current.clientWidth - 96; // Account for track labels
+      // Calculate max end time
+      let maxEndTime = 0;
+      unifiedTracks.forEach((track) => {
+        const endTime = track.ref.startOffset + track.duration;
+        maxEndTime = Math.max(maxEndTime, endTime);
+      });
+
+      if (maxEndTime > 0) {
+        // Zoom to fit content with some padding
+        const idealZoom = containerWidth / (maxEndTime * 1.2);
+        // Clamp zoom to reasonable range
+        setZoom(Math.min(100, Math.max(10, idealZoom)));
+        hasSetInitialZoom.current = true;
+      }
+    }
+  }, [unifiedTracks]);
 
   // Calculate total song duration
   const songDuration = useMemo(() => {
