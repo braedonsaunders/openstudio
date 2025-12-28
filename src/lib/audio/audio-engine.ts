@@ -42,10 +42,12 @@ export class AudioEngine {
   private localSourceNode: MediaStreamAudioSourceNode | null = null;
   private localMonitorGain: GainNode | null = null;
   private localInputGain: GainNode | null = null;
+  private localArmGain: GainNode | null = null;
   private localMuteGain: GainNode | null = null;
   private localEffectsProcessor: UnifiedEffectsProcessor | null = null;
   private monitoringEnabled: boolean = true;
   private localTrackMuted: boolean = false;
+  private localTrackArmed: boolean = true;
   private localTrackVolume: number = 1;
   private remoteStreams: Map<string, AudioStream> = new Map();
   private backingTrackSource: AudioBufferSourceNode | null = null;
@@ -203,6 +205,7 @@ export class AudioEngine {
       this.localAnalyser?.disconnect();
       this.localMonitorGain?.disconnect();
       this.localInputGain?.disconnect();
+      this.localArmGain?.disconnect();
       this.localMuteGain?.disconnect();
       this.localEffectsProcessor?.dispose();
 
@@ -214,6 +217,11 @@ export class AudioEngine {
       this.localInputGain = this.audioContext.createGain();
       this.localInputGain.gain.value = this.localTrackVolume;
 
+      // Create arm gain to gate audio when track is not armed
+      // When unarmed, this blocks all audio from passing through
+      this.localArmGain = this.audioContext.createGain();
+      this.localArmGain.gain.value = this.localTrackArmed ? 1 : 0;
+
       // Create mute gain for track mute/solo control
       this.localMuteGain = this.audioContext.createGain();
       this.localMuteGain.gain.value = this.localTrackMuted ? 0 : 1;
@@ -223,7 +231,8 @@ export class AudioEngine {
       this.localMonitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
 
       // Audio signal flow:
-      // source -> channelMerger (if mono) -> inputGain -> effects -> muteGain -> monitorGain -> masterGain
+      // source -> channelMerger (if mono) -> inputGain -> armGain -> effects -> muteGain -> monitorGain -> masterGain
+      // When not armed, armGain is 0, blocking all audio from being processed or monitored
 
       // For mono mode with a specific channel selection, use ChannelSplitter
       // to extract only the desired channel
@@ -254,13 +263,16 @@ export class AudioEngine {
         this.localSourceNode.connect(this.localInputGain);
       }
 
-      // Connect input gain to analyser (for input level metering)
+      // Connect input gain to analyser (for input level metering before arm gate)
       this.localInputGain.connect(this.localAnalyser);
 
+      // Connect input gain to arm gate (this is where audio gets blocked when unarmed)
+      this.localInputGain.connect(this.localArmGain);
+
       // Create unified effects processor (all 15 effects in signal chain order)
-      // Connect: inputGain -> effectsProcessor -> muteGain -> monitorGain -> masterGain
+      // Connect: inputGain -> armGain -> effectsProcessor -> muteGain -> monitorGain -> masterGain
       this.localEffectsProcessor = new UnifiedEffectsProcessor(this.audioContext);
-      this.localInputGain.connect(this.localEffectsProcessor.getInputNode());
+      this.localArmGain.connect(this.localEffectsProcessor.getInputNode());
       this.localEffectsProcessor.connect(this.localMuteGain);
       this.localMuteGain.connect(this.localMonitorGain);
       this.localMonitorGain.connect(this.masterGain);
@@ -354,6 +366,17 @@ export class AudioEngine {
 
   isMonitoringEnabled(): boolean {
     return this.monitoringEnabled;
+  }
+
+  /**
+   * Set the local track armed state
+   * When not armed, blocks all audio from being processed or monitored
+   */
+  setLocalTrackArmed(armed: boolean): void {
+    this.localTrackArmed = armed;
+    if (this.localArmGain && this.audioContext) {
+      this.localArmGain.gain.setTargetAtTime(armed ? 1 : 0, this.audioContext.currentTime, 0.01);
+    }
   }
 
   /**
@@ -836,6 +859,8 @@ export class AudioEngine {
     this.localMonitorGain = null;
     this.localInputGain?.disconnect();
     this.localInputGain = null;
+    this.localArmGain?.disconnect();
+    this.localArmGain = null;
     this.localMuteGain?.disconnect();
     this.localMuteGain = null;
     this.localEffectsProcessor?.dispose();
