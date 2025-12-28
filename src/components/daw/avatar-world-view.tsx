@@ -506,25 +506,15 @@ export function AvatarWorldView({ users, currentUser, audioLevels, activeView, o
   return (
     <div className="h-full flex flex-col overflow-hidden">
       {/* Header */}
-      <div className="h-8 px-3 flex items-center justify-between border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
-        <div className="flex items-center gap-3">
-          {/* View Switcher */}
-          {activeView && onViewChange && (
-            <MainViewSwitcher
-              activeView={activeView}
-              onViewChange={onViewChange}
-              isMaster={true}
-            />
-          )}
-          <div className="flex items-center gap-2">
-            <Users2 className="w-3.5 h-3.5 text-purple-500" />
-            <span className="text-xs font-medium text-gray-900 dark:text-white">
-              World
-            </span>
-            <span className="text-[10px] text-gray-500 dark:text-zinc-500">
-              {allUsers.length} musician{allUsers.length !== 1 ? 's' : ''}
-            </span>
-          </div>
+      <div className="h-8 px-3 flex items-center border-b border-gray-200 dark:border-white/5 bg-gray-100 dark:bg-[#12121a] shrink-0">
+        <div className="flex items-center gap-2">
+          <Users2 className="w-3.5 h-3.5 text-purple-500" />
+          <span className="text-xs font-medium text-gray-900 dark:text-white">
+            World
+          </span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-500">
+            {allUsers.length} musician{allUsers.length !== 1 ? 's' : ''}
+          </span>
         </div>
       </div>
 

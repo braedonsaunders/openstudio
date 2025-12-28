@@ -28,6 +28,7 @@ import {
 } from 'lucide-react';
 import { MetronomeInline } from '@/components/daw/metronome-controls';
 import { UserMenu } from '@/components/auth/UserMenu';
+import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 
 interface TransportBarProps {
   roomId: string;
@@ -43,6 +44,9 @@ interface TransportBarProps {
   onLoopToggle: () => void;
   audioContext?: AudioContext | null;
   masterGain?: AudioNode | null;
+  // View switcher props
+  activeView?: MainViewType;
+  onViewChange?: (view: MainViewType) => void;
 }
 
 export function TransportBar({
@@ -59,6 +63,8 @@ export function TransportBar({
   onLoopToggle,
   audioContext,
   masterGain,
+  activeView,
+  onViewChange,
 }: TransportBarProps) {
   const [copied, setCopied] = useState(false);
 
@@ -268,6 +274,15 @@ export function TransportBar({
             </span>
           </div>
         </Tooltip>
+
+        {/* View Switcher */}
+        {activeView && onViewChange && (
+          <MainViewSwitcher
+            activeView={activeView}
+            onViewChange={onViewChange}
+            isMaster={isMaster}
+          />
+        )}
       </div>
 
       {/* Transport Controls - Center */}

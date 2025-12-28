@@ -761,15 +761,7 @@ export function MixerView({
     <div className="h-full flex flex-col bg-gradient-to-b from-zinc-900 via-zinc-950 to-black overflow-hidden">
       {/* Mixer Header */}
       <div className="h-8 flex items-center justify-between px-4 border-b border-zinc-800/80 bg-zinc-900/90 backdrop-blur-sm">
-        <div className="flex items-center gap-3">
-          {/* View Switcher */}
-          {activeView && onViewChange && (
-            <MainViewSwitcher
-              activeView={activeView}
-              onViewChange={onViewChange}
-              isMaster={isMaster}
-            />
-          )}
+        <div className="flex items-center gap-2">
           <h2 className="text-xs font-bold text-zinc-100 tracking-wide flex items-center gap-2">
             <Signal className="w-3.5 h-3.5 text-indigo-400" />
             LIVE MIXER
