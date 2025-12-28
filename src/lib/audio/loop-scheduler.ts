@@ -129,6 +129,9 @@ export class LoopScheduler {
   private scheduleLoopIteration(loop: ActiveLoop, loopDuration: number): void {
     const { loopDef, trackState, nextLoopTime, iteration } = loop;
 
+    // Get sound preset - use loopDef as fallback if trackState doesn't have it
+    const soundPreset = trackState.soundPreset || loopDef.soundPreset;
+
     // Get MIDI data (possibly with humanization)
     let midiData = trackState.customMidiData || loopDef.midiData;
 
@@ -140,7 +143,7 @@ export class LoopScheduler {
         currentTime: this.context.currentTime,
         lookahead: this.lookaheadTime,
         midiNotes: midiData?.length,
-        preset: trackState.soundPreset,
+        preset: soundPreset,
         muted: trackState.muted,
       });
     }
@@ -175,7 +178,7 @@ export class LoopScheduler {
 
         if (!trackState.muted && velocity > 0) {
           this.soundEngine.playNote(
-            trackState.soundPreset,
+            soundPreset,
             noteNumber,
             velocity,
             noteTime,
@@ -189,7 +192,7 @@ export class LoopScheduler {
           velocity,
           startTime: noteTime,
           duration: noteDuration,
-          soundPreset: trackState.soundPreset,
+          soundPreset: soundPreset,
         });
       }
     }

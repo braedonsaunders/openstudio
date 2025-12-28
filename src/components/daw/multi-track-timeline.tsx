@@ -7,6 +7,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { getLoopById } from '@/lib/audio/loop-library';
+import { generateWaveformFromUrl } from '@/lib/audio/waveform-generator';
 import {
   Music,
   Repeat,
@@ -342,9 +343,12 @@ export function MultiTrackTimeline({
   });
   const [isDragOver, setIsDragOver] = useState(false);
 
+  // Waveform data cache by track URL
+  const [waveformDataCache, setWaveformDataCache] = useState<Map<string, number[]>>(new Map());
+
   const { getCurrentSong } = useSongsStore();
   const { queue, setCurrentTrack } = useRoomStore();
-  const { getTracksByRoom, removeTrack: removeLoopTrack } = useLoopTracksStore();
+  const { getTracksByRoom } = useLoopTracksStore();
   const { isPlaying, currentTime, duration, setPlaying } = useAudioStore();
 
   const currentSong = getCurrentSong();
@@ -406,11 +410,12 @@ export function MultiTrackTimeline({
           muted: trackRef.muted || false,
           youtubeId: audioTrack?.youtubeId,
           aiGenerated: audioTrack?.aiGenerated,
-          waveformData: undefined as number[] | undefined, // TODO: Store per-track waveform data
+          audioUrl: audioTrack?.url,
+          waveformData: audioTrack?.url ? waveformDataCache.get(audioTrack.url) : undefined,
         };
       }
     });
-  }, [currentSong, loopTracks, queue.tracks, getLoopDuration]);
+  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, waveformDataCache]);
 
   // Group tracks by position (track row) for rendering multiple clips on same row
   const trackRows = useMemo(() => {
@@ -436,6 +441,35 @@ export function MultiTrackTimeline({
         type: clips[0]?.type || 'audio',
       }));
   }, [unifiedTracks]);
+
+  // Generate waveforms for audio tracks that don't have waveform data yet
+  useEffect(() => {
+    const audioTracks = unifiedTracks.filter(
+      (track) => track.type === 'audio' && track.audioUrl && !waveformDataCache.has(track.audioUrl)
+    );
+
+    if (audioTracks.length === 0) return;
+
+    // Generate waveforms for each audio track
+    audioTracks.forEach((track) => {
+      if (!track.audioUrl) return;
+      const url = track.audioUrl;
+
+      generateWaveformFromUrl(url, 200)
+        .then((waveform) => {
+          if (waveform.length > 0) {
+            setWaveformDataCache((prev) => {
+              const next = new Map(prev);
+              next.set(url, waveform);
+              return next;
+            });
+          }
+        })
+        .catch((err) => {
+          console.error('[MultiTrackTimeline] Failed to generate waveform:', err);
+        });
+    });
+  }, [unifiedTracks, waveformDataCache]);
 
   // Auto-zoom to fit content when tracks are first added
   useEffect(() => {
@@ -624,16 +658,13 @@ export function MultiTrackTimeline({
       setPlaying(false);
     }
 
-    // Remove all clips in this row
+    // Remove all clips in this row (only from song, not from asset library)
     for (const clipId of trackRowContextMenu.clipIds) {
       const trackRef = song.tracks.find((t) => t.id === clipId);
       if (trackRef) {
         removeTrackFromSong(song.id, clipId);
-
-        // If it's a loop track, also remove from loop tracks store
-        if (trackRef.type === 'loop') {
-          removeLoopTrack(trackRef.trackId);
-        }
+        // NOTE: We do NOT remove from loop-tracks-store or room-store.queue
+        // Those are the "asset libraries" - timeline clips are just references
       }
     }
 
@@ -642,7 +673,7 @@ export function MultiTrackTimeline({
     setCurrentTime(0);
 
     closeTrackRowContextMenu();
-  }, [trackRowContextMenu.clipIds, onStop, setPlaying, removeLoopTrack, closeTrackRowContextMenu]);
+  }, [trackRowContextMenu.clipIds, onStop, setPlaying, closeTrackRowContextMenu]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -680,20 +711,17 @@ export function MultiTrackTimeline({
       setCurrentTrack(null);
     }
 
-    // Remove from song
+    // Remove from song (only the reference, not the underlying asset)
     removeTrackFromSong(song.id, trackRef.id);
-
-    // If it's a loop track, also remove from loop tracks store
-    if (trackRef.type === 'loop') {
-      removeLoopTrack(trackRef.trackId);
-    }
+    // NOTE: We do NOT remove from loop-tracks-store or room-store.queue
+    // Those are the "asset libraries" - timeline clips are just references
 
     // Reset current time to avoid being past the end of remaining content
     const { setCurrentTime } = useAudioStore.getState();
     setCurrentTime(0);
 
     closeContextMenu();
-  }, [contextMenu.trackRef, onStop, setPlaying, setCurrentTrack, removeLoopTrack, closeContextMenu]);
+  }, [contextMenu.trackRef, onStop, setPlaying, setCurrentTrack, closeContextMenu]);
 
   // Toggle mute handler
   const handleToggleMute = useCallback(() => {

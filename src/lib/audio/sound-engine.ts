@@ -603,6 +603,11 @@ export class SoundEngine {
     return this.getOrCreateDrumKit(kitId);
   }
 
+  // Synchronous getter for pre-loaded drum kits - returns null if not loaded
+  getDrumKitSync(kitId: string): DrumKitSampler | null {
+    return this.drumKits.get(kitId) || null;
+  }
+
   private async getOrCreateDrumKit(kitId: string): Promise<DrumKitSampler> {
     let kit = this.drumKits.get(kitId);
     if (!kit) {
@@ -620,12 +625,24 @@ export class SoundEngine {
     time?: number,
     duration?: number
   ): void {
+    if (!soundPreset) {
+      console.warn('[SoundEngine] No soundPreset provided, defaulting to drums/acoustic-kit');
+      soundPreset = 'drums/acoustic-kit';
+    }
     const [category, preset] = soundPreset.split('/');
 
     if (category === 'drums') {
-      this.getDrumKit(preset).then((kit) => {
+      // Use synchronous access for pre-loaded kits (critical for timing)
+      const kit = this.getDrumKitSync(preset);
+      if (kit) {
         kit.trigger(noteNumber, velocity, time);
-      });
+      } else {
+        // Kit not loaded yet - load and trigger (may miss timing)
+        console.warn('[SoundEngine] Drum kit not pre-loaded:', preset);
+        this.getDrumKit(preset).then((loadedKit) => {
+          loadedKit.trigger(noteNumber, velocity, time);
+        });
+      }
     } else {
       const synth = this.getOrCreateSynth(preset || soundPreset);
       synth.noteOn(noteNumber, velocity, time);
