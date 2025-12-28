@@ -469,7 +469,7 @@ export default function LobbyPage() {
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
   const { user, profile, isLoading: authLoading, isInitialized, instruments } = useAuthStore();
-  const { connect, disconnect, isConnected, subscribeToRoom, getRoomUserCount } = useLobbyStore();
+  const { connect, disconnect, isConnected, subscribeToRoom, getRoomUserCount, roomPresence } = useLobbyStore();
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCode, setRoomCode] = useState('');
@@ -537,7 +537,7 @@ export default function LobbyPage() {
       ...room,
       activeUsers: getRoomUserCount(room.id) || room.activeUsers || 0,
     }));
-  }, [rooms, getRoomUserCount]);
+  }, [rooms, getRoomUserCount, roomPresence]);
 
   const filteredRooms = useMemo(() => {
     let result = [...roomsWithPresence];
