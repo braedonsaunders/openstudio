@@ -40,6 +40,7 @@ import {
   CategoryManager,
   UnlockRuleEditor,
 } from '@/components/admin/avatar';
+import type { AvatarCategory, AvatarUnlockRule } from '@/types/avatar';
 
 type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics' | 'avatars';
 
@@ -873,23 +874,8 @@ type AvatarSubTab = 'generate' | 'library' | 'categories' | 'unlocks';
 
 function AvatarsTab() {
   const [subTab, setSubTab] = useState<AvatarSubTab>('generate');
-  const [categories, setCategories] = useState<Array<{
-    id: string;
-    displayName: string;
-    layerOrder: number;
-    isRequired: boolean;
-    maxSelections: number;
-    supportsColorVariants: boolean;
-    defaultColorPalette?: string;
-  }>>([]);
-  const [unlockRules, setUnlockRules] = useState<Array<{
-    id: string;
-    displayName: string;
-    description?: string;
-    type: 'level' | 'achievement' | 'statistic' | 'manual';
-    conditionKey?: string;
-    conditionValue?: number;
-  }>>([]);
+  const [categories, setCategories] = useState<AvatarCategory[]>([]);
+  const [unlockRules, setUnlockRules] = useState<AvatarUnlockRule[]>([]);
   const [colorPalettes, setColorPalettes] = useState<Record<string, string[]>>({});
   const [isLoading, setIsLoading] = useState(true);
 
@@ -971,8 +957,7 @@ function AvatarsTab() {
       {subTab === 'generate' && (
         <ComponentGenerator
           categories={categories}
-          colorPalettes={colorPalettes}
-          onRefresh={loadData}
+          onComponentCreated={loadData}
         />
       )}
       {subTab === 'library' && (
