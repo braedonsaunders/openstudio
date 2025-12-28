@@ -1061,9 +1061,9 @@ export function SavedTrackEditor({
           deviceId: inputDeviceId !== 'default' ? { exact: inputDeviceId } : undefined,
           sampleRate,
           channelCount: requestedChannels,
-          echoCancellation,
-          noiseSuppression,
-          autoGainControl,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
         },
       });
       streamRef.current = stream;
@@ -1604,46 +1604,6 @@ export function SavedTrackEditor({
                 unit=" dB"
               />
 
-              {/* Processing Options */}
-              <div>
-                <label className="block text-sm text-gray-500 dark:text-gray-400 mb-2">Browser Processing</label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setEchoCancellation(!echoCancellation)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                      echoCancellation
-                        ? 'bg-indigo-500/20 text-indigo-400'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                    )}
-                  >
-                    Echo Cancel
-                  </button>
-                  <button
-                    onClick={() => setNoiseSuppression(!noiseSuppression)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                      noiseSuppression
-                        ? 'bg-indigo-500/20 text-indigo-400'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                    )}
-                  >
-                    Noise Suppress
-                  </button>
-                  <button
-                    onClick={() => setAutoGainControl(!autoGainControl)}
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                      autoGainControl
-                        ? 'bg-indigo-500/20 text-indigo-400'
-                        : 'bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400'
-                    )}
-                  >
-                    Auto Gain
-                  </button>
-                </div>
-                <p className="text-xs text-gray-500 mt-2">Disable all for audio interfaces & instruments</p>
-              </div>
 
               {/* Direct Monitoring */}
               <div className="space-y-2">

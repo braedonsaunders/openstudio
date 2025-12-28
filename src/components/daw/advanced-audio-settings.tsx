@@ -191,9 +191,9 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
               : undefined,
             sampleRate: track.audioSettings.sampleRate,
             channelCount: track.audioSettings.channelConfig.channelCount,
-            echoCancellation: track.audioSettings.echoCancellation,
-            noiseSuppression: track.audioSettings.noiseSuppression,
-            autoGainControl: track.audioSettings.autoGainControl,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
           },
         });
         testStreamRef.current = stream;
@@ -537,48 +537,6 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
           )}
         </div>
 
-        {/* Processing Options (only for direct input) */}
-        {track.audioSettings.inputMode === 'microphone' && (
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Browser Processing</label>
-            <div className="flex flex-wrap gap-1.5">
-              <button
-                onClick={() => handleSettingChange({ echoCancellation: !track.audioSettings.echoCancellation })}
-                className={cn(
-                  'px-2 py-1 rounded text-[10px] font-medium transition-colors',
-                  track.audioSettings.echoCancellation
-                    ? 'bg-indigo-500/20 text-indigo-400'
-                    : 'bg-gray-200 dark:bg-white/5 text-gray-600 dark:text-zinc-500 hover:bg-gray-300 dark:hover:bg-white/10'
-                )}
-              >
-                Echo Cancel
-              </button>
-              <button
-                onClick={() => handleSettingChange({ noiseSuppression: !track.audioSettings.noiseSuppression })}
-                className={cn(
-                  'px-2 py-1 rounded text-[10px] font-medium transition-colors',
-                  track.audioSettings.noiseSuppression
-                    ? 'bg-indigo-500/20 text-indigo-400'
-                    : 'bg-gray-200 dark:bg-white/5 text-gray-600 dark:text-zinc-500 hover:bg-gray-300 dark:hover:bg-white/10'
-                )}
-              >
-                Noise Suppress
-              </button>
-              <button
-                onClick={() => handleSettingChange({ autoGainControl: !track.audioSettings.autoGainControl })}
-                className={cn(
-                  'px-2 py-1 rounded text-[10px] font-medium transition-colors',
-                  track.audioSettings.autoGainControl
-                    ? 'bg-indigo-500/20 text-indigo-400'
-                    : 'bg-gray-200 dark:bg-white/5 text-gray-600 dark:text-zinc-500 hover:bg-gray-300 dark:hover:bg-white/10'
-                )}
-              >
-                Auto Gain
-              </button>
-            </div>
-            <p className="text-[10px] text-gray-500 dark:text-zinc-600">Disable all for audio interfaces & instruments</p>
-          </div>
-        )}
 
         {/* Advanced Settings */}
         <details className="group">

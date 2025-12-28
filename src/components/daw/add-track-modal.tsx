@@ -143,9 +143,9 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
               ? { exact: settings.inputDeviceId }
               : undefined,
             sampleRate: settings.sampleRate,
-            echoCancellation: settings.echoCancellation,
-            noiseSuppression: settings.noiseSuppression,
-            autoGainControl: settings.autoGainControl,
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false,
           },
         });
       }
@@ -484,56 +484,6 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
               )}
             </div>
 
-            {/* Audio Processing (only for microphone) */}
-            {settings.inputMode === 'microphone' && (
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-slate-700">Audio Processing</label>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() =>
-                      setSettings({ ...settings, echoCancellation: !settings.echoCancellation })
-                    }
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                      settings.echoCancellation
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    )}
-                  >
-                    Echo Cancellation
-                  </button>
-                  <button
-                    onClick={() =>
-                      setSettings({ ...settings, noiseSuppression: !settings.noiseSuppression })
-                    }
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                      settings.noiseSuppression
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    )}
-                  >
-                    Noise Suppression
-                  </button>
-                  <button
-                    onClick={() =>
-                      setSettings({ ...settings, autoGainControl: !settings.autoGainControl })
-                    }
-                    className={cn(
-                      'px-3 py-1.5 rounded-lg text-xs font-medium transition-colors',
-                      settings.autoGainControl
-                        ? 'bg-indigo-100 text-indigo-700'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    )}
-                  >
-                    Auto Gain
-                  </button>
-                </div>
-                <p className="text-xs text-slate-400">
-                  Disable all for best quality with a dedicated audio interface
-                </p>
-              </div>
-            )}
 
             {/* Actions */}
             <div className="flex gap-3 pt-2">
