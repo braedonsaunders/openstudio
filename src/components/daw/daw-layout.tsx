@@ -369,6 +369,11 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     // Set the new time
     setCurrentTime(seekTime);
 
+    // Trigger time tracking reset for loop-only playback
+    if (wasPlaying && hasLoopTracks && !hasAudioTracks) {
+      setSeekVersion((v) => v + 1);
+    }
+
     // If was playing, restart at new position
     if (wasPlaying && songTracks.length > 0) {
       // Initialize audio systems
@@ -411,7 +416,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         }
       }
     }
-  }, [isMaster, isPlaying, songTracks, pauseBackingTrack, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setPlaying]);
+  }, [isMaster, isPlaying, songTracks, hasLoopTracks, hasAudioTracks, pauseBackingTrack, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setPlaying]);
 
   // Playback handlers - Song system only, no legacy fallback
   const handlePlay = useCallback(() => {
@@ -520,6 +525,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const playStartTimeRef = useRef<number | null>(null);
   const playStartPositionRef = useRef<number>(0);
   const loopTimeAnimationRef = useRef<number | null>(null);
+  const [seekVersion, setSeekVersion] = useState(0);
 
   // Memoize track type checks to avoid recalculating on every render
   const hasAudioTracks = useMemo(() => songTracks.some((t) => t.type === 'audio'), [songTracks]);
@@ -568,7 +574,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       }
       playStartTimeRef.current = null;
     };
-  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration]);
+  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration, seekVersion]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
