@@ -1,4 +1,4 @@
-// Custom Loops Store - Zustand store for user-created loops with localStorage persistence
+// Custom Loops Store - Zustand store for user-created loops with server + localStorage persistence
 
 import { create } from 'zustand';
 import { persist, createJSONStorage } from 'zustand/middleware';
@@ -14,10 +14,74 @@ export interface CustomLoopDefinition extends LoopDefinition {
   createdAt: string;
   updatedAt: string;
   createdBy?: string;
+  userId?: string;
 
   // Optional metadata
   description?: string;
   isFavorite?: boolean;
+}
+
+// =============================================================================
+// API Functions
+// =============================================================================
+
+async function fetchLoopsFromServer(userId: string): Promise<CustomLoopDefinition[]> {
+  try {
+    const response = await fetch(`/api/custom-loops?userId=${encodeURIComponent(userId)}`);
+    if (!response.ok) {
+      throw new Error('Failed to fetch loops');
+    }
+    return response.json();
+  } catch (error) {
+    console.error('Error fetching loops from server:', error);
+    return [];
+  }
+}
+
+async function createLoopOnServer(loop: CustomLoopDefinition): Promise<CustomLoopDefinition | null> {
+  try {
+    const response = await fetch('/api/custom-loops', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loop),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to create loop');
+    }
+    return response.json();
+  } catch (error) {
+    console.error('Error creating loop on server:', error);
+    return null;
+  }
+}
+
+async function updateLoopOnServer(loop: Partial<CustomLoopDefinition> & { id: string; userId: string }): Promise<CustomLoopDefinition | null> {
+  try {
+    const response = await fetch('/api/custom-loops', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loop),
+    });
+    if (!response.ok) {
+      throw new Error('Failed to update loop');
+    }
+    return response.json();
+  } catch (error) {
+    console.error('Error updating loop on server:', error);
+    return null;
+  }
+}
+
+async function deleteLoopOnServer(id: string, userId: string): Promise<boolean> {
+  try {
+    const response = await fetch(`/api/custom-loops?id=${encodeURIComponent(id)}&userId=${encodeURIComponent(userId)}`, {
+      method: 'DELETE',
+    });
+    return response.ok;
+  } catch (error) {
+    console.error('Error deleting loop on server:', error);
+    return false;
+  }
 }
 
 // =============================================================================
@@ -34,11 +98,20 @@ interface CustomLoopsState {
   // Draft loop being created (before save)
   draftLoop: Partial<CustomLoopDefinition> | null;
 
+  // Current user ID for server sync
+  userId: string | null;
+
+  // Sync status
+  isSyncing: boolean;
+  lastSyncedAt: string | null;
+
   // Actions
-  createLoop: (loop: Omit<CustomLoopDefinition, 'id' | 'isCustom' | 'createdAt' | 'updatedAt'>) => CustomLoopDefinition;
-  updateLoop: (id: string, updates: Partial<CustomLoopDefinition>) => void;
-  deleteLoop: (id: string) => void;
-  duplicateLoop: (id: string) => CustomLoopDefinition | undefined;
+  setUserId: (userId: string | null) => void;
+  syncFromServer: () => Promise<void>;
+  createLoop: (loop: Omit<CustomLoopDefinition, 'id' | 'isCustom' | 'createdAt' | 'updatedAt'>) => Promise<CustomLoopDefinition>;
+  updateLoop: (id: string, updates: Partial<CustomLoopDefinition>) => Promise<void>;
+  deleteLoop: (id: string) => Promise<void>;
+  duplicateLoop: (id: string) => Promise<CustomLoopDefinition | undefined>;
 
   // Note editing
   addNote: (loopId: string, note: MidiNote) => void;
@@ -49,7 +122,7 @@ interface CustomLoopsState {
   // Draft management
   startDraft: (instrumentId: string) => void;
   updateDraft: (updates: Partial<CustomLoopDefinition>) => void;
-  saveDraft: () => CustomLoopDefinition | undefined;
+  saveDraft: () => Promise<CustomLoopDefinition | undefined>;
   discardDraft: () => void;
 
   // Editing state
@@ -67,9 +140,9 @@ interface CustomLoopsState {
 
   // Import/Export
   exportLoop: (id: string) => string | undefined;
-  importLoop: (jsonData: string) => CustomLoopDefinition | undefined;
+  importLoop: (jsonData: string) => Promise<CustomLoopDefinition | undefined>;
   exportAllLoops: () => string;
-  importLoops: (jsonData: string) => number;
+  importLoops: (jsonData: string) => Promise<number>;
 }
 
 // =============================================================================
@@ -104,8 +177,42 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
       loops: {},
       editingLoopId: null,
       draftLoop: null,
+      userId: null,
+      isSyncing: false,
+      lastSyncedAt: null,
 
-      createLoop: (loopData) => {
+      setUserId: (userId) => {
+        set({ userId });
+        // Automatically sync when user ID is set
+        if (userId) {
+          get().syncFromServer();
+        }
+      },
+
+      syncFromServer: async () => {
+        const { userId } = get();
+        if (!userId) return;
+
+        set({ isSyncing: true });
+        try {
+          const serverLoops = await fetchLoopsFromServer(userId);
+          const loopsRecord: Record<string, CustomLoopDefinition> = {};
+
+          for (const loop of serverLoops) {
+            loopsRecord[loop.id] = loop;
+          }
+
+          set({
+            loops: loopsRecord,
+            lastSyncedAt: new Date().toISOString(),
+          });
+        } finally {
+          set({ isSyncing: false });
+        }
+      },
+
+      createLoop: async (loopData) => {
+        const { userId } = get();
         const id = `custom-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
         const now = new Date().toISOString();
 
@@ -115,34 +222,58 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
           isCustom: true,
           createdAt: now,
           updatedAt: now,
+          userId: userId || undefined,
         };
 
+        // Update local state immediately
         set((state) => ({
           loops: { ...state.loops, [id]: loop },
         }));
 
+        // Sync to server if user is logged in
+        if (userId) {
+          const serverLoop = await createLoopOnServer(loop);
+          if (serverLoop) {
+            // Update with server-assigned data
+            set((state) => ({
+              loops: { ...state.loops, [serverLoop.id]: serverLoop },
+            }));
+            return serverLoop;
+          }
+        }
+
         return loop;
       },
 
-      updateLoop: (id, updates) => {
-        set((state) => {
-          const loop = state.loops[id];
-          if (!loop) return state;
+      updateLoop: async (id, updates) => {
+        const { userId, loops } = get();
+        const loop = loops[id];
+        if (!loop) return;
 
-          return {
-            loops: {
-              ...state.loops,
-              [id]: {
-                ...loop,
-                ...updates,
-                updatedAt: new Date().toISOString(),
-              },
-            },
-          };
-        });
+        const updatedLoop = {
+          ...loop,
+          ...updates,
+          updatedAt: new Date().toISOString(),
+        };
+
+        // Update local state immediately
+        set((state) => ({
+          loops: {
+            ...state.loops,
+            [id]: updatedLoop,
+          },
+        }));
+
+        // Sync to server if user is logged in
+        if (userId) {
+          await updateLoopOnServer({ ...updates, id, userId });
+        }
       },
 
-      deleteLoop: (id) => {
+      deleteLoop: async (id) => {
+        const { userId } = get();
+
+        // Update local state immediately
         set((state) => {
           const { [id]: _, ...rest } = state.loops;
           return {
@@ -150,13 +281,18 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
             editingLoopId: state.editingLoopId === id ? null : state.editingLoopId,
           };
         });
+
+        // Sync to server if user is logged in
+        if (userId) {
+          await deleteLoopOnServer(id, userId);
+        }
       },
 
-      duplicateLoop: (id) => {
+      duplicateLoop: async (id) => {
         const original = get().loops[id];
         if (!original) return undefined;
 
-        const newLoop = get().createLoop({
+        const newLoop = await get().createLoop({
           ...original,
           name: `${original.name} (Copy)`,
         });
@@ -164,7 +300,7 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
         return newLoop;
       },
 
-      // Note editing
+      // Note editing (local only, then sync entire loop)
       addNote: (loopId, note) => {
         const loop = get().loops[loopId];
         if (!loop) return;
@@ -208,11 +344,11 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
         }));
       },
 
-      saveDraft: () => {
+      saveDraft: async () => {
         const draft = get().draftLoop;
         if (!draft || !draft.name || !draft.soundPreset) return undefined;
 
-        const loop = get().createLoop(draft as Omit<CustomLoopDefinition, 'id' | 'isCustom' | 'createdAt' | 'updatedAt'>);
+        const loop = await get().createLoop(draft as Omit<CustomLoopDefinition, 'id' | 'isCustom' | 'createdAt' | 'updatedAt'>);
         set({ draftLoop: null });
         return loop;
       },
@@ -269,7 +405,7 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
         return JSON.stringify(loop, null, 2);
       },
 
-      importLoop: (jsonData) => {
+      importLoop: async (jsonData) => {
         try {
           const parsed = JSON.parse(jsonData) as CustomLoopDefinition;
 
@@ -280,7 +416,7 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
           }
 
           // Create with a new ID
-          return get().createLoop({
+          return await get().createLoop({
             ...parsed,
             name: `${parsed.name} (Imported)`,
           });
@@ -294,7 +430,7 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
         return JSON.stringify(Object.values(get().loops), null, 2);
       },
 
-      importLoops: (jsonData) => {
+      importLoops: async (jsonData) => {
         try {
           const parsed = JSON.parse(jsonData) as CustomLoopDefinition[];
 
@@ -306,7 +442,7 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
           let count = 0;
           for (const loop of parsed) {
             if (loop.name && loop.midiData && loop.soundPreset) {
-              get().createLoop(loop);
+              await get().createLoop(loop);
               count++;
             }
           }
@@ -323,6 +459,7 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
       storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
         loops: state.loops,
+        userId: state.userId,
       }),
     }
   )

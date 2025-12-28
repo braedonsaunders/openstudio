@@ -53,7 +53,7 @@ export function LoopBrowserModal({
   onAddLoop,
 }: LoopBrowserModalProps) {
   const { previewingLoopId, setPreviewingLoop, masterTempo } = useLoopTracksStore();
-  const { getAllLoops: getAllCustomLoops, deleteLoop: deleteCustomLoop } = useCustomLoopsStore();
+  const { getAllLoops: getAllCustomLoops, deleteLoop: deleteCustomLoop, setUserId, syncFromServer } = useCustomLoopsStore();
 
   // Dark mode detection
   const [isDark, setIsDark] = useState(false);
@@ -61,6 +61,13 @@ export function LoopBrowserModal({
   useEffect(() => {
     setIsDark(document.documentElement.classList.contains('dark'));
   }, [isOpen]);
+
+  // Sync user ID and fetch loops from server when modal opens
+  useEffect(() => {
+    if (isOpen && userId) {
+      setUserId(userId);
+    }
+  }, [isOpen, userId, setUserId]);
 
   // State
   const [selectedCategory, setSelectedCategory] = useState<LoopCategory | 'my-loops' | null>('drums');
@@ -195,7 +202,8 @@ export function LoopBrowserModal({
       clearInterval(previewIntervalRef.current);
       previewIntervalRef.current = null;
     }
-    soundEngineRef.current?.allNotesOff();
+    // Use killAll for immediate stop without release envelope
+    soundEngineRef.current?.killAll();
     setPreviewingLoop(null);
     setIsPlaying(false);
   }, [setPreviewingLoop]);
