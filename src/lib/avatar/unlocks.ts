@@ -4,10 +4,8 @@ import type {
   AvatarComponent,
   AvatarUnlockRule,
   AvatarComponentUnlock,
-  UserStats,
-  UserAchievement,
 } from '@/types/avatar';
-import type { UserProfile } from '@/types/user';
+import type { UserProfile, UserStats, UserAchievement } from '@/types/user';
 
 export interface UnlockContext {
   profile: UserProfile;
