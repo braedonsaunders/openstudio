@@ -45,6 +45,8 @@ export function SetlistPanel({
 
   const [editingSongId, setEditingSongId] = useState<string | null>(null);
   const [editingName, setEditingName] = useState('');
+  const [editingBpmSongId, setEditingBpmSongId] = useState<string | null>(null);
+  const [editingBpm, setEditingBpm] = useState('');
   const [isCreating, setIsCreating] = useState(false);
   const [newSongName, setNewSongName] = useState('');
   const [draggedSongId, setDraggedSongId] = useState<string | null>(null);
@@ -84,6 +86,47 @@ export function SetlistPanel({
   const handleCancelEdit = useCallback(() => {
     setEditingSongId(null);
     setEditingName('');
+  }, []);
+
+  // Start editing BPM
+  const handleStartBpmEdit = useCallback((song: Song) => {
+    setEditingBpmSongId(song.id);
+    setEditingBpm(song.bpm.toString());
+  }, []);
+
+  // Save edited BPM
+  const handleSaveBpm = useCallback(async () => {
+    if (!editingBpmSongId) return;
+
+    const bpmValue = parseInt(editingBpm, 10);
+    if (isNaN(bpmValue) || bpmValue < 40 || bpmValue > 240) {
+      // Invalid BPM, cancel edit
+      setEditingBpmSongId(null);
+      setEditingBpm('');
+      return;
+    }
+
+    updateSong(editingBpmSongId, { bpm: bpmValue });
+
+    // Persist to database
+    try {
+      await fetch(`/api/rooms/${roomId}/songs`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ songId: editingBpmSongId, bpm: bpmValue }),
+      });
+    } catch (err) {
+      console.error('Failed to update song BPM:', err);
+    }
+
+    setEditingBpmSongId(null);
+    setEditingBpm('');
+  }, [editingBpmSongId, editingBpm, roomId, updateSong]);
+
+  // Cancel BPM editing
+  const handleCancelBpmEdit = useCallback(() => {
+    setEditingBpmSongId(null);
+    setEditingBpm('');
   }, []);
 
   // Create new song
@@ -296,9 +339,50 @@ export function SetlistPanel({
                           <span className="text-[10px] text-gray-500 dark:text-zinc-500">
                             {song.tracks.length} track{song.tracks.length !== 1 ? 's' : ''}
                           </span>
-                          <span className="text-[10px] text-gray-400 dark:text-zinc-600">
-                            {song.bpm} BPM
-                          </span>
+                          {editingBpmSongId === song.id ? (
+                            <span
+                              className="inline-flex items-center gap-0.5"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <input
+                                type="number"
+                                min={40}
+                                max={240}
+                                value={editingBpm}
+                                onChange={(e) => setEditingBpm(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter') handleSaveBpm();
+                                  if (e.key === 'Escape') handleCancelBpmEdit();
+                                }}
+                                className="w-10 px-1 py-0 text-[10px] bg-white dark:bg-[#0d0d14] border border-gray-300 dark:border-white/20 rounded text-gray-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-indigo-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                autoFocus
+                              />
+                              <span className="text-[10px] text-gray-400 dark:text-zinc-600">BPM</span>
+                              <button
+                                onClick={handleSaveBpm}
+                                className="p-0.5 text-green-500 hover:text-green-400"
+                              >
+                                <Check className="w-2.5 h-2.5" />
+                              </button>
+                              <button
+                                onClick={handleCancelBpmEdit}
+                                className="p-0.5 text-red-500 hover:text-red-400"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleStartBpmEdit(song);
+                              }}
+                              className="text-[10px] text-gray-400 dark:text-zinc-600 hover:text-indigo-500 dark:hover:text-indigo-400 transition-colors"
+                              title="Click to edit BPM"
+                            >
+                              {song.bpm} BPM
+                            </button>
+                          )}
                           {song.duration > 0 && (
                             <span className="text-[10px] text-gray-400 dark:text-zinc-600 tabular-nums">
                               {formatDuration(song.duration)}
