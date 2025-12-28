@@ -310,6 +310,7 @@ export function MultiTrackTimeline({
   const dragOffsetRef = useRef<number | null>(null);
   const isProgrammaticScroll = useRef(false);
   const [snapType, setSnapType] = useState<'beat' | 'bar' | 'track-end' | null>(null);
+  const [isPlayheadDragging, setIsPlayheadDragging] = useState(false);
 
   // Track row height constant
   const trackHeight = 48;
@@ -471,6 +472,7 @@ export function MultiTrackTimeline({
       // Don't seek if clicking on a track clip (handled by drag)
       const target = e.target as HTMLElement;
       if (target.closest('[data-track-clip]')) return;
+      if (target.closest('[data-playhead]')) return;
 
       const rect = containerRef.current.getBoundingClientRect();
       // Account for the 96px track label width offset
@@ -481,6 +483,42 @@ export function MultiTrackTimeline({
     },
     [onSeek, scrollLeft, zoom, songDuration]
   );
+
+  // Playhead drag handler - for precise seeking by dragging the playhead
+  const handlePlayheadDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsPlayheadDragging(true);
+  }, []);
+
+  // Playhead drag effect
+  useEffect(() => {
+    if (!isPlayheadDragging) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      if (!onSeek || !containerRef.current) return;
+
+      const rect = containerRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left + scrollLeft - 96;
+      const time = Math.max(0, Math.min(songDuration, x / zoom));
+
+      // Update time immediately for responsive feel
+      onSeek(time);
+    };
+
+    const handleMouseUp = () => {
+      setIsPlayheadDragging(false);
+    };
+
+    // Use capture phase for smoother dragging
+    window.addEventListener('mousemove', handleMouseMove, { capture: true });
+    window.addEventListener('mouseup', handleMouseUp, { capture: true });
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove, { capture: true });
+      window.removeEventListener('mouseup', handleMouseUp, { capture: true });
+    };
+  }, [isPlayheadDragging, onSeek, scrollLeft, zoom, songDuration]);
 
   // Handle scroll - ignore programmatic scrolls to avoid infinite loops
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -1119,12 +1157,29 @@ export function MultiTrackTimeline({
             )}
           </div>
 
-          {/* Playhead */}
+          {/* Playhead - draggable for seeking */}
           <div
-            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
-            style={{ left: currentTime * zoom + 96 }}
+            data-playhead
+            className={cn(
+              'absolute top-0 bottom-0 z-30 group',
+              isPlayheadDragging ? 'cursor-grabbing' : 'cursor-grab'
+            )}
+            style={{ left: currentTime * zoom + 96 - 6 }}
+            onMouseDown={handlePlayheadDragStart}
           >
-            <div className="w-3 h-3 -ml-[5px] bg-red-500 rounded-sm rotate-45" style={{ marginTop: '12px' }} />
+            {/* Wider hit area for easier grabbing */}
+            <div className="absolute inset-0 w-3 -ml-0" />
+            {/* Visible playhead line */}
+            <div className={cn(
+              'absolute left-1.5 top-0 bottom-0 w-0.5 transition-colors',
+              isPlayheadDragging ? 'bg-red-400' : 'bg-red-500 group-hover:bg-red-400'
+            )} />
+            {/* Playhead handle */}
+            <div className={cn(
+              'w-3 h-3 bg-red-500 rounded-sm rotate-45 transition-all',
+              isPlayheadDragging && 'scale-125 bg-red-400',
+              'group-hover:scale-110'
+            )} style={{ marginTop: '12px' }} />
           </div>
         </div>
       </div>
