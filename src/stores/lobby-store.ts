@@ -247,7 +247,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
 
     if (roomChannels.has(roomId)) return;
 
-    const channel = supabase.channel(`room:${roomId}:presence`);
+    const channel = supabase.channel(`room:${roomId}`);
 
     channel.on('presence', { event: 'sync' }, () => {
       const presenceState = channel.presenceState();
