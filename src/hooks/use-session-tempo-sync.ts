@@ -16,13 +16,9 @@ import { useRoomStore } from '@/stores/room-store';
  * Should be used once at a high level in the application (e.g., in StudioPage or RoomPage).
  */
 export function useSessionTempoSync(): void {
-  const setTrackMetadata = useSessionTempoStore((s) => s.setTrackMetadata);
-  const setAnalyzerData = useSessionTempoStore((s) => s.setAnalyzerData);
+  // Subscribe to values we need reactively
   const tempo = useSessionTempoStore(selectTempo);
   const { key, scale: keyScale } = useSessionTempoStore(selectKey);
-
-  const setMasterTempo = useLoopTracksStore((s) => s.setMasterTempo);
-  const setMasterKey = useLoopTracksStore((s) => s.setMasterKey);
 
   // ==========================================================================
   // Sync backing track metadata to session tempo store
@@ -32,6 +28,8 @@ export function useSessionTempoSync(): void {
     const unsubscribe = useRoomStore.subscribe(
       (state) => state.currentTrack,
       (currentTrack) => {
+        // Use getState() to avoid dependency on store functions
+        const { setTrackMetadata } = useSessionTempoStore.getState();
         if (currentTrack) {
           // Update session tempo with track metadata
           setTrackMetadata({
@@ -49,7 +47,7 @@ export function useSessionTempoSync(): void {
     );
 
     return unsubscribe;
-  }, [setTrackMetadata]);
+  }, []);
 
   // ==========================================================================
   // Sync analyzer data to session tempo store
@@ -59,6 +57,8 @@ export function useSessionTempoSync(): void {
     const unsubscribe = useRoomStore.subscribe(
       (state) => state.syncedAnalysis,
       (syncedAnalysis) => {
+        // Use getState() to avoid dependency on store functions
+        const { setAnalyzerData } = useSessionTempoStore.getState();
         if (syncedAnalysis) {
           setAnalyzerData({
             bpm: syncedAnalysis.bpm,
@@ -80,20 +80,22 @@ export function useSessionTempoSync(): void {
     );
 
     return unsubscribe;
-  }, [setAnalyzerData]);
+  }, []);
 
   // ==========================================================================
   // Sync session tempo to loop tracks store
   // ==========================================================================
   useEffect(() => {
-    // Update loop tracks store whenever session tempo changes
-    setMasterTempo(tempo);
-  }, [tempo, setMasterTempo]);
+    // Use getState() to avoid dependency on store functions
+    useLoopTracksStore.getState().setMasterTempo(tempo);
+  }, [tempo]);
 
   // ==========================================================================
   // Sync session key to loop tracks store
   // ==========================================================================
   useEffect(() => {
+    // Use getState() to avoid dependency on store functions
+    const { setMasterKey } = useLoopTracksStore.getState();
     // Update loop tracks store whenever session key changes
     // Combine key and scale into the format loop tracks expects (e.g., "Am" or "C")
     if (key) {
@@ -102,7 +104,7 @@ export function useSessionTempoSync(): void {
     } else {
       setMasterKey(null);
     }
-  }, [key, keyScale, setMasterKey]);
+  }, [key, keyScale]);
 }
 
 /**
