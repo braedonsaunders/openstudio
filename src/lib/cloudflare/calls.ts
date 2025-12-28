@@ -17,7 +17,25 @@
 // Track naming convention: "{type}-{userId}-{instanceId}"
 // Examples: "mic-user123", "guitar-user123", "midi-user123-synth1"
 
-import type { CloudflareSession, WebRTCStats } from '@/types';
+import type {
+  CloudflareSession,
+  WebRTCStats,
+  DataChannelMessage,
+  ClockSyncMessage,
+  UserPerformanceInfo,
+  LatencyBreakdown,
+  JamCompatibility,
+  QualityPresetName,
+} from '@/types';
+import {
+  MasterClockSync,
+  LatencyCompensator,
+  NetworkTrendAnalyzer,
+  calculateLatencyBreakdown,
+  calculateQualityScore,
+  assessConnectionQuality,
+} from '@/lib/audio/latency-sync-engine';
+import { QUALITY_PRESETS, getRecommendedPreset } from '@/lib/audio/quality-presets';
 
 /**
  * Track type - can be any string identifier for the audio source.
@@ -182,13 +200,63 @@ export class CloudflareCalls {
   private roomClockOffset: number = 0; // Offset between local time and room time
   private lastSyncTimestamp: number = 0;
 
+  // Data channel for clock sync and performance info (world-class latency system)
+  private dataChannel: RTCDataChannel | null = null;
+  private clockSync: MasterClockSync;
+  private latencyCompensator: LatencyCompensator;
+  private networkTrend: NetworkTrendAnalyzer;
+  private isMaster: boolean = false;
+  private clockSyncInterval: ReturnType<typeof setInterval> | null = null;
+  private performanceBroadcastInterval: ReturnType<typeof setInterval> | null = null;
+
+  // Per-user performance tracking
+  private participantPerformance: Map<string, UserPerformanceInfo> = new Map();
+  private localPerformanceInfo: Partial<UserPerformanceInfo> = {};
+  private activePreset: QualityPresetName = 'balanced';
+
+  // Callbacks for sync system
+  private onClockSync: ((offset: number, rtt: number) => void) | null = null;
+  private onParticipantPerformanceUpdate: ((userId: string, info: UserPerformanceInfo) => void) | null = null;
+  private onJamCompatibilityChange: ((compatibility: JamCompatibility) => void) | null = null;
+  private onMasterChange: ((masterId: string, isSelf: boolean) => void) | null = null;
+
   constructor(roomId: string, userId: string) {
+    this.clockSync = new MasterClockSync();
+    this.latencyCompensator = new LatencyCompensator();
+    this.networkTrend = new NetworkTrendAnalyzer();
     this.roomId = roomId;
     this.userId = userId;
   }
 
   async initialize(): Promise<void> {
     this.peerConnection = new RTCPeerConnection(defaultConfig);
+
+    // Create data channel for clock sync and performance info
+    this.dataChannel = this.peerConnection.createDataChannel('sync', {
+      ordered: false,           // Allow out-of-order for lowest latency
+      maxRetransmits: 0,        // No retransmits - we want latest data only
+    });
+    this.setupDataChannel(this.dataChannel);
+
+    // Handle incoming data channels
+    this.peerConnection.ondatachannel = (event) => {
+      console.log('[CloudflareCalls] Received data channel:', event.channel.label);
+      if (event.channel.label === 'sync') {
+        this.setupDataChannel(event.channel);
+      }
+    };
+
+    // Setup clock sync callbacks
+    this.clockSync.onClockSync = (offset, rtt) => {
+      this.roomClockOffset = offset;
+      this.onClockSync?.(offset, rtt);
+      this.networkTrend.addSample(rtt, 0, 0);
+    };
+
+    // Setup latency compensator callbacks
+    this.latencyCompensator.onJamCompatibilityChange = (compatibility) => {
+      this.onJamCompatibilityChange?.(compatibility);
+    };
 
     // Cloudflare Calls uses trickle ICE - candidates are gathered and included in the SDP
     // We don't need to send them separately
@@ -878,11 +946,358 @@ export class CloudflareCalls {
     }, 1000);
   }
 
+  // =============================================================================
+  // DATA CHANNEL & WORLD-CLASS SYNC API
+  // =============================================================================
+
+  private setupDataChannel(channel: RTCDataChannel): void {
+    channel.onopen = () => {
+      console.log('[CloudflareCalls] Data channel opened');
+      // If we're master, start broadcasting clock
+      if (this.isMaster) {
+        this.startClockBroadcast();
+      }
+      // Start broadcasting our performance info
+      this.startPerformanceBroadcast();
+    };
+
+    channel.onclose = () => {
+      console.log('[CloudflareCalls] Data channel closed');
+    };
+
+    channel.onerror = (error) => {
+      console.error('[CloudflareCalls] Data channel error:', error);
+    };
+
+    channel.onmessage = (event) => {
+      try {
+        const message: DataChannelMessage = JSON.parse(event.data);
+        this.handleDataChannelMessage(message);
+      } catch (error) {
+        console.error('[CloudflareCalls] Failed to parse data channel message:', error);
+      }
+    };
+
+    this.dataChannel = channel;
+  }
+
+  private handleDataChannelMessage(message: DataChannelMessage): void {
+    const receiveTime = performance.now();
+
+    switch (message.type) {
+      case 'clock_sync':
+        if (!this.isMaster) {
+          // Process clock sync and send ack
+          const ack = this.clockSync.processClockSync(message, receiveTime);
+          ack.clientId = this.userId;
+          this.sendDataChannelMessage(ack);
+        }
+        break;
+
+      case 'clock_ack':
+        if (this.isMaster) {
+          const rtt = this.clockSync.processClockAck(message, receiveTime);
+          // Update latency for this user
+          this.latencyCompensator.updateUserLatency(message.clientId, rtt, 0, 0);
+        }
+        break;
+
+      case 'performance_info':
+        this.handlePerformanceInfo(message.userId, message.info);
+        break;
+
+      case 'master_handoff':
+        this.handleMasterHandoff(message);
+        break;
+
+      case 'latency_compensation':
+        // Apply compensation settings from master
+        const myDelay = message.userDelays[this.userId] || 0;
+        this.latencyCompensator.setCompensationDelay('self', myDelay);
+        break;
+
+      case 'ping':
+        // Respond with pong
+        this.sendDataChannelMessage({
+          type: 'pong',
+          originalTimestamp: message.timestamp,
+          senderId: message.senderId,
+          responderId: this.userId,
+        });
+        break;
+
+      case 'pong':
+        // Calculate RTT
+        const rtt = performance.now() - message.originalTimestamp;
+        this.latencyCompensator.updateUserLatency(message.responderId, rtt, 0, 0);
+        break;
+    }
+  }
+
+  private sendDataChannelMessage(message: DataChannelMessage): void {
+    if (this.dataChannel && this.dataChannel.readyState === 'open') {
+      this.dataChannel.send(JSON.stringify(message));
+    }
+  }
+
+  private handlePerformanceInfo(
+    userId: string,
+    info: Omit<UserPerformanceInfo, 'userId' | 'userName'>
+  ): void {
+    const existingInfo = this.participantPerformance.get(userId);
+    const fullInfo: UserPerformanceInfo = {
+      ...info,
+      userId,
+      userName: existingInfo?.userName || userId,
+    };
+
+    this.participantPerformance.set(userId, fullInfo);
+    this.onParticipantPerformanceUpdate?.(userId, fullInfo);
+
+    // Update latency compensator
+    this.latencyCompensator.updateUserLatency(
+      userId,
+      info.rttToMaster,
+      info.jitter,
+      info.packetLoss
+    );
+  }
+
+  private handleMasterHandoff(message: { newMasterId: string; lastKnownBeatPosition: number; lastKnownBpm: number }): void {
+    const wasMaster = this.isMaster;
+    this.isMaster = message.newMasterId === this.userId;
+
+    if (this.isMaster && !wasMaster) {
+      console.log('[CloudflareCalls] Becoming room master');
+      this.clockSync.reset();
+      this.startClockBroadcast();
+    } else if (!this.isMaster && wasMaster) {
+      console.log('[CloudflareCalls] No longer room master');
+      this.stopClockBroadcast();
+    }
+
+    this.onMasterChange?.(message.newMasterId, this.isMaster);
+  }
+
+  /**
+   * Set this client as the room master
+   * Master is responsible for clock sync broadcasts
+   */
+  setAsMaster(isMaster: boolean): void {
+    const wasMaster = this.isMaster;
+    this.isMaster = isMaster;
+
+    if (isMaster && !wasMaster) {
+      this.startClockBroadcast();
+    } else if (!isMaster && wasMaster) {
+      this.stopClockBroadcast();
+    }
+  }
+
+  /**
+   * Check if this client is the room master
+   */
+  isMasterClient(): boolean {
+    return this.isMaster;
+  }
+
+  private startClockBroadcast(): void {
+    if (this.clockSyncInterval) return;
+
+    // Broadcast clock 10 times per second (100ms interval)
+    this.clockSyncInterval = setInterval(() => {
+      if (!this.isMaster || !this.dataChannel) return;
+
+      // Get current BPM and beat position from metronome if available
+      const bpm = 120; // TODO: Get from metronome store
+      const beatPosition = 0; // TODO: Get from metronome
+
+      const message = this.clockSync.createClockSyncMessage(bpm, beatPosition);
+      this.sendDataChannelMessage(message);
+    }, 100);
+  }
+
+  private stopClockBroadcast(): void {
+    if (this.clockSyncInterval) {
+      clearInterval(this.clockSyncInterval);
+      this.clockSyncInterval = null;
+    }
+  }
+
+  private startPerformanceBroadcast(): void {
+    if (this.performanceBroadcastInterval) return;
+
+    // Broadcast performance info every 2 seconds
+    this.performanceBroadcastInterval = setInterval(() => {
+      this.broadcastPerformanceInfo();
+    }, 2000);
+  }
+
+  private broadcastPerformanceInfo(): void {
+    const info = this.getLocalPerformanceInfo();
+    this.sendDataChannelMessage({
+      type: 'performance_info',
+      userId: this.userId,
+      info,
+    });
+  }
+
+  /**
+   * Get local performance info for broadcasting
+   */
+  private getLocalPerformanceInfo(): Omit<UserPerformanceInfo, 'userId' | 'userName'> {
+    const preset = QUALITY_PRESETS[this.activePreset];
+    const rtt = this.clockSync.getRtt();
+
+    const latencyBreakdown = calculateLatencyBreakdown({
+      audioContextLatency: 0.003, // ~3ms estimate
+      outputLatency: 0.003,
+      networkRtt: rtt,
+      jitterBufferSize: 256,
+      sampleRate: 48000,
+      effectsEnabled: !preset.lowLatencyMode,
+      effectsCount: preset.lowLatencyMode ? 0 : 5,
+      encodingFrameSize: preset.encoding.frameSize,
+      compensationDelay: this.latencyCompensator.getUserCompensation('self'),
+    });
+
+    const connectionQuality = assessConnectionQuality(rtt, 0, 0);
+
+    return {
+      rttToMaster: rtt,
+      rttEstimated: latencyBreakdown.total,
+      jitter: 0, // TODO: Get from jitter buffer
+      packetLoss: 0, // TODO: Get from stats
+      connectionQuality,
+      codec: 'opus',
+      sampleRate: 48000,
+      bitrate: preset.encoding.bitrate,
+      frameSize: preset.encoding.frameSize,
+      fecEnabled: preset.encoding.fec,
+      dtxEnabled: preset.encoding.dtx,
+      jitterBufferMode: preset.jitterMode,
+      jitterBufferSize: 256,
+      effectsLatency: latencyBreakdown.effects,
+      activePreset: this.activePreset,
+      compensationDelay: this.latencyCompensator.getUserCompensation('self'),
+      clockOffset: this.clockSync.getOffset(),
+      latencyBreakdown,
+      totalLatency: latencyBreakdown.total,
+      qualityScore: calculateQualityScore(rtt, 0, 0, preset.encoding.bitrate),
+      lastUpdate: Date.now(),
+    };
+  }
+
+  /**
+   * Set the active quality preset
+   */
+  setQualityPreset(preset: QualityPresetName): void {
+    this.activePreset = preset;
+    console.log(`[CloudflareCalls] Quality preset changed to: ${preset}`);
+    // Broadcast updated performance info
+    this.broadcastPerformanceInfo();
+  }
+
+  /**
+   * Get the active quality preset
+   */
+  getQualityPreset(): QualityPresetName {
+    return this.activePreset;
+  }
+
+  /**
+   * Get all participant performance info
+   */
+  getParticipantPerformance(): Map<string, UserPerformanceInfo> {
+    return new Map(this.participantPerformance);
+  }
+
+  /**
+   * Get performance info for a specific user
+   */
+  getUserPerformance(userId: string): UserPerformanceInfo | undefined {
+    return this.participantPerformance.get(userId);
+  }
+
+  /**
+   * Get jam compatibility assessment
+   */
+  getJamCompatibility(): JamCompatibility {
+    return this.latencyCompensator.calculateJamCompatibility();
+  }
+
+  /**
+   * Get the latency compensator for audio chain integration
+   */
+  getLatencyCompensator(): LatencyCompensator {
+    return this.latencyCompensator;
+  }
+
+  /**
+   * Get network trend analysis
+   */
+  getNetworkTrend(): ReturnType<NetworkTrendAnalyzer['analyzeTrend']> {
+    return this.networkTrend.analyzeTrend();
+  }
+
+  /**
+   * Initialize latency compensation with audio context
+   */
+  initializeLatencyCompensation(audioContext: AudioContext): void {
+    this.latencyCompensator.initialize(audioContext);
+  }
+
+  /**
+   * Get the compensation delay node for audio chain
+   */
+  getCompensationDelayNode(): DelayNode | null {
+    return this.latencyCompensator.getDelayNode();
+  }
+
+  // Callback setters for sync system
+  setOnClockSync(callback: (offset: number, rtt: number) => void): void {
+    this.onClockSync = callback;
+  }
+
+  setOnParticipantPerformanceUpdate(callback: (userId: string, info: UserPerformanceInfo) => void): void {
+    this.onParticipantPerformanceUpdate = callback;
+  }
+
+  setOnJamCompatibilityChange(callback: (compatibility: JamCompatibility) => void): void {
+    this.onJamCompatibilityChange = callback;
+  }
+
+  setOnMasterChange(callback: (masterId: string, isSelf: boolean) => void): void {
+    this.onMasterChange = callback;
+  }
+
   private cleanup(): void {
+    // Stop sync intervals
+    if (this.clockSyncInterval) {
+      clearInterval(this.clockSyncInterval);
+      this.clockSyncInterval = null;
+    }
+    if (this.performanceBroadcastInterval) {
+      clearInterval(this.performanceBroadcastInterval);
+      this.performanceBroadcastInterval = null;
+    }
+
     if (this.statsInterval) {
       clearInterval(this.statsInterval);
       this.statsInterval = null;
     }
+
+    // Clean up data channel
+    if (this.dataChannel) {
+      this.dataChannel.close();
+      this.dataChannel = null;
+    }
+
+    // Clean up sync components
+    this.clockSync.reset();
+    this.latencyCompensator.dispose();
+    this.networkTrend.reset();
+    this.participantPerformance.clear();
 
     // Clean up all local tracks
     for (const trackInfo of this.localTracks.values()) {
@@ -911,6 +1326,7 @@ export class CloudflareCalls {
     this.sessionId = null;
     this.roomClockOffset = 0;
     this.lastSyncTimestamp = 0;
+    this.isMaster = false;
   }
 }
 
