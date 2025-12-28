@@ -518,11 +518,13 @@ export class LyriaSession {
 
 /**
  * Create a Lyria session with the API key from environment
+ * Uses NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY for client-side access
  */
 export function createLyriaSession(): LyriaSession {
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_AI_API_KEY || '';
+  // Check for client-side accessible key (NEXT_PUBLIC_ prefix required for browser)
+  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY || '';
   if (!apiKey) {
-    console.warn('NEXT_PUBLIC_GOOGLE_AI_API_KEY not set - Lyria will not work');
+    console.warn('NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY not set - Lyria will not work. Add NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY to your .env.local with your Gemini API key.');
   }
   return new LyriaSession(apiKey);
 }
