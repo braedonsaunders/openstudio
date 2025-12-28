@@ -6,7 +6,8 @@ import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
 import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects/unified-effects-processor';
-import type { UserTrack, UnifiedEffectsChain } from '@/types';
+import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
+import type { UserTrack, ExtendedEffectsChain } from '@/types';
 import {
   Sparkles,
   ChevronDown,
@@ -29,6 +30,28 @@ import {
   Volume2,
   Music,
   Sliders,
+  // New icons for extended effects
+  Gauge,
+  Activity,
+  Disc3,
+  AudioWaveform,
+  SlidersHorizontal,
+  Move3D,
+  Palette,
+  Hash,
+  Binary,
+  CircleDot,
+  ArrowLeftRight,
+  Grid3X3,
+  RotateCw,
+  PanelLeftClose,
+  Wand2,
+  MonitorSpeaker,
+  Expand,
+  Maximize2,
+  Split,
+  Home,
+  Cloudy,
 } from 'lucide-react';
 
 // ============================================================================
@@ -360,10 +383,13 @@ function LimiterUI({ track }: { track: UserTrack }) {
 // GUITAR EFFECTS UI COMPONENTS
 // ============================================================================
 
-interface GuitarEffectProps {
-  settings: UnifiedEffectsChain;
-  onChange: (settings: Partial<UnifiedEffectsChain>) => void;
+interface EffectProps {
+  settings: ExtendedEffectsChain;
+  onChange: (settings: Partial<ExtendedEffectsChain>) => void;
 }
+
+// Legacy alias
+type GuitarEffectProps = EffectProps;
 
 function WahUI({ settings, onChange }: GuitarEffectProps) {
   const wah = settings.wah;
@@ -601,6 +627,572 @@ function TremoloUI({ settings, onChange }: GuitarEffectProps) {
 }
 
 // ============================================================================
+// VOCAL EFFECTS UI COMPONENTS
+// ============================================================================
+
+function PitchCorrectionUI({ settings, onChange }: EffectProps) {
+  const pc = settings.pitchCorrection;
+  const [expanded, setExpanded] = useState(pc?.enabled ?? false);
+  if (!pc) return null;
+
+  const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const scales = [
+    { value: 'major', label: 'Major' },
+    { value: 'minor', label: 'Minor' },
+    { value: 'chromatic', label: 'Chromatic' },
+    { value: 'pentatonicMajor', label: 'Pent Maj' },
+    { value: 'pentatonicMinor', label: 'Pent Min' },
+  ];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Pitch Correction" icon={Gauge} enabled={pc.enabled} onToggle={() => onChange({ pitchCorrection: { ...pc, enabled: !pc.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="rose" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1 flex-wrap">
+            {keys.map((k) => <button key={k} onClick={() => onChange({ pitchCorrection: { ...pc, key: k } })} disabled={!pc.enabled} className={cn('px-1.5 py-0.5 text-[9px] font-medium rounded', pc.key === k ? 'bg-rose-500/20 text-rose-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !pc.enabled && 'opacity-50')}>{k}</button>)}
+          </div>
+          <div className="flex gap-1">
+            {scales.map((s) => <button key={s.value} onClick={() => onChange({ pitchCorrection: { ...pc, scale: s.value as typeof pc.scale } })} disabled={!pc.enabled} className={cn('flex-1 px-1.5 py-1 text-[9px] font-medium rounded', pc.scale === s.value ? 'bg-rose-500/20 text-rose-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !pc.enabled && 'opacity-50')}>{s.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={pc.speed} min={0} max={100} onChange={(v) => onChange({ pitchCorrection: { ...pc, speed: v } })} label="Speed" unit="%" disabled={!pc.enabled} />
+            <Knob value={pc.humanize} min={0} max={100} onChange={(v) => onChange({ pitchCorrection: { ...pc, humanize: v } })} label="Humanize" unit="%" disabled={!pc.enabled} />
+            <Knob value={pc.detune} min={-100} max={100} onChange={(v) => onChange({ pitchCorrection: { ...pc, detune: v } })} label="Detune" unit=" ct" disabled={!pc.enabled} />
+            <Knob value={pc.mix} min={0} max={100} onChange={(v) => onChange({ pitchCorrection: { ...pc, mix: v } })} label="Mix" unit="%" disabled={!pc.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VocalDoublerUI({ settings, onChange }: EffectProps) {
+  const vd = settings.vocalDoubler;
+  const [expanded, setExpanded] = useState(vd?.enabled ?? false);
+  if (!vd) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Vocal Doubler" icon={Disc3} enabled={vd.enabled} onToggle={() => onChange({ vocalDoubler: { ...vd, enabled: !vd.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="pink" />
+      {expanded && (
+        <div className="pb-3 px-2">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={vd.voices} min={1} max={4} onChange={(v) => onChange({ vocalDoubler: { ...vd, voices: Math.round(v) } })} label="Voices" disabled={!vd.enabled} />
+            <Knob value={vd.detune} min={0} max={50} onChange={(v) => onChange({ vocalDoubler: { ...vd, detune: v } })} label="Detune" unit=" ct" disabled={!vd.enabled} />
+            <Knob value={vd.delay} min={0} max={50} onChange={(v) => onChange({ vocalDoubler: { ...vd, delay: v } })} label="Delay" unit=" ms" disabled={!vd.enabled} />
+            <Knob value={vd.spread} min={0} max={100} onChange={(v) => onChange({ vocalDoubler: { ...vd, spread: v } })} label="Spread" unit="%" disabled={!vd.enabled} />
+            <Knob value={vd.mix} min={0} max={100} onChange={(v) => onChange({ vocalDoubler: { ...vd, mix: v } })} label="Mix" unit="%" disabled={!vd.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function DeEsserUI({ settings, onChange }: EffectProps) {
+  const de = settings.deEsser;
+  const [expanded, setExpanded] = useState(de?.enabled ?? false);
+  if (!de) return null;
+
+  const modes = [{ value: 'split', label: 'Split' }, { value: 'wideband', label: 'Wideband' }];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="De-Esser" icon={AudioWaveform} enabled={de.enabled} onToggle={() => onChange({ deEsser: { ...de, enabled: !de.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="fuchsia" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {modes.map((m) => <button key={m.value} onClick={() => onChange({ deEsser: { ...de, mode: m.value as typeof de.mode } })} disabled={!de.enabled} className={cn('flex-1 px-2 py-1 text-[10px] font-medium rounded', de.mode === m.value ? 'bg-fuchsia-500/20 text-fuchsia-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !de.enabled && 'opacity-50')}>{m.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={de.frequency} min={2000} max={10000} onChange={(v) => onChange({ deEsser: { ...de, frequency: v } })} label="Freq" unit=" Hz" disabled={!de.enabled} />
+            <Knob value={de.threshold} min={-60} max={0} onChange={(v) => onChange({ deEsser: { ...de, threshold: v } })} label="Thresh" unit=" dB" disabled={!de.enabled} />
+            <Knob value={de.reduction} min={0} max={24} onChange={(v) => onChange({ deEsser: { ...de, reduction: v } })} label="Reduce" unit=" dB" disabled={!de.enabled} />
+            <Knob value={de.range} min={0} max={24} onChange={(v) => onChange({ deEsser: { ...de, range: v } })} label="Range" unit=" dB" disabled={!de.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FormantShifterUI({ settings, onChange }: EffectProps) {
+  const fs = settings.formantShifter;
+  const [expanded, setExpanded] = useState(fs?.enabled ?? false);
+  if (!fs) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Formant Shifter" icon={Activity} enabled={fs.enabled} onToggle={() => onChange({ formantShifter: { ...fs, enabled: !fs.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="violet" />
+      {expanded && (
+        <div className="pb-3 px-2">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={fs.shift} min={-12} max={12} onChange={(v) => onChange({ formantShifter: { ...fs, shift: v } })} label="Shift" unit=" st" disabled={!fs.enabled} />
+            <Knob value={fs.gender} min={-100} max={100} onChange={(v) => onChange({ formantShifter: { ...fs, gender: v } })} label="Gender" unit="%" disabled={!fs.enabled} />
+            <Knob value={fs.mix} min={0} max={100} onChange={(v) => onChange({ formantShifter: { ...fs, mix: v } })} label="Mix" unit="%" disabled={!fs.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function HarmonizerUI({ settings, onChange }: EffectProps) {
+  const harm = settings.harmonizer;
+  const [expanded, setExpanded] = useState(harm?.enabled ?? false);
+  if (!harm) return null;
+
+  const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+  const harmonies = [
+    { value: 'third', label: '3rd' },
+    { value: 'fifth', label: '5th' },
+    { value: 'octave', label: 'Oct' },
+    { value: 'thirdAndFifth', label: '3+5' },
+    { value: 'powerChord', label: 'Power' },
+  ];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Harmonizer" icon={Music} enabled={harm.enabled} onToggle={() => onChange({ harmonizer: { ...harm, enabled: !harm.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="purple" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1 flex-wrap">
+            {keys.map((k) => <button key={k} onClick={() => onChange({ harmonizer: { ...harm, key: k } })} disabled={!harm.enabled} className={cn('px-1.5 py-0.5 text-[9px] font-medium rounded', harm.key === k ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !harm.enabled && 'opacity-50')}>{k}</button>)}
+          </div>
+          <div className="flex gap-1">
+            {harmonies.map((h) => <button key={h.value} onClick={() => onChange({ harmonizer: { ...harm, harmonyType: h.value as typeof harm.harmonyType } })} disabled={!harm.enabled} className={cn('flex-1 px-1.5 py-1 text-[9px] font-medium rounded', harm.harmonyType === h.value ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !harm.enabled && 'opacity-50')}>{h.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={harm.voices} min={1} max={4} onChange={(v) => onChange({ harmonizer: { ...harm, voices: Math.round(v) } })} label="Voices" disabled={!harm.enabled} />
+            <Knob value={harm.spread} min={0} max={100} onChange={(v) => onChange({ harmonizer: { ...harm, spread: v } })} label="Spread" unit="%" disabled={!harm.enabled} />
+            <Knob value={harm.mix} min={0} max={100} onChange={(v) => onChange({ harmonizer: { ...harm, mix: v } })} label="Mix" unit="%" disabled={!harm.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// CREATIVE EFFECTS UI COMPONENTS
+// ============================================================================
+
+function BitcrusherUI({ settings, onChange }: EffectProps) {
+  const bc = settings.bitcrusher;
+  const [expanded, setExpanded] = useState(bc?.enabled ?? false);
+  if (!bc) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Bitcrusher" icon={Binary} enabled={bc.enabled} onToggle={() => onChange({ bitcrusher: { ...bc, enabled: !bc.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="lime" />
+      {expanded && (
+        <div className="pb-3 px-2">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={bc.bits} min={1} max={16} onChange={(v) => onChange({ bitcrusher: { ...bc, bits: Math.round(v) } })} label="Bits" disabled={!bc.enabled} />
+            <Knob value={bc.sampleRate} min={100} max={44100} onChange={(v) => onChange({ bitcrusher: { ...bc, sampleRate: v } })} label="Sample" unit=" Hz" disabled={!bc.enabled} />
+            <Knob value={bc.mix} min={0} max={100} onChange={(v) => onChange({ bitcrusher: { ...bc, mix: v } })} label="Mix" unit="%" disabled={!bc.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RingModulatorUI({ settings, onChange }: EffectProps) {
+  const rm = settings.ringModulator;
+  const [expanded, setExpanded] = useState(rm?.enabled ?? false);
+  if (!rm) return null;
+
+  const waveforms = [{ value: 'sine', label: 'Sine' }, { value: 'square', label: 'Sqr' }, { value: 'triangle', label: 'Tri' }];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Ring Modulator" icon={CircleDot} enabled={rm.enabled} onToggle={() => onChange({ ringModulator: { ...rm, enabled: !rm.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="teal" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {waveforms.map((w) => <button key={w.value} onClick={() => onChange({ ringModulator: { ...rm, waveform: w.value as typeof rm.waveform } })} disabled={!rm.enabled} className={cn('flex-1 px-2 py-1 text-[10px] font-medium rounded', rm.waveform === w.value ? 'bg-teal-500/20 text-teal-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !rm.enabled && 'opacity-50')}>{w.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={rm.frequency} min={20} max={5000} onChange={(v) => onChange({ ringModulator: { ...rm, frequency: v } })} label="Freq" unit=" Hz" disabled={!rm.enabled} />
+            <Knob value={rm.lfoRate} min={0} max={10} onChange={(v) => onChange({ ringModulator: { ...rm, lfoRate: v } })} label="LFO" unit=" Hz" disabled={!rm.enabled} />
+            <Knob value={rm.lfoDepth} min={0} max={100} onChange={(v) => onChange({ ringModulator: { ...rm, lfoDepth: v } })} label="Depth" unit="%" disabled={!rm.enabled} />
+            <Knob value={rm.mix} min={0} max={100} onChange={(v) => onChange({ ringModulator: { ...rm, mix: v } })} label="Mix" unit="%" disabled={!rm.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function FrequencyShifterUI({ settings, onChange }: EffectProps) {
+  const fshift = settings.frequencyShifter;
+  const [expanded, setExpanded] = useState(fshift?.enabled ?? false);
+  if (!fshift) return null;
+
+  const directions = [{ value: 'up', label: 'Up' }, { value: 'down', label: 'Down' }, { value: 'both', label: 'Both' }];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Freq Shifter" icon={ArrowLeftRight} enabled={fshift.enabled} onToggle={() => onChange({ frequencyShifter: { ...fshift, enabled: !fshift.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="sky" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {directions.map((d) => <button key={d.value} onClick={() => onChange({ frequencyShifter: { ...fshift, direction: d.value as typeof fshift.direction } })} disabled={!fshift.enabled} className={cn('flex-1 px-2 py-1 text-[10px] font-medium rounded', fshift.direction === d.value ? 'bg-sky-500/20 text-sky-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !fshift.enabled && 'opacity-50')}>{d.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={fshift.shift} min={-2000} max={2000} onChange={(v) => onChange({ frequencyShifter: { ...fshift, shift: v } })} label="Shift" unit=" Hz" disabled={!fshift.enabled} />
+            <Knob value={fshift.feedback} min={0} max={100} onChange={(v) => onChange({ frequencyShifter: { ...fshift, feedback: v } })} label="Fdbk" unit="%" disabled={!fshift.enabled} />
+            <Knob value={fshift.mix} min={0} max={100} onChange={(v) => onChange({ frequencyShifter: { ...fshift, mix: v } })} label="Mix" unit="%" disabled={!fshift.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function GranularDelayUI({ settings, onChange }: EffectProps) {
+  const gd = settings.granularDelay;
+  const [expanded, setExpanded] = useState(gd?.enabled ?? false);
+  if (!gd) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Granular Delay" icon={Grid3X3} enabled={gd.enabled} onToggle={() => onChange({ granularDelay: { ...gd, enabled: !gd.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="orange" />
+      {expanded && (
+        <div className="pb-3 px-2">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={gd.grainSize} min={10} max={500} onChange={(v) => onChange({ granularDelay: { ...gd, grainSize: v } })} label="Grain" unit=" ms" disabled={!gd.enabled} color="orange" />
+            <Knob value={gd.density} min={0} max={100} onChange={(v) => onChange({ granularDelay: { ...gd, density: v } })} label="Density" unit="%" disabled={!gd.enabled} color="orange" />
+            <Knob value={gd.pitch} min={-24} max={24} onChange={(v) => onChange({ granularDelay: { ...gd, pitch: v } })} label="Pitch" unit=" st" disabled={!gd.enabled} color="orange" />
+            <Knob value={gd.feedback} min={0} max={100} onChange={(v) => onChange({ granularDelay: { ...gd, feedback: v } })} label="Fdbk" unit="%" disabled={!gd.enabled} color="orange" />
+            <Knob value={gd.spread} min={0} max={100} onChange={(v) => onChange({ granularDelay: { ...gd, spread: v } })} label="Spread" unit="%" disabled={!gd.enabled} color="orange" />
+            <Knob value={gd.mix} min={0} max={100} onChange={(v) => onChange({ granularDelay: { ...gd, mix: v } })} label="Mix" unit="%" disabled={!gd.enabled} color="orange" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// EXTENDED MODULATION EFFECTS UI COMPONENTS
+// ============================================================================
+
+function RotarySpeakerUI({ settings, onChange }: EffectProps) {
+  const rs = settings.rotarySpeaker;
+  const [expanded, setExpanded] = useState(rs?.enabled ?? false);
+  if (!rs) return null;
+
+  const speeds = [{ value: 'slow', label: 'Slow' }, { value: 'fast', label: 'Fast' }, { value: 'brake', label: 'Brake' }];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Rotary Speaker" icon={RotateCw} enabled={rs.enabled} onToggle={() => onChange({ rotarySpeaker: { ...rs, enabled: !rs.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="amber" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {speeds.map((s) => <button key={s.value} onClick={() => onChange({ rotarySpeaker: { ...rs, speed: s.value as typeof rs.speed } })} disabled={!rs.enabled} className={cn('flex-1 px-2 py-1 text-[10px] font-medium rounded', rs.speed === s.value ? 'bg-amber-500/20 text-amber-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !rs.enabled && 'opacity-50')}>{s.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={rs.hornLevel} min={0} max={100} onChange={(v) => onChange({ rotarySpeaker: { ...rs, hornLevel: v } })} label="Horn" unit="%" disabled={!rs.enabled} color="orange" />
+            <Knob value={rs.drumLevel} min={0} max={100} onChange={(v) => onChange({ rotarySpeaker: { ...rs, drumLevel: v } })} label="Drum" unit="%" disabled={!rs.enabled} color="orange" />
+            <Knob value={rs.drive} min={0} max={100} onChange={(v) => onChange({ rotarySpeaker: { ...rs, drive: v } })} label="Drive" unit="%" disabled={!rs.enabled} color="orange" />
+            <Knob value={rs.mix} min={0} max={100} onChange={(v) => onChange({ rotarySpeaker: { ...rs, mix: v } })} label="Mix" unit="%" disabled={!rs.enabled} color="orange" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AutoPanUI({ settings, onChange }: EffectProps) {
+  const ap = settings.autoPan;
+  const [expanded, setExpanded] = useState(ap?.enabled ?? false);
+  if (!ap) return null;
+
+  const waveforms = [{ value: 'sine', label: 'Sine' }, { value: 'triangle', label: 'Tri' }, { value: 'square', label: 'Sqr' }];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Auto-Pan" icon={PanelLeftClose} enabled={ap.enabled} onToggle={() => onChange({ autoPan: { ...ap, enabled: !ap.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="cyan" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {waveforms.map((w) => <button key={w.value} onClick={() => onChange({ autoPan: { ...ap, waveform: w.value as typeof ap.waveform } })} disabled={!ap.enabled} className={cn('flex-1 px-2 py-1 text-[10px] font-medium rounded', ap.waveform === w.value ? 'bg-cyan-500/20 text-cyan-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !ap.enabled && 'opacity-50')}>{w.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={ap.rate} min={0.1} max={20} onChange={(v) => onChange({ autoPan: { ...ap, rate: v } })} label="Rate" unit=" Hz" disabled={!ap.enabled} />
+            <Knob value={ap.depth} min={0} max={100} onChange={(v) => onChange({ autoPan: { ...ap, depth: v } })} label="Depth" unit="%" disabled={!ap.enabled} />
+            <Knob value={ap.width} min={0} max={100} onChange={(v) => onChange({ autoPan: { ...ap, width: v } })} label="Width" unit="%" disabled={!ap.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MultiFilterUI({ settings, onChange }: EffectProps) {
+  const mf = settings.multiFilter;
+  const [expanded, setExpanded] = useState(mf?.enabled ?? false);
+  if (!mf) return null;
+
+  const types = [
+    { value: 'lowpass', label: 'LP' },
+    { value: 'highpass', label: 'HP' },
+    { value: 'bandpass', label: 'BP' },
+    { value: 'notch', label: 'Notch' },
+  ];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Multi Filter" icon={SlidersHorizontal} enabled={mf.enabled} onToggle={() => onChange({ multiFilter: { ...mf, enabled: !mf.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="blue" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {types.map((t) => <button key={t.value} onClick={() => onChange({ multiFilter: { ...mf, type: t.value as typeof mf.type } })} disabled={!mf.enabled} className={cn('flex-1 px-2 py-1 text-[10px] font-medium rounded', mf.type === t.value ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !mf.enabled && 'opacity-50')}>{t.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={mf.frequency} min={20} max={20000} onChange={(v) => onChange({ multiFilter: { ...mf, frequency: v } })} label="Freq" unit=" Hz" disabled={!mf.enabled} />
+            <Knob value={mf.resonance} min={0.1} max={30} onChange={(v) => onChange({ multiFilter: { ...mf, resonance: v } })} label="Reso" disabled={!mf.enabled} />
+            <Knob value={mf.lfoRate} min={0} max={20} onChange={(v) => onChange({ multiFilter: { ...mf, lfoRate: v } })} label="LFO" unit=" Hz" disabled={!mf.enabled} />
+            <Knob value={mf.lfoDepth} min={0} max={100} onChange={(v) => onChange({ multiFilter: { ...mf, lfoDepth: v } })} label="Depth" unit="%" disabled={!mf.enabled} />
+            <Knob value={mf.mix} min={0} max={100} onChange={(v) => onChange({ multiFilter: { ...mf, mix: v } })} label="Mix" unit="%" disabled={!mf.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function VibratoUI({ settings, onChange }: EffectProps) {
+  const vib = settings.vibrato;
+  const [expanded, setExpanded] = useState(vib?.enabled ?? false);
+  if (!vib) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Vibrato" icon={Wand2} enabled={vib.enabled} onToggle={() => onChange({ vibrato: { ...vib, enabled: !vib.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="violet" />
+      {expanded && (
+        <div className="pb-3 px-2">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={vib.rate} min={0.1} max={20} onChange={(v) => onChange({ vibrato: { ...vib, rate: v } })} label="Rate" unit=" Hz" disabled={!vib.enabled} />
+            <Knob value={vib.depth} min={0} max={100} onChange={(v) => onChange({ vibrato: { ...vib, depth: v } })} label="Depth" unit="%" disabled={!vib.enabled} />
+            <Knob value={vib.stereo} min={0} max={180} onChange={(v) => onChange({ vibrato: { ...vib, stereo: v } })} label="Stereo" unit="°" disabled={!vib.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// DYNAMICS/UTILITY EFFECTS UI COMPONENTS
+// ============================================================================
+
+function TransientShaperUI({ settings, onChange }: EffectProps) {
+  const ts = settings.transientShaper;
+  const [expanded, setExpanded] = useState(ts?.enabled ?? false);
+  if (!ts) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Transient Shaper" icon={Activity} enabled={ts.enabled} onToggle={() => onChange({ transientShaper: { ...ts, enabled: !ts.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="orange" />
+      {expanded && (
+        <div className="pb-3 px-2">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={ts.attack} min={-100} max={100} onChange={(v) => onChange({ transientShaper: { ...ts, attack: v } })} label="Attack" unit="%" disabled={!ts.enabled} color="orange" />
+            <Knob value={ts.sustain} min={-100} max={100} onChange={(v) => onChange({ transientShaper: { ...ts, sustain: v } })} label="Sustain" unit="%" disabled={!ts.enabled} color="orange" />
+            <Knob value={ts.output} min={-12} max={12} onChange={(v) => onChange({ transientShaper: { ...ts, output: v } })} label="Output" unit=" dB" disabled={!ts.enabled} color="orange" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StereoImagerUI({ settings, onChange }: EffectProps) {
+  const si = settings.stereoImager;
+  const [expanded, setExpanded] = useState(si?.enabled ?? false);
+  if (!si) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Stereo Imager" icon={Expand} enabled={si.enabled} onToggle={() => onChange({ stereoImager: { ...si, enabled: !si.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="purple" />
+      {expanded && (
+        <div className="pb-3 px-2">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={si.width} min={0} max={200} onChange={(v) => onChange({ stereoImager: { ...si, width: v } })} label="Width" unit="%" disabled={!si.enabled} />
+            <Knob value={si.midLevel} min={-12} max={12} onChange={(v) => onChange({ stereoImager: { ...si, midLevel: v } })} label="Mid" unit=" dB" disabled={!si.enabled} />
+            <Knob value={si.sideLevel} min={-12} max={12} onChange={(v) => onChange({ stereoImager: { ...si, sideLevel: v } })} label="Side" unit=" dB" disabled={!si.enabled} />
+            <Knob value={si.bassMonoFreq} min={20} max={500} onChange={(v) => onChange({ stereoImager: { ...si, bassMonoFreq: v } })} label="Bass Mono" unit=" Hz" disabled={!si.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ExciterUI({ settings, onChange }: EffectProps) {
+  const ex = settings.exciter;
+  const [expanded, setExpanded] = useState(ex?.enabled ?? false);
+  if (!ex) return null;
+
+  const harmonics = [{ value: 'odd', label: 'Odd' }, { value: 'even', label: 'Even' }, { value: 'both', label: 'Both' }];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Exciter" icon={Sparkles} enabled={ex.enabled} onToggle={() => onChange({ exciter: { ...ex, enabled: !ex.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="yellow" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {harmonics.map((h) => <button key={h.value} onClick={() => onChange({ exciter: { ...ex, harmonics: h.value as typeof ex.harmonics } })} disabled={!ex.enabled} className={cn('flex-1 px-2 py-1 text-[10px] font-medium rounded', ex.harmonics === h.value ? 'bg-yellow-500/20 text-yellow-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !ex.enabled && 'opacity-50')}>{h.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={ex.frequency} min={1000} max={10000} onChange={(v) => onChange({ exciter: { ...ex, frequency: v } })} label="Freq" unit=" Hz" disabled={!ex.enabled} color="orange" />
+            <Knob value={ex.amount} min={0} max={100} onChange={(v) => onChange({ exciter: { ...ex, amount: v } })} label="Amount" unit="%" disabled={!ex.enabled} color="orange" />
+            <Knob value={ex.mix} min={0} max={100} onChange={(v) => onChange({ exciter: { ...ex, mix: v } })} label="Mix" unit="%" disabled={!ex.enabled} color="orange" />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function MultibandCompressorUI({ settings, onChange }: EffectProps) {
+  const mbc = settings.multibandCompressor;
+  const [expanded, setExpanded] = useState(mbc?.enabled ?? false);
+  if (!mbc) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Multiband Comp" icon={Split} enabled={mbc.enabled} onToggle={() => onChange({ multibandCompressor: { ...mbc, enabled: !mbc.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="emerald" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-2">
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={mbc.lowCrossover} min={20} max={500} onChange={(v) => onChange({ multibandCompressor: { ...mbc, lowCrossover: v } })} label="Lo X" unit=" Hz" disabled={!mbc.enabled} />
+            <Knob value={mbc.highCrossover} min={500} max={10000} onChange={(v) => onChange({ multibandCompressor: { ...mbc, highCrossover: v } })} label="Hi X" unit=" Hz" disabled={!mbc.enabled} />
+          </div>
+          <div className="text-[9px] text-zinc-500 text-center">Low Band</div>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Knob value={mbc.low.threshold} min={-60} max={0} onChange={(v) => onChange({ multibandCompressor: { ...mbc, low: { ...mbc.low, threshold: v } } })} label="Thresh" unit=" dB" size="sm" disabled={!mbc.enabled} />
+            <Knob value={mbc.low.ratio} min={1} max={20} onChange={(v) => onChange({ multibandCompressor: { ...mbc, low: { ...mbc.low, ratio: v } } })} label="Ratio" unit=":1" size="sm" disabled={!mbc.enabled} />
+            <Knob value={mbc.low.gain} min={-12} max={12} onChange={(v) => onChange({ multibandCompressor: { ...mbc, low: { ...mbc.low, gain: v } } })} label="Gain" unit=" dB" size="sm" disabled={!mbc.enabled} />
+          </div>
+          <div className="text-[9px] text-zinc-500 text-center">Mid Band</div>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Knob value={mbc.mid.threshold} min={-60} max={0} onChange={(v) => onChange({ multibandCompressor: { ...mbc, mid: { ...mbc.mid, threshold: v } } })} label="Thresh" unit=" dB" size="sm" disabled={!mbc.enabled} />
+            <Knob value={mbc.mid.ratio} min={1} max={20} onChange={(v) => onChange({ multibandCompressor: { ...mbc, mid: { ...mbc.mid, ratio: v } } })} label="Ratio" unit=":1" size="sm" disabled={!mbc.enabled} />
+            <Knob value={mbc.mid.gain} min={-12} max={12} onChange={(v) => onChange({ multibandCompressor: { ...mbc, mid: { ...mbc.mid, gain: v } } })} label="Gain" unit=" dB" size="sm" disabled={!mbc.enabled} />
+          </div>
+          <div className="text-[9px] text-zinc-500 text-center">High Band</div>
+          <div className="flex flex-wrap justify-center gap-2">
+            <Knob value={mbc.high.threshold} min={-60} max={0} onChange={(v) => onChange({ multibandCompressor: { ...mbc, high: { ...mbc.high, threshold: v } } })} label="Thresh" unit=" dB" size="sm" disabled={!mbc.enabled} />
+            <Knob value={mbc.high.ratio} min={1} max={20} onChange={(v) => onChange({ multibandCompressor: { ...mbc, high: { ...mbc.high, ratio: v } } })} label="Ratio" unit=":1" size="sm" disabled={!mbc.enabled} />
+            <Knob value={mbc.high.gain} min={-12} max={12} onChange={(v) => onChange({ multibandCompressor: { ...mbc, high: { ...mbc.high, gain: v } } })} label="Gain" unit=" dB" size="sm" disabled={!mbc.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
+// SPATIAL EFFECTS UI COMPONENTS
+// ============================================================================
+
+function StereoDelayUI({ settings, onChange }: EffectProps) {
+  const sd = settings.stereoDelay;
+  const [expanded, setExpanded] = useState(sd?.enabled ?? false);
+  if (!sd) return null;
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Stereo Delay" icon={MonitorSpeaker} enabled={sd.enabled} onToggle={() => onChange({ stereoDelay: { ...sd, enabled: !sd.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="cyan" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-2">
+          <div className="flex items-center gap-2 px-1">
+            <label className="flex items-center gap-1 text-[9px] text-zinc-500">
+              <input type="checkbox" checked={sd.pingPong} onChange={(e) => onChange({ stereoDelay: { ...sd, pingPong: e.target.checked } })} disabled={!sd.enabled} className="w-3 h-3" />
+              Ping Pong
+            </label>
+            <label className="flex items-center gap-1 text-[9px] text-zinc-500">
+              <input type="checkbox" checked={sd.tempoSync} onChange={(e) => onChange({ stereoDelay: { ...sd, tempoSync: e.target.checked } })} disabled={!sd.enabled} className="w-3 h-3" />
+              Tempo Sync
+            </label>
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={sd.leftTime} min={0} max={2000} onChange={(v) => onChange({ stereoDelay: { ...sd, leftTime: v } })} label="L Time" unit=" ms" disabled={!sd.enabled} />
+            <Knob value={sd.rightTime} min={0} max={2000} onChange={(v) => onChange({ stereoDelay: { ...sd, rightTime: v } })} label="R Time" unit=" ms" disabled={!sd.enabled} />
+            <Knob value={sd.leftFeedback} min={0} max={100} onChange={(v) => onChange({ stereoDelay: { ...sd, leftFeedback: v } })} label="L Fdbk" unit="%" disabled={!sd.enabled} />
+            <Knob value={sd.rightFeedback} min={0} max={100} onChange={(v) => onChange({ stereoDelay: { ...sd, rightFeedback: v } })} label="R Fdbk" unit="%" disabled={!sd.enabled} />
+            <Knob value={sd.crossFeed} min={0} max={100} onChange={(v) => onChange({ stereoDelay: { ...sd, crossFeed: v } })} label="Cross" unit="%" disabled={!sd.enabled} />
+            <Knob value={sd.mix} min={0} max={100} onChange={(v) => onChange({ stereoDelay: { ...sd, mix: v } })} label="Mix" unit="%" disabled={!sd.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function RoomSimulatorUI({ settings, onChange }: EffectProps) {
+  const rs = settings.roomSimulator;
+  const [expanded, setExpanded] = useState(rs?.enabled ?? false);
+  if (!rs) return null;
+
+  const sizes = [{ value: 'small', label: 'Small' }, { value: 'medium', label: 'Medium' }, { value: 'large', label: 'Large' }, { value: 'hall', label: 'Hall' }];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Room Simulator" icon={Home} enabled={rs.enabled} onToggle={() => onChange({ roomSimulator: { ...rs, enabled: !rs.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="blue" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {sizes.map((s) => <button key={s.value} onClick={() => onChange({ roomSimulator: { ...rs, size: s.value as typeof rs.size } })} disabled={!rs.enabled} className={cn('flex-1 px-2 py-1 text-[10px] font-medium rounded', rs.size === s.value ? 'bg-blue-500/20 text-blue-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !rs.enabled && 'opacity-50')}>{s.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={rs.decay} min={0.1} max={5} onChange={(v) => onChange({ roomSimulator: { ...rs, decay: v } })} label="Decay" unit=" s" disabled={!rs.enabled} />
+            <Knob value={rs.damping} min={0} max={100} onChange={(v) => onChange({ roomSimulator: { ...rs, damping: v } })} label="Damp" unit="%" disabled={!rs.enabled} />
+            <Knob value={rs.earlyLevel} min={0} max={100} onChange={(v) => onChange({ roomSimulator: { ...rs, earlyLevel: v } })} label="Early" unit="%" disabled={!rs.enabled} />
+            <Knob value={rs.lateLevel} min={0} max={100} onChange={(v) => onChange({ roomSimulator: { ...rs, lateLevel: v } })} label="Late" unit="%" disabled={!rs.enabled} />
+            <Knob value={rs.mix} min={0} max={100} onChange={(v) => onChange({ roomSimulator: { ...rs, mix: v } })} label="Mix" unit="%" disabled={!rs.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ShimmerReverbUI({ settings, onChange }: EffectProps) {
+  const sr = settings.shimmerReverb;
+  const [expanded, setExpanded] = useState(sr?.enabled ?? false);
+  if (!sr) return null;
+
+  const pitches = [{ value: 0, label: 'Uni' }, { value: 5, label: '4th' }, { value: 7, label: '5th' }, { value: 12, label: 'Oct' }, { value: 19, label: '12th' }, { value: 24, label: '2Oct' }];
+
+  return (
+    <div className="border-b border-white/5">
+      <EffectHeader name="Shimmer Reverb" icon={Cloudy} enabled={sr.enabled} onToggle={() => onChange({ shimmerReverb: { ...sr, enabled: !sr.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="indigo" />
+      {expanded && (
+        <div className="pb-3 px-2 space-y-3">
+          <div className="flex gap-1">
+            {pitches.map((p) => <button key={p.value} onClick={() => onChange({ shimmerReverb: { ...sr, pitch: p.value } })} disabled={!sr.enabled} className={cn('flex-1 px-1.5 py-1 text-[9px] font-medium rounded', sr.pitch === p.value ? 'bg-indigo-500/20 text-indigo-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !sr.enabled && 'opacity-50')}>{p.label}</button>)}
+          </div>
+          <div className="flex flex-wrap justify-center gap-3">
+            <Knob value={sr.decay} min={0.5} max={10} onChange={(v) => onChange({ shimmerReverb: { ...sr, decay: v } })} label="Decay" unit=" s" disabled={!sr.enabled} />
+            <Knob value={sr.shimmer} min={0} max={100} onChange={(v) => onChange({ shimmerReverb: { ...sr, shimmer: v } })} label="Shimmer" unit="%" disabled={!sr.enabled} />
+            <Knob value={sr.damping} min={0} max={100} onChange={(v) => onChange({ shimmerReverb: { ...sr, damping: v } })} label="Damp" unit="%" disabled={!sr.enabled} />
+            <Knob value={sr.tone} min={0} max={100} onChange={(v) => onChange({ shimmerReverb: { ...sr, tone: v } })} label="Tone" unit="%" disabled={!sr.enabled} />
+            <Knob value={sr.mix} min={0} max={100} onChange={(v) => onChange({ shimmerReverb: { ...sr, mix: v } })} label="Mix" unit="%" disabled={!sr.enabled} />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ============================================================================
 // MAIN EFFECTS RACK COMPONENT
 // ============================================================================
 
@@ -609,7 +1201,7 @@ interface EffectsRackProps {
   onClose?: () => void;
 }
 
-type EffectCategory = 'all' | 'standard' | 'guitar' | 'modulation' | 'dynamics' | 'amp';
+type EffectCategory = 'all' | 'standard' | 'guitar' | 'modulation' | 'dynamics' | 'amp' | 'vocal' | 'creative' | 'spatial';
 
 export function EffectsRack({ track, onClose }: EffectsRackProps) {
   const { loadPreset, updateTrackEffects, loadGuitarPreset } = useUserTracksStore();
@@ -618,10 +1210,10 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [presetCategory, setPresetCategory] = useState<'standard' | 'guitar'>('standard');
 
-  // Get the unified effects chain (all 15 effects in one)
-  const effectsSettings: UnifiedEffectsChain = track.audioSettings.effects || DEFAULT_UNIFIED_EFFECTS;
+  // Get the extended effects chain (35 effects total)
+  const effectsSettings: ExtendedEffectsChain = { ...DEFAULT_FULL_EFFECTS, ...track.audioSettings.effects } as ExtendedEffectsChain;
 
-  const handleEffectChange = (settings: Partial<UnifiedEffectsChain>) => {
+  const handleEffectChange = (settings: Partial<ExtendedEffectsChain>) => {
     updateTrackEffects(track.id, settings);
   };
 
@@ -631,11 +1223,13 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
 
   // All effects with metadata for search/filter
   const allEffects = useMemo(() => [
+    // Standard effects
     { id: 'noiseGate', name: 'Noise Gate', category: 'dynamics', type: 'standard', keywords: ['gate', 'noise', 'reduction', 'threshold'] },
     { id: 'eq', name: 'Equalizer', category: 'standard', type: 'standard', keywords: ['eq', 'equalizer', 'frequency', 'bass', 'treble', 'mid'] },
     { id: 'compressor', name: 'Compressor', category: 'dynamics', type: 'standard', keywords: ['compressor', 'dynamics', 'threshold', 'ratio'] },
     { id: 'reverb', name: 'Reverb', category: 'modulation', type: 'standard', keywords: ['reverb', 'room', 'hall', 'ambient', 'space'] },
     { id: 'limiter', name: 'Limiter', category: 'dynamics', type: 'standard', keywords: ['limiter', 'ceiling', 'dynamics'] },
+    // Guitar effects
     { id: 'wah', name: 'Wah', category: 'guitar', type: 'guitar', keywords: ['wah', 'filter', 'envelope', 'funk'] },
     { id: 'overdrive', name: 'Overdrive', category: 'amp', type: 'guitar', keywords: ['overdrive', 'tube', 'drive', 'saturation', 'warm'] },
     { id: 'distortion', name: 'Distortion', category: 'amp', type: 'guitar', keywords: ['distortion', 'fuzz', 'gain', 'metal', 'rock'] },
@@ -646,6 +1240,31 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
     { id: 'phaser', name: 'Phaser', category: 'modulation', type: 'guitar', keywords: ['phaser', 'phase', 'sweep', 'modulation'] },
     { id: 'delay', name: 'Delay', category: 'modulation', type: 'guitar', keywords: ['delay', 'echo', 'repeat', 'tempo', 'ping pong'] },
     { id: 'tremolo', name: 'Tremolo', category: 'modulation', type: 'guitar', keywords: ['tremolo', 'vibrato', 'amplitude', 'modulation'] },
+    // Vocal effects
+    { id: 'pitchCorrection', name: 'Pitch Correction', category: 'vocal', type: 'vocal', keywords: ['autotune', 'pitch', 'correction', 'tune', 'vocal', 'key', 'scale'] },
+    { id: 'vocalDoubler', name: 'Vocal Doubler', category: 'vocal', type: 'vocal', keywords: ['doubler', 'double', 'thick', 'wide', 'vocal', 'stereo'] },
+    { id: 'deEsser', name: 'De-Esser', category: 'vocal', type: 'vocal', keywords: ['de-esser', 'sibilance', 's', 'ess', 'vocal', 'harsh'] },
+    { id: 'formantShifter', name: 'Formant Shifter', category: 'vocal', type: 'vocal', keywords: ['formant', 'gender', 'voice', 'character', 'vocal'] },
+    { id: 'harmonizer', name: 'Harmonizer', category: 'vocal', type: 'vocal', keywords: ['harmony', 'harmonizer', 'third', 'fifth', 'octave', 'vocal', 'key'] },
+    // Creative effects
+    { id: 'bitcrusher', name: 'Bitcrusher', category: 'creative', type: 'creative', keywords: ['bitcrusher', 'lofi', 'retro', '8bit', 'distortion', 'digital'] },
+    { id: 'ringModulator', name: 'Ring Modulator', category: 'creative', type: 'creative', keywords: ['ring', 'modulator', 'metallic', 'robot', 'bell'] },
+    { id: 'frequencyShifter', name: 'Freq Shifter', category: 'creative', type: 'creative', keywords: ['frequency', 'shifter', 'bode', 'detuned', 'weird'] },
+    { id: 'granularDelay', name: 'Granular Delay', category: 'creative', type: 'creative', keywords: ['granular', 'grain', 'texture', 'glitch', 'ambient', 'freeze'] },
+    // Extended modulation
+    { id: 'rotarySpeaker', name: 'Rotary Speaker', category: 'modulation', type: 'modulation', keywords: ['rotary', 'leslie', 'organ', 'spinning', 'doppler'] },
+    { id: 'autoPan', name: 'Auto-Pan', category: 'modulation', type: 'modulation', keywords: ['pan', 'panner', 'stereo', 'auto', 'tremolo'] },
+    { id: 'multiFilter', name: 'Multi Filter', category: 'modulation', type: 'modulation', keywords: ['filter', 'resonant', 'lowpass', 'highpass', 'bandpass', 'lfo'] },
+    { id: 'vibrato', name: 'Vibrato', category: 'modulation', type: 'modulation', keywords: ['vibrato', 'pitch', 'wobble', 'modulation'] },
+    // Dynamics/Utility
+    { id: 'transientShaper', name: 'Transient Shaper', category: 'dynamics', type: 'dynamics', keywords: ['transient', 'attack', 'punch', 'snap', 'sustain'] },
+    { id: 'stereoImager', name: 'Stereo Imager', category: 'dynamics', type: 'dynamics', keywords: ['stereo', 'width', 'mid', 'side', 'mono', 'imager'] },
+    { id: 'exciter', name: 'Exciter', category: 'dynamics', type: 'dynamics', keywords: ['exciter', 'enhance', 'harmonic', 'bright', 'air', 'sparkle'] },
+    { id: 'multibandCompressor', name: 'Multiband Comp', category: 'dynamics', type: 'dynamics', keywords: ['multiband', 'compressor', 'dynamics', 'mastering', 'crossover'] },
+    // Spatial effects
+    { id: 'stereoDelay', name: 'Stereo Delay', category: 'spatial', type: 'spatial', keywords: ['stereo', 'delay', 'ping pong', 'echo', 'wide'] },
+    { id: 'roomSimulator', name: 'Room Simulator', category: 'spatial', type: 'spatial', keywords: ['room', 'space', 'early', 'reflections', 'ambient'] },
+    { id: 'shimmerReverb', name: 'Shimmer Reverb', category: 'spatial', type: 'spatial', keywords: ['shimmer', 'reverb', 'ethereal', 'pitch', 'ambient', 'pad'] },
   ], []);
 
   // Filter effects based on category and search
@@ -658,6 +1277,9 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
         if (category === 'modulation' && effect.category !== 'modulation') return false;
         if (category === 'dynamics' && effect.category !== 'dynamics') return false;
         if (category === 'amp' && effect.category !== 'amp') return false;
+        if (category === 'vocal' && effect.category !== 'vocal') return false;
+        if (category === 'creative' && effect.category !== 'creative') return false;
+        if (category === 'spatial' && effect.category !== 'spatial') return false;
       }
 
       // Search filter
@@ -674,11 +1296,13 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
 
   const renderEffect = (effectId: string) => {
     switch (effectId) {
+      // Standard effects
       case 'noiseGate': return <NoiseGateUI key={effectId} track={track} />;
       case 'eq': return <EQUI key={effectId} track={track} />;
       case 'compressor': return <CompressorUI key={effectId} track={track} />;
       case 'reverb': return <ReverbUI key={effectId} track={track} />;
       case 'limiter': return <LimiterUI key={effectId} track={track} />;
+      // Guitar effects
       case 'wah': return <WahUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
       case 'overdrive': return <OverdriveUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
       case 'distortion': return <DistortionUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
@@ -689,37 +1313,92 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
       case 'phaser': return <PhaserUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
       case 'delay': return <DelayUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
       case 'tremolo': return <TremoloUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      // Vocal effects
+      case 'pitchCorrection': return <PitchCorrectionUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'vocalDoubler': return <VocalDoublerUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'deEsser': return <DeEsserUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'formantShifter': return <FormantShifterUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'harmonizer': return <HarmonizerUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      // Creative effects
+      case 'bitcrusher': return <BitcrusherUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'ringModulator': return <RingModulatorUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'frequencyShifter': return <FrequencyShifterUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'granularDelay': return <GranularDelayUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      // Extended modulation
+      case 'rotarySpeaker': return <RotarySpeakerUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'autoPan': return <AutoPanUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'multiFilter': return <MultiFilterUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'vibrato': return <VibratoUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      // Dynamics/Utility
+      case 'transientShaper': return <TransientShaperUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'stereoImager': return <StereoImagerUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'exciter': return <ExciterUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'multibandCompressor': return <MultibandCompressorUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      // Spatial effects
+      case 'stereoDelay': return <StereoDelayUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'roomSimulator': return <RoomSimulatorUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
+      case 'shimmerReverb': return <ShimmerReverbUI key={effectId} settings={effectsSettings} onChange={handleEffectChange} />;
       default: return null;
     }
   };
 
   const categories: { id: EffectCategory; label: string; icon: React.ElementType }[] = [
     { id: 'all', label: 'All', icon: Sliders },
-    { id: 'standard', label: 'Standard', icon: Mic2 },
+    { id: 'vocal', label: 'Vocal', icon: Mic2 },
     { id: 'guitar', label: 'Guitar', icon: Guitar },
     { id: 'amp', label: 'Amp/Gain', icon: Volume2 },
     { id: 'modulation', label: 'Modulation', icon: Waves },
     { id: 'dynamics', label: 'Dynamics', icon: Zap },
+    { id: 'creative', label: 'Creative', icon: Palette },
+    { id: 'spatial', label: 'Spatial', icon: Move3D },
+    { id: 'standard', label: 'Standard', icon: SlidersHorizontal },
   ];
 
   // Count enabled effects
   const enabledCount = useMemo(() => {
     let count = 0;
-    if (effectsSettings.noiseGate.enabled) count++;
-    if (effectsSettings.eq.enabled) count++;
-    if (effectsSettings.compressor.enabled) count++;
-    if (effectsSettings.reverb.enabled) count++;
-    if (effectsSettings.limiter.enabled) count++;
-    if (effectsSettings.wah.enabled) count++;
-    if (effectsSettings.overdrive.enabled) count++;
-    if (effectsSettings.distortion.enabled) count++;
-    if (effectsSettings.ampSimulator.enabled) count++;
-    if (effectsSettings.cabinet.enabled) count++;
-    if (effectsSettings.chorus.enabled) count++;
-    if (effectsSettings.flanger.enabled) count++;
-    if (effectsSettings.phaser.enabled) count++;
-    if (effectsSettings.delay.enabled) count++;
-    if (effectsSettings.tremolo.enabled) count++;
+    // Standard effects
+    if (effectsSettings.noiseGate?.enabled) count++;
+    if (effectsSettings.eq?.enabled) count++;
+    if (effectsSettings.compressor?.enabled) count++;
+    if (effectsSettings.reverb?.enabled) count++;
+    if (effectsSettings.limiter?.enabled) count++;
+    // Guitar effects
+    if (effectsSettings.wah?.enabled) count++;
+    if (effectsSettings.overdrive?.enabled) count++;
+    if (effectsSettings.distortion?.enabled) count++;
+    if (effectsSettings.ampSimulator?.enabled) count++;
+    if (effectsSettings.cabinet?.enabled) count++;
+    if (effectsSettings.chorus?.enabled) count++;
+    if (effectsSettings.flanger?.enabled) count++;
+    if (effectsSettings.phaser?.enabled) count++;
+    if (effectsSettings.delay?.enabled) count++;
+    if (effectsSettings.tremolo?.enabled) count++;
+    // Vocal effects
+    if (effectsSettings.pitchCorrection?.enabled) count++;
+    if (effectsSettings.vocalDoubler?.enabled) count++;
+    if (effectsSettings.deEsser?.enabled) count++;
+    if (effectsSettings.formantShifter?.enabled) count++;
+    if (effectsSettings.harmonizer?.enabled) count++;
+    // Creative effects
+    if (effectsSettings.bitcrusher?.enabled) count++;
+    if (effectsSettings.ringModulator?.enabled) count++;
+    if (effectsSettings.frequencyShifter?.enabled) count++;
+    if (effectsSettings.granularDelay?.enabled) count++;
+    // Extended modulation
+    if (effectsSettings.rotarySpeaker?.enabled) count++;
+    if (effectsSettings.autoPan?.enabled) count++;
+    if (effectsSettings.multiFilter?.enabled) count++;
+    if (effectsSettings.vibrato?.enabled) count++;
+    // Dynamics/Utility
+    if (effectsSettings.transientShaper?.enabled) count++;
+    if (effectsSettings.stereoImager?.enabled) count++;
+    if (effectsSettings.exciter?.enabled) count++;
+    if (effectsSettings.multibandCompressor?.enabled) count++;
+    // Spatial effects
+    if (effectsSettings.stereoDelay?.enabled) count++;
+    if (effectsSettings.roomSimulator?.enabled) count++;
+    if (effectsSettings.shimmerReverb?.enabled) count++;
     return count;
   }, [effectsSettings]);
 
