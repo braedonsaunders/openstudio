@@ -53,8 +53,9 @@ interface DbInstantBandPreset {
   name: string;
   description: string | null;
   loop_ids: string[];
-  bpm_range: [number, number];
-  genre: string;
+  bpm_range_min: number;
+  bpm_range_max: number;
+  genre: string | null;
   sort_order: number;
   is_active: boolean;
   created_at: string;
@@ -478,9 +479,9 @@ export async function getAllInstantBandPresets(activeOnly = true): Promise<Insta
     id: preset.id,
     name: preset.name,
     description: preset.description || '',
-    loops: preset.loop_ids,
-    bpmRange: preset.bpm_range,
-    genre: preset.genre,
+    loops: preset.loop_ids || [],
+    bpmRange: [preset.bpm_range_min, preset.bpm_range_max] as [number, number],
+    genre: preset.genre || '',
   }));
 }
 
@@ -489,7 +490,8 @@ export async function createInstantBandPreset(preset: {
   name: string;
   description?: string;
   loop_ids: string[];
-  bpm_range: [number, number];
+  bpm_range_min: number;
+  bpm_range_max: number;
   genre: string;
   sort_order?: number;
 }): Promise<InstantBandPreset> {
@@ -502,7 +504,8 @@ export async function createInstantBandPreset(preset: {
       name: preset.name,
       description: preset.description || null,
       loop_ids: preset.loop_ids,
-      bpm_range: preset.bpm_range,
+      bpm_range_min: preset.bpm_range_min,
+      bpm_range_max: preset.bpm_range_max,
       genre: preset.genre,
       sort_order: preset.sort_order ?? 0,
       is_active: true,
@@ -512,13 +515,14 @@ export async function createInstantBandPreset(preset: {
 
   if (error) throw error;
 
+  const dbPreset = data as DbInstantBandPreset;
   return {
-    id: data.id,
-    name: data.name,
-    description: data.description || '',
-    loops: data.loop_ids,
-    bpmRange: data.bpm_range,
-    genre: data.genre,
+    id: dbPreset.id,
+    name: dbPreset.name,
+    description: dbPreset.description || '',
+    loops: dbPreset.loop_ids || [],
+    bpmRange: [dbPreset.bpm_range_min, dbPreset.bpm_range_max] as [number, number],
+    genre: dbPreset.genre || '',
   };
 }
 
@@ -526,7 +530,8 @@ export async function updateInstantBandPreset(id: string, updates: Partial<{
   name: string;
   description: string | null;
   loop_ids: string[];
-  bpm_range: [number, number];
+  bpm_range_min: number;
+  bpm_range_max: number;
   genre: string;
   sort_order: number;
   is_active: boolean;
@@ -542,13 +547,14 @@ export async function updateInstantBandPreset(id: string, updates: Partial<{
 
   if (error) throw error;
 
+  const dbPreset = data as DbInstantBandPreset;
   return {
-    id: data.id,
-    name: data.name,
-    description: data.description || '',
-    loops: data.loop_ids,
-    bpmRange: data.bpm_range,
-    genre: data.genre,
+    id: dbPreset.id,
+    name: dbPreset.name,
+    description: dbPreset.description || '',
+    loops: dbPreset.loop_ids || [],
+    bpmRange: [dbPreset.bpm_range_min, dbPreset.bpm_range_max] as [number, number],
+    genre: dbPreset.genre || '',
   };
 }
 
