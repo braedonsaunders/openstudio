@@ -87,23 +87,8 @@ export function useLoopPlayback() {
       const { useCustomLoopsStore } = await import('@/stores/custom-loops-store');
       const customLoop = useCustomLoopsStore.getState().getLoop(loopTrack.loopId);
       if (customLoop) {
-        // Convert custom loop to loop definition format
-        loopDef = {
-          id: customLoop.id,
-          name: customLoop.name,
-          category: customLoop.category,
-          subcategory: customLoop.subcategory,
-          bpm: customLoop.bpm,
-          bars: customLoop.bars,
-          timeSignature: customLoop.timeSignature,
-          key: customLoop.key || 'C',
-          midiData: customLoop.midiData,
-          soundPreset: customLoop.soundPreset,
-          tags: customLoop.tags,
-          intensity: customLoop.intensity,
-          complexity: customLoop.complexity,
-          isCustom: true,
-        };
+        // CustomLoopDefinition extends LoopDefinition, so we can use it directly
+        loopDef = customLoop;
       }
     }
 
