@@ -25,6 +25,8 @@ export interface AvatarCategory {
   maxSelections: number;
   supportsColorVariants: boolean;
   defaultColorPalette?: string;
+  positionHint?: string; // Where on canvas (e.g., "top center, eye level")
+  promptHint?: string; // AI generation hint for positioning
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
