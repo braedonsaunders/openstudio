@@ -15,6 +15,7 @@ import {
   Layers,
   Zap,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { AvatarGenerationPreset, AvatarCategory, ComponentRarity } from '@/types/avatar';
 import { adminGet, adminPost } from '@/lib/api/admin';
 
@@ -156,11 +157,11 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
         );
       } else {
         const error = await response.json();
-        alert(`Generation failed: ${error.error}`);
+        toast.error(`Generation failed: ${error.error}`);
       }
     } catch (error) {
       console.error('Generation failed:', error);
-      alert('Generation failed');
+      toast.error('Generation failed');
     } finally {
       setIsGenerating(false);
     }
@@ -182,14 +183,14 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
     const selectedItems = generatedImages.filter((img) => img.selected);
     if (selectedItems.length === 0) return;
     if (!saveCategory) {
-      alert('Please select a category');
+      toast.error('Please select a category');
       return;
     }
 
     // Validate each selected image has required fields
     for (const item of selectedItems) {
       if (!item.componentId || !item.componentName) {
-        alert('Please fill in ID and Name for all selected images');
+        toast.error('Please fill in ID and Name for all selected images');
         return;
       }
     }
@@ -233,13 +234,13 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
         }
       }
 
-      alert(`Saved ${savedCount} component(s)`);
+      toast.success(`Saved ${savedCount} component(s)`);
       // Remove saved images from the list
       setGeneratedImages((prev) => prev.filter((img) => !img.selected));
       onComponentCreated();
     } catch (error) {
       console.error('Failed to save:', error);
-      alert('Failed to save components');
+      toast.error('Failed to save components');
     } finally {
       setIsSaving(false);
     }
@@ -277,12 +278,12 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
         setBatchProgress(`Generated ${result.generatedCount} of ${result.requestedCount} images`);
       } else {
         const error = await response.json();
-        alert(`Batch generation failed: ${error.error}`);
+        toast.error(`Batch generation failed: ${error.error}`);
         setBatchProgress('');
       }
     } catch (error) {
       console.error('Batch generation failed:', error);
-      alert('Batch generation failed');
+      toast.error('Batch generation failed');
       setBatchProgress('');
     } finally {
       setIsGenerating(false);
@@ -345,14 +346,14 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
         }
       }
 
-      alert(`Saved ${savedCount} component(s)`);
+      toast.success(`Saved ${savedCount} component(s)`);
       setBatchResults([]);
       setBatchTheme('');
       setBatchTags('');
       onComponentCreated();
     } catch (error) {
       console.error('Failed to save batch:', error);
-      alert('Failed to save components');
+      toast.error('Failed to save components');
     } finally {
       setIsSaving(false);
     }

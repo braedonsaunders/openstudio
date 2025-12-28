@@ -27,6 +27,7 @@ import { MixerView } from './mixer-view';
 import { AvatarWorldView } from './avatar-world-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
+import { toast } from 'sonner';
 import type { BackingTrack, StemType } from '@/types';
 
 interface DAWLayoutProps {
@@ -387,7 +388,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     } catch (error) {
       console.error('Failed to extract YouTube audio:', error);
       // Show error to user - no iframe fallback as it can't be analyzed
-      alert(`Failed to extract audio from YouTube: ${(error as Error).message}\n\nPlease try a different video or upload an audio file directly.`);
+      toast.error(`Failed to extract audio from YouTube: ${(error as Error).message}. Please try a different video or upload an audio file directly.`);
     }
   }, [addTrack]);
 
