@@ -10,6 +10,7 @@ interface UserTrackLaneProps {
   audioLevel: number;
   zoom: number;
   historySeconds: number;
+  isGlobalMuted?: boolean;
 }
 
 export function UserTrackLane({
@@ -17,17 +18,18 @@ export function UserTrackLane({
   audioLevel,
   zoom,
   historySeconds,
+  isGlobalMuted,
 }: UserTrackLaneProps) {
   // Only render audio tracks (type undefined means audio for backward compatibility)
   const trackType = track.type || 'audio';
   if (trackType !== 'audio') return null;
 
   const isArmed = track.isArmed;
-  const isMuted = track.isMuted;
+  const isMuted = track.isMuted || isGlobalMuted;
   // Only show as active if armed, not muted, and has signal
   const isActive = isArmed && !isMuted && audioLevel > 0.05;
-  // When not armed, force the level to 0 for visualization
-  const effectiveLevel = isArmed ? audioLevel : 0;
+  // When not armed or muted, force the level to 0 for visualization
+  const effectiveLevel = isArmed && !isGlobalMuted ? audioLevel : 0;
 
   return (
     <div

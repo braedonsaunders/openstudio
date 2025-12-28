@@ -840,6 +840,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                 onPlay={handlePlay}
                 onStop={handlePause}
                 sessionStartTime={sessionStartTime}
+                isGlobalMuted={isMuted}
                 // Shared split position (synced with left panel)
                 splitPosition={sharedSplitPosition}
                 onSplitPositionChange={setSharedSplitPosition}

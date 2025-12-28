@@ -11,6 +11,7 @@ interface LiveTrackLaneProps {
   trackColor: string;
   zoom: number;
   historySeconds: number;
+  isGlobalMuted?: boolean;
 }
 
 export function LiveTrackLane({
@@ -20,9 +21,12 @@ export function LiveTrackLane({
   trackColor,
   zoom,
   historySeconds,
+  isGlobalMuted,
 }: LiveTrackLaneProps) {
+  // Combined mute state
+  const isMuted = user.isMuted || isGlobalMuted;
   // Determine if user is actively playing
-  const isActive = audioLevel > 0.05;
+  const isActive = audioLevel > 0.05 && !isMuted;
 
   return (
     <div
@@ -36,7 +40,7 @@ export function LiveTrackLane({
       <div
         className={cn(
           'absolute left-0 top-0 bottom-0 w-1 transition-all z-10',
-          isActive && !user.isMuted && 'shadow-[0_0_12px_var(--track-color)]'
+          isActive && !isMuted && 'shadow-[0_0_12px_var(--track-color)]'
         )}
         style={{ backgroundColor: trackColor }}
       />
@@ -45,13 +49,13 @@ export function LiveTrackLane({
       <DynamicWaveform
         audioLevel={audioLevel}
         trackColor={trackColor}
-        isMuted={user.isMuted ?? false}
+        isMuted={isMuted ?? false}
         zoom={zoom}
         historySeconds={historySeconds}
       />
 
       {/* Live indicator badge */}
-      {isActive && !user.isMuted && (
+      {isActive && !isMuted && (
         <div className="absolute right-3 top-2 z-20">
           <div
             className="px-2 py-0.5 rounded text-[9px] font-bold tracking-wider animate-pulse shadow-lg"
@@ -67,7 +71,7 @@ export function LiveTrackLane({
       )}
 
       {/* Muted indicator */}
-      {user.isMuted && (
+      {isMuted && (
         <div className="absolute inset-0 flex items-center justify-center z-20 bg-black/30">
           <span className="text-xs text-zinc-400 bg-black/60 px-3 py-1.5 rounded-lg backdrop-blur-sm">
             MUTED
