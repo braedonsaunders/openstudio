@@ -96,26 +96,26 @@ export function QualitySettingsPanel({
           Quality Preset
         </div>
 
-        <div className="grid grid-cols-2 gap-2">
+        <div className="space-y-2">
           {presets.map((preset) => (
             <button
               key={preset.id}
               onClick={() => onPresetChange(preset.id)}
               className={cn(
-                'relative flex items-center gap-2 p-3 rounded-lg border transition-all text-left',
+                'relative flex items-center gap-3 w-full p-3 rounded-lg border transition-all text-left',
                 activePreset === preset.id
                   ? 'border-indigo-500 bg-indigo-500/10'
                   : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
               )}
             >
               {activePreset === preset.id && (
-                <div className="absolute top-2 right-2">
-                  <Check className="w-3 h-3 text-indigo-500" />
+                <div className="absolute top-3 right-3">
+                  <Check className="w-4 h-4 text-indigo-500" />
                 </div>
               )}
 
               <div className={cn(
-                'w-8 h-8 rounded-full flex items-center justify-center',
+                'w-8 h-8 rounded-full flex items-center justify-center shrink-0',
                 activePreset === preset.id
                   ? 'bg-indigo-500/20 text-indigo-500'
                   : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-zinc-400'
@@ -123,29 +123,27 @@ export function QualitySettingsPanel({
                 {presetIcons[preset.id]}
               </div>
 
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-1">
-                  <span className="text-lg">{preset.icon}</span>
+              <div className="flex-1 pr-6">
+                <div className="flex items-center gap-2">
+                  <span className="text-base">{preset.icon}</span>
                   <span className={cn(
-                    'font-medium text-sm truncate',
+                    'font-medium text-sm',
                     activePreset === preset.id
                       ? 'text-indigo-600 dark:text-indigo-400'
                       : 'text-gray-900 dark:text-white'
                   )}>
                     {preset.name}
                   </span>
+                  <span className="text-xs text-gray-400 dark:text-zinc-500 ml-auto">
+                    {preset.encoding.bitrate}kbps • {preset.encoding.frameSize}ms
+                  </span>
                 </div>
-                <div className="text-xs text-gray-500 dark:text-zinc-500 truncate">
-                  {preset.encoding.bitrate}kbps • {preset.encoding.frameSize}ms
+                <div className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5">
+                  {preset.description}
                 </div>
               </div>
             </button>
           ))}
-        </div>
-
-        {/* Current preset description */}
-        <div className="p-3 rounded-lg bg-gray-50 dark:bg-white/5 text-sm text-gray-600 dark:text-zinc-400">
-          {currentPreset.description}
         </div>
       </div>
 
