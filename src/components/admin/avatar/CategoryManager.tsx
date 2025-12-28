@@ -15,7 +15,8 @@ import {
   Layers,
   Check,
 } from 'lucide-react';
-import type { AvatarCategory, AvatarColorPalette } from '@/types/avatar';
+import type { AvatarCategory } from '@/types/avatar';
+import { adminPatch, adminPost, adminDelete } from '@/lib/api/admin';
 
 interface CategoryManagerProps {
   categories: AvatarCategory[];
@@ -71,11 +72,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
     setIsSavingOrder(true);
     try {
       const orderedIds = orderedCategories.map((c) => c.id);
-      const response = await fetch('/api/admin/avatar/categories?action=reorder', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ orderedIds }),
-      });
+      const response = await adminPatch('/api/admin/avatar/categories?action=reorder', { orderedIds });
 
       if (response.ok) {
         setHasOrderChanges(false);
@@ -117,16 +114,12 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
     try {
       if (editingCategory) {
         // Update existing
-        const response = await fetch(`/api/admin/avatar/categories?id=${editingCategory.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            displayName: formDisplayName,
-            isRequired: formIsRequired,
-            maxSelections: formMaxSelections,
-            supportsColorVariants: formSupportsColorVariants,
-            defaultColorPalette: formDefaultPalette || null,
-          }),
+        const response = await adminPatch(`/api/admin/avatar/categories?id=${editingCategory.id}`, {
+          displayName: formDisplayName,
+          isRequired: formIsRequired,
+          maxSelections: formMaxSelections,
+          supportsColorVariants: formSupportsColorVariants,
+          defaultColorPalette: formDefaultPalette || null,
         });
 
         if (response.ok) {
@@ -135,18 +128,14 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
         }
       } else {
         // Create new
-        const response = await fetch('/api/admin/avatar/categories', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: formId.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
-            displayName: formDisplayName,
-            layerOrder: orderedCategories.length,
-            isRequired: formIsRequired,
-            maxSelections: formMaxSelections,
-            supportsColorVariants: formSupportsColorVariants,
-            defaultColorPalette: formDefaultPalette || undefined,
-          }),
+        const response = await adminPost('/api/admin/avatar/categories', {
+          id: formId.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+          displayName: formDisplayName,
+          layerOrder: orderedCategories.length,
+          isRequired: formIsRequired,
+          maxSelections: formMaxSelections,
+          supportsColorVariants: formSupportsColorVariants,
+          defaultColorPalette: formDefaultPalette || undefined,
         });
 
         if (response.ok) {
@@ -166,9 +155,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`/api/admin/avatar/categories?id=${deletingCategory.id}`, {
-        method: 'DELETE',
-      });
+      const response = await adminDelete(`/api/admin/avatar/categories?id=${deletingCategory.id}`);
 
       if (response.ok) {
         setDeletingCategory(null);

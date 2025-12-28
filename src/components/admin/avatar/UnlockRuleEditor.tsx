@@ -10,7 +10,6 @@ import {
   RefreshCw,
   Trash2,
   Edit2,
-  Save,
   Lock,
   Trophy,
   BarChart3,
@@ -18,6 +17,7 @@ import {
   Check,
 } from 'lucide-react';
 import type { AvatarUnlockRule, UnlockType } from '@/types/avatar';
+import { adminGet, adminPost, adminPatch, adminDelete } from '@/lib/api/admin';
 
 interface UnlockRuleEditorProps {
   onRefresh: () => void;
@@ -65,7 +65,7 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
   const loadRules = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/admin/avatar/unlock-rules');
+      const response = await adminGet('/api/admin/avatar/unlock-rules');
       if (response.ok) {
         const data = await response.json();
         setRules(data);
@@ -134,11 +134,7 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
       }
 
       if (editingRule) {
-        const response = await fetch(`/api/admin/avatar/unlock-rules?id=${editingRule.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        const response = await adminPatch(`/api/admin/avatar/unlock-rules?id=${editingRule.id}`, payload);
 
         if (response.ok) {
           setIsModalOpen(false);
@@ -146,11 +142,7 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
           onRefresh();
         }
       } else {
-        const response = await fetch('/api/admin/avatar/unlock-rules', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
+        const response = await adminPost('/api/admin/avatar/unlock-rules', payload);
 
         if (response.ok) {
           setIsModalOpen(false);
@@ -170,9 +162,7 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`/api/admin/avatar/unlock-rules?id=${deletingRule.id}`, {
-        method: 'DELETE',
-      });
+      const response = await adminDelete(`/api/admin/avatar/unlock-rules?id=${deletingRule.id}`);
 
       if (response.ok) {
         setDeletingRule(null);

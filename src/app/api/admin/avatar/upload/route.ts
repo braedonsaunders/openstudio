@@ -1,19 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser, getUserProfile } from '@/lib/supabase/auth';
+import { verifyAdminRequest } from '@/lib/supabase/server';
 import { uploadAvatarComponent, uploadAvatarFromUrl, uploadAvatarColorVariant } from '@/lib/storage/r2';
-
-// Check if user is admin
-async function isAdmin(): Promise<boolean> {
-  const user = await getUser();
-  if (!user) return false;
-  const profile = await getUserProfile(user.id);
-  return profile?.accountType === 'admin';
-}
 
 // POST /api/admin/avatar/upload - Upload avatar component image
 export async function POST(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 

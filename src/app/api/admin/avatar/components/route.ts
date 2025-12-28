@@ -1,26 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser, getUserProfile } from '@/lib/supabase/auth';
+import { verifyAdminRequest } from '@/lib/supabase/server';
 import {
   getAllComponents,
   createComponent,
   updateComponent,
   deleteComponent,
-  setComponentUnlockRules,
 } from '@/lib/avatar/supabase';
 import type { CreateComponentRequest, UpdateComponentRequest } from '@/types/avatar';
 
-// Check if user is admin
-async function isAdmin(): Promise<boolean> {
-  const user = await getUser();
-  if (!user) return false;
-  const profile = await getUserProfile(user.id);
-  return profile?.accountType === 'admin';
-}
-
 // GET /api/admin/avatar/components - List all components
-export async function GET() {
+export async function GET(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -38,11 +30,7 @@ export async function GET() {
 // POST /api/admin/avatar/components - Create a new component
 export async function POST(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const user = await getUser();
+    const user = await verifyAdminRequest(req);
     if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
@@ -70,7 +58,8 @@ export async function POST(req: NextRequest) {
 // PATCH /api/admin/avatar/components - Update a component
 export async function PATCH(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -97,7 +86,8 @@ export async function PATCH(req: NextRequest) {
 // DELETE /api/admin/avatar/components - Delete a component
 export async function DELETE(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
