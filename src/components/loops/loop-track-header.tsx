@@ -18,17 +18,20 @@ import {
   Repeat,
   Music,
   Zap,
+  Edit3,
 } from 'lucide-react';
 
 interface LoopTrackHeaderProps {
   track: LoopTrackState;
   onRemove: () => void;
+  onEditLoop?: (loopId: string) => void;
   isMaster?: boolean;
 }
 
 export function LoopTrackHeader({
   track,
   onRemove,
+  onEditLoop,
   isMaster = false,
 }: LoopTrackHeaderProps) {
   const {
@@ -43,6 +46,9 @@ export function LoopTrackHeader({
 
   // Get loop definition
   const loopDef = getLoopById(track.loopId);
+
+  // Check if this is a custom loop (editable)
+  const isCustomLoop = loopDef && 'isCustom' in loopDef && loopDef.isCustom === true;
 
   // Get category icon
   const getCategoryIcon = () => {
@@ -98,6 +104,17 @@ export function LoopTrackHeader({
             {loopDef?.bpm} BPM • {loopDef?.bars} {loopDef?.bars === 1 ? 'bar' : 'bars'}
           </div>
         </div>
+
+        {/* Edit Button - only for custom loops */}
+        {isCustomLoop && onEditLoop && (
+          <button
+            onClick={() => onEditLoop(track.loopId)}
+            className="p-1 rounded text-slate-400 hover:text-indigo-400 hover:bg-indigo-500/20 transition-colors"
+            title="Edit loop"
+          >
+            <Edit3 className="w-3.5 h-3.5" />
+          </button>
+        )}
 
         {/* Settings Toggle */}
         <button
