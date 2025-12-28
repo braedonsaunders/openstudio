@@ -243,13 +243,13 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   },
 
   subscribeToRoom: (roomId: string) => {
-    const { roomChannels, roomPresence } = get();
+    const { roomChannels } = get();
 
     if (roomChannels.has(roomId)) return;
 
     const channel = supabase.channel(`room:${roomId}`);
 
-    channel.on('presence', { event: 'sync' }, () => {
+    const updatePresence = () => {
       const presenceState = channel.presenceState();
       const users: Array<{ id: string; name: string }> = [];
 
@@ -269,9 +269,18 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
         users,
       });
       set({ roomPresence: newRoomPresence });
-    });
+    };
 
-    channel.subscribe();
+    channel.on('presence', { event: 'sync' }, updatePresence);
+    channel.on('presence', { event: 'join' }, updatePresence);
+    channel.on('presence', { event: 'leave' }, updatePresence);
+
+    channel.subscribe((status) => {
+      if (status === 'SUBSCRIBED') {
+        // Fetch initial presence state after subscription is confirmed
+        updatePresence();
+      }
+    });
 
     const newRoomChannels = new Map(roomChannels);
     newRoomChannels.set(roomId, channel);
