@@ -365,7 +365,7 @@ export class CloudflareCalls {
     const sessionResponse = await fetch('/api/cloudflare/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ action: 'createSession', roomId: this.roomId }),
+      body: JSON.stringify({ action: 'create', roomId: this.roomId, userId: this.userId }),
     });
 
     if (!sessionResponse.ok) {
@@ -484,7 +484,7 @@ export class CloudflareCalls {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        action: 'listTracks',
+        action: 'getRoomTracks',
         sessionId: this.sessionId,
         roomId: this.roomId,
       }),
@@ -1288,7 +1288,7 @@ export class CloudflareCalls {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            action: 'closeSession',
+            action: 'close',
             sessionId: this.sessionId,
             roomId: this.roomId,
           }),
