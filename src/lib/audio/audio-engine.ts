@@ -330,6 +330,25 @@ export class AudioEngine {
     }
   }
 
+  /**
+   * Mute or unmute a remote user's audio stream
+   * Stores the pre-mute volume so it can be restored when unmuted
+   */
+  setRemoteMuted(userId: string, muted: boolean): void {
+    const streamData = this.remoteStreams.get(userId);
+    if (streamData?.gainNode && this.audioContext) {
+      if (muted) {
+        // Store the current volume before muting
+        streamData.preMuteVolume = streamData.gainNode.gain.value;
+        streamData.gainNode.gain.setTargetAtTime(0, this.audioContext.currentTime, 0.01);
+      } else {
+        // Restore the pre-mute volume (default to 1 if not stored)
+        const volume = streamData.preMuteVolume ?? 1;
+        streamData.gainNode.gain.setTargetAtTime(volume, this.audioContext.currentTime, 0.01);
+      }
+    }
+  }
+
   setMasterVolume(volume: number): void {
     if (this.masterGain) {
       this.masterGain.gain.value = volume;
@@ -722,6 +741,51 @@ export class AudioEngine {
     return this.masterAnalyser;
   }
 
+  /**
+   * Get the current audio level for the backing track (0-1 normalized)
+   */
+  getBackingTrackLevel(): number {
+    if (!this.backingTrackAnalyser) return 0;
+    const data = new Uint8Array(this.backingTrackAnalyser.frequencyBinCount);
+    this.backingTrackAnalyser.getByteFrequencyData(data);
+    const sum = data.reduce((acc, val) => acc + val, 0);
+    return sum / data.length / 255;
+  }
+
+  /**
+   * Get the current audio level for the master output (0-1 normalized)
+   */
+  getMasterLevel(): number {
+    if (!this.masterAnalyser) return 0;
+    const data = new Uint8Array(this.masterAnalyser.frequencyBinCount);
+    this.masterAnalyser.getByteFrequencyData(data);
+    const sum = data.reduce((acc, val) => acc + val, 0);
+    return sum / data.length / 255;
+  }
+
+  /**
+   * Get the current audio level for a specific remote user (0-1 normalized)
+   */
+  getRemoteLevel(userId: string): number {
+    const streamData = this.remoteStreams.get(userId);
+    if (!streamData?.analyser) return 0;
+    const data = new Uint8Array(streamData.analyser.frequencyBinCount);
+    streamData.analyser.getByteFrequencyData(data);
+    const sum = data.reduce((acc, val) => acc + val, 0);
+    return sum / data.length / 255;
+  }
+
+  /**
+   * Get the current audio level for the local input (0-1 normalized)
+   */
+  getLocalLevel(): number {
+    if (!this.localAnalyser) return 0;
+    const data = new Uint8Array(this.localAnalyser.frequencyBinCount);
+    this.localAnalyser.getByteFrequencyData(data);
+    const sum = data.reduce((acc, val) => acc + val, 0);
+    return sum / data.length / 255;
+  }
+
   async loadStem(stemType: string, url: string): Promise<void> {
     if (!this.audioContext) return;
 
@@ -970,6 +1034,22 @@ export class AudioEngine {
           const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
           levels.set(userId, level);
         }
+      }
+
+      // Backing track level
+      if (this.backingTrackAnalyser) {
+        const data = new Uint8Array(this.backingTrackAnalyser.frequencyBinCount);
+        this.backingTrackAnalyser.getByteFrequencyData(data);
+        const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
+        levels.set('backingTrack', level);
+      }
+
+      // Master output level
+      if (this.masterAnalyser) {
+        const data = new Uint8Array(this.masterAnalyser.frequencyBinCount);
+        this.masterAnalyser.getByteFrequencyData(data);
+        const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
+        levels.set('master', level);
       }
 
       this.onLevelUpdate?.(levels);

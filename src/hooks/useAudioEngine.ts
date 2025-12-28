@@ -236,6 +236,11 @@ export function useAudioEngine() {
     globalEngine?.setRemoteVolume(userId, volume);
   }, []);
 
+  // Set remote user muted state
+  const setRemoteMuted = useCallback((userId: string, muted: boolean) => {
+    globalEngine?.setRemoteMuted(userId, muted);
+  }, []);
+
   // Set master volume
   const setMasterVolume = useCallback((volume: number) => {
     globalEngine?.setMasterVolume(volume);
@@ -526,6 +531,7 @@ export function useAudioEngine() {
     addRemoteStream,
     removeRemoteStream,
     setRemoteVolume,
+    setRemoteMuted,
     setMasterVolume,
     setBackingTrackVolume,
     setOutputDevice,

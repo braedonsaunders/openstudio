@@ -313,9 +313,12 @@ function UserChannelStrip({
   const config = instrumentConfig[instrument] || instrumentConfig.other;
   const [isSolo, setIsSolo] = useState(false);
 
-  // Simulate stereo spread
-  const leftLevel = audioLevel * (0.9 + Math.random() * 0.1);
-  const rightLevel = audioLevel * (0.85 + Math.random() * 0.15);
+  // Create slight stereo variation for visual interest (based on user id hash, not random)
+  // This provides consistent visual stereo image per user without random jitter
+  const idHash = user.id.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+  const stereoOffset = (idHash % 10) / 100; // 0-0.09 offset
+  const leftLevel = audioLevel * (0.95 + stereoOffset);
+  const rightLevel = audioLevel * (0.95 + (0.09 - stereoOffset));
 
   return (
     <motion.div
@@ -463,22 +466,18 @@ function UserChannelStrip({
 function TrackChannelStrip({
   track,
   isMaster,
+  audioLevel,
 }: {
   track: BackingTrack;
   isMaster: boolean;
+  audioLevel: number;
 }) {
   const { backingTrackVolume, setBackingTrackVolume } = useAudioStore();
-  const [level, setLevel] = useState(0.5);
   const [isMuted, setIsMuted] = useState(false);
   const [isSolo, setIsSolo] = useState(false);
 
-  // Simulate audio levels
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLevel(0.3 + Math.random() * 0.5);
-    }, 100);
-    return () => clearInterval(interval);
-  }, []);
+  // Use actual audio level from the engine
+  const level = audioLevel;
 
   return (
     <motion.div
@@ -617,17 +616,11 @@ function TrackChannelStrip({
 }
 
 // Master Channel Strip
-function MasterChannelStrip({ isMaster: isRoomMaster }: { isMaster: boolean }) {
+function MasterChannelStrip({ isMaster: isRoomMaster, audioLevel }: { isMaster: boolean; audioLevel: number }) {
   const { masterVolume, setMasterVolume } = useAudioStore();
-  const [level, setLevel] = useState(0.6);
 
-  // Simulate master level
-  useEffect(() => {
-    const interval = setInterval(() => {
-      setLevel(0.4 + Math.random() * 0.4);
-    }, 100);
-    return () => clearInterval(interval);
-  }, []);
+  // Use actual audio level from the engine
+  const level = audioLevel;
 
   return (
     <div
@@ -711,6 +704,21 @@ function MasterChannelStrip({ isMaster: isRoomMaster }: { isMaster: boolean }) {
       <div className="flex items-center justify-center py-2 border-t border-amber-900/40 bg-amber-950/20">
         <span className="text-[7px] text-amber-400/60 font-mono">MAIN OUT L/R</span>
       </div>
+    </div>
+  );
+}
+
+// Performance display component - shows real latency metrics
+function PerformanceDisplay() {
+  const { performanceMetrics } = useAudioStore();
+
+  // Calculate total latency (context + output + effects)
+  const totalLatency = performanceMetrics.totalLatency || 0;
+
+  return (
+    <div className="flex items-center gap-3 text-[9px] text-zinc-600">
+      <span>Latency: ~{Math.round(totalLatency)}ms</span>
+      <span>Buffer: {performanceMetrics.currentBufferSize || 256} samples</span>
     </div>
   );
 }
@@ -813,13 +821,20 @@ export function MixerView({
           {/* Track Channel (if backing track exists) */}
           {currentTrack && (
             <>
-              <TrackChannelStrip track={currentTrack} isMaster={isMaster} />
+              <TrackChannelStrip
+                track={currentTrack}
+                isMaster={isMaster}
+                audioLevel={audioLevels.get('backingTrack') || 0}
+              />
               <SectionDivider label="MASTER" />
             </>
           )}
 
           {/* Master Channel */}
-          <MasterChannelStrip isMaster={isMaster} />
+          <MasterChannelStrip
+            isMaster={isMaster}
+            audioLevel={audioLevels.get('master') || 0}
+          />
         </AnimatePresence>
       </div>
 
@@ -841,10 +856,7 @@ export function MixerView({
           )}
         </div>
 
-        <div className="flex items-center gap-3 text-[9px] text-zinc-600">
-          <span>Latency: ~{Math.round(Math.random() * 10 + 15)}ms</span>
-          <span>CPU: {Math.round(Math.random() * 20 + 5)}%</span>
-        </div>
+        <PerformanceDisplay />
       </div>
     </div>
   );
