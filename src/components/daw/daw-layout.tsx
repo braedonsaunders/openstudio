@@ -754,6 +754,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         isMaster={isMaster}
         loopEnabled={loopEnabled}
         activePanel={activePanel}
+        mainView={mainView}
+        onViewChange={setMainView}
       />
 
       {/* Transport Bar - Fixed Top */}
@@ -818,15 +820,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
         {/* Main View Area - Timeline/Mixer/Avatar World */}
         <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-          {/* View Switcher */}
-          <div className="flex items-center justify-center py-2 px-4 border-b border-gray-200 dark:border-white/5 bg-gray-50/50 dark:bg-[#0a0a0f]/50">
-            <MainViewSwitcher
-              activeView={mainView}
-              onViewChange={setMainView}
-              isMaster={isMaster}
-            />
-          </div>
-
           {/* View Content */}
           <div className="flex-1 overflow-hidden">
             {mainView === 'timeline' && (
@@ -844,6 +837,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                 // Shared split position (synced with left panel)
                 splitPosition={sharedSplitPosition}
                 onSplitPositionChange={setSharedSplitPosition}
+                // View switcher props
+                activeView={mainView}
+                onViewChange={setMainView}
               />
             )}
 
@@ -855,6 +851,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                 audioLevels={audioLevels}
                 onUserVolumeChange={setUserVolume}
                 onUserMuteChange={muteUser}
+                activeView={mainView}
+                onViewChange={setMainView}
               />
             )}
 
@@ -863,6 +861,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                 users={users}
                 currentUser={currentUser}
                 audioLevels={audioLevels}
+                activeView={mainView}
+                onViewChange={setMainView}
               />
             )}
           </div>
