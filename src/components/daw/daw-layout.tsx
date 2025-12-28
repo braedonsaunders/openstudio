@@ -348,16 +348,70 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const handleSongSeek = useCallback(async (time: number) => {
     if (!isMaster) return;
 
-    console.log('Seeking Song to:', time);
-    setCurrentTime(time);
+    const wasPlaying = isPlaying;
+    const seekTime = Math.max(0, time);
 
-    // If playing, restart playback at new position
-    if (isPlaying) {
-      handleSongPause();
-      // Small delay to ensure pause completes
-      setTimeout(() => handleSongPlay(), 50);
+    console.log('Seeking Song to:', seekTime, 'wasPlaying:', wasPlaying);
+
+    // Always stop first if playing
+    if (wasPlaying) {
+      // Stop audio tracks
+      pauseBackingTrack();
+
+      // Stop all loop tracks
+      for (const track of songTracks) {
+        if (track.type === 'loop' && track.loopTrack) {
+          stopLoopTrack(track.loopTrack.id);
+        }
+      }
     }
-  }, [isMaster, isPlaying, setCurrentTime, handleSongPause, handleSongPlay]);
+
+    // Set the new time
+    setCurrentTime(seekTime);
+
+    // If was playing, restart at new position
+    if (wasPlaying && songTracks.length > 0) {
+      // Initialize audio systems
+      try {
+        await initialize();
+        await initLoopPlayback();
+      } catch (err) {
+        console.error('Failed to initialize audio for seek:', err);
+        setPlaying(false);
+        return;
+      }
+
+      const syncTime = Date.now() + 50; // Small delay for sync
+
+      // Play all audio tracks at new position
+      for (const track of songTracks) {
+        if (track.type === 'audio' && track.audioTrack) {
+          const trackEndTime = track.ref.startOffset + track.duration;
+          if (seekTime >= trackEndTime || track.ref.muted) continue;
+
+          const trackOffset = Math.max(0, seekTime - track.ref.startOffset);
+          console.log('Resuming audio track at:', trackOffset);
+
+          const loadSuccess = await loadBackingTrack(track.audioTrack);
+          if (loadSuccess) {
+            playBackingTrack(syncTime, trackOffset);
+          }
+          break;
+        }
+      }
+
+      // Play all loop tracks at new position
+      for (const track of songTracks) {
+        if (track.type === 'loop' && track.loopTrack && !track.ref.muted) {
+          const trackEndTime = track.ref.startOffset + track.duration;
+          if (seekTime < trackEndTime) {
+            console.log('Resuming loop track:', track.name);
+            playLoopTrack(track.loopTrack.id, syncTime, 0);
+          }
+        }
+      }
+    }
+  }, [isMaster, isPlaying, songTracks, pauseBackingTrack, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setPlaying]);
 
   // Playback handlers - Song system only, no legacy fallback
   const handlePlay = useCallback(() => {
