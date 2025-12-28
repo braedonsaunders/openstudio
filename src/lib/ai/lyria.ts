@@ -234,17 +234,7 @@ export class LyriaSession {
     } else {
       this.prompts = prompts;
     }
-
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.sendMessage({
-        client_content: {
-          weighted_prompts: this.prompts.map(p => ({
-            text: p.text,
-            weight: p.weight,
-          })),
-        },
-      });
-    }
+    // Prompts are stored and sent when play() is called
   }
 
   /**
@@ -354,7 +344,7 @@ export class LyriaSession {
   }
 
   /**
-   * Start music playback
+   * Start music playback by sending prompts to begin generation
    */
   play(): void {
     if (this.state !== 'connected' && this.state !== 'paused') {
@@ -367,25 +357,48 @@ export class LyriaSession {
     }
 
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ play: true });
+      // Lyria starts generating when we send prompts via client_content
+      // If no prompts set, use a default
+      if (this.prompts.length === 0) {
+        this.prompts = [{ text: 'instrumental music', weight: 1.0 }];
+      }
+
+      // Send the prompts to start generation
+      this.sendMessage({
+        client_content: {
+          turns: [{
+            role: 'user',
+            parts: this.prompts.map(p => ({
+              text: p.text,
+              weight: p.weight,
+            })),
+          }],
+          turn_complete: true,
+        },
+      });
+
       this.setState('playing');
     }
   }
 
   /**
    * Pause music playback
+   * Note: Lyria doesn't have a pause command - we just stop the audio context
    */
   pause(): void {
     if (this.state !== 'playing') return;
 
-    if (this.ws?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ pause: true });
-      this.setState('paused');
+    // Pause audio playback locally
+    if (this.audioContext?.state === 'running') {
+      this.audioContext.suspend();
     }
+
+    this.setState('paused');
   }
 
   /**
    * Stop music playback
+   * Note: Lyria doesn't have a stop command - we clear local audio and reset context
    */
   stop(): void {
     // Cancel all scheduled audio
@@ -401,8 +414,9 @@ export class LyriaSession {
     this.isProcessingAudio = false;
     this.nextStartTime = 0;
 
+    // Reset context to stop generation
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.sendMessage({ stop: true });
+      this.resetContext();
     }
 
     if (this.state === 'playing' || this.state === 'paused') {
