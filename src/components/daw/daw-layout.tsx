@@ -233,9 +233,8 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     }
   }, [currentTrack?.id, resetAnalysis]);
 
-  // Check if current track is a YouTube track (legacy queue system)
-  // When Song has tracks, we use Song playback instead
-  const isYouTubeTrack = !hasSongTracks && !!currentTrack?.youtubeId;
+  // Legacy YouTube check - no longer used, Song system handles all playback
+  const isYouTubeTrack = false;
 
   // Handle track end for looping
   useEffect(() => {
@@ -354,36 +353,18 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     }
   }, [isMaster, isPlaying, setCurrentTime, handleSongPause, handleSongPlay]);
 
-  // Unified play/pause/seek handlers that choose between Song and legacy queue
+  // Playback handlers - Song system only, no legacy fallback
   const handlePlay = useCallback(() => {
-    if (hasSongTracks) {
-      handleSongPlay();
-    } else if (isYouTubeTrack) {
-      handleYouTubePlay();
-    } else {
-      play();
-    }
-  }, [hasSongTracks, isYouTubeTrack, handleSongPlay, handleYouTubePlay, play]);
+    handleSongPlay();
+  }, [handleSongPlay]);
 
   const handlePause = useCallback(() => {
-    if (hasSongTracks) {
-      handleSongPause();
-    } else if (isYouTubeTrack) {
-      handleYouTubePause();
-    } else {
-      pause();
-    }
-  }, [hasSongTracks, isYouTubeTrack, handleSongPause, handleYouTubePause, pause]);
+    handleSongPause();
+  }, [handleSongPause]);
 
   const handleSeek = useCallback((time: number) => {
-    if (hasSongTracks) {
-      handleSongSeek(time);
-    } else if (isYouTubeTrack) {
-      handleYouTubeSeek(time);
-    } else {
-      seek(time);
-    }
-  }, [hasSongTracks, isYouTubeTrack, handleSongSeek, handleYouTubeSeek, seek]);
+    handleSongSeek(time);
+  }, [handleSongSeek]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -401,14 +382,14 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
           }
           break;
         case 'ArrowLeft':
-          if (isMaster && (hasSongTracks || currentTrack)) {
+          if (isMaster && hasSongTracks) {
             const { currentTime } = useAudioStore.getState();
             const newTime = Math.max(0, currentTime - (e.shiftKey ? 30 : 5));
             handleSeek(newTime);
           }
           break;
         case 'ArrowRight':
-          if (isMaster && (hasSongTracks || currentTrack)) {
+          if (isMaster && hasSongTracks) {
             const { currentTime, duration } = useAudioStore.getState();
             const newTime = Math.min(duration, currentTime + (e.shiftKey ? 30 : 5));
             handleSeek(newTime);
@@ -473,7 +454,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, handlePlay, handlePause, handleSeek, setMuted, skipToNext, skipToPrevious, hasSongTracks, setMainView]);
+  }, [isMaster, isPlaying, isMuted, activePanel, handlePlay, handlePause, handleSeek, setMuted, skipToNext, skipToPrevious, hasSongTracks, setMainView]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
