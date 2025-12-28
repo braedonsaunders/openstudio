@@ -166,7 +166,7 @@ export function PanelDock({
         )}
 
         {validPanel === 'permissions' && (
-          <PermissionsPanel roomId={roomId} />
+          <PermissionsPanel roomId={roomId} users={users} currentUser={currentUser} />
         )}
       </div>
     </div>

@@ -1,9 +1,8 @@
 'use client';
 
-import { useState, useCallback, useMemo } from 'react';
+import { useState, useCallback } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
 import { useRoomPermissions } from '@/hooks/useRoomPermissions';
-import { useRoomStore } from '@/stores/room-store';
 import {
   RoomRole,
   RoomMember,
@@ -23,12 +22,15 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { User } from '@/types';
 
 interface PermissionsPanelProps {
   roomId: string;
+  users: User[];
+  currentUser: User | null;
 }
 
-export function PermissionsPanel({ roomId }: PermissionsPanelProps) {
+export function PermissionsPanel({ roomId, users, currentUser }: PermissionsPanelProps) {
   const { canManageRoom, isOwner, assignableRoles } = usePermissions();
   const {
     members,
@@ -41,11 +43,6 @@ export function PermissionsPanel({ roomId }: PermissionsPanelProps) {
     kickUser,
     banUser,
   } = useRoomPermissions(roomId);
-
-  // Use selector to get users as array for proper reactivity
-  const usersMap = useRoomStore((state) => state.users);
-  const currentUser = useRoomStore((state) => state.currentUser);
-  const users = useMemo(() => Array.from(usersMap.values()), [usersMap]);
 
   const [selectedMember, setSelectedMember] = useState<RoomMember | null>(null);
   const [showRolePresets, setShowRolePresets] = useState(false);
