@@ -111,16 +111,14 @@ export function useLoopPlayback() {
   useEffect(() => {
     const unsubscribe = useLoopTracksStore.subscribe(
       (state) => state.tracks,
-      (tracks) => {
-        if (!isInitializedRef.current) return;
-
+      async (tracks) => {
         // Check each track for playing state changes
         for (const [trackId, track] of tracks) {
           const wasPlaying = playingTracksRef.current.has(trackId);
 
           if (track.isPlaying && !wasPlaying) {
-            // Track started playing
-            startLoop(track);
+            // Track started playing - startLoop will initialize if needed
+            await startLoop(track);
           } else if (!track.isPlaying && wasPlaying) {
             // Track stopped playing
             stopLoop(trackId);
