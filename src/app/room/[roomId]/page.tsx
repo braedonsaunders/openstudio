@@ -115,11 +115,11 @@ export default function RoomPage() {
     },
   });
 
-  // Navigate to /rooms when user leaves (isConnected becomes false after joining)
+  // Navigate to /lobby when user leaves (isConnected becomes false after joining)
   // Don't redirect if still joining or if there was an error (user should see the error)
   useEffect(() => {
     if (hasJoined && !isConnected && !isJoining && !error) {
-      router.push('/rooms');
+      router.push('/lobby');
     }
   }, [hasJoined, isConnected, isJoining, error, router]);
 

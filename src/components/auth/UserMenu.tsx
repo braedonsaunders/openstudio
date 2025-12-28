@@ -215,9 +215,9 @@ export function UserMenu() {
             <div className="py-2">
               <MenuItem
                 icon={FolderOpen}
-                label="My Rooms"
+                label="Lobby"
                 onClick={() => {
-                  router.push('/rooms');
+                  router.push('/lobby');
                   setShowDropdown(false);
                 }}
               />
