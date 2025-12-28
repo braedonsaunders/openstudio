@@ -198,6 +198,12 @@ export function AudioChatPanel({ roomId, userId, userName, onBack }: AudioChatPa
 
       // Set up audio processing based on channel selection
       const source = ctx.createMediaStreamSource(stream);
+
+      // IMPORTANT: Configure source to pass through all channels from the stream
+      // Without this, MediaStreamSourceNode defaults to 2 channels and discards the rest
+      source.channelCount = numChannels;
+      source.channelCountMode = 'explicit';
+
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 256;
       analyser.smoothingTimeConstant = 0.3;
