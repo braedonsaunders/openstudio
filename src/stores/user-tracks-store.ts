@@ -1,8 +1,9 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { UserTrack, TrackAudioSettings, TrackEffectsChain, InputChannelConfig, GuitarEffectsChain, MidiInputSettings, UserTrackType } from '@/types';
-import { DEFAULT_EFFECTS_CHAIN, EFFECT_PRESETS } from '@/lib/audio/effects/presets';
-import { GUITAR_PRESETS, DEFAULT_GUITAR_EFFECTS } from '@/lib/audio/effects/guitar';
+import type { UserTrack, TrackAudioSettings, UnifiedEffectsChain, InputChannelConfig, MidiInputSettings, UserTrackType } from '@/types';
+import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects/unified-effects-processor';
+import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
+import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
 
 // Track color palette - exported for use in color picker
 export const TRACK_COLORS = [
@@ -25,7 +26,7 @@ const DEFAULT_CHANNEL_CONFIG: InputChannelConfig = {
   rightChannel: 1,
 };
 
-// Default audio settings with effects chain
+// Default audio settings with unified effects chain
 const DEFAULT_AUDIO_SETTINGS: TrackAudioSettings = {
   inputMode: 'microphone',
   inputDeviceId: 'default',
@@ -36,7 +37,7 @@ const DEFAULT_AUDIO_SETTINGS: TrackAudioSettings = {
   autoGainControl: false,
   channelConfig: DEFAULT_CHANNEL_CONFIG,
   inputGain: 0,
-  effects: DEFAULT_EFFECTS_CHAIN,
+  effects: DEFAULT_UNIFIED_EFFECTS,
   directMonitoring: true,
   monitoringVolume: 1,
 };
@@ -82,8 +83,7 @@ interface UserTracksState {
   updateTrackSettings: (trackId: string, settings: Partial<TrackAudioSettings>) => void;
   updateMidiSettings: (trackId: string, settings: Partial<MidiInputSettings>) => void;
   setActiveMidiNotes: (trackId: string, notes: number[]) => void;
-  updateTrackEffects: (trackId: string, effects: Partial<TrackEffectsChain>) => void;
-  updateGuitarEffects: (trackId: string, effects: Partial<GuitarEffectsChain>) => void;
+  updateTrackEffects: (trackId: string, effects: Partial<UnifiedEffectsChain>) => void;
   loadGuitarPreset: (trackId: string, presetId: string) => void;
   updateTrackChannelConfig: (trackId: string, channelConfig: InputChannelConfig) => void;
   setTrackInputGain: (trackId: string, gainDb: number) => void;
@@ -302,14 +302,31 @@ export const useUserTracksStore = create<UserTracksState>()(
         if (!track) return state;
 
         const tracks = new Map(state.tracks);
-        const currentEffects = track.audioSettings.effects || DEFAULT_EFFECTS_CHAIN;
-        const newEffects: TrackEffectsChain = {
+        const currentEffects = track.audioSettings.effects || DEFAULT_UNIFIED_EFFECTS;
+
+        // Merge all effects (unified chain includes all 15 effects)
+        const newEffects: UnifiedEffectsChain = {
+          // Guitar/instrument effects
+          wah: effects.wah ? { ...currentEffects.wah, ...effects.wah } : currentEffects.wah,
+          overdrive: effects.overdrive ? { ...currentEffects.overdrive, ...effects.overdrive } : currentEffects.overdrive,
+          distortion: effects.distortion ? { ...currentEffects.distortion, ...effects.distortion } : currentEffects.distortion,
+          ampSimulator: effects.ampSimulator ? { ...currentEffects.ampSimulator, ...effects.ampSimulator } : currentEffects.ampSimulator,
+          cabinet: effects.cabinet ? { ...currentEffects.cabinet, ...effects.cabinet } : currentEffects.cabinet,
+          // Track effects
           noiseGate: effects.noiseGate ? { ...currentEffects.noiseGate, ...effects.noiseGate } : currentEffects.noiseGate,
           eq: effects.eq ? {
             enabled: effects.eq.enabled ?? currentEffects.eq.enabled,
             bands: effects.eq.bands ?? currentEffects.eq.bands,
           } : currentEffects.eq,
           compressor: effects.compressor ? { ...currentEffects.compressor, ...effects.compressor } : currentEffects.compressor,
+          // Modulation effects
+          chorus: effects.chorus ? { ...currentEffects.chorus, ...effects.chorus } : currentEffects.chorus,
+          flanger: effects.flanger ? { ...currentEffects.flanger, ...effects.flanger } : currentEffects.flanger,
+          phaser: effects.phaser ? { ...currentEffects.phaser, ...effects.phaser } : currentEffects.phaser,
+          // Time-based effects
+          delay: effects.delay ? { ...currentEffects.delay, ...effects.delay } : currentEffects.delay,
+          tremolo: effects.tremolo ? { ...currentEffects.tremolo, ...effects.tremolo } : currentEffects.tremolo,
+          // Output effects
           reverb: effects.reverb ? { ...currentEffects.reverb, ...effects.reverb } : currentEffects.reverb,
           limiter: effects.limiter ? { ...currentEffects.limiter, ...effects.limiter } : currentEffects.limiter,
         };
@@ -394,39 +411,6 @@ export const useUserTracksStore = create<UserTracksState>()(
         return { tracks };
       }),
 
-    updateGuitarEffects: (trackId, effects) =>
-      set((state) => {
-        const track = state.tracks.get(trackId);
-        if (!track) return state;
-
-        const tracks = new Map(state.tracks);
-        const currentGuitarEffects = (track.audioSettings as { guitarEffects?: GuitarEffectsChain }).guitarEffects || DEFAULT_GUITAR_EFFECTS;
-
-        // Merge the new effects with existing ones
-        const newGuitarEffects: GuitarEffectsChain = {
-          wah: effects.wah ? { ...currentGuitarEffects.wah, ...effects.wah } : currentGuitarEffects.wah,
-          overdrive: effects.overdrive ? { ...currentGuitarEffects.overdrive, ...effects.overdrive } : currentGuitarEffects.overdrive,
-          distortion: effects.distortion ? { ...currentGuitarEffects.distortion, ...effects.distortion } : currentGuitarEffects.distortion,
-          ampSimulator: effects.ampSimulator ? { ...currentGuitarEffects.ampSimulator, ...effects.ampSimulator } : currentGuitarEffects.ampSimulator,
-          cabinet: effects.cabinet ? { ...currentGuitarEffects.cabinet, ...effects.cabinet } : currentGuitarEffects.cabinet,
-          chorus: effects.chorus ? { ...currentGuitarEffects.chorus, ...effects.chorus } : currentGuitarEffects.chorus,
-          flanger: effects.flanger ? { ...currentGuitarEffects.flanger, ...effects.flanger } : currentGuitarEffects.flanger,
-          phaser: effects.phaser ? { ...currentGuitarEffects.phaser, ...effects.phaser } : currentGuitarEffects.phaser,
-          delay: effects.delay ? { ...currentGuitarEffects.delay, ...effects.delay } : currentGuitarEffects.delay,
-          tremolo: effects.tremolo ? { ...currentGuitarEffects.tremolo, ...effects.tremolo } : currentGuitarEffects.tremolo,
-        };
-
-        tracks.set(trackId, {
-          ...track,
-          audioSettings: {
-            ...track.audioSettings,
-            guitarEffects: newGuitarEffects,
-            guitarPreset: undefined, // Clear preset when manually editing
-          } as TrackAudioSettings & { guitarEffects: GuitarEffectsChain; guitarPreset?: string },
-        });
-        return { tracks };
-      }),
-
     loadGuitarPreset: (trackId, presetId) =>
       set((state) => {
         const track = state.tracks.get(trackId);
@@ -436,13 +420,30 @@ export const useUserTracksStore = create<UserTracksState>()(
         if (!preset) return state;
 
         const tracks = new Map(state.tracks);
+        const currentEffects = track.audioSettings.effects || DEFAULT_UNIFIED_EFFECTS;
+
+        // Apply guitar preset effects to the unified chain (only guitar-specific effects)
+        const newEffects: UnifiedEffectsChain = {
+          ...currentEffects,
+          wah: { ...preset.effects.wah },
+          overdrive: { ...preset.effects.overdrive },
+          distortion: { ...preset.effects.distortion },
+          ampSimulator: { ...preset.effects.ampSimulator },
+          cabinet: { ...preset.effects.cabinet },
+          chorus: { ...preset.effects.chorus },
+          flanger: { ...preset.effects.flanger },
+          phaser: { ...preset.effects.phaser },
+          delay: { ...preset.effects.delay },
+          tremolo: { ...preset.effects.tremolo },
+        };
+
         tracks.set(trackId, {
           ...track,
           audioSettings: {
             ...track.audioSettings,
-            guitarEffects: JSON.parse(JSON.stringify(preset.effects)), // Deep clone
-            guitarPreset: presetId,
-          } as TrackAudioSettings & { guitarEffects: GuitarEffectsChain; guitarPreset: string },
+            effects: newEffects,
+            activePreset: presetId,
+          },
         });
         return { tracks };
       }),
