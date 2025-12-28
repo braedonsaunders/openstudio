@@ -19,6 +19,43 @@ const defaultConfig: JitterBufferConfig = {
   sampleRate: 48000,
 };
 
+/**
+ * Ultra-low latency configuration for live jamming mode.
+ * Trades stability for minimum latency - use only with stable connections.
+ * Potential savings: ~5-10ms compared to default settings.
+ */
+export const LIVE_JAMMING_CONFIG: JitterBufferConfig = {
+  minBufferSize: 64,    // More aggressive minimum (default: 128)
+  maxBufferSize: 256,   // Lower ceiling - prioritize latency (default: 1024)
+  targetJitter: 2,      // Target only 2ms jitter tolerance (default: 5ms)
+  adaptationRate: 0.2,  // Faster adaptation (default: 0.1)
+  sampleRate: 48000,
+};
+
+/**
+ * Balanced configuration for good quality with reasonable latency.
+ * Good for most connections.
+ */
+export const BALANCED_CONFIG: JitterBufferConfig = {
+  minBufferSize: 128,
+  maxBufferSize: 512,
+  targetJitter: 5,
+  adaptationRate: 0.1,
+  sampleRate: 48000,
+};
+
+/**
+ * High stability configuration for poor network conditions.
+ * Prioritizes audio quality over latency.
+ */
+export const HIGH_STABILITY_CONFIG: JitterBufferConfig = {
+  minBufferSize: 256,
+  maxBufferSize: 1024,
+  targetJitter: 10,
+  adaptationRate: 0.05,
+  sampleRate: 48000,
+};
+
 export class AdaptiveJitterBuffer {
   private config: JitterBufferConfig;
   private currentBufferSize: number;
@@ -99,12 +136,23 @@ export class AdaptiveJitterBuffer {
   }
 
   private clampToValidBuffer(size: number): number {
-    // Valid buffer sizes are powers of 2
-    const validSizes = [128, 256, 512, 1024];
-    let closest = validSizes[0];
-    let minDiff = Math.abs(size - validSizes[0]);
+    // Valid buffer sizes are powers of 2 (including 64 for live jamming mode)
+    const validSizes = [64, 128, 256, 512, 1024];
 
-    for (const validSize of validSizes) {
+    // Filter to sizes within our min/max config range
+    const allowedSizes = validSizes.filter(
+      s => s >= this.config.minBufferSize && s <= this.config.maxBufferSize
+    );
+
+    if (allowedSizes.length === 0) {
+      // Fallback to config min if no valid sizes in range
+      return this.config.minBufferSize;
+    }
+
+    let closest = allowedSizes[0];
+    let minDiff = Math.abs(size - allowedSizes[0]);
+
+    for (const validSize of allowedSizes) {
       const diff = Math.abs(size - validSize);
       if (diff < minDiff) {
         minDiff = diff;
@@ -166,5 +214,52 @@ export class AdaptiveJitterBuffer {
     this.rttHistory = [];
     this.currentBufferSize = 256;
     this.lastUpdateTime = 0;
+  }
+
+  /**
+   * Set the jitter buffer mode for different use cases.
+   * @param mode 'live-jamming' for ultra-low latency, 'balanced' for normal use, 'stable' for poor connections
+   */
+  setMode(mode: 'live-jamming' | 'balanced' | 'stable'): void {
+    switch (mode) {
+      case 'live-jamming':
+        this.config = { ...LIVE_JAMMING_CONFIG };
+        this.currentBufferSize = 64; // Start at minimum for lowest latency
+        break;
+      case 'balanced':
+        this.config = { ...BALANCED_CONFIG };
+        this.currentBufferSize = 256;
+        break;
+      case 'stable':
+        this.config = { ...HIGH_STABILITY_CONFIG };
+        this.currentBufferSize = 512;
+        break;
+    }
+    // Clear history when switching modes
+    this.reset();
+    console.log(`[JitterBuffer] Mode set to '${mode}', buffer: ${this.currentBufferSize} samples (${this.getBufferLatencyMs().toFixed(1)}ms)`);
+  }
+
+  /**
+   * Get the current mode name based on configuration
+   */
+  getMode(): 'live-jamming' | 'balanced' | 'stable' | 'custom' {
+    if (this.config.minBufferSize === 64 && this.config.maxBufferSize === 256) {
+      return 'live-jamming';
+    }
+    if (this.config.minBufferSize === 128 && this.config.maxBufferSize === 512) {
+      return 'balanced';
+    }
+    if (this.config.minBufferSize === 256 && this.config.maxBufferSize === 1024) {
+      return 'stable';
+    }
+    return 'custom';
+  }
+
+  /**
+   * Update configuration directly
+   */
+  updateConfig(config: Partial<JitterBufferConfig>): void {
+    this.config = { ...this.config, ...config };
   }
 }

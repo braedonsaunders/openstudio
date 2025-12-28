@@ -607,6 +607,10 @@ export class SoundEngine {
   private drumKits: Map<string, DrumKitSampler> = new Map();
   private outputNode: AudioNode;
 
+  // Broadcast support for WebRTC - sends MIDI audio to other participants
+  private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
+  private broadcastEnabled: boolean = false;
+
   constructor(context: AudioContext, outputNode?: AudioNode) {
     this.context = context;
     this.masterGain = context.createGain();
@@ -706,6 +710,53 @@ export class SoundEngine {
     this.masterGain.gain.value = Math.max(0, Math.min(1, volume));
   }
 
+  /**
+   * Enable broadcast mode for WebRTC
+   * This creates a MediaStreamDestination that can be mixed with the mic input
+   * to send MIDI loop audio to other participants in the jam session.
+   * @returns MediaStream containing the MIDI audio output
+   */
+  enableBroadcast(): MediaStream {
+    if (!this.broadcastDestination) {
+      this.broadcastDestination = this.context.createMediaStreamDestination();
+      this.masterGain.connect(this.broadcastDestination);
+    }
+    this.broadcastEnabled = true;
+    return this.broadcastDestination.stream;
+  }
+
+  /**
+   * Disable broadcast mode
+   * Disconnects the broadcast destination to save resources
+   */
+  disableBroadcast(): void {
+    if (this.broadcastDestination) {
+      try {
+        this.masterGain.disconnect(this.broadcastDestination);
+      } catch {
+        // Already disconnected
+      }
+    }
+    this.broadcastEnabled = false;
+  }
+
+  /**
+   * Get the broadcast stream if enabled
+   * @returns MediaStream or null if broadcast is not enabled
+   */
+  getBroadcastStream(): MediaStream | null {
+    return this.broadcastEnabled && this.broadcastDestination
+      ? this.broadcastDestination.stream
+      : null;
+  }
+
+  /**
+   * Check if broadcast mode is enabled
+   */
+  isBroadcastEnabled(): boolean {
+    return this.broadcastEnabled;
+  }
+
   allNotesOff(): void {
     for (const synth of this.synths.values()) {
       synth.allNotesOff();
@@ -727,6 +778,9 @@ export class SoundEngine {
   }
 
   dispose(): void {
+    this.disableBroadcast();
+    this.broadcastDestination = null;
+
     for (const synth of this.synths.values()) {
       synth.dispose();
     }
