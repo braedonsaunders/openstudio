@@ -2,13 +2,13 @@
 
 import { useState, useCallback } from 'react';
 import { usePermissions } from '@/hooks/usePermissions';
-import { usePermissionsStore } from '@/stores/permissions-store';
+import { useRoomPermissions } from '@/hooks/useRoomPermissions';
 import { useRoomStore } from '@/stores/room-store';
 import {
   RoomRole,
   RoomMember,
+  RoomPermissions,
   ROLE_INFO,
-  getEffectivePermissions,
 } from '@/types/permissions';
 import { PermissionModal } from './permission-modal';
 import { RolePresetsModal } from './role-presets-modal';
@@ -36,8 +36,11 @@ export function PermissionsPanel({ roomId }: PermissionsPanelProps) {
     requireApproval,
     setDefaultRole,
     setRequireApproval,
-    updateMemberRole,
-  } = usePermissionsStore();
+    updateUserRole,
+    updateUserPermissions,
+    kickUser,
+    banUser,
+  } = useRoomPermissions(roomId);
   const { users, currentUser } = useRoomStore();
 
   const [selectedMember, setSelectedMember] = useState<RoomMember | null>(null);
@@ -46,7 +49,7 @@ export function PermissionsPanel({ roomId }: PermissionsPanelProps) {
 
   // Combine connected users with member data
   const connectedMembers = Array.from(users.values()).map((user) => {
-    const memberData = members.find((m) => m.oduserId === user.id);
+    const memberData = members.find((m: RoomMember) => m.oduserId === user.id);
     return {
       user,
       member: memberData || {
@@ -62,23 +65,38 @@ export function PermissionsPanel({ roomId }: PermissionsPanelProps) {
   });
 
   const handleRoleChange = useCallback(
-    (userId: string, newRole: RoomRole) => {
-      updateMemberRole(userId, newRole);
+    async (userId: string, newRole: RoomRole) => {
+      await updateUserRole(userId, newRole);
       setOpenRoleDropdown(null);
-      // TODO: Emit socket event to sync role change
     },
-    [updateMemberRole]
+    [updateUserRole]
   );
 
-  const handleKickUser = useCallback((userId: string) => {
-    // TODO: Implement kick user via socket
-    console.log('Kick user:', userId);
-  }, []);
+  const handleKickUser = useCallback(
+    async (userId: string) => {
+      if (!confirm('Are you sure you want to kick this user?')) return;
+      await kickUser(userId);
+    },
+    [kickUser]
+  );
 
-  const handleBanUser = useCallback((userId: string) => {
-    // TODO: Implement ban user via socket
-    console.log('Ban user:', userId);
-  }, []);
+  const handleBanUser = useCallback(
+    async (userId: string) => {
+      const reason = prompt('Enter a reason for the ban (optional):');
+      if (reason === null) return; // User cancelled
+      await banUser(userId, reason || undefined);
+    },
+    [banUser]
+  );
+
+  const handleSavePermissions = useCallback(
+    async (customPermissions: Partial<RoomPermissions>) => {
+      if (!selectedMember) return;
+      await updateUserPermissions(selectedMember.oduserId, customPermissions);
+      setSelectedMember(null);
+    },
+    [selectedMember, updateUserPermissions]
+  );
 
   if (!canManageRoom) {
     return (
@@ -299,11 +317,7 @@ export function PermissionsPanel({ roomId }: PermissionsPanelProps) {
         <PermissionModal
           member={selectedMember}
           onClose={() => setSelectedMember(null)}
-          onSave={(customPermissions) => {
-            // TODO: Save custom permissions
-            console.log('Save permissions for', selectedMember.oduserId, customPermissions);
-            setSelectedMember(null);
-          }}
+          onSave={handleSavePermissions}
         />
       )}
 

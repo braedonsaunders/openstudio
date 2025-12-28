@@ -10,10 +10,12 @@ import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
+import { usePermissionsStore } from '@/stores/permissions-store';
 import type { QualityPresetName, OpusEncodingSettings } from '@/types';
 import { useAudioEngine } from './useAudioEngine';
 import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
+import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
 
 interface UseRoomOptions {
   onUserJoined?: (user: User) => void;
@@ -196,6 +198,39 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         console.error('Failed to load loop tracks:', err);
       }
 
+      // Load room permissions
+      try {
+        const permissionsResponse = await fetch(
+          `/api/rooms/${roomId}/permissions?userId=${user.id}`
+        );
+        if (permissionsResponse.ok) {
+          const permissionsData = await permissionsResponse.json();
+          const permissionsStore = usePermissionsStore.getState();
+
+          // Set room members
+          permissionsStore.setMembers(permissionsData.members || []);
+          permissionsStore.setDefaultRole(permissionsData.defaultRole || 'member');
+          permissionsStore.setRequireApproval(permissionsData.requireApproval || false);
+
+          // Set current user's permissions
+          if (permissionsData.myMember) {
+            permissionsStore.setMyPermissions(
+              permissionsData.myMember.role,
+              permissionsData.myMember.customPermissions
+            );
+          } else {
+            // New user - use default role (will be upgraded to owner if first user)
+            permissionsStore.setMyPermissions(permissionsData.defaultRole || 'member');
+          }
+
+          console.log(`Loaded permissions: ${permissionsData.members?.length || 0} members`);
+        }
+      } catch (err) {
+        console.error('Failed to load permissions:', err);
+        // Set basic permissions as fallback
+        usePermissionsStore.getState().setMyPermissions('member');
+      }
+
       // Create a default track if user has none
       if (userTracks.length === 0) {
         userTracks = userTracksState.getTracksByUser(user.id);
@@ -291,6 +326,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         cloudflare.setAsMaster(true);
         usePerformanceSyncStore.getState().setIsMaster(true);
         usePerformanceSyncStore.getState().setMasterId(user.id);
+
+        // First user becomes owner in permissions
+        usePermissionsStore.getState().setMyPermissions('owner');
 
         // Load existing tracks from database (includes both file uploads and YouTube tracks)
         try {
@@ -543,6 +581,90 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         loopTracksStore.loadTracks(payload.tracks);
       });
 
+      // Permission event handlers
+      realtime.on('permissions:role_update', (data) => {
+        const payload = data as { targetUserId: string; role: RoomRole; userId: string };
+        if (payload.userId === user.id) return;
+        const permissionsStore = usePermissionsStore.getState();
+
+        // Update member's role in the store
+        permissionsStore.updateMemberRole(payload.targetUserId, payload.role);
+
+        // If this is our own role being updated, update our permissions
+        if (payload.targetUserId === user.id) {
+          permissionsStore.setMyPermissions(payload.role);
+        }
+      });
+
+      realtime.on('permissions:custom_update', (data) => {
+        const payload = data as {
+          targetUserId: string;
+          customPermissions: Partial<RoomPermissions> | null;
+          userId: string;
+        };
+        if (payload.userId === user.id) return;
+        const permissionsStore = usePermissionsStore.getState();
+
+        if (payload.customPermissions === null) {
+          permissionsStore.clearMemberCustomPermissions(payload.targetUserId);
+        } else {
+          permissionsStore.updateMemberPermissions(payload.targetUserId, payload.customPermissions);
+        }
+
+        // If this is our own permissions being updated
+        if (payload.targetUserId === user.id) {
+          const member = permissionsStore.members.find(m => m.oduserId === user.id);
+          if (member) {
+            permissionsStore.setMyPermissions(member.role, payload.customPermissions || undefined);
+          }
+        }
+      });
+
+      realtime.on('permissions:member_kick', (data) => {
+        const payload = data as { targetUserId: string; userId: string };
+        if (payload.userId === user.id) return;
+
+        // If we're being kicked, leave the room
+        if (payload.targetUserId === user.id) {
+          console.log('You have been kicked from the room');
+          // Trigger leave (will be handled by the component)
+          setError('You have been kicked from this room');
+          return;
+        }
+
+        // Remove member from permissions store
+        usePermissionsStore.getState().removeMember(payload.targetUserId);
+      });
+
+      realtime.on('permissions:member_ban', (data) => {
+        const payload = data as { targetUserId: string; reason?: string; userId: string };
+        if (payload.userId === user.id) return;
+
+        // If we're being banned, leave the room
+        if (payload.targetUserId === user.id) {
+          console.log('You have been banned from the room:', payload.reason);
+          setError(`You have been banned from this room${payload.reason ? `: ${payload.reason}` : ''}`);
+          return;
+        }
+
+        // Remove member from permissions store
+        usePermissionsStore.getState().removeMember(payload.targetUserId);
+      });
+
+      realtime.on('permissions:sync', (data) => {
+        const payload = data as { members: RoomMember[]; defaultRole: RoomRole; userId: string };
+        if (payload.userId === user.id) return;
+        const permissionsStore = usePermissionsStore.getState();
+        permissionsStore.setMembers(payload.members);
+        permissionsStore.setDefaultRole(payload.defaultRole);
+
+        // Update our own permissions if we're in the member list
+        const myMember = payload.members.find(m => m.oduserId === user.id);
+        if (myMember) {
+          permissionsStore.setMyPermissions(myMember.role, myMember.customPermissions);
+        }
+      });
+
       await realtime.connect(user);
       realtimeRef.current = realtime;
 
@@ -634,6 +756,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // Use getState() to access reset
     useRoomStore.getState().reset();
+    usePermissionsStore.getState().reset();
   }, [roomId, destroyEngine]);
 
   // Master controls - BULLETPROOF with fresh state
@@ -1108,6 +1231,102 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   const getCloudflareRef = useCallback(() => cloudflareRef.current, []);
 
+  // Permission management
+  const updateUserRole = useCallback(async (targetUserId: string, role: RoomRole) => {
+    // Update permissions store
+    usePermissionsStore.getState().updateMemberRole(targetUserId, role);
+
+    // Persist to database
+    try {
+      await fetch(`/api/rooms/${roomId}/permissions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: targetUserId,
+          role,
+          performedBy: userIdRef.current,
+        }),
+      });
+    } catch (err) {
+      console.error('Failed to update role:', err);
+    }
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastRoleUpdate(targetUserId, role);
+  }, [roomId]);
+
+  const updateUserPermissions = useCallback(async (
+    targetUserId: string,
+    customPermissions: Partial<RoomPermissions> | null
+  ) => {
+    const permissionsStore = usePermissionsStore.getState();
+
+    if (customPermissions === null) {
+      permissionsStore.clearMemberCustomPermissions(targetUserId);
+    } else {
+      permissionsStore.updateMemberPermissions(targetUserId, customPermissions);
+    }
+
+    // Persist to database
+    try {
+      await fetch(`/api/rooms/${roomId}/permissions`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          userId: targetUserId,
+          customPermissions,
+          clearCustom: customPermissions === null,
+          performedBy: userIdRef.current,
+        }),
+      });
+    } catch (err) {
+      console.error('Failed to update permissions:', err);
+    }
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastCustomPermissionsUpdate(targetUserId, customPermissions);
+  }, [roomId]);
+
+  const kickUser = useCallback(async (targetUserId: string) => {
+    // Remove from permissions store
+    usePermissionsStore.getState().removeMember(targetUserId);
+
+    // Persist to database
+    try {
+      await fetch(
+        `/api/rooms/${roomId}/permissions?userId=${targetUserId}&performedBy=${userIdRef.current}`,
+        { method: 'DELETE' }
+      );
+    } catch (err) {
+      console.error('Failed to kick user:', err);
+    }
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastMemberKick(targetUserId);
+  }, [roomId]);
+
+  const banUser = useCallback(async (targetUserId: string, reason?: string) => {
+    // Remove from permissions store
+    usePermissionsStore.getState().removeMember(targetUserId);
+
+    // Persist to database
+    try {
+      const params = new URLSearchParams({
+        userId: targetUserId,
+        ban: 'true',
+        performedBy: userIdRef.current,
+      });
+      if (reason) params.set('reason', reason);
+
+      await fetch(`/api/rooms/${roomId}/permissions?${params}`, { method: 'DELETE' });
+    } catch (err) {
+      console.error('Failed to ban user:', err);
+    }
+
+    // Broadcast to other users
+    realtimeRef.current?.broadcastMemberBan(targetUserId, reason);
+  }, [roomId]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -1147,5 +1366,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Quality/Latency settings
     setQualityPreset,
     getCloudflareRef,
+    // Permission management
+    updateUserRole,
+    updateUserPermissions,
+    kickUser,
+    banUser,
   };
 }

@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
+import { useAIPermissions } from '@/hooks/usePermissions';
 import { Progress } from '../ui/progress';
 import { Slider } from '../ui/slider';
 import {
@@ -19,6 +20,7 @@ import {
   FileText,
   Timer,
   X,
+  Lock,
 } from 'lucide-react';
 import type { BackingTrack } from '@/types';
 import {
@@ -48,6 +50,7 @@ export function AIPanel({
   roomId,
 }: AIPanelProps) {
   const { currentTrack, stemsAvailable, addToQueue } = useRoomStore();
+  const { canSeparateStems, canGenerateMusic, canGenerateLyrics } = useAIPermissions();
 
   // Generation state
   const [isGenerating, setIsGenerating] = useState(false);
@@ -290,18 +293,20 @@ export function AIPanel({
                     Custom Lyrics
                     {showLyrics ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                   </button>
-                  <button
-                    onClick={handleGenerateLyrics}
-                    disabled={isGeneratingLyrics}
-                    className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300 disabled:opacity-50"
-                  >
-                    {isGeneratingLyrics ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
-                    ) : (
-                      <Wand2 className="w-3 h-3" />
-                    )}
-                    Generate
-                  </button>
+                  {canGenerateLyrics && (
+                    <button
+                      onClick={handleGenerateLyrics}
+                      disabled={isGeneratingLyrics}
+                      className="flex items-center gap-1 text-[10px] text-purple-400 hover:text-purple-300 disabled:opacity-50"
+                    >
+                      {isGeneratingLyrics ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <Wand2 className="w-3 h-3" />
+                      )}
+                      Generate
+                    </button>
+                  )}
                 </div>
                 {showLyrics && (
                   <textarea
@@ -378,14 +383,21 @@ export function AIPanel({
             </div>
 
             {/* Generate button */}
-            <button
-              onClick={handleGenerate}
-              disabled={!prompt.trim() || isGenerating}
-              className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-500/25"
-            >
-              <Sparkles className="w-4 h-4" />
-              Generate Track
-            </button>
+            {canGenerateMusic ? (
+              <button
+                onClick={handleGenerate}
+                disabled={!prompt.trim() || isGenerating}
+                className="w-full py-3 rounded-xl bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium flex items-center justify-center gap-2 transition-all shadow-lg shadow-purple-500/25"
+              >
+                <Sparkles className="w-4 h-4" />
+                Generate Track
+              </button>
+            ) : (
+              <div className="w-full py-3 rounded-xl bg-gray-200 dark:bg-white/5 text-gray-500 dark:text-zinc-500 text-sm font-medium flex items-center justify-center gap-2">
+                <Lock className="w-4 h-4" />
+                No permission to generate music
+              </div>
+            )}
           </>
         )}
 
@@ -405,6 +417,11 @@ export function AIPanel({
             <p className="text-xs text-gray-500 dark:text-zinc-500 text-center py-2">
               Load a track first
             </p>
+          ) : !canSeparateStems ? (
+            <div className="flex items-center justify-center gap-2 py-2 text-gray-500 dark:text-zinc-500">
+              <Lock className="w-3 h-3" />
+              <span className="text-xs">No permission to separate stems</span>
+            </div>
           ) : isSeparating ? (
             <div className="space-y-2">
               <div className="flex items-center gap-2">
