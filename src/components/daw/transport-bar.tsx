@@ -7,6 +7,7 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { useRoomStore } from '@/stores/room-store';
 import { useAnalysisStore } from '@/stores/analysis-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useSongsStore } from '@/stores/songs-store';
 import {
   Play,
   Pause,
@@ -65,6 +66,10 @@ export function TransportBar({
   const { currentTrack, isMaster, currentUser } = useRoomStore();
   const { syncedAnalysis, localAnalysis } = useAnalysisStore();
   const getTracksByUser = useUserTracksStore((s) => s.getTracksByUser);
+  const currentSong = useSongsStore((s) => s.getCurrentSong());
+
+  // Check if there's something to play - either legacy queue track or song with tracks
+  const hasPlayableContent = currentTrack || (currentSong && currentSong.tracks.length > 0);
 
   // Get the buffer size from the user's track settings (not global settings)
   const userBufferSize = useMemo(() => {
@@ -284,10 +289,10 @@ export function TransportBar({
         {/* Play/Pause */}
         <button
           onClick={isPlaying ? onPause : onPlay}
-          disabled={!isMaster || !currentTrack}
+          disabled={!isMaster || !hasPlayableContent}
           className={cn(
             'w-12 h-12 rounded-full flex items-center justify-center transition-all',
-            isMaster && currentTrack
+            isMaster && hasPlayableContent
               ? 'neon-button text-white'
               : 'bg-gray-200 dark:bg-zinc-800 text-gray-400 dark:text-zinc-500 cursor-not-allowed'
           )}
