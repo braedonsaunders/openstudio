@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useRoom } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
@@ -10,6 +10,9 @@ import { useTrackAudioSync } from '@/hooks/useTrackAudioSync';
 import { useSessionTempoSync } from '@/hooks/use-session-tempo-sync';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
+import { useSongsStore } from '@/stores/songs-store';
+import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { getLoopById } from '@/lib/audio/loop-library';
 import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
 import { LeftPanel } from './left-panel';
@@ -28,6 +31,8 @@ import { AvatarWorldView } from './avatar-world-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import type { BackingTrack, StemType } from '@/types';
+import type { SongTrackReference } from '@/types/songs';
+import type { LoopTrackState } from '@/types/loops';
 
 interface DAWLayoutProps {
   roomId: string;
@@ -113,9 +118,77 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     stopLoopTrack,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack } = useAudioEngine();
-  const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume } = useRoomStore();
-  const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume } = useAudioStore();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize } = useAudioEngine();
+  const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue } = useRoomStore();
+  const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume, currentTime } = useAudioStore();
+
+  // Song system - the primary track/playback system
+  const { getCurrentSong } = useSongsStore();
+  const { getTracksByRoom } = useLoopTracksStore();
+  const currentSong = getCurrentSong();
+  const loopTracks = getTracksByRoom(roomId);
+
+  // Calculate loop duration from definition
+  const getLoopDuration = useCallback((loopDef: ReturnType<typeof getLoopById>): number => {
+    if (!loopDef) return 0;
+    const beatsPerBar = loopDef.timeSignature[0];
+    const totalBeats = loopDef.bars * beatsPerBar;
+    return (totalBeats / loopDef.bpm) * 60;
+  }, []);
+
+  // Build unified track list for the current Song
+  const songTracks = useMemo(() => {
+    if (!currentSong) return [];
+
+    return currentSong.tracks.map((trackRef: SongTrackReference) => {
+      if (trackRef.type === 'loop') {
+        const loopTrack = loopTracks.find((t: LoopTrackState) => t.id === trackRef.trackId);
+        const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+        const loopDuration = getLoopDuration(loopDef);
+
+        return {
+          ref: trackRef,
+          type: 'loop' as const,
+          name: loopTrack?.name || loopDef?.name || 'Loop',
+          duration: loopDuration,
+          loopTrack,
+          loopDef,
+        };
+      } else {
+        const audioTrack = queue.tracks.find((t: BackingTrack) => t.id === trackRef.trackId);
+        return {
+          ref: trackRef,
+          type: 'audio' as const,
+          name: audioTrack?.name || 'Unknown Track',
+          duration: audioTrack?.duration || 0,
+          audioTrack,
+        };
+      }
+    });
+  }, [currentSong, loopTracks, queue.tracks, getLoopDuration]);
+
+  // Calculate Song duration (max end time of all tracks)
+  const songDuration = useMemo(() => {
+    if (songTracks.length === 0) return 0;
+
+    let maxDuration = 0;
+    songTracks.forEach((track: { ref: SongTrackReference; duration: number }) => {
+      const endTime = track.ref.startOffset + track.duration;
+      maxDuration = Math.max(maxDuration, endTime);
+    });
+
+    return maxDuration;
+  }, [songTracks]);
+
+  // Check if Song has any tracks to play
+  const hasSongTracks = songTracks.length > 0;
+
+  // Update duration when Song tracks change
+  useEffect(() => {
+    if (hasSongTracks && songDuration > 0) {
+      setDuration(songDuration);
+    }
+  }, [hasSongTracks, songDuration, setDuration]);
 
   // Track persistence - automatically saves track settings changes to database
   useTrackPersistence(roomId);
@@ -160,8 +233,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     }
   }, [currentTrack?.id, resetAnalysis]);
 
-  // Check if current track is a YouTube track
-  const isYouTubeTrack = !!currentTrack?.youtubeId;
+  // Check if current track is a YouTube track (legacy queue system)
+  // When Song has tracks, we use Song playback instead
+  const isYouTubeTrack = !hasSongTracks && !!currentTrack?.youtubeId;
 
   // Handle track end for looping
   useEffect(() => {
@@ -189,6 +263,128 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     youtubePlayerRef.current?.seek(time);
   }, []);
 
+  // Song playback controls - plays tracks from the Song system
+  const handleSongPlay = useCallback(async () => {
+    if (!isMaster || !currentSong || songTracks.length === 0) {
+      console.log('Song play aborted:', { isMaster, hasSong: !!currentSong, trackCount: songTracks.length });
+      return;
+    }
+
+    console.log('Playing Song:', currentSong.name, 'with', songTracks.length, 'tracks');
+
+    // Set duration from Song
+    if (songDuration > 0) {
+      setDuration(songDuration);
+    }
+
+    // Ensure audio engine is initialized
+    try {
+      await initialize();
+    } catch (err) {
+      console.error('Failed to initialize audio engine for Song playback:', err);
+      return;
+    }
+
+    const syncTime = Date.now() + 100; // 100ms in future for sync
+    const playbackOffset = currentTime || 0;
+
+    // Play all audio tracks in the Song
+    for (const track of songTracks) {
+      if (track.type === 'audio' && track.audioTrack) {
+        // Skip if track hasn't started yet or already ended
+        const trackEndTime = track.ref.startOffset + track.duration;
+        if (playbackOffset >= trackEndTime || track.ref.muted) {
+          continue;
+        }
+
+        // Calculate offset within this track
+        const trackOffset = Math.max(0, playbackOffset - track.ref.startOffset);
+
+        console.log('Loading audio track:', track.name, 'at offset:', trackOffset);
+        const loadSuccess = await loadBackingTrack(track.audioTrack);
+        if (loadSuccess) {
+          playBackingTrack(syncTime, trackOffset);
+        }
+        break; // Only play one audio track at a time for now
+      }
+    }
+
+    // Play all loop tracks in the Song
+    for (const track of songTracks) {
+      if (track.type === 'loop' && track.loopTrack && !track.ref.muted) {
+        // Check if this loop should be playing at current time
+        const trackEndTime = track.ref.startOffset + track.duration;
+        if (playbackOffset < trackEndTime) {
+          console.log('Playing loop track:', track.name);
+          playLoopTrack(track.loopTrack.id, syncTime, 0);
+        }
+      }
+    }
+
+    setPlaying(true);
+  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, loadBackingTrack, playBackingTrack, playLoopTrack, setDuration, setPlaying]);
+
+  const handleSongPause = useCallback(() => {
+    console.log('Pausing Song playback');
+
+    // Stop audio tracks
+    pauseBackingTrack();
+
+    // Stop all loop tracks
+    for (const track of songTracks) {
+      if (track.type === 'loop' && track.loopTrack) {
+        stopLoopTrack(track.loopTrack.id);
+      }
+    }
+
+    setPlaying(false);
+  }, [songTracks, pauseBackingTrack, stopLoopTrack, setPlaying]);
+
+  const handleSongSeek = useCallback(async (time: number) => {
+    if (!isMaster) return;
+
+    console.log('Seeking Song to:', time);
+    setCurrentTime(time);
+
+    // If playing, restart playback at new position
+    if (isPlaying) {
+      handleSongPause();
+      // Small delay to ensure pause completes
+      setTimeout(() => handleSongPlay(), 50);
+    }
+  }, [isMaster, isPlaying, setCurrentTime, handleSongPause, handleSongPlay]);
+
+  // Unified play/pause/seek handlers that choose between Song and legacy queue
+  const handlePlay = useCallback(() => {
+    if (hasSongTracks) {
+      handleSongPlay();
+    } else if (isYouTubeTrack) {
+      handleYouTubePlay();
+    } else {
+      play();
+    }
+  }, [hasSongTracks, isYouTubeTrack, handleSongPlay, handleYouTubePlay, play]);
+
+  const handlePause = useCallback(() => {
+    if (hasSongTracks) {
+      handleSongPause();
+    } else if (isYouTubeTrack) {
+      handleYouTubePause();
+    } else {
+      pause();
+    }
+  }, [hasSongTracks, isYouTubeTrack, handleSongPause, handleYouTubePause, pause]);
+
+  const handleSeek = useCallback((time: number) => {
+    if (hasSongTracks) {
+      handleSongSeek(time);
+    } else if (isYouTubeTrack) {
+      handleYouTubeSeek(time);
+    } else {
+      seek(time);
+    }
+  }, [hasSongTracks, isYouTubeTrack, handleSongSeek, handleYouTubeSeek, seek]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -201,33 +397,21 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         case ' ':
           e.preventDefault();
           if (isMaster) {
-            if (isYouTubeTrack) {
-              isPlaying ? handleYouTubePause() : handleYouTubePlay();
-            } else {
-              isPlaying ? pause() : play();
-            }
+            isPlaying ? handlePause() : handlePlay();
           }
           break;
         case 'ArrowLeft':
-          if (isMaster && currentTrack) {
+          if (isMaster && (hasSongTracks || currentTrack)) {
             const { currentTime } = useAudioStore.getState();
             const newTime = Math.max(0, currentTime - (e.shiftKey ? 30 : 5));
-            if (isYouTubeTrack) {
-              handleYouTubeSeek(newTime);
-            } else {
-              seek(newTime);
-            }
+            handleSeek(newTime);
           }
           break;
         case 'ArrowRight':
-          if (isMaster && currentTrack) {
+          if (isMaster && (hasSongTracks || currentTrack)) {
             const { currentTime, duration } = useAudioStore.getState();
             const newTime = Math.min(duration, currentTime + (e.shiftKey ? 30 : 5));
-            if (isYouTubeTrack) {
-              handleYouTubeSeek(newTime);
-            } else {
-              seek(newTime);
-            }
+            handleSeek(newTime);
           }
           break;
         case '[':
@@ -289,7 +473,7 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, play, pause, seek, setMuted, skipToNext, skipToPrevious, isYouTubeTrack, handleYouTubePlay, handleYouTubePause, handleYouTubeSeek, setMainView]);
+  }, [isMaster, isPlaying, isMuted, currentTrack, activePanel, handlePlay, handlePause, handleSeek, setMuted, skipToNext, skipToPrevious, hasSongTracks, setMainView]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {
@@ -506,25 +690,18 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
         onAddBackingTrack={() => setIsUploadModalOpen(true)}
         onUploadAudio={() => setIsUploadModalOpen(true)}
         onYouTubeImport={() => setIsYouTubeModalOpen(true)}
-        onPlay={isYouTubeTrack ? handleYouTubePlay : play}
-        onPause={isYouTubeTrack ? handleYouTubePause : pause}
+        onPlay={handlePlay}
+        onPause={handlePause}
         onStop={() => {
-          if (isYouTubeTrack) {
-            handleYouTubePause();
-            handleYouTubeSeek(0);
-          } else {
-            pause();
-            seek(0);
-          }
+          handlePause();
+          handleSeek(0);
         }}
         onSeekStart={() => {
-          if (isYouTubeTrack) handleYouTubeSeek(0);
-          else seek(0);
+          handleSeek(0);
         }}
         onSeekEnd={() => {
           const { duration } = useAudioStore.getState();
-          if (isYouTubeTrack) handleYouTubeSeek(duration);
-          else seek(duration);
+          handleSeek(duration);
         }}
         onToggleLoop={() => setLoopEnabled(!loopEnabled)}
         onGenerateTrack={handleOpenAIPanel}
@@ -541,9 +718,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       {/* Transport Bar - Fixed Top */}
       <TransportBar
         roomId={roomId}
-        onPlay={isYouTubeTrack ? handleYouTubePlay : play}
-        onPause={isYouTubeTrack ? handleYouTubePause : pause}
-        onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
+        onPlay={handlePlay}
+        onPause={handlePause}
+        onSeek={handleSeek}
         onPrevious={skipToPrevious}
         onNext={skipToNext}
         onMuteToggle={() => setMuted(!isMuted)}
@@ -617,9 +794,9 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
                 currentUser={currentUser}
                 audioLevels={audioLevels}
                 isMaster={isMaster}
-                onSeek={isYouTubeTrack ? handleYouTubeSeek : seek}
-                onPlay={isYouTubeTrack ? handleYouTubePlay : play}
-                onStop={isYouTubeTrack ? handleYouTubePause : pause}
+                onSeek={handleSeek}
+                onPlay={handlePlay}
+                onStop={handlePause}
                 sessionStartTime={sessionStartTime}
                 // Shared split position (synced with left panel)
                 splitPosition={sharedSplitPosition}
