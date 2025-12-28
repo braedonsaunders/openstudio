@@ -531,7 +531,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
       hasLoopTracks,
       hasAudioTracks,
       songDuration,
-      songTracksCount: songTracks.length,
     });
 
     // Only run for loop-only playback (no audio tracks to drive time)
