@@ -75,6 +75,21 @@ export function QueuePanel({
     setShowLoopEditor(true);
   }, []);
 
+  // Handler for removing a loop track
+  const handleRemoveLoopTrack = useCallback(
+    async (trackId: string) => {
+      removeLoopTrack(trackId);
+      try {
+        await fetch(`/api/rooms/${roomId}/loop-tracks?id=${trackId}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.error('Failed to delete loop track:', err);
+      }
+    },
+    [roomId, removeLoopTrack]
+  );
+
   // Duplicate a loop as a custom loop for editing
   const handleDuplicateAsCustom = useCallback(
     async (loop: LoopDefinition) => {
@@ -162,21 +177,6 @@ export function QueuePanel({
       setShowLoopBrowser(false);
     },
     [userId, userName, roomId, addLoopTrack]
-  );
-
-  // Handler for removing a loop track
-  const handleRemoveLoopTrack = useCallback(
-    async (trackId: string) => {
-      removeLoopTrack(trackId);
-      try {
-        await fetch(`/api/rooms/${roomId}/loop-tracks?id=${trackId}`, {
-          method: 'DELETE',
-        });
-      } catch (err) {
-        console.error('Failed to delete loop track:', err);
-      }
-    },
-    [roomId, removeLoopTrack]
   );
 
   const formatTime = (seconds: number): string => {
