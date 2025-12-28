@@ -20,6 +20,7 @@ interface Voice {
   noteNumber: number;
   startTime: number;
   releaseTime?: number;
+  voiceId: number; // Unique ID to identify this specific voice instance
 }
 
 interface SamplerVoice {
@@ -136,6 +137,7 @@ export class WebAudioSynth {
   private activeVoices: Map<number, Voice> = new Map();
   private config: SynthConfig;
   private maxPolyphony = 16;
+  private voiceIdCounter = 0; // Unique ID counter for voice instances
 
   constructor(context: AudioContext, outputNode: AudioNode, preset: string = 'synth-bass-1') {
     this.context = context;
@@ -156,7 +158,7 @@ export class WebAudioSynth {
     this.masterGain.gain.value = Math.max(0, Math.min(1, volume));
   }
 
-  noteOn(noteNumber: number, velocity: number, time?: number): void {
+  noteOn(noteNumber: number, velocity: number, time?: number): number {
     const startTime = time ?? this.context.currentTime;
 
     // Steal oldest voice if at max polyphony
@@ -229,9 +231,13 @@ export class WebAudioSynth {
       filterGain: oscGain,
       noteNumber,
       startTime,
+      voiceId: ++this.voiceIdCounter,
     };
 
     this.activeVoices.set(noteNumber, voice);
+
+    // Return the voice ID so caller can verify identity when stopping
+    return voice.voiceId;
   }
 
   noteOff(noteNumber: number, time?: number): void {
@@ -259,6 +265,23 @@ export class WebAudioSynth {
         this.activeVoices.delete(noteNumber);
       }
     }, (release + 0.2) * 1000);
+  }
+
+  /**
+   * Stop a note only if it's the same voice instance that was started.
+   * This prevents a scheduled noteOff from stopping a DIFFERENT voice
+   * that happened to use the same MIDI note number.
+   */
+  noteOffIfSameVoice(noteNumber: number, voiceId: number, time?: number): void {
+    const voice = this.activeVoices.get(noteNumber);
+    if (!voice) return;
+
+    // Only stop if this is the SAME voice instance
+    if (voice.voiceId !== voiceId) {
+      return; // Voice was replaced, don't stop the new one
+    }
+
+    this.noteOff(noteNumber, time);
   }
 
   allNotesOff(): void {
@@ -684,12 +707,14 @@ export class SoundEngine {
       }
     } else {
       const synth = this.getOrCreateSynth(preset || soundPreset);
-      synth.noteOn(noteNumber, velocity, time);
+      const voiceId = synth.noteOn(noteNumber, velocity, time);
 
       if (duration !== undefined) {
         const noteOffTime = (time ?? this.context.currentTime) + duration;
         setTimeout(() => {
-          synth.noteOff(noteNumber);
+          // Use noteOffIfSameVoice to prevent stopping a DIFFERENT note
+          // that was started after this one with the same pitch
+          synth.noteOffIfSameVoice(noteNumber, voiceId, this.context.currentTime);
         }, (noteOffTime - this.context.currentTime) * 1000);
       }
     }
