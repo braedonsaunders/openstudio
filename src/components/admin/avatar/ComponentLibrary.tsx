@@ -246,29 +246,8 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     }
   };
 
-  // Real-time preview with debouncing
-  const triggerPreview = useCallback(() => {
-    if (previewTimerRef.current) {
-      clearTimeout(previewTimerRef.current);
-    }
-    previewTimerRef.current = setTimeout(() => {
-      handlePreviewProcessing();
-    }, 500);
-  }, []);
-
-  // Auto-preview when sliders change
-  useEffect(() => {
-    if (editTab === 'image' && editingComponent) {
-      triggerPreview();
-    }
-    return () => {
-      if (previewTimerRef.current) {
-        clearTimeout(previewTimerRef.current);
-      }
-    };
-  }, [bgThreshold, specThreshold, cleanupSpecs, feathering, editTab, editingComponent]);
-
-  const handlePreviewProcessing = async () => {
+  // Handle image processing preview
+  const handlePreviewProcessing = useCallback(async () => {
     if (!editingComponent) return;
     setIsProcessing(true);
 
@@ -296,7 +275,29 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     } finally {
       setIsProcessing(false);
     }
-  };
+  }, [editingComponent, bgThreshold, specThreshold, cleanupSpecs, feathering, eraserMask]);
+
+  // Real-time preview with debouncing
+  const triggerPreview = useCallback(() => {
+    if (previewTimerRef.current) {
+      clearTimeout(previewTimerRef.current);
+    }
+    previewTimerRef.current = setTimeout(() => {
+      handlePreviewProcessing();
+    }, 500);
+  }, [handlePreviewProcessing]);
+
+  // Auto-preview when sliders change
+  useEffect(() => {
+    if (editTab === 'image' && editingComponent) {
+      triggerPreview();
+    }
+    return () => {
+      if (previewTimerRef.current) {
+        clearTimeout(previewTimerRef.current);
+      }
+    };
+  }, [bgThreshold, specThreshold, cleanupSpecs, feathering, editTab, editingComponent, triggerPreview]);
 
   const handleSaveProcessedImage = async () => {
     if (!editingComponent) return;
