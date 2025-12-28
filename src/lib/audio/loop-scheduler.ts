@@ -34,8 +34,8 @@ export class LoopScheduler {
   private context: AudioContext;
   private soundEngine: SoundEngine;
   private activeLoops: Map<string, ActiveLoop> = new Map();
-  private lookaheadTime = 0.15; // 150ms lookahead (increased from 100ms)
-  private scheduleInterval = 25; // 25ms schedule interval
+  private lookaheadTime = 0.25; // 250ms lookahead for safety margin
+  private scheduleInterval = 20; // 20ms schedule interval for responsiveness
   private masterTempo = 120; // BPM
   private masterKey?: string;
   private isPlaying = false;
