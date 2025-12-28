@@ -310,6 +310,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
 
     setIsSaving(true);
     let savedCount = 0;
+    const savedIds = new Set<string>();
 
     try {
       for (const result of selectedResults) {
@@ -343,12 +344,20 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
 
         if (componentResponse.ok) {
           savedCount++;
+          savedIds.add(result.componentIdBase);
         }
       }
 
-      toast.success(`Saved ${savedCount} component(s)`);
-      setBatchResults([]);
-      setBatchTheme('');
+      const selectedCount = selectedResults.length;
+      if (savedCount === selectedCount) {
+        toast.success(`Saved ${savedCount} component(s)`);
+      } else {
+        toast.success(`Saved ${savedCount} of ${selectedCount} selected component(s)`);
+      }
+
+      // Only remove saved items from results, keep unsaved/unselected for retry
+      setBatchResults((prev) => prev.filter((r) => !savedIds.has(r.componentIdBase)));
+      // Keep theme and settings for regeneration
       setBatchTags('');
       onComponentCreated();
     } catch (error) {
@@ -489,6 +498,8 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
                 <option value={10}>10</option>
                 <option value={12}>12</option>
                 <option value={16}>16</option>
+                <option value={24}>24</option>
+                <option value={32}>32</option>
               </select>
             </div>
 
