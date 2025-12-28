@@ -29,6 +29,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const initialAuthUser = useAuthStore.getState().user;
   const userIdRef = useRef<string>(initialAuthUser?.id || uuidv4());
 
+  // Only destructure state values, not functions - prevents infinite loops
+  // All store functions are accessed via getState() inside callbacks
   const {
     room,
     users,
@@ -39,29 +41,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     isConnected,
     isJoining,
     error,
-    setRoom,
-    setCurrentUser,
-    addUser,
-    removeUser,
-    updateUser,
-    setIsMaster,
-    setQueue,
-    addToQueue,
-    removeFromQueue,
-    setCurrentTrack,
-    setQueuePlaying,
-    setQueueTime,
-    nextTrack,
-    previousTrack,
-    jumpToTrack,
-    addMessage,
-    setConnected,
-    setJoining,
-    setError,
-    reset,
   } = useRoomStore();
-
-  const { setWebRTCStats } = useAudioStore();
 
   const {
     initialize,
@@ -78,7 +58,27 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   // Join room - returns true on success, false on failure
   const join = useCallback(async (userName: string, instrument?: string): Promise<boolean> => {
-    if (isJoining || isConnected) return false;
+    // Get fresh state to check if already joining/connected
+    const { isJoining: joining, isConnected: connected } = useRoomStore.getState();
+    if (joining || connected) return false;
+
+    // Get all store functions via getState() to avoid dependency issues
+    const {
+      setJoining,
+      setError,
+      setCurrentUser,
+      setConnected,
+      addUser,
+      setIsMaster,
+      updateUser,
+      removeUser,
+      setQueue,
+      setCurrentTrack,
+      setQueuePlaying,
+      nextTrack,
+      addMessage,
+      setRoom,
+    } = useRoomStore.getState();
 
     setJoining(true);
     setError(null);
@@ -229,7 +229,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       });
 
       cloudflare.setOnStatsUpdate((stats) => {
-        setWebRTCStats(stats);
+        useAudioStore.getState().setWebRTCStats(stats);
         updateFromStats({
           jitter: stats.jitter,
           packetLoss: stats.packetsLost,
@@ -499,7 +499,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       options.onError?.(err as Error);
       return false;
     }
-  }, [roomId, isJoining, isConnected, setJoining, setError, setCurrentUser, initialize, startCapture, addRemoteStream, removeRemoteStream, setWebRTCStats, updateFromStats, setConnected, addUser, setIsMaster, updateUser, removeUser, queue.tracks, loadBackingTrack, playBackingTrack, setQueuePlaying, pauseBackingTrack, seekTo, setQueue, nextTrack, addMessage, setRoom, options, users]);
+  }, [roomId, initialize, startCapture, addRemoteStream, removeRemoteStream, updateFromStats, loadBackingTrack, playBackingTrack, pauseBackingTrack, seekTo, options]);
 
   // Leave room
   const leave = useCallback(async () => {
@@ -557,13 +557,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Clean up the audio engine
     destroyEngine();
 
-    reset();
-  }, [reset, roomId, destroyEngine]);
+    // Use getState() to access reset
+    useRoomStore.getState().reset();
+  }, [roomId, destroyEngine]);
 
   // Master controls - BULLETPROOF with fresh state
   const play = useCallback(async () => {
     // Get ALL fresh state to avoid stale closure issues
-    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack, queue: freshQueue } = useRoomStore.getState();
+    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack, queue: freshQueue, setQueuePlaying } = useRoomStore.getState();
 
     console.log('Play called:', {
       isMaster: freshIsMaster,
@@ -615,11 +616,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     realtimeRef.current?.broadcastPlay(freshCurrentTrack.id, freshQueue.currentTime, syncTime);
     setQueuePlaying(true);
-  }, [initialize, loadBackingTrack, playBackingTrack, setQueuePlaying]);
+  }, [initialize, loadBackingTrack, playBackingTrack]);
 
   const pause = useCallback(async () => {
     // Get ALL fresh state to avoid stale closure issues
-    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack } = useRoomStore.getState();
+    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack, setQueueTime, setQueuePlaying } = useRoomStore.getState();
 
     if (!freshIsMaster || !freshCurrentTrack) {
       console.log('Pause aborted: not master or no current track');
@@ -636,7 +637,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     realtimeRef.current?.broadcastPause(freshCurrentTrack.id, currentTime);
     setQueuePlaying(false);
-  }, [pauseBackingTrack, setQueueTime, setQueuePlaying]);
+  }, [pauseBackingTrack]);
 
   const seek = useCallback(async (time: number) => {
     // Get ALL fresh state to avoid stale closure issues
@@ -655,11 +656,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   // Queue management
   const addTrack = useCallback(async (track: BackingTrack) => {
     console.log('addTrack called with:', { id: track.id, name: track.name, url: track.url, youtubeId: track.youtubeId });
+
+    // Get fresh state and functions
+    const { queue: freshQueue, addToQueue, setCurrentTrack, setQueue } = useRoomStore.getState();
+
     addToQueue(track);
 
     const updatedQueue = {
-      ...queue,
-      tracks: [...queue.tracks, track],
+      ...freshQueue,
+      tracks: [...freshQueue.tracks, track],
     };
 
     realtimeRef.current?.broadcastQueueUpdate(updatedQueue);
@@ -684,19 +689,22 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     }
 
     // If this is the first track, set it as current
-    if (queue.tracks.length === 0) {
+    if (freshQueue.tracks.length === 0) {
       console.log('Setting as current track (first in queue)');
       setCurrentTrack(track);
       setQueue({ ...updatedQueue, currentIndex: 0 });
     }
-  }, [roomId, queue, addToQueue, setCurrentTrack, setQueue]);
+  }, [roomId]);
 
   const removeTrack = useCallback(async (trackId: string) => {
+    // Get fresh state and functions
+    const { queue: freshQueue, removeFromQueue } = useRoomStore.getState();
+
     removeFromQueue(trackId);
 
     const updatedQueue = {
-      ...queue,
-      tracks: queue.tracks.filter((t) => t.id !== trackId),
+      ...freshQueue,
+      tracks: freshQueue.tracks.filter((t) => t.id !== trackId),
     };
 
     realtimeRef.current?.broadcastQueueUpdate(updatedQueue);
@@ -709,11 +717,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     } catch (err) {
       console.error('Failed to delete track:', err);
     }
-  }, [roomId, queue, removeFromQueue]);
+  }, [roomId]);
 
   const skipToNext = useCallback(async () => {
     // Get ALL fresh state to avoid stale closure issues
-    const { queue: freshQueue, isMaster: freshIsMaster } = useRoomStore.getState();
+    const { queue: freshQueue, isMaster: freshIsMaster, nextTrack, setQueuePlaying } = useRoomStore.getState();
 
     console.log('skipToNext called:', { isMaster: freshIsMaster, currentIndex: freshQueue.currentIndex });
 
@@ -771,11 +779,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         console.error('skipToNext: Error during playback:', err);
       }
     }
-  }, [nextTrack, pauseBackingTrack, initialize, loadBackingTrack, playBackingTrack, setQueuePlaying]);
+  }, [pauseBackingTrack, initialize, loadBackingTrack, playBackingTrack]);
 
   const skipToPrevious = useCallback(async () => {
     // Get ALL fresh state to avoid stale closure issues
-    const { queue: freshQueue, isMaster: freshIsMaster } = useRoomStore.getState();
+    const { queue: freshQueue, isMaster: freshIsMaster, previousTrack, setQueuePlaying } = useRoomStore.getState();
 
     console.log('skipToPrevious called:', { isMaster: freshIsMaster, currentIndex: freshQueue.currentIndex });
 
@@ -833,11 +841,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         console.error('skipToPrevious: Error during playback:', err);
       }
     }
-  }, [pauseBackingTrack, previousTrack, initialize, loadBackingTrack, playBackingTrack, setQueuePlaying]);
+  }, [pauseBackingTrack, initialize, loadBackingTrack, playBackingTrack]);
 
   const skipToTrack = useCallback(async (trackIndex: number) => {
     // Get ALL fresh state to avoid stale closure issues
-    const { queue: freshQueue, isMaster: freshIsMaster } = useRoomStore.getState();
+    const { queue: freshQueue, isMaster: freshIsMaster, jumpToTrack, setQueuePlaying } = useRoomStore.getState();
 
     console.log('skipToTrack called:', {
       requestedIndex: trackIndex,
@@ -909,7 +917,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         console.error('skipToTrack: Error during playback setup:', err);
       }
     }
-  }, [pauseBackingTrack, jumpToTrack, initialize, loadBackingTrack, playBackingTrack, setQueuePlaying]);
+  }, [pauseBackingTrack, initialize, loadBackingTrack, playBackingTrack]);
 
   // Chat
   const sendMessage = useCallback((message: string) => {
@@ -918,25 +926,25 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     if (!trimmedMessage) return;
 
     realtimeRef.current?.broadcastChat(trimmedMessage);
-    addMessage({
+    useRoomStore.getState().addMessage({
       type: 'chat',
       userId: userIdRef.current,
       content: trimmedMessage,
       timestamp: new Date().toISOString(),
     });
-  }, [addMessage]);
+  }, []);
 
   // Mute user
   const muteUser = useCallback((userId: string, muted: boolean) => {
-    updateUser(userId, { isMuted: muted });
+    useRoomStore.getState().updateUser(userId, { isMuted: muted });
     realtimeRef.current?.broadcastMute(userId, muted);
-  }, [updateUser]);
+  }, []);
 
   // Set user volume
   const setUserVolume = useCallback((userId: string, volume: number) => {
-    updateUser(userId, { volume });
+    useRoomStore.getState().updateUser(userId, { volume });
     realtimeRef.current?.broadcastVolume(userId, volume);
-  }, [updateUser]);
+  }, []);
 
   // Loop track management
   const addLoopTrack = useCallback(async (track: LoopTrackState) => {
