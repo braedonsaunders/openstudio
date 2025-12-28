@@ -8,6 +8,7 @@ import { NoteGridEditor } from '@/components/loops/note-grid-editor';
 import type { LoopDefinition, LoopCategoryInfo, LoopCategory, MidiNote } from '@/types/loops';
 import { getAllInstruments } from '@/lib/audio/instrument-registry';
 import { Play, Square, Save, X, Plus, Minus } from 'lucide-react';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 interface LoopEditorProps {
   loop: LoopDefinition | null;
@@ -17,6 +18,9 @@ interface LoopEditorProps {
 }
 
 export function LoopEditor({ loop, categories, onSave, onClose }: LoopEditorProps) {
+  const { resolvedTheme } = useTheme();
+  const isDark = resolvedTheme === 'dark';
+
   const [name, setName] = useState(loop?.name || '');
   const [category, setCategory] = useState(loop?.category || 'drums');
   const [subcategory, setSubcategory] = useState(loop?.subcategory || '');
@@ -110,7 +114,7 @@ export function LoopEditor({ loop, categories, onSave, onClose }: LoopEditorProp
             <select
               value={soundPreset}
               onChange={(e) => setSoundPreset(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-sm"
+              className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
             >
               {instruments.map(inst => (
                 <option key={inst.id} value={inst.id}>
@@ -133,7 +137,7 @@ export function LoopEditor({ loop, categories, onSave, onClose }: LoopEditorProp
                 setCategory(e.target.value as LoopCategory);
                 setSubcategory('');
               }}
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-sm"
+              className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
             >
               {categories.map(cat => (
                 <option key={cat.id} value={cat.id}>
@@ -149,7 +153,7 @@ export function LoopEditor({ loop, categories, onSave, onClose }: LoopEditorProp
             <select
               value={subcategory}
               onChange={(e) => setSubcategory(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-sm"
+              className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
             >
               <option value="">Select subcategory...</option>
               {subcategories.map(sub => (
@@ -188,7 +192,7 @@ export function LoopEditor({ loop, categories, onSave, onClose }: LoopEditorProp
               >
                 <Minus className="w-4 h-4" />
               </Button>
-              <span className="text-lg font-medium w-8 text-center">{bars}</span>
+              <span className="text-lg font-medium w-8 text-center text-gray-900 dark:text-gray-100">{bars}</span>
               <Button
                 variant="ghost"
                 size="sm"
@@ -209,7 +213,7 @@ export function LoopEditor({ loop, categories, onSave, onClose }: LoopEditorProp
                 const [n, d] = e.target.value.split('/').map(Number);
                 setTimeSignature([n, d]);
               }}
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-sm"
+              className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
             >
               <option value="4/4">4/4</option>
               <option value="3/4">3/4</option>
@@ -225,7 +229,7 @@ export function LoopEditor({ loop, categories, onSave, onClose }: LoopEditorProp
             <select
               value={key}
               onChange={(e) => setKey(e.target.value)}
-              className="w-full px-3 py-2 border rounded-lg bg-white dark:bg-gray-800 text-sm"
+              className="w-full px-3 py-2 border rounded-lg text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 text-gray-900 dark:text-gray-100"
             >
               <option value="">No key</option>
               <option value="C">C Major</option>
@@ -253,17 +257,15 @@ export function LoopEditor({ loop, categories, onSave, onClose }: LoopEditorProp
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
             MIDI Pattern
           </label>
-          <div className="border rounded-lg overflow-hidden bg-gray-50 dark:bg-gray-900">
-            <NoteGridEditor
-              instrumentId={soundPreset}
-              notes={midiData}
-              bars={bars}
-              timeSignature={timeSignature}
-              bpm={bpm}
-              onChange={setMidiData}
-              isDark={true}
-            />
-          </div>
+          <NoteGridEditor
+            instrumentId={soundPreset}
+            notes={midiData}
+            bars={bars}
+            timeSignature={timeSignature}
+            bpm={bpm}
+            onChange={setMidiData}
+            isDark={isDark}
+          />
         </div>
 
         {/* Tags */}

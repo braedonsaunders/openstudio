@@ -424,20 +424,22 @@ export function NoteGridEditor({
 
   // Generate column headers
   const columnHeaders = useMemo(() => {
-    const headers: { label: string; isDownbeat: boolean; isBarStart: boolean; isBarEnd: boolean }[] = [];
+    const headers: { label: string; isDownbeat: boolean; isBarStart: boolean; isBarEnd: boolean; beatInBar: number }[] = [];
     for (let col = 0; col < totalColumns; col++) {
       const beat = Math.floor(col / gridResolution);
       const subdivision = col % gridResolution;
       const barNum = Math.floor(beat / beatsPerBar) + 1;
-      const isBarStart = beat % beatsPerBar === 0 && subdivision === 0;
+      const beatInBar = beat % beatsPerBar;
+      const isBarStart = beatInBar === 0 && subdivision === 0;
       const isBarEnd = (col + 1) % columnsPerBar === 0;
       const isDownbeat = subdivision === 0;
 
       headers.push({
-        label: isBarStart ? `${barNum}` : isDownbeat ? `${(beat % beatsPerBar) + 1}` : '',
+        label: isBarStart ? `${barNum}` : isDownbeat ? `${beatInBar + 1}` : '',
         isDownbeat,
         isBarStart,
         isBarEnd,
+        beatInBar,
       });
     }
     return headers;
@@ -616,10 +618,10 @@ export function NoteGridEditor({
                 key={col}
                 className={cn(
                   'flex items-center justify-center text-xs font-medium border-r border-b',
-                  // Right border: strong at bar END, medium at downbeat, light otherwise
+                  // Right border: strong at bar END, medium at downbeat (but NOT on bar start), light otherwise
                   header.isBarEnd
                     ? isDark ? 'border-r-2 border-r-indigo-500/70' : 'border-r-2 border-r-indigo-400'
-                    : header.isDownbeat
+                    : header.isDownbeat && !header.isBarStart
                       ? isDark ? 'border-r-gray-500' : 'border-r-slate-400'
                       : isDark ? 'border-r-gray-700' : 'border-r-slate-200',
                   // Text styling for bar labels
@@ -693,6 +695,8 @@ export function NoteGridEditor({
                 {Array.from({ length: totalColumns }, (_, col) => {
                   const beat = Math.floor(col / gridResolution);
                   const subdivision = col % gridResolution;
+                  const beatInBar = beat % beatsPerBar;
+                  const isBarStart = beatInBar === 0 && subdivision === 0;
                   const isBarEnd = (col + 1) % columnsPerBar === 0;
                   const isDownbeat = subdivision === 0;
                   const t = col / totalColumns;
@@ -716,10 +720,10 @@ export function NoteGridEditor({
                       key={col}
                       className={cn(
                         'relative border-r border-b cursor-crosshair transition-colors',
-                        // Right border: strong at bar END, medium at downbeat, light otherwise
+                        // Right border: strong at bar END, medium at downbeat (but NOT on bar start), light otherwise
                         isBarEnd
                           ? isDark ? 'border-r-2 border-r-indigo-500/50' : 'border-r-2 border-r-indigo-300'
-                          : isDownbeat
+                          : isDownbeat && !isBarStart
                             ? isDark ? 'border-r-gray-500/70' : 'border-r-slate-300'
                             : isDark ? 'border-r-gray-700/50' : 'border-r-slate-200',
                         isDark ? 'border-b-gray-700/50' : 'border-b-slate-200',
