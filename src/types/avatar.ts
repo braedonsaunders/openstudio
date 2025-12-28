@@ -25,8 +25,11 @@ export interface AvatarCategory {
   maxSelections: number;
   supportsColorVariants: boolean;
   defaultColorPalette?: string;
-  positionHint?: string; // Where on canvas (e.g., "top center, eye level")
-  promptHint?: string; // AI generation hint for positioning
+  // Fixed render position on 512x512 canvas
+  renderX: number; // X position to render component
+  renderY: number; // Y position to render component
+  renderWidth: number; // Width to render component
+  renderHeight: number; // Height to render component
   isActive: boolean;
   createdAt: string;
   updatedAt: string;
