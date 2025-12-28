@@ -40,6 +40,15 @@ interface ComponentGeneratorProps {
   onComponentCreated: () => void;
 }
 
+interface ImageSaveInfo {
+  image: string;
+  selected: boolean;
+  componentId: string;
+  componentName: string;
+  tags: string;
+  rarity: ComponentRarity;
+}
+
 interface BatchResult {
   prompt: string;
   image: string;
@@ -66,16 +75,9 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
   const [useCustomPrompt, setUseCustomPrompt] = useState(false);
   const [imageCount, setImageCount] = useState(4);
 
-  // Generated images
-  const [generatedImages, setGeneratedImages] = useState<string[]>([]);
-  const [selectedImages, setSelectedImages] = useState<Set<number>>(new Set());
-
-  // Save form
+  // Generated images with per-image save info
+  const [generatedImages, setGeneratedImages] = useState<ImageSaveInfo[]>([]);
   const [saveCategory, setSaveCategory] = useState<string>('');
-  const [saveComponentId, setSaveComponentId] = useState('');
-  const [saveComponentName, setSaveComponentName] = useState('');
-  const [saveTags, setSaveTags] = useState('');
-  const [saveRarity, setSaveRarity] = useState<ComponentRarity>('common');
 
   // Batch generation state
   const [batchTheme, setBatchTheme] = useState('');
@@ -120,7 +122,6 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
 
     setIsGenerating(true);
     setGeneratedImages([]);
-    setSelectedImages(new Set());
 
     try {
       const body = useCustomPrompt
@@ -141,7 +142,18 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
 
       if (response.ok) {
         const result = await response.json();
-        setGeneratedImages(result.images);
+        // Initialize each image with empty save info
+        const baseId = componentDescription.toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 20) || 'component';
+        setGeneratedImages(
+          result.images.map((img: string, i: number) => ({
+            image: img,
+            selected: false,
+            componentId: `${baseId}_${i + 1}`,
+            componentName: componentDescription || `Component ${i + 1}`,
+            tags: '',
+            rarity: 'common' as ComponentRarity,
+          }))
+        );
       } else {
         const error = await response.json();
         alert(`Generation failed: ${error.error}`);
@@ -155,45 +167,48 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
   };
 
   const toggleImageSelection = (index: number) => {
-    const newSelection = new Set(selectedImages);
-    if (newSelection.has(index)) {
-      newSelection.delete(index);
-    } else {
-      newSelection.add(index);
-    }
-    setSelectedImages(newSelection);
+    setGeneratedImages((prev) =>
+      prev.map((img, i) => (i === index ? { ...img, selected: !img.selected } : img))
+    );
+  };
+
+  const updateImageInfo = (index: number, field: keyof ImageSaveInfo, value: string) => {
+    setGeneratedImages((prev) =>
+      prev.map((img, i) => (i === index ? { ...img, [field]: value } : img))
+    );
   };
 
   const handleSaveSelected = async () => {
-    if (selectedImages.size === 0) return;
-    if (!saveCategory || !saveComponentId || !saveComponentName) {
-      alert('Please fill in all required fields');
+    const selectedItems = generatedImages.filter((img) => img.selected);
+    if (selectedItems.length === 0) return;
+    if (!saveCategory) {
+      alert('Please select a category');
       return;
+    }
+
+    // Validate each selected image has required fields
+    for (const item of selectedItems) {
+      if (!item.componentId || !item.componentName) {
+        alert('Please fill in ID and Name for all selected images');
+        return;
+      }
     }
 
     setIsSaving(true);
 
     try {
-      // Save each selected image as a component
       let savedCount = 0;
-      const selectedIndices = Array.from(selectedImages);
 
-      for (let i = 0; i < selectedIndices.length; i++) {
-        const imageIndex = selectedIndices[i];
-        const imageData = generatedImages[imageIndex];
-        const suffix = selectedIndices.length > 1 ? `_${i + 1}` : '';
-        const componentId = `${saveComponentId}${suffix}`;
-        const componentName = selectedIndices.length > 1 ? `${saveComponentName} ${i + 1}` : saveComponentName;
-
+      for (const item of selectedItems) {
         // Upload the image
         const uploadResponse = await adminPost('/api/admin/avatar/upload', {
-          imageData,
+          imageData: item.image,
           categoryId: saveCategory,
-          componentId,
+          componentId: item.componentId,
         });
 
         if (!uploadResponse.ok) {
-          console.error('Failed to upload image');
+          console.error('Failed to upload image:', item.componentId);
           continue;
         }
 
@@ -201,14 +216,14 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
 
         // Create the component
         const componentResponse = await adminPost('/api/admin/avatar/components', {
-          id: componentId,
+          id: item.componentId,
           categoryId: saveCategory,
-          name: componentName,
+          name: item.componentName,
           imageUrl: uploadResult.url,
           thumbnailUrl: uploadResult.thumbnailUrl,
           r2Key: uploadResult.key,
-          tags: saveTags.split(',').map((t) => t.trim()).filter(Boolean),
-          rarity: saveRarity,
+          tags: item.tags.split(',').map((t) => t.trim()).filter(Boolean),
+          rarity: item.rarity,
           generationPrompt: useCustomPrompt ? customPrompt : `${selectedPreset}: ${componentDescription}`,
           generationModel: selectedModel,
         });
@@ -219,11 +234,8 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
       }
 
       alert(`Saved ${savedCount} component(s)`);
-      setGeneratedImages([]);
-      setSelectedImages(new Set());
-      setSaveComponentId('');
-      setSaveComponentName('');
-      setSaveTags('');
+      // Remove saved images from the list
+      setGeneratedImages((prev) => prev.filter((img) => !img.selected));
       onComponentCreated();
     } catch (error) {
       console.error('Failed to save:', error);
@@ -791,146 +803,170 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
       {/* Generated Images (Single mode only) */}
       {mode === 'single' && generatedImages.length > 0 && (
         <Card className="p-6">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 flex items-center gap-2">
-            <ImagePlus className="w-5 h-5 text-green-500" />
-            Generated Images
-            <span className="text-sm font-normal text-gray-500">
-              (Click to select)
-            </span>
-          </h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white flex items-center gap-2">
+              <ImagePlus className="w-5 h-5 text-green-500" />
+              Generated Images
+              <span className="text-sm font-normal text-gray-500">
+                ({generatedImages.filter((i) => i.selected).length} selected)
+              </span>
+            </h3>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setGeneratedImages((prev) => prev.map((img) => ({ ...img, selected: true })))}
+              >
+                Select All
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setGeneratedImages((prev) => prev.map((img) => ({ ...img, selected: false })))}
+              >
+                Deselect All
+              </Button>
+            </div>
+          </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
-            {generatedImages.map((image, index) => (
+          {/* Category selection - shared for all */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Category (for all) *
+            </label>
+            <select
+              value={saveCategory}
+              onChange={(e) => setSaveCategory(e.target.value)}
+              className="w-full max-w-xs px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+            >
+              <option value="">Select category...</option>
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.displayName}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Image cards with per-image forms */}
+          <div className="space-y-4 mb-6">
+            {generatedImages.map((imgInfo, index) => (
               <div
                 key={index}
-                onClick={() => toggleImageSelection(index)}
-                className={`relative aspect-square rounded-lg overflow-hidden cursor-pointer border-2 transition-all ${
-                  selectedImages.has(index)
-                    ? 'border-green-500 ring-2 ring-green-500/50'
-                    : 'border-gray-200 dark:border-gray-700 hover:border-gray-400'
+                className={`flex gap-4 p-4 rounded-lg border-2 transition-all ${
+                  imgInfo.selected
+                    ? 'border-green-500 bg-green-50 dark:bg-green-900/20'
+                    : 'border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-800/50'
                 }`}
               >
-                <img
-                  src={image}
-                  alt={`Generated ${index + 1}`}
-                  className="w-full h-full object-cover"
-                />
-                {selectedImages.has(index) && (
-                  <div className="absolute top-2 right-2 bg-green-500 rounded-full p-1">
-                    <Check className="w-4 h-4 text-white" />
+                {/* Image with selection toggle */}
+                <div
+                  onClick={() => toggleImageSelection(index)}
+                  className="relative w-32 h-32 flex-shrink-0 rounded-lg overflow-hidden cursor-pointer"
+                >
+                  <img
+                    src={imgInfo.image}
+                    alt={`Generated ${index + 1}`}
+                    className="w-full h-full object-cover"
+                  />
+                  {imgInfo.selected && (
+                    <div className="absolute top-2 right-2 bg-green-500 rounded-full p-1">
+                      <Check className="w-4 h-4 text-white" />
+                    </div>
+                  )}
+                  <div className="absolute inset-0 flex items-center justify-center bg-black/40 opacity-0 hover:opacity-100 transition-opacity">
+                    <span className="text-white text-xs">
+                      {imgInfo.selected ? 'Deselect' : 'Select'}
+                    </span>
                   </div>
-                )}
+                </div>
+
+                {/* Per-image form fields */}
+                <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Component ID *
+                    </label>
+                    <Input
+                      value={imgInfo.componentId}
+                      onChange={(e) =>
+                        updateImageInfo(index, 'componentId', e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))
+                      }
+                      placeholder="e.g., hair_spiky_01"
+                      className="text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Display Name *
+                    </label>
+                    <Input
+                      value={imgInfo.componentName}
+                      onChange={(e) => updateImageInfo(index, 'componentName', e.target.value)}
+                      placeholder="e.g., Spiky Hair"
+                      className="text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Tags (comma-separated)
+                    </label>
+                    <Input
+                      value={imgInfo.tags}
+                      onChange={(e) => updateImageInfo(index, 'tags', e.target.value)}
+                      placeholder="e.g., spiky, anime"
+                      className="text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-600 dark:text-gray-400 mb-1">
+                      Rarity
+                    </label>
+                    <select
+                      value={imgInfo.rarity}
+                      onChange={(e) => updateImageInfo(index, 'rarity', e.target.value)}
+                      className="w-full px-3 py-2 text-sm rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
+                    >
+                      <option value="common">Common</option>
+                      <option value="rare">Rare</option>
+                      <option value="epic">Epic</option>
+                      <option value="legendary">Legendary</option>
+                    </select>
+                  </div>
+                </div>
               </div>
             ))}
           </div>
 
-          {/* Save Form */}
-          {selectedImages.size > 0 && (
-            <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-              <h4 className="font-medium text-gray-900 dark:text-white mb-4">
-                Save {selectedImages.size} Selected Image{selectedImages.size > 1 ? 's' : ''}
-              </h4>
+          {/* Save actions */}
+          <div className="flex gap-3">
+            <Button
+              onClick={handleSaveSelected}
+              disabled={isSaving || !saveCategory || !generatedImages.some((i) => i.selected)}
+              className="bg-green-500 hover:bg-green-600"
+            >
+              {isSaving ? (
+                <>
+                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save className="w-4 h-4 mr-2" />
+                  Save {generatedImages.filter((i) => i.selected).length} Selected Component
+                  {generatedImages.filter((i) => i.selected).length !== 1 ? 's' : ''}
+                </>
+              )}
+            </Button>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Category *
-                  </label>
-                  <select
-                    value={saveCategory}
-                    onChange={(e) => setSaveCategory(e.target.value)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  >
-                    <option value="">Select category...</option>
-                    {categories.map((cat) => (
-                      <option key={cat.id} value={cat.id}>
-                        {cat.displayName}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Component ID *
-                  </label>
-                  <Input
-                    value={saveComponentId}
-                    onChange={(e) => setSaveComponentId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))}
-                    placeholder="e.g., hair_spiky_01"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Display Name *
-                  </label>
-                  <Input
-                    value={saveComponentName}
-                    onChange={(e) => setSaveComponentName(e.target.value)}
-                    placeholder="e.g., Spiky Hair"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Rarity
-                  </label>
-                  <select
-                    value={saveRarity}
-                    onChange={(e) => setSaveRarity(e.target.value as ComponentRarity)}
-                    className="w-full px-3 py-2 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 text-gray-900 dark:text-white"
-                  >
-                    <option value="common">Common</option>
-                    <option value="rare">Rare</option>
-                    <option value="epic">Epic</option>
-                    <option value="legendary">Legendary</option>
-                  </select>
-                </div>
-
-                <div className="md:col-span-2">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    Tags (comma-separated)
-                  </label>
-                  <Input
-                    value={saveTags}
-                    onChange={(e) => setSaveTags(e.target.value)}
-                    placeholder="e.g., spiky, short, anime, trendy"
-                  />
-                </div>
-              </div>
-
-              <div className="flex gap-3">
-                <Button
-                  onClick={handleSaveSelected}
-                  disabled={isSaving || !saveCategory || !saveComponentId || !saveComponentName}
-                  className="bg-green-500 hover:bg-green-600"
-                >
-                  {isSaving ? (
-                    <>
-                      <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                      Saving...
-                    </>
-                  ) : (
-                    <>
-                      <Save className="w-4 h-4 mr-2" />
-                      Save Component{selectedImages.size > 1 ? 's' : ''}
-                    </>
-                  )}
-                </Button>
-
-                <Button
-                  variant="outline"
-                  onClick={() => {
-                    setSelectedImages(new Set());
-                  }}
-                >
-                  <X className="w-4 h-4 mr-2" />
-                  Clear Selection
-                </Button>
-              </div>
-            </div>
-          )}
+            <Button
+              variant="outline"
+              onClick={() => setGeneratedImages([])}
+            >
+              <X className="w-4 h-4 mr-2" />
+              Clear All
+            </Button>
+          </div>
         </Card>
       )}
     </div>

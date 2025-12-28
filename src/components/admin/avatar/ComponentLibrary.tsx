@@ -51,6 +51,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
 
   // Edit modal
   const [editingComponent, setEditingComponent] = useState<AvatarComponent | null>(null);
+  const [editId, setEditId] = useState('');
   const [editName, setEditName] = useState('');
   const [editTags, setEditTags] = useState('');
   const [editRarity, setEditRarity] = useState<ComponentRarity>('common');
@@ -110,6 +111,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
 
   const handleEdit = (component: AvatarComponent) => {
     setEditingComponent(component);
+    setEditId(component.id);
     setEditName(component.name);
     setEditTags(component.tags.join(', '));
     setEditRarity(component.rarity);
@@ -121,7 +123,9 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     setIsSaving(true);
 
     try {
+      const newId = editId.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
       const response = await adminPatch(`/api/admin/avatar/components?id=${editingComponent.id}`, {
+        newId: newId !== editingComponent.id ? newId : undefined,
         name: editName,
         tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
         rarity: editRarity,
@@ -132,6 +136,9 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
         setEditingComponent(null);
         loadComponents();
         onRefresh();
+      } else {
+        const error = await response.json();
+        alert(`Failed to update: ${error.error || 'Unknown error'}`);
       }
     } catch (error) {
       console.error('Failed to update component:', error);
@@ -345,7 +352,21 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
 
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Name
+              Component ID (slug)
+            </label>
+            <Input
+              value={editId}
+              onChange={(e) => setEditId(e.target.value.toLowerCase().replace(/[^a-z0-9_-]/g, '_'))}
+              placeholder="e.g., hair_spiky_01"
+            />
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Lowercase letters, numbers, underscores and hyphens only
+            </p>
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Display Name
             </label>
             <Input
               value={editName}
