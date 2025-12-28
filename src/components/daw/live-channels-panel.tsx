@@ -17,6 +17,7 @@ interface LiveChannelsPanelProps {
   onMuteUser: (userId: string, muted: boolean) => void;
   onVolumeChange: (userId: string, volume: number) => void;
   onMuteSelf: () => void;
+  isGlobalMuted?: boolean;
   roomId?: string;
 }
 
@@ -42,6 +43,7 @@ export function LiveChannelsPanel({
   onMuteUser,
   onVolumeChange,
   onMuteSelf,
+  isGlobalMuted,
   roomId,
 }: LiveChannelsPanelProps) {
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
@@ -161,6 +163,7 @@ export function LiveChannelsPanel({
                   trackNumber={index + 1}
                   isFirst={index === 0}
                   userName={currentUser.name}
+                  isGlobalMuted={isGlobalMuted}
                   onRemove={localTracks.length > 1 ? () => removeTrack(track.id) : undefined}
                 />
               );
@@ -190,6 +193,7 @@ export function LiveChannelsPanel({
                   audioLevel={level}
                   trackColor={trackColor}
                   trackNumber={globalTrackNumber}
+                  isGlobalMuted={isGlobalMuted}
                   onMute={(muted) => onMuteUser(user.id, muted)}
                   onVolumeChange={(volume) => onVolumeChange(user.id, volume)}
                 />

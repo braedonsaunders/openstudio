@@ -132,6 +132,7 @@ interface UserTrackHeaderProps {
   trackNumber: number;
   isFirst: boolean;
   userName: string;
+  isGlobalMuted?: boolean;
   onRemove?: () => void;
 }
 
@@ -141,6 +142,7 @@ export function UserTrackHeader({
   trackNumber,
   isFirst,
   userName,
+  isGlobalMuted,
   onRemove,
 }: UserTrackHeaderProps) {
   const [isExpanded, setIsExpanded] = useState(false);
@@ -213,19 +215,28 @@ export function UserTrackHeader({
     }
   };
 
-  // Only active if armed, not muted, and has signal
-  const isActive = track.isArmed && !track.isMuted && audioLevel > 0.05;
-  // When not armed, show level as 0 (track is not receiving input)
-  const effectiveLevel = track.isArmed ? audioLevel : 0;
+  // Only active if armed, not muted, not globally muted, and has signal
+  const isActive = track.isArmed && !track.isMuted && !isGlobalMuted && audioLevel > 0.05;
+  // When not armed or globally muted, show level as 0
+  const effectiveLevel = track.isArmed && !isGlobalMuted ? audioLevel : 0;
 
   return (
     <div
       className={cn(
-        'border-b border-gray-200 dark:border-white/5 transition-all',
-        isActive && 'bg-gray-100/50 dark:bg-white/[0.02]'
+        'border-b border-gray-200 dark:border-white/5 transition-all relative',
+        isActive && 'bg-gray-100/50 dark:bg-white/[0.02]',
+        isGlobalMuted && 'opacity-50'
       )}
       style={{ '--track-color': track.color } as React.CSSProperties}
     >
+      {/* Global mute overlay */}
+      {isGlobalMuted && (
+        <div className="absolute inset-0 bg-red-500/5 pointer-events-none z-10 flex items-center justify-center">
+          <div className="absolute top-1 right-8 bg-red-500/20 text-red-400 text-[8px] font-bold px-1.5 py-0.5 rounded uppercase tracking-wider">
+            Muted
+          </div>
+        </div>
+      )}
       {/* Main Row - Fixed height matching the lane */}
       <div className="h-[80px] flex">
         {/* Left Content Area */}
