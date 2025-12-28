@@ -181,6 +181,10 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
     return maxDuration;
   }, [songTracks]);
 
+  // Memoize track type checks to avoid recalculating on every render
+  const hasAudioTracks = useMemo(() => songTracks.some((t) => t.type === 'audio'), [songTracks]);
+  const hasLoopTracks = useMemo(() => songTracks.some((t) => t.type === 'loop'), [songTracks]);
+
   // Check if Song has any tracks to play
   const hasSongTracks = songTracks.length > 0;
 
@@ -526,10 +530,6 @@ export function DAWLayout({ roomId }: DAWLayoutProps) {
   const playStartPositionRef = useRef<number>(0);
   const loopTimeAnimationRef = useRef<number | null>(null);
   const [seekVersion, setSeekVersion] = useState(0);
-
-  // Memoize track type checks to avoid recalculating on every render
-  const hasAudioTracks = useMemo(() => songTracks.some((t) => t.type === 'audio'), [songTracks]);
-  const hasLoopTracks = useMemo(() => songTracks.some((t) => t.type === 'loop'), [songTracks]);
 
   useEffect(() => {
     // Only run for loop-only playback (no audio tracks to drive time)
