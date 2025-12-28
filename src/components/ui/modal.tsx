@@ -25,14 +25,20 @@ export function Modal({
   children,
   className,
   showCloseButton = true,
-  variant = 'light',
+  variant,
 }: ModalProps) {
-  const isDark = variant === 'dark';
   const [mounted, setMounted] = useState(false);
+  const [isDarkMode, setIsDarkMode] = useState(false);
 
   useEffect(() => {
     setMounted(true);
-  }, []);
+    // Auto-detect dark mode from document class if variant not specified
+    if (variant === undefined) {
+      setIsDarkMode(document.documentElement.classList.contains('dark'));
+    }
+  }, [variant]);
+
+  const isDark = variant === 'dark' || (variant === undefined && isDarkMode);
 
   const handleEscape = useCallback(
     (e: KeyboardEvent) => {
