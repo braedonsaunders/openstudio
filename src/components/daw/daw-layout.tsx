@@ -122,6 +122,8 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     stopLoopTrack,
     // Quality/Latency settings
     setQualityPreset,
+    // WebRTC
+    getCloudflareRef,
   } = useRoom(roomId);
 
   const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize } = useAudioEngine();
@@ -1007,6 +1009,8 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
             onAcceptOptimization={handleAcceptOptimization}
             onDismissOptimization={handleDismissOptimization}
             width={rightPanelWidth}
+            // WebRTC for AI audio sharing
+            getCloudflareRef={getCloudflareRef}
           />
         )}
       </div>

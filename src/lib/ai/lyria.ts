@@ -86,6 +86,7 @@ export class LyriaSession {
   private ws: WebSocket | null = null;
   private audioContext: AudioContext | null = null;
   private gainNode: GainNode | null = null;
+  private streamDestination: MediaStreamAudioDestinationNode | null = null;
   private state: LyriaSessionState = 'disconnected';
   private config: LyriaConfig = { ...DEFAULT_CONFIG };
   private prompts: LyriaWeightedPrompt[] = [];
@@ -125,6 +126,15 @@ export class LyriaSession {
   }
 
   /**
+   * Get the output MediaStream for WebRTC sharing
+   * This stream contains the Lyria audio and can be added to CloudflareCalls
+   * Returns null if not connected
+   */
+  getOutputStream(): MediaStream | null {
+    return this.streamDestination?.stream || null;
+  }
+
+  /**
    * Connect to Lyria RealTime
    */
   async connect(): Promise<void> {
@@ -139,7 +149,14 @@ export class LyriaSession {
       // Initialize Web Audio context
       this.audioContext = new AudioContext({ sampleRate: 48000 });
       this.gainNode = this.audioContext.createGain();
+
+      // Create MediaStream destination for WebRTC sharing
+      // This allows Lyria audio to be shared with other room participants
+      this.streamDestination = this.audioContext.createMediaStreamDestination();
+
+      // Route audio to both local speakers and the stream destination
       this.gainNode.connect(this.audioContext.destination);
+      this.gainNode.connect(this.streamDestination);
 
       // Connect WebSocket with API key
       const wsUrl = `${LYRIA_WS_ENDPOINT}?key=${this.apiKey}`;
@@ -437,15 +454,24 @@ export class LyriaSession {
 
   private handleMessage(event: MessageEvent): void {
     if (event.data instanceof ArrayBuffer) {
-      // Audio data
-      this.handleAudioData(event.data);
-    } else {
-      // JSON message
+      // Try to parse as JSON first (setupComplete comes as binary)
+      try {
+        const decoder = new TextDecoder();
+        const text = decoder.decode(event.data);
+        const message = JSON.parse(text);
+        this.handleJsonMessage(message);
+        return;
+      } catch {
+        // Not JSON, treat as audio data
+        this.handleAudioData(event.data);
+      }
+    } else if (typeof event.data === 'string') {
+      // JSON message as string
       try {
         const message = JSON.parse(event.data);
         this.handleJsonMessage(message);
       } catch (e) {
-        console.error('Failed to parse Lyria message:', e);
+        console.error('[Lyria] Failed to parse message:', e);
       }
     }
   }
@@ -553,6 +579,12 @@ export class LyriaSession {
     });
     this.scheduledSources = [];
     this.audioQueue = [];
+
+    // Disconnect stream destination
+    if (this.streamDestination) {
+      this.streamDestination.disconnect();
+      this.streamDestination = null;
+    }
 
     if (this.audioContext) {
       this.audioContext.close();

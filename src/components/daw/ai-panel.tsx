@@ -34,14 +34,23 @@ import {
   type LyriaMoodId,
 } from '@/lib/ai/lyria';
 import type { LyriaSessionState } from '@/types';
+import type { CloudflareCalls } from '@/lib/cloudflare/calls';
 
-export function AIPanel() {
+interface AIPanelProps {
+  getCloudflareRef?: () => CloudflareCalls | null;
+}
+
+export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   const { syncedAnalysis } = useRoomStore();
 
   // Lyria session
   const sessionRef = useRef<LyriaSession | null>(null);
   const [sessionState, setSessionState] = useState<LyriaSessionState>('disconnected');
   const [error, setError] = useState<string | null>(null);
+
+  // WebRTC track ID for sharing Lyria audio
+  const lyriaTrackIdRef = useRef<string | null>(null);
+  const [isSharingAudio, setIsSharingAudio] = useState(false);
 
   // UI state
   const [selectedStyle, setSelectedStyle] = useState<LyriaStyleId>('jazz');
@@ -84,9 +93,15 @@ export function AIPanel() {
     sessionRef.current = session;
 
     return () => {
+      // Cleanup: stop sharing and disconnect
+      if (lyriaTrackIdRef.current && getCloudflareRef) {
+        const cloudflare = getCloudflareRef();
+        cloudflare?.removeTrack(lyriaTrackIdRef.current).catch(() => {});
+        lyriaTrackIdRef.current = null;
+      }
       session.disconnect();
     };
-  }, []);
+  }, [getCloudflareRef]);
 
   // Update session when room BPM changes
   useEffect(() => {
@@ -102,6 +117,51 @@ export function AIPanel() {
       sessionRef.current.setScale(scale);
     }
   }, [roomKey, roomKeyScale, sessionState]);
+
+  // Add Lyria audio to WebRTC for sharing with room
+  const shareAudioWithRoom = useCallback(async () => {
+    if (!sessionRef.current || !getCloudflareRef) return;
+
+    const cloudflare = getCloudflareRef();
+    if (!cloudflare) {
+      console.warn('[Lyria] No CloudflareCalls connection available');
+      return;
+    }
+
+    const outputStream = sessionRef.current.getOutputStream();
+    if (!outputStream) {
+      console.warn('[Lyria] No output stream available');
+      return;
+    }
+
+    try {
+      // Add Lyria audio as a track - stereo for full quality
+      const trackId = await cloudflare.addTrack(outputStream, 'lyria', 'AI Live Music', true);
+      lyriaTrackIdRef.current = trackId;
+      setIsSharingAudio(true);
+      console.log('[Lyria] Audio shared with room:', trackId);
+    } catch (err) {
+      console.error('[Lyria] Failed to share audio:', err);
+    }
+  }, [getCloudflareRef]);
+
+  // Remove Lyria audio from WebRTC
+  const stopSharingAudio = useCallback(async () => {
+    if (!lyriaTrackIdRef.current || !getCloudflareRef) return;
+
+    const cloudflare = getCloudflareRef();
+    if (!cloudflare) return;
+
+    try {
+      await cloudflare.removeTrack(lyriaTrackIdRef.current);
+      console.log('[Lyria] Audio sharing stopped');
+    } catch (err) {
+      console.error('[Lyria] Failed to stop audio sharing:', err);
+    }
+
+    lyriaTrackIdRef.current = null;
+    setIsSharingAudio(false);
+  }, [getCloudflareRef]);
 
   const handleConnect = useCallback(async () => {
     if (!sessionRef.current) return;
@@ -120,14 +180,19 @@ export function AIPanel() {
         bass,
         temperature: temperature * 3, // Scale to 0-3
       });
+
+      // Share audio with room once connected
+      await shareAudioWithRoom();
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [roomBpm, roomKey, roomKeyScale, density, brightness, drums, bass, temperature]);
+  }, [roomBpm, roomKey, roomKeyScale, density, brightness, drums, bass, temperature, shareAudioWithRoom]);
 
-  const handleDisconnect = useCallback(() => {
+  const handleDisconnect = useCallback(async () => {
+    // Stop sharing audio before disconnecting
+    await stopSharingAudio();
     sessionRef.current?.disconnect();
-  }, []);
+  }, [stopSharingAudio]);
 
   const handlePlay = useCallback(() => {
     if (!sessionRef.current) return;
@@ -223,7 +288,11 @@ export function AIPanel() {
                 {isConnecting ? 'Connecting...' : isConnected ? 'Connected' : 'Disconnected'}
               </p>
               <p className="text-[10px] text-gray-500 dark:text-zinc-500">
-                {isConnected ? 'Real-time streaming ready' : 'Click to connect'}
+                {isConnected
+                  ? isSharingAudio
+                    ? 'Sharing audio with room'
+                    : 'Real-time streaming ready'
+                  : 'Click to connect'}
               </p>
             </div>
           </div>
