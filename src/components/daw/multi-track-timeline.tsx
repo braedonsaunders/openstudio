@@ -283,8 +283,9 @@ export function MultiTrackTimeline({
   onStop,
 }: MultiTrackTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const [zoom, setZoom] = useState(50); // pixels per second
+  const [zoom, setZoom] = useState(10); // pixels per second - start zoomed out
   const [scrollLeft, setScrollLeft] = useState(0);
+  const hasSetInitialZoom = useRef(false);
   const [contextMenu, setContextMenu] = useState<ContextMenuState>({
     isOpen: false,
     x: 0,
@@ -318,6 +319,46 @@ export function MultiTrackTimeline({
 
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
+  const previousSongIdRef = useRef<string | null>(null);
+
+  // Reset playback state when song changes
+  useEffect(() => {
+    const songId = currentSong?.id || null;
+    if (previousSongIdRef.current !== null && previousSongIdRef.current !== songId) {
+      // Song changed - reset playback state
+      const { setCurrentTime, setPlaying: setPlayingState } = useAudioStore.getState();
+      setPlayingState(false);
+      setCurrentTime(0);
+      if (onStop) onStop();
+      // Reset zoom tracking for new song
+      hasSetInitialZoom.current = false;
+    }
+    previousSongIdRef.current = songId;
+  }, [currentSong?.id, onStop]);
+
+  // Auto-zoom to fit content when tracks are first added
+  useEffect(() => {
+    if (!containerRef.current || hasSetInitialZoom.current) return;
+
+    // If we have tracks, zoom to fit the content
+    if (unifiedTracks.length > 0) {
+      const containerWidth = containerRef.current.clientWidth - 96; // Account for track labels
+      // Calculate max end time
+      let maxEndTime = 0;
+      unifiedTracks.forEach((track) => {
+        const endTime = track.ref.startOffset + track.duration;
+        maxEndTime = Math.max(maxEndTime, endTime);
+      });
+
+      if (maxEndTime > 0) {
+        // Zoom to fit content with some padding
+        const idealZoom = containerWidth / (maxEndTime * 1.2);
+        // Clamp zoom to reasonable range
+        setZoom(Math.min(100, Math.max(10, idealZoom)));
+        hasSetInitialZoom.current = true;
+      }
+    }
+  }, [unifiedTracks]);
 
   // Calculate loop duration from definition
   const getLoopDuration = useCallback((loopDef: LoopDefinition | undefined): number => {
@@ -388,15 +429,21 @@ export function MultiTrackTimeline({
     return <Music className="w-3 h-3" />;
   };
 
-  // Handle timeline click to seek
+  // Handle timeline click to seek - accurate positioning without snapping
   const handleTimelineClick = useCallback(
     (e: React.MouseEvent) => {
       if (!onSeek || !containerRef.current) return;
 
+      // Don't seek if clicking on a track clip (handled by drag)
+      const target = e.target as HTMLElement;
+      if (target.closest('[data-track-clip]')) return;
+
       const rect = containerRef.current.getBoundingClientRect();
-      const x = e.clientX - rect.left + scrollLeft;
-      const time = x / zoom;
-      onSeek(Math.max(0, Math.min(songDuration, time)));
+      // Account for the 96px track label width offset
+      const x = e.clientX - rect.left + scrollLeft - 96;
+      const time = Math.max(0, x / zoom);
+      // Precise seek - no rounding or snapping
+      onSeek(Math.min(songDuration, time));
     },
     [onSeek, scrollLeft, zoom, songDuration]
   );
@@ -923,6 +970,7 @@ export function MultiTrackTimeline({
 
                     {/* Track clip */}
                     <div
+                      data-track-clip
                       className={cn(
                         'absolute top-1 bottom-1 rounded-md overflow-hidden transition-opacity cursor-grab hover:ring-1 hover:ring-white/20',
                         track.muted ? 'opacity-40' : 'opacity-100',

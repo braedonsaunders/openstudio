@@ -41,8 +41,8 @@ interface SongsState {
   loadSongs: (roomId: string) => Promise<void>;
   createSong: (roomId: string, name: string, createdBy: string, createdByName?: string) => Song;
   updateSong: (songId: string, changes: Partial<Song>) => void;
-  deleteSong: (songId: string) => void;
-  selectSong: (songId: string | null) => void;
+  deleteSong: (songId: string) => Promise<void>;
+  selectSong: (songId: string | null) => Promise<void>;
   reorderSongs: (roomId: string, songIds: string[]) => void;
 
   // Track management within songs
@@ -152,10 +152,16 @@ export const useSongsStore = create<SongsState>((set, get) => ({
     set({ songs: newSongs });
   },
 
-  deleteSong: (songId: string) => {
+  deleteSong: async (songId: string) => {
     const { songs, currentSongId, getSongsByRoom } = get();
     const song = songs.get(songId);
     if (!song) return;
+
+    // Reset playback state when deleting a song
+    const { useAudioStore } = await import('./audio-store');
+    const { setPlaying, setCurrentTime } = useAudioStore.getState();
+    setPlaying(false);
+    setCurrentTime(0);
 
     const newSongs = new Map(songs);
     newSongs.delete(songId);
@@ -175,7 +181,17 @@ export const useSongsStore = create<SongsState>((set, get) => ({
     set({ songs: newSongs, currentSongId: newCurrentSongId });
   },
 
-  selectSong: (songId: string | null) => {
+  selectSong: async (songId: string | null) => {
+    const { currentSongId } = get();
+
+    // Reset playback state when switching songs
+    if (currentSongId !== songId) {
+      const { useAudioStore } = await import('./audio-store');
+      const { setPlaying, setCurrentTime } = useAudioStore.getState();
+      setPlaying(false);
+      setCurrentTime(0);
+    }
+
     set({ currentSongId: songId });
   },
 
