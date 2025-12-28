@@ -8,7 +8,7 @@ import {
   midiToNoteName,
 } from '@/lib/audio/instrument-registry';
 import { SoundEngine } from '@/lib/audio/sound-engine';
-import { Copy, Scissors } from 'lucide-react';
+import { Copy, Scissors, Volume2 } from 'lucide-react';
 
 // =============================================================================
 // Types
@@ -20,35 +20,31 @@ interface NoteGridEditorProps {
   bars: number;
   timeSignature: [number, number];
   bpm: number;
-  gridResolution?: number; // Subdivisions per beat (4 = 16th notes)
+  gridResolution?: number;
   onChange: (notes: MidiNote[]) => void;
   onPreviewNote?: (note: number, velocity: number) => void;
   isPlaying?: boolean;
-  playbackPosition?: number; // 0-1 normalized position
+  playbackPosition?: number;
   className?: string;
   isDark?: boolean;
 }
 
 interface GridCell {
-  beat: number;
-  subdivision: number;
+  col: number;
+  row: number;
   noteNumber: number;
-  t: number; // Normalized time position
-}
-
-interface SelectedNote {
-  index: number;
-  note: MidiNote;
+  t: number;
 }
 
 // =============================================================================
 // Constants
 // =============================================================================
 
-const CELL_WIDTH = 28;
-const CELL_HEIGHT = 22;
-const LABEL_WIDTH = 52;
-const HEADER_HEIGHT = 28;
+const CELL_WIDTH = 24;
+const CELL_HEIGHT = 20;
+const LABEL_WIDTH = 48;
+const HEADER_HEIGHT = 24;
+const MIN_NOTE_WIDTH = 4;
 
 // =============================================================================
 // Component
@@ -69,19 +65,29 @@ export function NoteGridEditor({
   isDark = false,
 }: NoteGridEditorProps) {
   const containerRef = useRef<HTMLDivElement>(null);
-  const gridRef = useRef<HTMLDivElement>(null);
+  const gridContentRef = useRef<HTMLDivElement>(null);
+
+  // State
+  const [selectedVelocity, setSelectedVelocity] = useState(100);
+  const [selectedNotes, setSelectedNotes] = useState<Set<number>>(new Set());
+  const [hoveredCell, setHoveredCell] = useState<GridCell | null>(null);
+
+  // Drawing state
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawMode, setDrawMode] = useState<'add' | 'remove'>('add');
-  const [selectedVelocity, setSelectedVelocity] = useState(100);
-  const [hoveredCell, setHoveredCell] = useState<GridCell | null>(null);
-  const [selectedNotes, setSelectedNotes] = useState<Set<number>>(new Set());
+
+  // Dragging state
   const [isDragging, setIsDragging] = useState(false);
   const [dragStartX, setDragStartX] = useState(0);
   const [dragOffset, setDragOffset] = useState(0);
-  const [isExtending, setIsExtending] = useState(false);
-  const [extendingNoteIndex, setExtendingNoteIndex] = useState<number | null>(null);
 
-  // Audio preview
+  // Extend state - KEY FIX: store original duration
+  const [isExtending, setIsExtending] = useState(false);
+  const [extendNoteIndex, setExtendNoteIndex] = useState<number | null>(null);
+  const [extendOriginalDuration, setExtendOriginalDuration] = useState(0);
+  const [extendStartX, setExtendStartX] = useState(0);
+
+  // Audio
   const audioContextRef = useRef<AudioContext | null>(null);
   const soundEngineRef = useRef<SoundEngine | null>(null);
 
@@ -94,6 +100,9 @@ export function NoteGridEditor({
   const beatsPerBar = timeSignature[0];
   const totalBeats = bars * beatsPerBar;
   const totalColumns = totalBeats * gridResolution;
+  const cellDuration = 1 / totalColumns;
+
+  // Grid dimensions
   const gridWidth = totalColumns * CELL_WIDTH;
 
   // Generate note rows
@@ -101,7 +110,6 @@ export function NoteGridEditor({
     const rows: { note: number; label: string }[] = [];
 
     if (isDrums && instrument?.drumMap) {
-      // For drums, only show mapped notes
       const mappedNotes = Object.keys(instrument.drumMap)
         .map(Number)
         .filter(n => n >= noteRange.min && n <= noteRange.max)
@@ -114,7 +122,6 @@ export function NoteGridEditor({
         });
       }
     } else {
-      // For melodic instruments, show full range
       for (let note = noteRange.max; note >= noteRange.min; note--) {
         rows.push({
           note,
@@ -126,7 +133,9 @@ export function NoteGridEditor({
     return rows;
   }, [noteRange, isDrums, instrument]);
 
-  // Initialize audio for preview
+  const gridHeight = noteRows.length * CELL_HEIGHT;
+
+  // Initialize audio
   const initAudio = useCallback(async () => {
     if (!audioContextRef.current) {
       audioContextRef.current = new AudioContext({ sampleRate: 48000 });
@@ -138,24 +147,17 @@ export function NoteGridEditor({
     }
   }, []);
 
-  // Play note preview
+  // Play note preview - IMMEDIATELY plays sound
   const playPreview = useCallback(async (noteNumber: number, velocity: number) => {
     await initAudio();
     if (soundEngineRef.current) {
-      soundEngineRef.current.playNote(instrumentId, noteNumber, velocity, undefined, 0.2);
+      // Play with short duration for preview
+      soundEngineRef.current.playNote(instrumentId, noteNumber, velocity, undefined, 0.15);
     }
     onPreviewNote?.(noteNumber, velocity);
   }, [initAudio, instrumentId, onPreviewNote]);
 
-  // Find note at position
-  const findNoteAtPosition = useCallback((t: number, noteNumber: number): number => {
-    const tolerance = 0.5 / totalColumns;
-    return notes.findIndex(
-      (n) => Math.abs(n.t - t) < tolerance && n.n === noteNumber
-    );
-  }, [notes, totalColumns]);
-
-  // Check if note is within a cell (including duration)
+  // Find note at position (considering duration)
   const getNoteAtCell = useCallback((t: number, noteNumber: number): { index: number; note: MidiNote } | null => {
     for (let i = 0; i < notes.length; i++) {
       const n = notes[i];
@@ -166,14 +168,43 @@ export function NoteGridEditor({
     return null;
   }, [notes]);
 
-  // Handle cell click
-  const handleCellClick = useCallback((cell: GridCell, e: React.MouseEvent) => {
-    // Check if clicking on existing note
+  // Check if position is near the end of a note (for extend handle)
+  const isNearNoteEnd = useCallback((t: number, noteNumber: number): { index: number; note: MidiNote } | null => {
+    for (let i = 0; i < notes.length; i++) {
+      const n = notes[i];
+      if (n.n === noteNumber) {
+        const noteEnd = n.t + n.d;
+        // Check if we're in the last cell of the note
+        if (t >= noteEnd - cellDuration && t < noteEnd + cellDuration * 0.5) {
+          return { index: i, note: n };
+        }
+      }
+    }
+    return null;
+  }, [notes, cellDuration]);
+
+  // Handle cell mouse down
+  const handleCellMouseDown = useCallback((cell: GridCell, e: React.MouseEvent) => {
+    e.preventDefault();
+
     const existingNote = getNoteAtCell(cell.t, cell.noteNumber);
+    const nearEnd = isNearNoteEnd(cell.t, cell.noteNumber);
+
+    // Check if clicking near the end of a note to extend it
+    if (nearEnd && existingNote && Math.abs((existingNote.note.t + existingNote.note.d) - (cell.t + cellDuration)) < cellDuration) {
+      setIsExtending(true);
+      setExtendNoteIndex(existingNote.index);
+      setExtendOriginalDuration(existingNote.note.d); // KEY FIX: Store original duration
+      setExtendStartX(e.clientX);
+      return;
+    }
 
     if (existingNote) {
+      // CLICK-TO-PLAY: Always play the note sound when clicking on it
+      playPreview(existingNote.note.n, existingNote.note.v);
+
       if (e.shiftKey) {
-        // Shift+click to toggle selection
+        // Shift+click: Toggle selection
         setSelectedNotes(prev => {
           const next = new Set(prev);
           if (next.has(existingNote.index)) {
@@ -183,33 +214,44 @@ export function NoteGridEditor({
           }
           return next;
         });
-      } else if (selectedNotes.has(existingNote.index)) {
-        // Click on selected note - deselect all
-        setSelectedNotes(new Set());
-      } else {
-        // Click to remove note
+      } else if (e.altKey || e.metaKey) {
+        // Alt/Cmd+click: Remove note
         const newNotes = notes.filter((_, i) => i !== existingNote.index);
         onChange(newNotes);
         setSelectedNotes(new Set());
-        setDrawMode('remove');
+      } else {
+        // Regular click: Start dragging if selected, otherwise select it
+        if (selectedNotes.has(existingNote.index)) {
+          setIsDragging(true);
+          setDragStartX(e.clientX);
+          setDragOffset(0);
+        } else {
+          setSelectedNotes(new Set([existingNote.index]));
+          setIsDragging(true);
+          setDragStartX(e.clientX);
+          setDragOffset(0);
+        }
       }
     } else {
-      // Add note
+      // Empty cell: Add note
       const newNote: MidiNote = {
         t: cell.t,
         n: cell.noteNumber,
         v: selectedVelocity,
-        d: 1 / totalColumns, // Default to one grid cell duration
+        d: cellDuration,
       };
       onChange([...notes, newNote]);
       playPreview(cell.noteNumber, selectedVelocity);
       setDrawMode('add');
+      setIsDrawing(true);
       setSelectedNotes(new Set());
     }
-  }, [notes, onChange, getNoteAtCell, selectedVelocity, totalColumns, playPreview, selectedNotes]);
+  }, [notes, onChange, getNoteAtCell, isNearNoteEnd, selectedVelocity, cellDuration, playPreview, selectedNotes]);
 
-  // Handle drag drawing
+  // Handle cell mouse enter (for drawing)
   const handleCellEnter = useCallback((cell: GridCell) => {
+    setHoveredCell(cell);
+
     if (!isDrawing || isDragging || isExtending) return;
 
     const existingNote = getNoteAtCell(cell.t, cell.noteNumber);
@@ -219,7 +261,7 @@ export function NoteGridEditor({
         t: cell.t,
         n: cell.noteNumber,
         v: selectedVelocity,
-        d: 1 / totalColumns,
+        d: cellDuration,
       };
       onChange([...notes, newNote]);
       playPreview(cell.noteNumber, selectedVelocity);
@@ -227,39 +269,9 @@ export function NoteGridEditor({
       const newNotes = notes.filter((_, i) => i !== existingNote.index);
       onChange(newNotes);
     }
-  }, [isDrawing, isDragging, isExtending, drawMode, notes, onChange, getNoteAtCell, selectedVelocity, totalColumns, playPreview]);
+  }, [isDrawing, isDragging, isExtending, drawMode, notes, onChange, getNoteAtCell, selectedVelocity, cellDuration, playPreview]);
 
-  // Mouse handlers
-  const handleMouseDown = (cell: GridCell, e: React.MouseEvent) => {
-    const existingNote = getNoteAtCell(cell.t, cell.noteNumber);
-
-    if (existingNote && !e.shiftKey) {
-      // Check if clicking on the right edge to extend
-      const noteEndT = existingNote.note.t + existingNote.note.d;
-      const cellEndT = cell.t + (1 / totalColumns);
-
-      if (Math.abs(noteEndT - cellEndT) < 0.01) {
-        // Start extending
-        setIsExtending(true);
-        setExtendingNoteIndex(existingNote.index);
-        setDragStartX(e.clientX);
-        return;
-      }
-
-      // Start dragging if note is selected
-      if (selectedNotes.has(existingNote.index) || selectedNotes.size === 0) {
-        setSelectedNotes(new Set([existingNote.index]));
-        setIsDragging(true);
-        setDragStartX(e.clientX);
-        setDragOffset(0);
-        return;
-      }
-    }
-
-    setIsDrawing(true);
-    handleCellClick(cell, e);
-  };
-
+  // Handle mouse move (global for dragging/extending)
   const handleMouseMove = useCallback((e: React.MouseEvent) => {
     if (isDragging) {
       const dx = e.clientX - dragStartX;
@@ -267,23 +279,32 @@ export function NoteGridEditor({
       setDragOffset(cellOffset);
     }
 
-    if (isExtending && extendingNoteIndex !== null) {
-      const dx = e.clientX - dragStartX;
-      const cellExtend = Math.max(0, Math.round(dx / CELL_WIDTH));
-      const note = notes[extendingNoteIndex];
+    if (isExtending && extendNoteIndex !== null) {
+      const dx = e.clientX - extendStartX;
+      const cellExtend = Math.round(dx / CELL_WIDTH);
+
+      // Calculate new duration from ORIGINAL duration, not current
+      const originalCells = Math.round(extendOriginalDuration / cellDuration);
+      const newCells = Math.max(1, originalCells + cellExtend);
+      const newDuration = newCells * cellDuration;
+
+      // Ensure note doesn't extend past the end of the loop
+      const note = notes[extendNoteIndex];
       if (note) {
-        const newDuration = (1 / totalColumns) * (Math.round(note.d * totalColumns) + cellExtend);
+        const maxDuration = 1 - note.t;
+        const clampedDuration = Math.min(newDuration, maxDuration);
+
         const newNotes = [...notes];
-        newNotes[extendingNoteIndex] = { ...note, d: Math.max(1 / totalColumns, newDuration) };
+        newNotes[extendNoteIndex] = { ...note, d: clampedDuration };
         onChange(newNotes);
       }
     }
-  }, [isDragging, isExtending, dragStartX, extendingNoteIndex, notes, totalColumns, onChange]);
+  }, [isDragging, isExtending, dragStartX, extendStartX, extendNoteIndex, extendOriginalDuration, notes, cellDuration, onChange]);
 
+  // Handle mouse up
   const handleMouseUp = useCallback(() => {
     if (isDragging && dragOffset !== 0) {
-      // Apply drag offset to selected notes
-      const timeOffset = dragOffset / totalColumns;
+      const timeOffset = dragOffset * cellDuration;
       const newNotes = notes.map((note, i) => {
         if (selectedNotes.has(i)) {
           const newT = Math.max(0, Math.min(1 - note.d, note.t + timeOffset));
@@ -297,35 +318,36 @@ export function NoteGridEditor({
     setIsDrawing(false);
     setIsDragging(false);
     setIsExtending(false);
-    setExtendingNoteIndex(null);
+    setExtendNoteIndex(null);
+    setExtendOriginalDuration(0);
     setDragOffset(0);
-  }, [isDragging, dragOffset, selectedNotes, notes, totalColumns, onChange]);
+  }, [isDragging, dragOffset, selectedNotes, notes, cellDuration, onChange]);
 
+  // Handle mouse leave
   const handleMouseLeave = () => {
-    setIsDrawing(false);
     setHoveredCell(null);
-    setIsDragging(false);
-    setIsExtending(false);
-    setDragOffset(0);
+    if (isDrawing) setIsDrawing(false);
   };
 
   // Copy selected notes
   const copySelectedNotes = useCallback(() => {
     if (selectedNotes.size === 0) return;
 
-    const selectedNotesList = Array.from(selectedNotes).map(i => notes[i]);
-    const minT = Math.min(...selectedNotesList.map(n => n.t));
-    const maxT = Math.max(...selectedNotesList.map(n => n.t + n.d));
+    const selectedList = Array.from(selectedNotes).map(i => notes[i]).filter(Boolean);
+    if (selectedList.length === 0) return;
+
+    const minT = Math.min(...selectedList.map(n => n.t));
+    const maxT = Math.max(...selectedList.map(n => n.t + n.d));
     const duration = maxT - minT;
 
-    // Copy notes to the end of the pattern
-    const newNotes = selectedNotesList.map(n => ({
-      ...n,
-      t: n.t + duration,
-    })).filter(n => n.t + n.d <= 1); // Only add notes that fit
+    const newNotes = selectedList
+      .map(n => ({ ...n, t: n.t + duration }))
+      .filter(n => n.t + n.d <= 1);
 
-    onChange([...notes, ...newNotes]);
-    setSelectedNotes(new Set());
+    if (newNotes.length > 0) {
+      onChange([...notes, ...newNotes]);
+      setSelectedNotes(new Set());
+    }
   }, [selectedNotes, notes, onChange]);
 
   // Delete selected notes
@@ -340,9 +362,11 @@ export function NoteGridEditor({
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
         deleteSelectedNotes();
       }
       if (e.key === 'c' && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
         copySelectedNotes();
       }
       if (e.key === 'a' && (e.ctrlKey || e.metaKey)) {
@@ -363,18 +387,17 @@ export function NoteGridEditor({
     const intensity = velocity / 127;
     if (isSelected) {
       return isDark
-        ? `rgba(251, 146, 60, ${0.6 + intensity * 0.4})`
-        : `rgba(249, 115, 22, ${0.5 + intensity * 0.5})`;
+        ? `rgba(251, 146, 60, ${0.7 + intensity * 0.3})`
+        : `rgba(249, 115, 22, ${0.6 + intensity * 0.4})`;
     }
-    if (isDark) {
-      return `rgba(99, 102, 241, ${0.5 + intensity * 0.5})`;
-    }
-    return `rgba(99, 102, 241, ${0.4 + intensity * 0.6})`;
+    return isDark
+      ? `rgba(99, 102, 241, ${0.6 + intensity * 0.4})`
+      : `rgba(99, 102, 241, ${0.5 + intensity * 0.5})`;
   };
 
-  // Generate column headers (beat numbers)
+  // Generate column headers
   const columnHeaders = useMemo(() => {
-    const headers: { label: string; isDownbeat: boolean; isBarStart: boolean; barNum: number }[] = [];
+    const headers: { label: string; isDownbeat: boolean; isBarStart: boolean }[] = [];
     for (let col = 0; col < totalColumns; col++) {
       const beat = Math.floor(col / gridResolution);
       const subdivision = col % gridResolution;
@@ -386,14 +409,13 @@ export function NoteGridEditor({
         label: isBarStart ? `${barNum}` : isDownbeat ? `${(beat % beatsPerBar) + 1}` : '',
         isDownbeat,
         isBarStart,
-        barNum,
       });
     }
     return headers;
   }, [totalColumns, gridResolution, beatsPerBar]);
 
   // Calculate playhead position
-  const playheadLeft = LABEL_WIDTH + (playbackPosition * gridWidth);
+  const playheadX = playbackPosition * gridWidth;
 
   return (
     <div className={cn('flex flex-col', className)}>
@@ -402,6 +424,7 @@ export function NoteGridEditor({
         'flex items-center gap-4 mb-3 p-2 rounded-lg',
         isDark ? 'bg-gray-800' : 'bg-slate-100'
       )}>
+        <Volume2 className={cn('w-4 h-4', isDark ? 'text-gray-400' : 'text-slate-500')} />
         <span className={cn('text-sm font-medium', isDark ? 'text-gray-300' : 'text-slate-700')}>
           Velocity:
         </span>
@@ -411,9 +434,9 @@ export function NoteGridEditor({
           max={127}
           value={selectedVelocity}
           onChange={(e) => setSelectedVelocity(parseInt(e.target.value))}
-          className="flex-1 max-w-32 h-2 rounded-lg appearance-none cursor-pointer bg-slate-200 dark:bg-gray-700"
+          className="flex-1 max-w-32 h-2 rounded-lg appearance-none cursor-pointer bg-slate-300 dark:bg-gray-600"
         />
-        <span className={cn('text-sm w-8 text-center', isDark ? 'text-gray-400' : 'text-slate-600')}>
+        <span className={cn('text-sm w-8 text-center font-mono', isDark ? 'text-gray-400' : 'text-slate-600')}>
           {selectedVelocity}
         </span>
 
@@ -452,11 +475,11 @@ export function NoteGridEditor({
         )}
       </div>
 
-      {/* Grid container */}
+      {/* Grid container with proper structure */}
       <div
         ref={containerRef}
         className={cn(
-          'relative overflow-auto border rounded-lg',
+          'relative overflow-auto border rounded-lg select-none',
           isDark ? 'border-gray-700 bg-gray-900' : 'border-slate-200 bg-white'
         )}
         style={{ maxHeight: '400px' }}
@@ -464,159 +487,193 @@ export function NoteGridEditor({
         onMouseLeave={handleMouseLeave}
         onMouseMove={handleMouseMove}
       >
-        {/* Playhead */}
-        {isPlaying && (
-          <div
-            className="absolute top-0 bottom-0 w-0.5 bg-red-500 z-20 pointer-events-none"
-            style={{
-              left: playheadLeft,
-              boxShadow: '0 0 8px rgba(239, 68, 68, 0.5)',
-            }}
-          >
-            <div className="absolute -top-1 left-1/2 -translate-x-1/2 w-0 h-0 border-l-[5px] border-r-[5px] border-t-[6px] border-l-transparent border-r-transparent border-t-red-500" />
-          </div>
-        )}
-
-        {/* Header row (bar/beat numbers) */}
+        {/* Scrollable content wrapper */}
         <div
-          className="sticky top-0 z-10 flex"
-          style={{ marginLeft: LABEL_WIDTH }}
+          ref={gridContentRef}
+          className="relative"
+          style={{
+            width: LABEL_WIDTH + gridWidth,
+            minHeight: HEADER_HEIGHT + gridHeight
+          }}
         >
-          {columnHeaders.map((header, col) => (
+          {/* Playhead - positioned relative to grid content, FULL HEIGHT */}
+          {isPlaying && (
             <div
-              key={col}
-              className={cn(
-                'flex items-center justify-center text-xs font-medium border-r border-b',
-                header.isBarStart
-                  ? isDark ? 'border-r-indigo-500 bg-gray-700' : 'border-r-indigo-400 bg-indigo-50'
-                  : header.isDownbeat
-                    ? isDark ? 'border-r-gray-500' : 'border-r-slate-400'
-                    : isDark ? 'border-gray-700' : 'border-slate-200',
-                isDark ? 'bg-gray-800 text-gray-400 border-b-gray-700' : 'bg-slate-50 text-slate-500 border-b-slate-200',
-                header.isBarStart && (isDark ? 'text-indigo-400' : 'text-indigo-600')
-              )}
-              style={{ width: CELL_WIDTH, height: HEADER_HEIGHT }}
+              className="absolute z-30 pointer-events-none"
+              style={{
+                left: LABEL_WIDTH + playheadX,
+                top: 0,
+                bottom: 0,
+                width: 2,
+                background: 'linear-gradient(to bottom, #ef4444 0%, #ef4444 100%)',
+                boxShadow: '0 0 8px rgba(239, 68, 68, 0.6)',
+              }}
             >
-              {header.label}
-            </div>
-          ))}
-        </div>
-
-        {/* Grid rows */}
-        <div ref={gridRef} className="relative">
-          {noteRows.map((row) => (
-            <div key={row.note} className="flex">
-              {/* Row label */}
+              {/* Playhead triangle */}
               <div
+                className="absolute -top-0"
+                style={{
+                  left: -4,
+                  width: 0,
+                  height: 0,
+                  borderLeft: '5px solid transparent',
+                  borderRight: '5px solid transparent',
+                  borderTop: '6px solid #ef4444',
+                }}
+              />
+            </div>
+          )}
+
+          {/* Header row */}
+          <div
+            className={cn(
+              'sticky top-0 z-20 flex',
+              isDark ? 'bg-gray-800' : 'bg-slate-50'
+            )}
+            style={{ height: HEADER_HEIGHT }}
+          >
+            {/* Corner cell */}
+            <div
+              className={cn(
+                'sticky left-0 z-30 flex items-center justify-center border-r border-b',
+                isDark ? 'bg-gray-800 border-gray-700' : 'bg-slate-50 border-slate-200'
+              )}
+              style={{ width: LABEL_WIDTH, height: HEADER_HEIGHT }}
+            />
+            {/* Column headers */}
+            {columnHeaders.map((header, col) => (
+              <div
+                key={col}
                 className={cn(
-                  'sticky left-0 z-10 flex items-center justify-end pr-2 text-xs font-mono border-r border-b',
-                  isDark ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-slate-50 text-slate-600 border-slate-200',
-                  // Highlight C notes for piano layout
-                  !isDrums && row.label.startsWith('C') && !row.label.includes('#')
-                    ? isDark ? 'bg-gray-700 font-semibold' : 'bg-slate-100 font-semibold'
-                    : ''
+                  'flex items-center justify-center text-xs font-medium border-r border-b',
+                  header.isBarStart
+                    ? isDark ? 'border-r-indigo-500/70 text-indigo-400 bg-indigo-500/10' : 'border-r-indigo-400 text-indigo-600 bg-indigo-50'
+                    : header.isDownbeat
+                      ? isDark ? 'border-r-gray-500 text-gray-400' : 'border-r-slate-400 text-slate-500'
+                      : isDark ? 'border-r-gray-700 text-gray-500' : 'border-r-slate-200 text-slate-400',
+                  isDark ? 'border-b-gray-700' : 'border-b-slate-200'
                 )}
-                style={{ width: LABEL_WIDTH, height: CELL_HEIGHT }}
+                style={{ width: CELL_WIDTH, height: HEADER_HEIGHT }}
               >
-                {row.label}
+                {header.label}
               </div>
+            ))}
+          </div>
 
-              {/* Grid cells */}
-              {Array.from({ length: totalColumns }, (_, col) => {
-                const beat = Math.floor(col / gridResolution);
-                const subdivision = col % gridResolution;
-                const isBarStart = beat % beatsPerBar === 0 && subdivision === 0;
-                const isDownbeat = subdivision === 0;
-                const t = col / totalColumns;
+          {/* Grid rows */}
+          {noteRows.map((row, rowIndex) => {
+            const isC = !isDrums && row.label.startsWith('C') && !row.label.includes('#');
 
-                // Check for note at this cell
-                const noteAtCell = getNoteAtCell(t, row.note);
-                const isNoteStart = noteAtCell && Math.abs(noteAtCell.note.t - t) < 0.001;
-                const isSelected = noteAtCell && selectedNotes.has(noteAtCell.index);
-                const isHovered = hoveredCell?.t === t && hoveredCell?.noteNumber === row.note;
+            return (
+              <div key={row.note} className="flex" style={{ height: CELL_HEIGHT }}>
+                {/* Row label */}
+                <div
+                  className={cn(
+                    'sticky left-0 z-10 flex items-center justify-end pr-2 text-xs font-mono border-r border-b',
+                    isDark ? 'bg-gray-800 text-gray-400 border-gray-700' : 'bg-slate-50 text-slate-600 border-slate-200',
+                    isC && (isDark ? 'bg-gray-700 text-gray-300 font-semibold' : 'bg-slate-100 text-slate-700 font-semibold')
+                  )}
+                  style={{ width: LABEL_WIDTH, height: CELL_HEIGHT }}
+                >
+                  {row.label}
+                </div>
 
-                // Calculate note width for display
-                let noteWidth = 0;
-                if (isNoteStart && noteAtCell) {
-                  noteWidth = noteAtCell.note.d * totalColumns * CELL_WIDTH;
-                }
+                {/* Grid cells */}
+                {Array.from({ length: totalColumns }, (_, col) => {
+                  const beat = Math.floor(col / gridResolution);
+                  const subdivision = col % gridResolution;
+                  const isBarStart = beat % beatsPerBar === 0 && subdivision === 0;
+                  const isDownbeat = subdivision === 0;
+                  const t = col / totalColumns;
+                  const barNum = Math.floor(beat / beatsPerBar);
 
-                return (
-                  <div
-                    key={col}
-                    className={cn(
-                      'relative border-r border-b cursor-pointer transition-colors',
-                      isBarStart
-                        ? isDark ? 'border-r-indigo-500/50' : 'border-r-indigo-300'
-                        : isDownbeat
-                          ? isDark ? 'border-r-gray-500' : 'border-r-slate-300'
-                          : isDark ? 'border-gray-700' : 'border-slate-200',
-                      isDark ? 'border-b-gray-700' : 'border-b-slate-200',
-                      !noteAtCell && !isHovered && (isDark ? 'hover:bg-gray-700/50' : 'hover:bg-slate-100'),
-                      // Highlight C rows
-                      !isDrums && row.label.startsWith('C') && !row.label.includes('#') && !noteAtCell
-                        ? isDark ? 'bg-gray-800/30' : 'bg-slate-50/50'
-                        : '',
-                      // Bar background alternation
-                      Math.floor(beat / beatsPerBar) % 2 === 1 && !noteAtCell
-                        ? isDark ? 'bg-gray-800/20' : 'bg-slate-50/30'
-                        : ''
-                    )}
-                    style={{
-                      width: CELL_WIDTH,
-                      height: CELL_HEIGHT,
-                    }}
-                    onMouseDown={(e) => handleMouseDown({ beat, subdivision, noteNumber: row.note, t }, e)}
-                    onMouseEnter={() => {
-                      setHoveredCell({ beat, subdivision, noteNumber: row.note, t });
-                      handleCellEnter({ beat, subdivision, noteNumber: row.note, t });
-                    }}
-                  >
-                    {/* Render note */}
-                    {isNoteStart && noteAtCell && (
-                      <div
-                        className={cn(
-                          'absolute top-0.5 bottom-0.5 left-0.5 rounded-sm z-10',
-                          isSelected ? 'ring-2 ring-orange-400' : '',
-                          isDragging && isSelected ? 'opacity-60' : ''
-                        )}
-                        style={{
-                          width: Math.max(noteWidth - 4, CELL_WIDTH - 4),
-                          backgroundColor: getVelocityColor(noteAtCell.note.v, isSelected || false),
-                          transform: isDragging && isSelected ? `translateX(${dragOffset * CELL_WIDTH}px)` : undefined,
-                        }}
-                      >
-                        {/* Extend handle */}
+                  // Check for note
+                  const noteAtCell = getNoteAtCell(t, row.note);
+                  const isNoteStart = noteAtCell && Math.abs(noteAtCell.note.t - t) < 0.0001;
+                  const isSelected = noteAtCell && selectedNotes.has(noteAtCell.index);
+
+                  // Calculate note width
+                  let notePixelWidth = 0;
+                  if (isNoteStart && noteAtCell) {
+                    notePixelWidth = noteAtCell.note.d * totalColumns * CELL_WIDTH;
+                  }
+
+                  const cell: GridCell = { col, row: rowIndex, noteNumber: row.note, t };
+
+                  return (
+                    <div
+                      key={col}
+                      className={cn(
+                        'relative border-r border-b cursor-crosshair transition-colors',
+                        isBarStart
+                          ? isDark ? 'border-r-indigo-500/50' : 'border-r-indigo-300'
+                          : isDownbeat
+                            ? isDark ? 'border-r-gray-500/70' : 'border-r-slate-300'
+                            : isDark ? 'border-r-gray-700/50' : 'border-r-slate-200',
+                        isDark ? 'border-b-gray-700/50' : 'border-b-slate-200',
+                        // Row highlighting
+                        isC && !noteAtCell && (isDark ? 'bg-gray-800/40' : 'bg-slate-50/60'),
+                        // Bar alternation
+                        barNum % 2 === 1 && !noteAtCell && (isDark ? 'bg-gray-800/20' : 'bg-slate-50/40'),
+                        // Hover
+                        !noteAtCell && (isDark ? 'hover:bg-indigo-500/10' : 'hover:bg-indigo-50')
+                      )}
+                      style={{ width: CELL_WIDTH, height: CELL_HEIGHT }}
+                      onMouseDown={(e) => handleCellMouseDown(cell, e)}
+                      onMouseEnter={() => handleCellEnter(cell)}
+                    >
+                      {/* Render note */}
+                      {isNoteStart && noteAtCell && (
                         <div
                           className={cn(
-                            'absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize',
-                            'hover:bg-white/20 rounded-r-sm'
+                            'absolute top-0.5 bottom-0.5 left-0 rounded-sm cursor-pointer z-10',
+                            'transition-shadow',
+                            isSelected ? 'ring-2 ring-orange-400 ring-offset-1' : 'hover:brightness-110',
+                            isDragging && isSelected ? 'opacity-60' : ''
                           )}
-                          onMouseDown={(e) => {
-                            e.stopPropagation();
-                            setIsExtending(true);
-                            setExtendingNoteIndex(noteAtCell.index);
-                            setDragStartX(e.clientX);
+                          style={{
+                            width: Math.max(MIN_NOTE_WIDTH, notePixelWidth - 2),
+                            backgroundColor: getVelocityColor(noteAtCell.note.v, isSelected || false),
+                            transform: isDragging && isSelected ? `translateX(${dragOffset * CELL_WIDTH}px)` : undefined,
                           }}
-                        />
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ))}
+                        >
+                          {/* Extend handle - visible on wider notes */}
+                          {notePixelWidth > CELL_WIDTH && (
+                            <div
+                              className={cn(
+                                'absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r-sm',
+                                'transition-colors',
+                                isDark ? 'hover:bg-white/20' : 'hover:bg-black/10'
+                              )}
+                              onMouseDown={(e) => {
+                                e.stopPropagation();
+                                setIsExtending(true);
+                                setExtendNoteIndex(noteAtCell.index);
+                                setExtendOriginalDuration(noteAtCell.note.d);
+                                setExtendStartX(e.clientX);
+                              }}
+                            />
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* Help text */}
       <div className={cn(
-        'mt-2 text-xs flex items-center gap-4',
+        'mt-2 text-xs flex items-center gap-4 flex-wrap',
         isDark ? 'text-gray-500' : 'text-slate-400'
       )}>
-        <span>Click to add/remove notes</span>
-        <span>Drag edge to extend</span>
+        <span>Click to add • Click note to play</span>
+        <span>Alt+click to remove</span>
         <span>Shift+click to select</span>
+        <span>Drag edge to extend</span>
         <span>Ctrl+C to copy</span>
       </div>
     </div>

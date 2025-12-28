@@ -131,6 +131,10 @@ export function LoopCreatorModal({
     }
   }, []);
 
+  // Track scheduled notes to avoid duplicates
+  const scheduledNotesRef = useRef<Set<string>>(new Set());
+  const currentLoopRef = useRef<number>(0);
+
   // Playback with playhead
   const startPlayback = useCallback(async () => {
     if (!selectedInstrument || notes.length === 0) return;
@@ -147,24 +151,47 @@ export function LoopCreatorModal({
     const loopDuration = totalBeats * beatDuration;
 
     loopStartTimeRef.current = context.currentTime;
+    scheduledNotesRef.current.clear();
+    currentLoopRef.current = 0;
 
     const scheduleLoop = () => {
       const now = context.currentTime;
       const elapsed = now - loopStartTimeRef.current;
-      const loopPosition = (elapsed % loopDuration) / loopDuration;
+      const currentLoop = Math.floor(elapsed / loopDuration);
+      const lookahead = 0.15; // Schedule 150ms ahead
 
-      for (const note of notes) {
-        const noteTime = loopStartTimeRef.current + (Math.floor(elapsed / loopDuration) * loopDuration) + note.t * loopDuration;
-        if (noteTime >= now && noteTime < now + 0.1) {
-          const noteDuration = note.d * loopDuration;
-          engine.playNote(selectedInstrument, note.n, note.v, noteTime, noteDuration);
-        }
+      // Check if we've moved to a new loop iteration
+      if (currentLoop > currentLoopRef.current) {
+        // Clear old scheduled notes for previous loops
+        scheduledNotesRef.current.clear();
+        currentLoopRef.current = currentLoop;
       }
 
-      // Reset loop start time when loop completes
-      if (elapsed >= loopDuration) {
-        const completedLoops = Math.floor(elapsed / loopDuration);
-        loopStartTimeRef.current = context.currentTime - (elapsed - completedLoops * loopDuration);
+      // Schedule notes for current and upcoming window
+      for (const note of notes) {
+        // Calculate the absolute time for this note in the current loop
+        const loopOffset = currentLoop * loopDuration;
+        const noteAbsoluteTime = loopStartTimeRef.current + loopOffset + note.t * loopDuration;
+
+        // Also check next loop iteration for seamless looping
+        const noteAbsoluteTimeNext = noteAbsoluteTime + loopDuration;
+
+        const noteKey = `${currentLoop}-${note.t}-${note.n}`;
+        const noteKeyNext = `${currentLoop + 1}-${note.t}-${note.n}`;
+
+        // Schedule if within lookahead window and not already scheduled
+        if (noteAbsoluteTime >= now && noteAbsoluteTime < now + lookahead && !scheduledNotesRef.current.has(noteKey)) {
+          const noteDuration = Math.max(0.05, note.d * loopDuration);
+          engine.playNote(selectedInstrument, note.n, note.v, noteAbsoluteTime, noteDuration);
+          scheduledNotesRef.current.add(noteKey);
+        }
+
+        // Schedule next loop's notes for seamless looping
+        if (noteAbsoluteTimeNext >= now && noteAbsoluteTimeNext < now + lookahead && !scheduledNotesRef.current.has(noteKeyNext)) {
+          const noteDuration = Math.max(0.05, note.d * loopDuration);
+          engine.playNote(selectedInstrument, note.n, note.v, noteAbsoluteTimeNext, noteDuration);
+          scheduledNotesRef.current.add(noteKeyNext);
+        }
       }
     };
 
@@ -180,7 +207,8 @@ export function LoopCreatorModal({
       animationFrameRef.current = requestAnimationFrame(updatePlayhead);
     };
 
-    playbackIntervalRef.current = setInterval(scheduleLoop, 25);
+    // Run scheduler more frequently for tighter timing
+    playbackIntervalRef.current = setInterval(scheduleLoop, 20);
     scheduleLoop();
     animationFrameRef.current = requestAnimationFrame(updatePlayhead);
   }, [selectedInstrument, notes, bars, timeSignature, bpm, initAudio]);
@@ -194,7 +222,10 @@ export function LoopCreatorModal({
       cancelAnimationFrame(animationFrameRef.current);
       animationFrameRef.current = null;
     }
-    // Use killAll for immediate stop - this is the key fix!
+    // Clear scheduled notes
+    scheduledNotesRef.current.clear();
+    currentLoopRef.current = 0;
+    // Use killAll for immediate stop
     soundEngineRef.current?.killAll();
     setIsPlaying(false);
     setPlaybackPosition(0);
