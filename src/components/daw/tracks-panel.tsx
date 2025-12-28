@@ -5,7 +5,9 @@ import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useSongsStore } from '@/stores/songs-store';
+import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 import { LoopBrowserModal } from '../loops/loop-browser-modal';
+import { LoopCreatorModal } from '../loops/loop-creator-modal';
 import { getLoopById } from '@/lib/audio/loop-library';
 import {
   Upload,
@@ -14,12 +16,13 @@ import {
   X,
   Music,
   Repeat,
-  Volume2,
-  VolumeX,
   Plus,
   ChevronDown,
   Layers,
   GripVertical,
+  Pencil,
+  Copy,
+  Trash2,
 } from 'lucide-react';
 import type { BackingTrack } from '@/types';
 import type { LoopDefinition } from '@/types/loops';
@@ -48,7 +51,7 @@ export function TracksPanel({
   userName,
 }: TracksPanelProps) {
   const { queue, isMaster } = useRoomStore();
-  const { getTracksByRoom, addTrack: addLoopTrack, removeTrack: removeLoopTrack, setTrackMuted } = useLoopTracksStore();
+  const { getTracksByRoom, addTrack: addLoopTrack, removeTrack: removeLoopTrack, updateTrack: updateLoopTrack } = useLoopTracksStore();
   const {
     getSongsByRoom,
     getCurrentSong,
@@ -58,12 +61,35 @@ export function TracksPanel({
     loadSongs,
     isLoading: songsLoading,
   } = useSongsStore();
+  const { duplicateLoop, getLoop: getCustomLoop } = useCustomLoopsStore();
 
   const [showLoopBrowser, setShowLoopBrowser] = useState(false);
   const [showSongDropdown, setShowSongDropdown] = useState(false);
   const [isCreatingSong, setIsCreatingSong] = useState(false);
   const [newSongName, setNewSongName] = useState('');
   const [hasLoadedSongs, setHasLoadedSongs] = useState(false);
+
+  // Context menu state
+  const [contextMenu, setContextMenu] = useState<{
+    isOpen: boolean;
+    x: number;
+    y: number;
+    type: 'audio' | 'loop';
+    assetId: string;
+    loopId?: string;
+    name: string;
+  } | null>(null);
+
+  // Loop editor state
+  const [loopEditorState, setLoopEditorState] = useState<{
+    isOpen: boolean;
+    loopId: string | null;
+    loopTrackId: string | null;
+  }>({
+    isOpen: false,
+    loopId: null,
+    loopTrackId: null,
+  });
 
   // Get data
   const songs = getSongsByRoom(roomId);
@@ -145,6 +171,118 @@ export function TracksPanel({
     },
     [userId, userName, roomId, currentSong, addLoopTrack, addTrackToSong]
   );
+
+  // Context menu handlers
+  const handleContextMenu = useCallback((
+    e: React.MouseEvent,
+    type: 'audio' | 'loop',
+    assetId: string,
+    name: string,
+    loopId?: string
+  ) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setContextMenu({
+      isOpen: true,
+      x: e.clientX,
+      y: e.clientY,
+      type,
+      assetId,
+      loopId,
+      name,
+    });
+  }, []);
+
+  const closeContextMenu = useCallback(() => {
+    setContextMenu(null);
+  }, []);
+
+  // Edit loop handler
+  const handleEditLoop = useCallback(async () => {
+    if (!contextMenu || contextMenu.type !== 'loop' || !contextMenu.loopId) return;
+
+    // Check if it's a custom loop
+    const existingCustomLoop = getCustomLoop(contextMenu.loopId);
+
+    if (existingCustomLoop) {
+      // It's already a custom loop - edit directly
+      setLoopEditorState({
+        isOpen: true,
+        loopId: contextMenu.loopId,
+        loopTrackId: contextMenu.assetId,
+      });
+    } else {
+      // It's a built-in loop - duplicate it first to make it editable
+      const newCustomLoop = await duplicateLoop(contextMenu.loopId);
+      if (newCustomLoop) {
+        // Update the loop track to use the new custom loop
+        updateLoopTrack(contextMenu.assetId, {
+          loopId: newCustomLoop.id,
+        });
+        // Open the editor with the new custom loop
+        setLoopEditorState({
+          isOpen: true,
+          loopId: newCustomLoop.id,
+          loopTrackId: contextMenu.assetId,
+        });
+      }
+    }
+
+    closeContextMenu();
+  }, [contextMenu, getCustomLoop, duplicateLoop, updateLoopTrack, closeContextMenu]);
+
+  // Duplicate loop handler
+  const handleDuplicateLoop = useCallback(async () => {
+    if (!contextMenu || contextMenu.type !== 'loop' || !contextMenu.loopId) return;
+
+    const newCustomLoop = await duplicateLoop(contextMenu.loopId);
+    if (newCustomLoop && currentSong) {
+      // Create a new loop track with the duplicated loop
+      const loopTrack = addLoopTrack(roomId, newCustomLoop, userId, userName);
+
+      // Persist loop track
+      try {
+        await fetch(`/api/rooms/${roomId}/loop-tracks`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(loopTrack),
+        });
+      } catch (err) {
+        console.error('Failed to persist loop track:', err);
+      }
+
+      // Add to current song
+      addTrackToSong(currentSong.id, {
+        type: 'loop',
+        trackId: loopTrack.id,
+        startOffset: 0,
+      });
+    }
+
+    closeContextMenu();
+  }, [contextMenu, duplicateLoop, currentSong, roomId, userId, userName, addLoopTrack, addTrackToSong, closeContextMenu]);
+
+  // Delete asset handler
+  const handleDeleteAsset = useCallback(() => {
+    if (!contextMenu) return;
+
+    if (contextMenu.type === 'audio') {
+      onTrackRemove(contextMenu.assetId);
+    } else {
+      removeLoopTrack(contextMenu.assetId);
+    }
+
+    closeContextMenu();
+  }, [contextMenu, onTrackRemove, removeLoopTrack, closeContextMenu]);
+
+  // Close context menu on click outside
+  useEffect(() => {
+    if (contextMenu?.isOpen) {
+      const handleClick = () => closeContextMenu();
+      window.addEventListener('click', handleClick);
+      return () => window.removeEventListener('click', handleClick);
+    }
+  }, [contextMenu?.isOpen, closeContextMenu]);
 
   const formatTime = (seconds: number): string => {
     const mins = Math.floor(seconds / 60);
@@ -340,6 +478,7 @@ export function TracksPanel({
                       }));
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
+                    onContextMenu={(e) => handleContextMenu(e, 'audio', asset.id, asset.name)}
                   >
                     <GripVertical className="w-3 h-3 text-gray-300 dark:text-zinc-700 opacity-0 group-hover:opacity-100 shrink-0" />
                     <div
@@ -398,6 +537,7 @@ export function TracksPanel({
                       }));
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
+                    onContextMenu={(e) => handleContextMenu(e, 'loop', asset.id, asset.name, asset.loopId)}
                   >
                     <GripVertical className="w-3 h-3 text-gray-300 dark:text-zinc-700 opacity-0 group-hover:opacity-100 shrink-0" />
                     <div
@@ -417,19 +557,6 @@ export function TracksPanel({
                     <span className="text-[10px] text-gray-500 dark:text-zinc-500 tabular-nums">
                       {formatTime(asset.duration)}
                     </span>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setTrackMuted(asset.id, !asset.muted);
-                      }}
-                      className={cn(
-                        'p-0.5 rounded transition-colors',
-                        asset.muted ? 'text-red-400' : 'text-gray-400 dark:text-zinc-600 opacity-0 group-hover:opacity-100'
-                      )}
-                      title={asset.muted ? 'Unmute' : 'Mute'}
-                    >
-                      {asset.muted ? <VolumeX className="w-3 h-3" /> : <Volume2 className="w-3 h-3" />}
-                    </button>
                     {isMaster && (
                       <button
                         onClick={(e) => {
@@ -469,6 +596,73 @@ export function TracksPanel({
         userId={userId}
         userName={userName}
         onAddLoop={handleAddLoop}
+      />
+
+      {/* Context Menu */}
+      {contextMenu?.isOpen && (
+        <div
+          className="fixed z-50 min-w-[140px] py-1 bg-white dark:bg-zinc-900 rounded-lg shadow-xl border border-gray-200 dark:border-zinc-700"
+          style={{
+            left: contextMenu.x,
+            top: contextMenu.y,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1.5 text-xs text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800 truncate">
+            {contextMenu.name}
+          </div>
+
+          {/* Edit Loop - only for loops */}
+          {contextMenu.type === 'loop' && (
+            <button
+              onClick={handleEditLoop}
+              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors text-amber-600 dark:text-amber-400"
+            >
+              <Pencil className="w-4 h-4" />
+              <span>Edit Loop</span>
+            </button>
+          )}
+
+          {/* Duplicate - only for loops */}
+          {contextMenu.type === 'loop' && (
+            <button
+              onClick={handleDuplicateLoop}
+              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors"
+            >
+              <Copy className="w-4 h-4" />
+              <span>Duplicate</span>
+            </button>
+          )}
+
+          {isMaster && (
+            <>
+              <div className="my-1 border-t border-gray-100 dark:border-zinc-800" />
+              <button
+                onClick={handleDeleteAsset}
+                className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+              >
+                <Trash2 className="w-4 h-4" />
+                <span>Delete</span>
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      {/* Loop Editor Modal */}
+      <LoopCreatorModal
+        isOpen={loopEditorState.isOpen}
+        onClose={() => setLoopEditorState({ isOpen: false, loopId: null, loopTrackId: null })}
+        editingLoopId={loopEditorState.loopId || undefined}
+        onSave={(savedLoop) => {
+          // Update the loop track to use the saved loop's ID
+          if (loopEditorState.loopTrackId) {
+            updateLoopTrack(loopEditorState.loopTrackId, {
+              loopId: savedLoop.id,
+            });
+          }
+          setLoopEditorState({ isOpen: false, loopId: null, loopTrackId: null });
+        }}
       />
     </div>
   );

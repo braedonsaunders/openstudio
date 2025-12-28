@@ -289,12 +289,31 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
       },
 
       duplicateLoop: async (id) => {
-        const original = get().loops[id];
+        // Check custom loops first
+        let original: LoopDefinition | undefined = get().loops[id];
+
+        // If not found in custom loops, check built-in library
+        if (!original) {
+          const { LOOP_LIBRARY } = await import('@/lib/audio/loop-library');
+          original = LOOP_LIBRARY.find((l) => l.id === id);
+        }
+
         if (!original) return undefined;
 
         const newLoop = await get().createLoop({
-          ...original,
-          name: `${original.name} (Copy)`,
+          name: original.name,
+          category: original.category,
+          subcategory: original.subcategory,
+          bpm: original.bpm,
+          bars: original.bars,
+          timeSignature: original.timeSignature,
+          midiData: [...original.midiData],
+          soundPreset: original.soundPreset,
+          tags: [...(original.tags || [])],
+          intensity: original.intensity,
+          complexity: original.complexity,
+          key: original.key,
+          description: `Copy of ${original.name}`,
         });
 
         return newLoop;

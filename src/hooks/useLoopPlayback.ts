@@ -142,6 +142,21 @@ export function useLoopPlayback() {
     console.log('[useLoopPlayback] Stopped all loops');
   }, []);
 
+  // Helper to calculate loop duration in seconds
+  const getLoopDuration = useCallback((loopId: string): number => {
+    let loopDef = getLoopById(loopId);
+    if (!loopDef) {
+      // Check custom loops store synchronously (already imported at module level)
+      const { useCustomLoopsStore } = require('@/stores/custom-loops-store');
+      loopDef = useCustomLoopsStore.getState().getLoop(loopId);
+    }
+    if (!loopDef) return 0;
+
+    const beatsPerBar = loopDef.timeSignature[0];
+    const totalBeats = loopDef.bars * beatsPerBar;
+    return (totalBeats / loopDef.bpm) * 60;
+  }, []);
+
   // Sync playback state with song tracks
   const syncPlaybackWithSong = useCallback(async () => {
     const { isPlaying, currentTime } = useAudioStore.getState();
@@ -184,28 +199,46 @@ export function useLoopPlayback() {
       const loopTrack = loopTracksStore.getTrack(songTrack.trackId);
       if (!loopTrack) continue;
 
+      // Calculate if the loop is within the current playback time range
+      const startOffset = songTrack.startOffset ?? 0;
+      const loopDuration = getLoopDuration(loopTrack.loopId);
+      const endTime = startOffset + loopDuration;
+
+      // Check if current time is within this loop's range
+      const isInTimeRange = currentTime >= startOffset && currentTime < endTime;
+
       // Check if this loop should be audible
-      const isMuted = songTrack.muted || (hasSoloTrack && !songTrack.solo);
+      const isMuted = (songTrack.muted ?? false) || (hasSoloTrack && !songTrack.solo);
 
       const isScheduled = scheduledLoopsRef.current.has(loopTrack.id);
       const lastSongTrack = lastSongTracksRef.current.get(songTrack.id);
 
-      if (!isScheduled) {
-        // New loop - start it
+      if (!isScheduled && isInTimeRange) {
+        // New loop within time range - start it
         await startLoopInternal(loopTrack, { ...songTrack, muted: isMuted }, syncTime);
-      } else if (lastSongTrack) {
-        // Check if mute/solo/volume changed - update the loop
-        const muteChanged = (lastSongTrack.muted !== songTrack.muted) ||
-                           (lastSongTrack.solo !== songTrack.solo);
-        const volumeChanged = lastSongTrack.volume !== songTrack.volume;
+      } else if (isScheduled && !isInTimeRange) {
+        // Loop is scheduled but outside time range - stop it
+        stopLoopInternal(loopTrack.id);
+      } else if (isScheduled && isInTimeRange) {
+        // Already scheduled and in range - check if mute/solo/volume changed
+        const lastMuted = lastSongTrack?.muted ?? false;
+        const lastSolo = lastSongTrack?.solo ?? false;
+        const lastVolume = lastSongTrack?.volume ?? 1;
 
-        if (muteChanged || volumeChanged) {
+        const currentMuted = songTrack.muted ?? false;
+        const currentSolo = songTrack.solo ?? false;
+        const currentVolume = songTrack.volume ?? 1;
+
+        const muteChanged = (lastMuted !== currentMuted) || (lastSolo !== currentSolo) || (hasSoloTrack !== (lastSongTracksRef.current.size > 0 && Array.from(lastSongTracksRef.current.values()).some(t => t.solo)));
+        const volumeChanged = lastVolume !== currentVolume;
+
+        if (muteChanged || volumeChanged || !lastSongTrack) {
           // Update the loop's parameters
           const scheduler = schedulerRef.current;
           if (scheduler) {
             scheduler.updateLoopTrack(loopTrack.id, {
               muted: isMuted,
-              volume: songTrack.volume ?? loopTrack.volume,
+              volume: currentVolume,
             });
           }
         }
@@ -221,7 +254,7 @@ export function useLoopPlayback() {
         lastSongTracksRef.current.delete(refId);
       }
     }
-  }, [initialize, startLoopInternal, stopLoopInternal, stopAll]);
+  }, [initialize, startLoopInternal, stopLoopInternal, stopAll, getLoopDuration]);
 
   // External API to start a loop
   const startLoop = useCallback(async (track: LoopTrackState, syncTime?: number, startOffset?: number) => {
@@ -246,20 +279,34 @@ export function useLoopPlayback() {
   // Note: useAudioStore doesn't use subscribeWithSelector, so we use standard subscribe
   useEffect(() => {
     let prevIsPlaying = useAudioStore.getState().isPlaying;
+    let syncInterval: NodeJS.Timeout | null = null;
 
     const unsubAudio = useAudioStore.subscribe((state) => {
       if (state.isPlaying !== prevIsPlaying) {
         prevIsPlaying = state.isPlaying;
         if (!state.isPlaying) {
           stopAll();
+          if (syncInterval) {
+            clearInterval(syncInterval);
+            syncInterval = null;
+          }
         } else {
           playbackSyncTimeRef.current = Date.now();
           syncPlaybackWithSong();
+          // Start periodic sync to handle playhead movement past loop boundaries
+          syncInterval = setInterval(() => {
+            syncPlaybackWithSong();
+          }, 100); // Check every 100ms
         }
       }
     });
 
-    return () => unsubAudio();
+    return () => {
+      unsubAudio();
+      if (syncInterval) {
+        clearInterval(syncInterval);
+      }
+    };
   }, [stopAll, syncPlaybackWithSong]);
 
   // Subscribe to song tracks changes - this is the BULLETPROOF part
