@@ -268,6 +268,29 @@ export class WebAudioSynth {
     }
   }
 
+  /**
+   * Immediately kill all sounds without release envelope
+   * Use this for hard stops (e.g., stopping preview)
+   */
+  killAllVoices(): void {
+    const now = this.context.currentTime;
+    for (const voice of this.activeVoices.values()) {
+      // Immediately silence
+      voice.ampGain.gain.cancelScheduledValues(now);
+      voice.ampGain.gain.setValueAtTime(0, now);
+
+      // Stop all oscillators immediately
+      voice.oscillators.forEach((osc) => {
+        try {
+          osc.stop(now);
+        } catch {
+          // Already stopped
+        }
+      });
+    }
+    this.activeVoices.clear();
+  }
+
   private midiToFrequency(noteNumber: number): number {
     return 440 * Math.pow(2, (noteNumber - 69) / 12);
   }
@@ -547,15 +570,23 @@ export class DrumKitSampler {
     };
   }
 
-  dispose(): void {
+  /**
+   * Immediately stop all playing drum samples
+   */
+  stopAll(): void {
     for (const voice of this.activeVoices) {
       try {
+        voice.gain.gain.setValueAtTime(0, this.context.currentTime);
         voice.source.stop();
       } catch {
         // Already stopped
       }
     }
     this.activeVoices = [];
+  }
+
+  dispose(): void {
+    this.stopAll();
     this.masterGain.disconnect();
   }
 }
@@ -657,6 +688,20 @@ export class SoundEngine {
   allNotesOff(): void {
     for (const synth of this.synths.values()) {
       synth.allNotesOff();
+    }
+  }
+
+  /**
+   * Immediately kill all sounds without release envelope
+   * Use this for hard stops (e.g., stopping preview)
+   */
+  killAll(): void {
+    for (const synth of this.synths.values()) {
+      synth.killAllVoices();
+    }
+    // Drum samples are one-shot, but we can stop any active ones
+    for (const kit of this.drumKits.values()) {
+      kit.stopAll();
     }
   }
 
