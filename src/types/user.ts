@@ -215,39 +215,186 @@ export interface UserInstrument {
   lastPlayedAt?: string;
 }
 
-export const INSTRUMENTS: Record<string, { name: string; category: InstrumentCategory; icon: string }> = {
-  'electric-guitar': { name: 'Electric Guitar', category: 'guitar', icon: '🎸' },
-  'acoustic-guitar': { name: 'Acoustic Guitar', category: 'guitar', icon: '🎸' },
-  'bass-guitar': { name: 'Bass Guitar', category: 'guitar', icon: '🎸' },
-  'classical-guitar': { name: 'Classical Guitar', category: 'guitar', icon: '🎸' },
-  'piano': { name: 'Piano', category: 'keyboard', icon: '🎹' },
-  'synth': { name: 'Synthesizer', category: 'keyboard', icon: '🎹' },
-  'organ': { name: 'Organ', category: 'keyboard', icon: '🎹' },
-  'midi-controller': { name: 'MIDI Controller', category: 'keyboard', icon: '🎹' },
-  'drums': { name: 'Drums', category: 'drums', icon: '🥁' },
-  'electronic-drums': { name: 'Electronic Drums', category: 'drums', icon: '🥁' },
-  'percussion': { name: 'Percussion', category: 'drums', icon: '🥁' },
-  'lead-vocals': { name: 'Lead Vocals', category: 'vocals', icon: '🎤' },
-  'backing-vocals': { name: 'Backing Vocals', category: 'vocals', icon: '🎤' },
-  'beatbox': { name: 'Beatbox', category: 'vocals', icon: '🎤' },
-  'rap': { name: 'Rap', category: 'vocals', icon: '🎤' },
-  'violin': { name: 'Violin', category: 'strings', icon: '🎻' },
-  'cello': { name: 'Cello', category: 'strings', icon: '🎻' },
-  'viola': { name: 'Viola', category: 'strings', icon: '🎻' },
-  'double-bass': { name: 'Double Bass', category: 'strings', icon: '🎻' },
-  'saxophone': { name: 'Saxophone', category: 'wind', icon: '🎷' },
-  'trumpet': { name: 'Trumpet', category: 'wind', icon: '🎺' },
-  'flute': { name: 'Flute', category: 'wind', icon: '🎵' },
-  'clarinet': { name: 'Clarinet', category: 'wind', icon: '🎵' },
-  'dj': { name: 'DJ', category: 'electronic', icon: '🎧' },
-  'producer': { name: 'Producer', category: 'electronic', icon: '🎛️' },
-  'sampler': { name: 'Sampler', category: 'electronic', icon: '🎛️' },
-  'looper': { name: 'Looper', category: 'electronic', icon: '🔁' },
-  'harmonica': { name: 'Harmonica', category: 'other', icon: '🎵' },
-  'ukulele': { name: 'Ukulele', category: 'other', icon: '🎸' },
-  'banjo': { name: 'Banjo', category: 'other', icon: '🪕' },
-  'other': { name: 'Other', category: 'other', icon: '🎵' },
+// Instrument icon type for Lucide icons
+export type InstrumentIconName =
+  | 'Guitar'
+  | 'Music'
+  | 'Piano'
+  | 'Drum'
+  | 'Mic'
+  | 'Mic2'
+  | 'Music2'
+  | 'Music3'
+  | 'Music4'
+  | 'Headphones'
+  | 'Radio'
+  | 'Volume2'
+  | 'Waves'
+  | 'Zap'
+  | 'Wind'
+  | 'Sparkles'
+  | 'AudioWaveform'
+  | 'CircleDot'
+  | 'Disc'
+  | 'Disc2'
+  | 'Disc3';
+
+export interface InstrumentDefinition {
+  name: string;
+  category: InstrumentCategory;
+  icon: InstrumentIconName;
+  emoji: string;
+  color: string; // Tailwind color class for theming
+}
+
+// Exhaustive instrument types with icons
+export const INSTRUMENTS: Record<string, InstrumentDefinition> = {
+  // Guitar family
+  'electric-guitar': { name: 'Electric Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'red' },
+  'acoustic-guitar': { name: 'Acoustic Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'amber' },
+  'bass-guitar': { name: 'Bass Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'purple' },
+  'classical-guitar': { name: 'Classical Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'orange' },
+  '12-string-guitar': { name: '12-String Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'yellow' },
+  'steel-guitar': { name: 'Steel Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'slate' },
+  'resonator-guitar': { name: 'Resonator Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'zinc' },
+  'fretless-bass': { name: 'Fretless Bass', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'violet' },
+  '7-string-guitar': { name: '7-String Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'rose' },
+  '8-string-guitar': { name: '8-String Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'fuchsia' },
+  'baritone-guitar': { name: 'Baritone Guitar', category: 'guitar', icon: 'Guitar', emoji: '🎸', color: 'indigo' },
+
+  // Keyboard family
+  'piano': { name: 'Piano', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'slate' },
+  'synth': { name: 'Synthesizer', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'cyan' },
+  'organ': { name: 'Organ', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'amber' },
+  'midi-controller': { name: 'MIDI Controller', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'blue' },
+  'electric-piano': { name: 'Electric Piano', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'teal' },
+  'rhodes': { name: 'Rhodes', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'emerald' },
+  'wurlitzer': { name: 'Wurlitzer', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'orange' },
+  'clavinet': { name: 'Clavinet', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'lime' },
+  'harpsichord': { name: 'Harpsichord', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'yellow' },
+  'accordion': { name: 'Accordion', category: 'keyboard', icon: 'Piano', emoji: '🪗', color: 'red' },
+  'melodica': { name: 'Melodica', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'pink' },
+  'keytar': { name: 'Keytar', category: 'keyboard', icon: 'Piano', emoji: '🎹', color: 'purple' },
+  'modular-synth': { name: 'Modular Synth', category: 'keyboard', icon: 'Waves', emoji: '🎛️', color: 'violet' },
+  'analog-synth': { name: 'Analog Synth', category: 'keyboard', icon: 'Waves', emoji: '🎛️', color: 'fuchsia' },
+
+  // Drums & Percussion
+  'drums': { name: 'Drums', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'red' },
+  'electronic-drums': { name: 'Electronic Drums', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'blue' },
+  'percussion': { name: 'Percussion', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'orange' },
+  'congas': { name: 'Congas', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'amber' },
+  'bongos': { name: 'Bongos', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'yellow' },
+  'djembe': { name: 'Djembe', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'orange' },
+  'cajon': { name: 'Cajon', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'amber' },
+  'timpani': { name: 'Timpani', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'slate' },
+  'vibraphone': { name: 'Vibraphone', category: 'drums', icon: 'Music2', emoji: '🎵', color: 'cyan' },
+  'marimba': { name: 'Marimba', category: 'drums', icon: 'Music2', emoji: '🎵', color: 'amber' },
+  'xylophone': { name: 'Xylophone', category: 'drums', icon: 'Music2', emoji: '🎵', color: 'yellow' },
+  'glockenspiel': { name: 'Glockenspiel', category: 'drums', icon: 'Music2', emoji: '🎵', color: 'sky' },
+  'steel-drums': { name: 'Steel Drums', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'teal' },
+  'tabla': { name: 'Tabla', category: 'drums', icon: 'Drum', emoji: '🥁', color: 'orange' },
+  'tambourine': { name: 'Tambourine', category: 'drums', icon: 'CircleDot', emoji: '🎵', color: 'yellow' },
+  'shaker': { name: 'Shaker', category: 'drums', icon: 'Music2', emoji: '🎵', color: 'lime' },
+  'hand-pan': { name: 'Hand Pan', category: 'drums', icon: 'Disc', emoji: '🥁', color: 'indigo' },
+
+  // Vocals
+  'lead-vocals': { name: 'Lead Vocals', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'pink' },
+  'backing-vocals': { name: 'Backing Vocals', category: 'vocals', icon: 'Mic2', emoji: '🎤', color: 'rose' },
+  'beatbox': { name: 'Beatbox', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'purple' },
+  'rap': { name: 'Rap', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'violet' },
+  'soprano': { name: 'Soprano', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'pink' },
+  'alto': { name: 'Alto', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'rose' },
+  'tenor': { name: 'Tenor', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'blue' },
+  'baritone': { name: 'Baritone', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'indigo' },
+  'bass-vocals': { name: 'Bass Vocals', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'purple' },
+  'spoken-word': { name: 'Spoken Word', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'slate' },
+  'screaming-vocals': { name: 'Screaming/Growl', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'red' },
+  'falsetto': { name: 'Falsetto', category: 'vocals', icon: 'Mic', emoji: '🎤', color: 'sky' },
+
+  // Strings
+  'violin': { name: 'Violin', category: 'strings', icon: 'Music', emoji: '🎻', color: 'amber' },
+  'cello': { name: 'Cello', category: 'strings', icon: 'Music', emoji: '🎻', color: 'orange' },
+  'viola': { name: 'Viola', category: 'strings', icon: 'Music', emoji: '🎻', color: 'amber' },
+  'double-bass': { name: 'Double Bass', category: 'strings', icon: 'Music', emoji: '🎻', color: 'amber' },
+  'electric-violin': { name: 'Electric Violin', category: 'strings', icon: 'Music', emoji: '🎻', color: 'blue' },
+  'harp': { name: 'Harp', category: 'strings', icon: 'Music', emoji: '🎵', color: 'yellow' },
+  'mandolin': { name: 'Mandolin', category: 'strings', icon: 'Music', emoji: '🎵', color: 'amber' },
+  'sitar': { name: 'Sitar', category: 'strings', icon: 'Music', emoji: '🎵', color: 'orange' },
+  'oud': { name: 'Oud', category: 'strings', icon: 'Music', emoji: '🎵', color: 'amber' },
+  'erhu': { name: 'Erhu', category: 'strings', icon: 'Music', emoji: '🎻', color: 'red' },
+  'koto': { name: 'Koto', category: 'strings', icon: 'Music', emoji: '🎵', color: 'pink' },
+  'dulcimer': { name: 'Dulcimer', category: 'strings', icon: 'Music', emoji: '🎵', color: 'amber' },
+  'lute': { name: 'Lute', category: 'strings', icon: 'Music', emoji: '🎵', color: 'yellow' },
+  'zither': { name: 'Zither', category: 'strings', icon: 'Music', emoji: '🎵', color: 'amber' },
+
+  // Wind instruments
+  'saxophone': { name: 'Saxophone', category: 'wind', icon: 'Wind', emoji: '🎷', color: 'yellow' },
+  'alto-sax': { name: 'Alto Saxophone', category: 'wind', icon: 'Wind', emoji: '🎷', color: 'yellow' },
+  'tenor-sax': { name: 'Tenor Saxophone', category: 'wind', icon: 'Wind', emoji: '🎷', color: 'amber' },
+  'soprano-sax': { name: 'Soprano Saxophone', category: 'wind', icon: 'Wind', emoji: '🎷', color: 'yellow' },
+  'baritone-sax': { name: 'Baritone Saxophone', category: 'wind', icon: 'Wind', emoji: '🎷', color: 'orange' },
+  'trumpet': { name: 'Trumpet', category: 'wind', icon: 'Wind', emoji: '🎺', color: 'yellow' },
+  'trombone': { name: 'Trombone', category: 'wind', icon: 'Wind', emoji: '🎺', color: 'amber' },
+  'french-horn': { name: 'French Horn', category: 'wind', icon: 'Wind', emoji: '🎺', color: 'yellow' },
+  'tuba': { name: 'Tuba', category: 'wind', icon: 'Wind', emoji: '🎺', color: 'slate' },
+  'cornet': { name: 'Cornet', category: 'wind', icon: 'Wind', emoji: '🎺', color: 'yellow' },
+  'flugelhorn': { name: 'Flugelhorn', category: 'wind', icon: 'Wind', emoji: '🎺', color: 'amber' },
+  'flute': { name: 'Flute', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'slate' },
+  'piccolo': { name: 'Piccolo', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'sky' },
+  'clarinet': { name: 'Clarinet', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'slate' },
+  'bass-clarinet': { name: 'Bass Clarinet', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'slate' },
+  'oboe': { name: 'Oboe', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'amber' },
+  'bassoon': { name: 'Bassoon', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'amber' },
+  'english-horn': { name: 'English Horn', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'amber' },
+  'recorder': { name: 'Recorder', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'lime' },
+  'pan-flute': { name: 'Pan Flute', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'amber' },
+  'bagpipes': { name: 'Bagpipes', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'green' },
+  'didgeridoo': { name: 'Didgeridoo', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'amber' },
+  'ocarina': { name: 'Ocarina', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'sky' },
+  'shakuhachi': { name: 'Shakuhachi', category: 'wind', icon: 'Wind', emoji: '🎵', color: 'amber' },
+
+  // Electronic
+  'dj': { name: 'DJ', category: 'electronic', icon: 'Headphones', emoji: '🎧', color: 'purple' },
+  'producer': { name: 'Producer', category: 'electronic', icon: 'AudioWaveform', emoji: '🎛️', color: 'blue' },
+  'sampler': { name: 'Sampler', category: 'electronic', icon: 'Disc2', emoji: '🎛️', color: 'cyan' },
+  'looper': { name: 'Looper', category: 'electronic', icon: 'Disc3', emoji: '🔁', color: 'green' },
+  'turntablist': { name: 'Turntablist', category: 'electronic', icon: 'Disc', emoji: '💿', color: 'slate' },
+  'drum-machine': { name: 'Drum Machine', category: 'electronic', icon: 'AudioWaveform', emoji: '🥁', color: 'orange' },
+  'vocoder': { name: 'Vocoder', category: 'electronic', icon: 'Mic', emoji: '🎤', color: 'violet' },
+  'theremin': { name: 'Theremin', category: 'electronic', icon: 'Waves', emoji: '🎵', color: 'purple' },
+  'ableton': { name: 'Ableton Live', category: 'electronic', icon: 'AudioWaveform', emoji: '💻', color: 'yellow' },
+  'fl-studio': { name: 'FL Studio', category: 'electronic', icon: 'AudioWaveform', emoji: '💻', color: 'orange' },
+  'logic-pro': { name: 'Logic Pro', category: 'electronic', icon: 'AudioWaveform', emoji: '💻', color: 'slate' },
+  'eurorack': { name: 'Eurorack', category: 'electronic', icon: 'Waves', emoji: '🎛️', color: 'violet' },
+  'groovebox': { name: 'Groovebox', category: 'electronic', icon: 'AudioWaveform', emoji: '🎛️', color: 'pink' },
+  'launchpad': { name: 'Launchpad', category: 'electronic', icon: 'Disc2', emoji: '🎛️', color: 'green' },
+
+  // Other instruments
+  'harmonica': { name: 'Harmonica', category: 'other', icon: 'Music', emoji: '🎵', color: 'blue' },
+  'ukulele': { name: 'Ukulele', category: 'other', icon: 'Guitar', emoji: '🎸', color: 'amber' },
+  'banjo': { name: 'Banjo', category: 'other', icon: 'Music', emoji: '🪕', color: 'amber' },
+  'kalimba': { name: 'Kalimba', category: 'other', icon: 'Music', emoji: '🎵', color: 'cyan' },
+  'jaw-harp': { name: 'Jaw Harp', category: 'other', icon: 'Music', emoji: '🎵', color: 'slate' },
+  'kazoo': { name: 'Kazoo', category: 'other', icon: 'Music', emoji: '🎵', color: 'yellow' },
+  'glass-harmonica': { name: 'Glass Harmonica', category: 'other', icon: 'Music', emoji: '🎵', color: 'sky' },
+  'hang-drum': { name: 'Hang Drum', category: 'other', icon: 'Disc', emoji: '🥁', color: 'slate' },
+  'tongue-drum': { name: 'Tongue Drum', category: 'other', icon: 'Disc', emoji: '🥁', color: 'amber' },
+  'hurdy-gurdy': { name: 'Hurdy-Gurdy', category: 'other', icon: 'Music', emoji: '🎵', color: 'amber' },
+  'autoharp': { name: 'Autoharp', category: 'other', icon: 'Music', emoji: '🎵', color: 'teal' },
+  'omnichord': { name: 'Omnichord', category: 'other', icon: 'Piano', emoji: '🎹', color: 'pink' },
+  'stylophone': { name: 'Stylophone', category: 'other', icon: 'Music', emoji: '🎵', color: 'lime' },
+  'otamatone': { name: 'Otamatone', category: 'other', icon: 'Music', emoji: '🎵', color: 'yellow' },
+  'musical-saw': { name: 'Musical Saw', category: 'other', icon: 'Waves', emoji: '🎵', color: 'slate' },
+  'sound-design': { name: 'Sound Design', category: 'other', icon: 'Sparkles', emoji: '✨', color: 'violet' },
+  'foley': { name: 'Foley Artist', category: 'other', icon: 'Volume2', emoji: '🔊', color: 'slate' },
+  'field-recording': { name: 'Field Recording', category: 'other', icon: 'Mic', emoji: '🎙️', color: 'green' },
+  'other': { name: 'Other', category: 'other', icon: 'Music', emoji: '🎵', color: 'gray' },
 };
+
+// Legacy compatibility: get icon as emoji string
+export function getInstrumentEmoji(instrumentId: string): string {
+  return INSTRUMENTS[instrumentId]?.emoji || '🎵';
+}
 
 // ============================================
 // STATS
@@ -571,3 +718,94 @@ export const REACTION_TYPES = {
 } as const;
 
 export type ReactionType = keyof typeof REACTION_TYPES;
+
+// ============================================
+// SAVED TRACK PRESETS
+// ============================================
+
+// Track type for saved presets
+export type SavedTrackType = 'audio' | 'midi';
+
+// Complete saved track preset with all settings
+export interface SavedTrackPreset {
+  id: string;
+  userId: string;
+  name: string;
+  description?: string;
+
+  // Track identity
+  type: SavedTrackType;
+  instrumentId: string; // Reference to INSTRUMENTS
+  color: string; // Tailwind color or hex
+
+  // Audio Settings (for audio tracks)
+  audioSettings?: {
+    inputMode: 'microphone' | 'application';
+    inputDeviceId?: string; // Optional - will use default if not set
+    sampleRate: 48000 | 44100;
+    bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
+    noiseSuppression: boolean;
+    echoCancellation: boolean;
+    autoGainControl: boolean;
+    channelConfig: {
+      channelCount: 1 | 2;
+      leftChannel: number;
+      rightChannel?: number;
+    };
+    inputGain: number; // dB (-24 to 24)
+    directMonitoring: boolean;
+    monitoringVolume: number; // 0 to 1
+  };
+
+  // MIDI Settings (for MIDI tracks)
+  midiSettings?: {
+    deviceId?: string; // Optional - will use default if not set
+    channel: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 | 11 | 12 | 13 | 14 | 15 | 16 | 'all';
+    soundBank: string;
+    soundPreset: string;
+    velocityCurve: 'linear' | 'soft' | 'hard';
+    arpeggiator?: {
+      enabled: boolean;
+      mode: 'up' | 'down' | 'updown' | 'random' | 'order';
+      rate: '1/4' | '1/8' | '1/16' | '1/32';
+      octaves: 1 | 2 | 3 | 4;
+      gate: number;
+    };
+  };
+
+  // Mixer settings
+  volume: number; // 0 to 1
+  isMuted: boolean;
+  isSolo: boolean;
+
+  // Effects chain (all 15 effects with full settings)
+  // This is a JSON blob of UnifiedEffectsChain from types/index.ts
+  effects: Record<string, unknown>;
+
+  // Active effect preset reference (if using a preset)
+  activeEffectPreset?: string;
+
+  // Metadata
+  isDefault: boolean; // User's default track for this instrument
+  useCount: number; // Track how often this preset is used
+  createdAt: string;
+  updatedAt: string;
+}
+
+// For the join room modal - track selection
+export interface SavedTrackSelection {
+  presetId: string;
+  selected: boolean;
+}
+
+// Default track preset colors based on instrument category
+export const TRACK_PRESET_COLORS: Record<InstrumentCategory, string[]> = {
+  guitar: ['#ef4444', '#f97316', '#f59e0b', '#dc2626', '#ea580c'],
+  keyboard: ['#3b82f6', '#6366f1', '#8b5cf6', '#0ea5e9', '#06b6d4'],
+  drums: ['#f97316', '#ef4444', '#eab308', '#f59e0b', '#fbbf24'],
+  vocals: ['#ec4899', '#f43f5e', '#d946ef', '#a855f7', '#e879f9'],
+  strings: ['#f59e0b', '#d97706', '#b45309', '#ca8a04', '#eab308'],
+  wind: ['#eab308', '#fbbf24', '#f59e0b', '#facc15', '#fde047'],
+  electronic: ['#8b5cf6', '#a855f7', '#d946ef', '#c026d3', '#e879f9'],
+  other: ['#64748b', '#94a3b8', '#6b7280', '#9ca3af', '#78716c'],
+};

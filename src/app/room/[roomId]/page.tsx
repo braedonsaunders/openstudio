@@ -9,8 +9,11 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { Modal } from '@/components/ui/modal';
 import { useRoom } from '@/hooks/useRoom';
 import { useAuthStore } from '@/stores/auth-store';
+import { useSavedTracksStore, presetToTrackSettings } from '@/stores/saved-tracks-store';
+import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
-import { INSTRUMENTS } from '@/types/user';
+import { InstrumentIcon } from '@/components/ui/instrument-icon';
+import { INSTRUMENTS, getInstrumentEmoji, type SavedTrackPreset } from '@/types/user';
 import {
   Music,
   User,
@@ -20,6 +23,10 @@ import {
   AlertCircle,
   Mic,
   Volume2,
+  Check,
+  Sliders,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
 
 const instruments = [
@@ -56,6 +63,8 @@ export default function RoomPage() {
   const roomId = params.roomId as string;
 
   const { user, profile, avatar, instruments: userInstruments, isInitialized } = useAuthStore();
+  const { presets, loadPresets, selectedPresets, togglePresetSelection, getSelectedPresets, incrementUseCount } = useSavedTracksStore();
+  const { addTrack, addMidiTrack } = useUserTracksStore();
 
   const [hasJoined, setHasJoined] = useState(false);
   const [userName, setUserName] = useState('');
@@ -63,8 +72,16 @@ export default function RoomPage() {
   const [isTestingAudio, setIsTestingAudio] = useState(false);
   const [audioPermission, setAudioPermission] = useState<'pending' | 'granted' | 'denied'>('pending');
   const [audioLevel, setAudioLevel] = useState(0);
+  const [showSavedTracks, setShowSavedTracks] = useState(false);
 
   // Auth initialization is handled by onAuthStateChange in auth-store
+
+  // Load saved track presets when user is logged in
+  useEffect(() => {
+    if (user?.id) {
+      loadPresets(user.id);
+    }
+  }, [user?.id, loadPresets]);
 
   // Pre-populate name and instrument from profile when auth is ready
   useEffect(() => {
@@ -151,9 +168,31 @@ export default function RoomPage() {
     if (!userName.trim()) return;
     const success = await join(userName.trim(), instrument || undefined);
     if (success) {
+      // Create tracks from selected presets
+      const selected = getSelectedPresets();
+      for (const preset of selected) {
+        const trackSettings = presetToTrackSettings(preset);
+        if ('type' in trackSettings && trackSettings.type === 'midi' && 'midiSettings' in trackSettings && trackSettings.midiSettings) {
+          addMidiTrack(
+            user?.id || 'local-user',
+            trackSettings.name,
+            trackSettings.midiSettings,
+            userName.trim()
+          );
+        } else if ('audioSettings' in trackSettings && trackSettings.audioSettings) {
+          addTrack(
+            user?.id || 'local-user',
+            trackSettings.name,
+            trackSettings.audioSettings,
+            userName.trim()
+          );
+        }
+        // Increment use count for analytics
+        incrementUseCount(preset.id);
+      }
       setHasJoined(true);
     }
-  }, [userName, instrument, join]);
+  }, [userName, instrument, join, getSelectedPresets, addTrack, addMidiTrack, user?.id, incrementUseCount]);
 
   // Show DAW layout once joined
   if (hasJoined && isConnected) {
@@ -230,6 +269,75 @@ export default function RoomPage() {
               ))}
             </div>
           </div>
+
+          {/* Saved Tracks Selection */}
+          {user && presets.length > 0 && (
+            <div className="space-y-3">
+              <button
+                onClick={() => setShowSavedTracks(!showSavedTracks)}
+                className="w-full flex items-center justify-between text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+              >
+                <span className="flex items-center gap-2">
+                  <Sliders className="w-4 h-4" />
+                  Bring your saved tracks
+                  {selectedPresets.size > 0 && (
+                    <span className="bg-indigo-500 text-white text-xs px-2 py-0.5 rounded-full">
+                      {selectedPresets.size}
+                    </span>
+                  )}
+                </span>
+                {showSavedTracks ? (
+                  <ChevronUp className="w-4 h-4" />
+                ) : (
+                  <ChevronDown className="w-4 h-4" />
+                )}
+              </button>
+
+              {showSavedTracks && (
+                <div className="space-y-2 p-3 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
+                  {presets.map((preset) => (
+                    <button
+                      key={preset.id}
+                      onClick={() => togglePresetSelection(preset.id)}
+                      disabled={isJoining}
+                      className={`
+                        w-full flex items-center gap-3 p-3 rounded-lg transition-all text-left
+                        ${selectedPresets.has(preset.id)
+                          ? 'bg-indigo-500/10 border-2 border-indigo-500'
+                          : 'bg-white dark:bg-gray-800 border-2 border-transparent hover:border-gray-300 dark:hover:border-gray-600'}
+                        ${isJoining && 'opacity-50 cursor-not-allowed'}
+                      `}
+                    >
+                      <div
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0"
+                        style={{ backgroundColor: `${preset.color}20` }}
+                      >
+                        <InstrumentIcon
+                          instrumentId={preset.instrumentId}
+                          size="md"
+                          className="opacity-80"
+                        />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                          {preset.name}
+                        </p>
+                        <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                          {INSTRUMENTS[preset.instrumentId]?.name || preset.instrumentId}
+                        </p>
+                      </div>
+                      {selectedPresets.has(preset.id) && (
+                        <Check className="w-5 h-5 text-indigo-500 shrink-0" />
+                      )}
+                    </button>
+                  ))}
+                  <p className="text-xs text-gray-500 dark:text-gray-400 text-center pt-2">
+                    Selected tracks will be created automatically when you join
+                  </p>
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Audio test */}
           <div className="space-y-3">
