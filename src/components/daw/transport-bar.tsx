@@ -156,11 +156,15 @@ export function TransportBar({
               <div className="space-y-1.5">
                 <div className="text-[10px] font-medium text-zinc-500 uppercase tracking-wide">Audio Latency</div>
                 <div className="flex items-center justify-between">
-                  <span className="text-xs text-zinc-400">Buffer</span>
+                  <span className="text-xs text-zinc-400">Buffer Setting</span>
                   <span className="text-xs font-medium text-white">
-                    {performanceMetrics.currentBufferSize > 0
-                      ? `${performanceMetrics.currentBufferSize} samples (${performanceMetrics.audioContextLatency.toFixed(1)}ms)`
-                      : 'Initializing...'}
+                    {settings.bufferSize} samples ({((settings.bufferSize / settings.sampleRate) * 1000).toFixed(1)}ms)
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-zinc-400">System Latency</span>
+                  <span className="text-xs font-medium text-white">
+                    {performanceMetrics.audioContextLatency.toFixed(1)}ms
                   </span>
                 </div>
                 <div className="flex items-center justify-between">
