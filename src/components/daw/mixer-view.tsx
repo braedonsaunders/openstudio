@@ -13,7 +13,6 @@ import {
   Volume2,
   VolumeX,
   Crown,
-  Headphones,
   Radio,
   Disc3,
   Music2,
@@ -773,28 +772,19 @@ function MasterChannelStrip({
           </div>
         )}
 
-        {/* Edit FX Button (when FX enabled) */}
-        {fxEnabled && onOpenMasterFx && (
-          <button
-            onClick={onOpenMasterFx}
-            disabled={!isRoomMaster}
-            className={cn(
-              'w-full py-1 rounded text-[7px] font-medium tracking-wider',
-              'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300 transition-colors',
-              !isRoomMaster && 'opacity-50 cursor-not-allowed'
-            )}
-          >
-            EDIT FX
-          </button>
-        )}
-
+        {/* Edit FX Button - always visible, disabled when FX off or not master */}
         <button
-          disabled
-          title="AFL monitoring coming soon"
-          className="w-full py-1.5 rounded bg-zinc-700/40 text-zinc-500 text-[8px] font-bold tracking-wider flex items-center justify-center gap-1 cursor-not-allowed opacity-50"
+          onClick={onOpenMasterFx}
+          disabled={!isRoomMaster || !fxEnabled}
+          className={cn(
+            'w-full py-1 rounded text-[7px] font-medium tracking-wider transition-colors',
+            fxEnabled
+              ? 'bg-zinc-800/60 text-zinc-400 hover:bg-zinc-700 hover:text-zinc-300'
+              : 'bg-zinc-800/40 text-zinc-600',
+            (!isRoomMaster || !fxEnabled) && 'opacity-50 cursor-not-allowed'
+          )}
         >
-          <Headphones className="w-3 h-3" />
-          AFL
+          EDIT FX
         </button>
       </div>
 
