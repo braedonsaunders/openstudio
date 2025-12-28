@@ -1,13 +1,13 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { RoomUsersPanel } from './room-users-panel';
+import { EnhancedRoomUsersPanel } from './room-users-panel-enhanced';
 import { AnalysisPanel } from './analysis-panel';
 import { ChatPanel } from './chat-panel';
 import { AIPanel } from './ai-panel';
 import { SetlistPanel } from './setlist-panel';
 import type { PanelType } from './daw-layout';
-import type { StemType, User } from '@/types';
+import type { StemType, User, QualityPresetName, OpusEncodingSettings } from '@/types';
 import {
   Users,
   Activity,
@@ -39,6 +39,13 @@ interface PanelDockProps {
   audioLevels: Map<string, number>;
   onMuteUser?: (userId: string, muted: boolean) => void;
   onVolumeChange?: (userId: string, volume: number) => void;
+  // Quality/latency settings props
+  onPresetChange?: (preset: QualityPresetName) => void;
+  onCustomSettingsChange?: (settings: Partial<OpusEncodingSettings>) => void;
+  onJitterModeChange?: (mode: 'live-jamming' | 'balanced' | 'stable') => void;
+  onLowLatencyModeChange?: (enabled: boolean) => void;
+  onAcceptOptimization?: (type: string) => void;
+  onDismissOptimization?: (type: string) => void;
   // Layout props
   width?: number;
 }
@@ -70,6 +77,12 @@ export function PanelDock({
   audioLevels,
   onMuteUser,
   onVolumeChange,
+  onPresetChange,
+  onCustomSettingsChange,
+  onJitterModeChange,
+  onLowLatencyModeChange,
+  onAcceptOptimization,
+  onDismissOptimization,
   width,
 }: PanelDockProps) {
   // Redirect old panel types to new ones
@@ -111,13 +124,19 @@ export function PanelDock({
       {/* Panel Content */}
       <div className="flex-1 overflow-hidden relative">
         {validPanel === 'users' && (
-          <RoomUsersPanel
+          <EnhancedRoomUsersPanel
             users={users}
             currentUser={currentUser}
             isMaster={isMaster}
             audioLevels={audioLevels}
             onMuteUser={onMuteUser}
             onVolumeChange={onVolumeChange}
+            onPresetChange={onPresetChange}
+            onCustomSettingsChange={onCustomSettingsChange}
+            onJitterModeChange={onJitterModeChange}
+            onLowLatencyModeChange={onLowLatencyModeChange}
+            onAcceptOptimization={onAcceptOptimization}
+            onDismissOptimization={onDismissOptimization}
           />
         )}
 
