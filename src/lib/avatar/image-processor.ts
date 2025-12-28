@@ -106,8 +106,9 @@ function floodFillFromEdges(
  * Process an avatar component image:
  * 1. Remove white/near-white background using flood fill from edges
  * 2. Clean up small isolated white specs
- * 3. Resize to standard canvas size
- * 4. Convert to PNG with alpha channel
+ * 3. Apply edge feathering for smoother transitions
+ * 4. Resize to standard canvas size
+ * 5. Convert to PNG with alpha channel
  */
 export async function processAvatarComponent(
   input: Buffer,
@@ -116,6 +117,7 @@ export async function processAvatarComponent(
     backgroundThreshold?: number; // 0-255, pixels lighter than this become transparent
     cleanupSpecs?: boolean; // Remove small isolated white regions
     specSizeThreshold?: number; // Max size of specs to remove
+    feathering?: number; // Edge feathering amount in pixels
   } = {}
 ): Promise<ProcessedImage> {
   const {
@@ -123,6 +125,7 @@ export async function processAvatarComponent(
     backgroundThreshold = 240, // Lower threshold for more aggressive removal
     cleanupSpecs = true,
     specSizeThreshold = 50, // Remove white specs smaller than this many pixels
+    feathering = 0, // No feathering by default
   } = options;
 
   let image = sharp(input);
@@ -202,6 +205,43 @@ export async function processAvatarComponent(
         if (component.length <= specSizeThreshold) {
           for (const idx of component) {
             pixels[idx + 3] = 0;
+          }
+        }
+      }
+    }
+
+    // Step 4: Apply edge feathering if enabled
+    if (feathering > 0) {
+      // Create a copy to read from while modifying
+      const original = new Uint8Array(pixels);
+
+      for (let y = 0; y < height; y++) {
+        for (let x = 0; x < width; x++) {
+          const idx = (y * width + x) * 4;
+          const alpha = original[idx + 3];
+
+          // Only process edge pixels (semi-transparent or next to transparent)
+          if (alpha > 0 && alpha < 255) continue;
+          if (alpha === 0) continue;
+
+          // Check if this is an edge pixel (has transparent neighbor)
+          let isEdge = false;
+          for (let dy = -1; dy <= 1 && !isEdge; dy++) {
+            for (let dx = -1; dx <= 1 && !isEdge; dx++) {
+              if (dx === 0 && dy === 0) continue;
+              const nx = x + dx;
+              const ny = y + dy;
+              if (nx < 0 || nx >= width || ny < 0 || ny >= height) continue;
+              const nidx = (ny * width + nx) * 4;
+              if (original[nidx + 3] === 0) isEdge = true;
+            }
+          }
+
+          if (isEdge) {
+            // Reduce alpha for edge pixels based on feathering distance
+            // More feathering = more transparency at edges
+            const newAlpha = Math.max(0, 255 - (feathering * 25));
+            pixels[idx + 3] = newAlpha;
           }
         }
       }
@@ -335,6 +375,51 @@ export async function compositeLayersServer(
   }
 
   return composite.png().toBuffer();
+}
+
+/**
+ * Apply an eraser mask to make specified pixels transparent
+ * The mask is a PNG where white pixels indicate areas to erase
+ */
+export async function applyEraserMask(
+  input: Buffer,
+  maskBase64: string
+): Promise<Buffer> {
+  // Decode mask from base64
+  const maskData = maskBase64.replace(/^data:image\/\w+;base64,/, '');
+  const maskBuffer = Buffer.from(maskData, 'base64');
+
+  // Get input image data
+  const inputImage = sharp(input).ensureAlpha();
+  const { data: inputData, info } = await inputImage.raw().toBuffer({ resolveWithObject: true });
+
+  // Get mask data and resize to match input
+  const maskImage = sharp(maskBuffer).ensureAlpha();
+  const { data: maskDataRaw } = await maskImage
+    .resize(info.width, info.height, { fit: 'fill' })
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+
+  const pixels = new Uint8Array(inputData);
+  const mask = new Uint8Array(maskDataRaw);
+
+  // Apply mask: where mask is white (R > 128), make input transparent
+  for (let i = 0; i < pixels.length; i += 4) {
+    const maskR = mask[i];
+    if (maskR > 128) {
+      pixels[i + 3] = 0; // Make transparent
+    }
+  }
+
+  return sharp(Buffer.from(pixels), {
+    raw: {
+      width: info.width,
+      height: info.height,
+      channels: 4,
+    },
+  })
+    .png()
+    .toBuffer();
 }
 
 /**

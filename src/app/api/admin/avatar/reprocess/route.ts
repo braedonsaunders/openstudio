@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminRequest, getAdminSupabase } from '@/lib/supabase/server';
 import { getComponentById } from '@/lib/avatar/supabase';
-import { processAvatarComponent, createThumbnail } from '@/lib/avatar/image-processor';
+import { processAvatarComponent, createThumbnail, applyEraserMask } from '@/lib/avatar/image-processor';
 import { downloadAvatarComponent, uploadAvatarComponentWithThumbnail, getAvatarUrl } from '@/lib/storage/r2';
 
 interface ReprocessBody {
@@ -9,6 +9,8 @@ interface ReprocessBody {
   backgroundThreshold?: number;
   specSizeThreshold?: number;
   cleanupSpecs?: boolean;
+  feathering?: number;
+  eraserMask?: string; // Base64 PNG mask
   previewOnly?: boolean;
 }
 
@@ -27,9 +29,11 @@ export async function POST(req: NextRequest) {
     const body = await req.json() as ReprocessBody;
     const {
       componentId,
-      backgroundThreshold = 240,
-      specSizeThreshold = 50,
+      backgroundThreshold = 220,
+      specSizeThreshold = 100,
       cleanupSpecs = true,
+      feathering = 0,
+      eraserMask,
       previewOnly = false,
     } = body;
 
@@ -81,12 +85,22 @@ export async function POST(req: NextRequest) {
     }
 
     // Reprocess with new settings
-    const processed = await processAvatarComponent(originalBuffer, {
+    let processed = await processAvatarComponent(originalBuffer, {
       removeBackground: true,
       backgroundThreshold,
       cleanupSpecs,
       specSizeThreshold,
+      feathering,
     });
+
+    // Apply eraser mask if provided
+    if (eraserMask) {
+      const maskedBuffer = await applyEraserMask(processed.buffer, eraserMask);
+      processed = {
+        ...processed,
+        buffer: maskedBuffer,
+      };
+    }
 
     if (previewOnly) {
       // Return base64 preview
