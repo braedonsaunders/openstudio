@@ -163,6 +163,10 @@ export interface CreateCategoryRequest {
   maxSelections?: number;
   supportsColorVariants?: boolean;
   defaultColorPalette?: string;
+  renderX?: number;
+  renderY?: number;
+  renderWidth?: number;
+  renderHeight?: number;
 }
 
 export interface UpdateCategoryRequest {
@@ -173,6 +177,10 @@ export interface UpdateCategoryRequest {
   supportsColorVariants?: boolean;
   defaultColorPalette?: string;
   isActive?: boolean;
+  renderX?: number;
+  renderY?: number;
+  renderWidth?: number;
+  renderHeight?: number;
 }
 
 export interface CreateUnlockRuleRequest {
