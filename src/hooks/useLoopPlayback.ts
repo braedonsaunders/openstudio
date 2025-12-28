@@ -103,7 +103,7 @@ export function useLoopPlayback() {
     }
 
     // Check if should be muted (respecting solo across all tracks)
-    const shouldMute = songTrackRef.muted;
+    const shouldMute = songTrackRef.muted ?? false;
 
     // Create a modified track state with song-level overrides
     const trackWithOverrides: LoopTrackState = {
