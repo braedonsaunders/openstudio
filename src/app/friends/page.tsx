@@ -25,6 +25,7 @@ import {
   ExternalLink,
   Loader2,
 } from 'lucide-react';
+import { UserMenu } from '@/components/auth/UserMenu';
 import { motion, AnimatePresence } from 'framer-motion';
 
 type Tab = 'friends' | 'pending' | 'find' | 'followers' | 'following';
@@ -183,7 +184,7 @@ export default function FriendsPage() {
             <Users className="w-5 h-5 text-indigo-500" />
             Friends
           </h1>
-          <div className="w-20" />
+          <UserMenu />
         </div>
       </header>
 
