@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
+import { deleteRoomFiles } from '@/lib/storage/r2';
 
 // Lazy initialization of Supabase client to avoid build-time errors
 let supabaseClient: SupabaseClient | null = null;
@@ -302,6 +303,20 @@ export async function DELETE(request: NextRequest) {
         { error: 'Room not found' },
         { status: 404 }
       );
+    }
+
+    // Delete all R2 files for this room (audio tracks and stems)
+    try {
+      const r2Result = await deleteRoomFiles(roomId);
+      if (r2Result.errors.length > 0) {
+        console.warn('R2 deletion warnings for room:', roomId, r2Result.errors);
+      }
+      if (r2Result.deletedCount > 0) {
+        console.log(`Deleted ${r2Result.deletedCount} files from R2 for room ${roomId}`);
+      }
+    } catch (r2Error) {
+      // Log but don't fail the request - we still want to clean up the database
+      console.error('Error deleting room files from R2:', r2Error);
     }
 
     // Delete user_tracks for this room first
