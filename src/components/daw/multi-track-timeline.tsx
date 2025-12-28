@@ -36,6 +36,16 @@ interface ContextMenuState {
   trackType: 'audio' | 'loop';
 }
 
+// Track row context menu state
+interface TrackRowContextMenuState {
+  isOpen: boolean;
+  x: number;
+  y: number;
+  position: number;
+  name: string;
+  clipIds: string[];
+}
+
 // Loop copy dialog state
 interface LoopCopyDialogState {
   isOpen: boolean;
@@ -297,6 +307,14 @@ export function MultiTrackTimeline({
     trackName: '',
     trackType: 'audio',
   });
+  const [trackRowContextMenu, setTrackRowContextMenu] = useState<TrackRowContextMenuState>({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    position: 0,
+    name: '',
+    clipIds: [],
+  });
   const [dragState, setDragState] = useState<DragState>({
     isDragging: false,
     trackRefId: null,
@@ -309,6 +327,8 @@ export function MultiTrackTimeline({
   const [dragOffset, setDragOffset] = useState<number | null>(null);
   const dragOffsetRef = useRef<number | null>(null);
   const isProgrammaticScroll = useRef(false);
+  const userScrolledRecently = useRef(false);
+  const userScrollTimeout = useRef<NodeJS.Timeout | null>(null);
   const [snapType, setSnapType] = useState<'beat' | 'bar' | 'track-end' | null>(null);
   const [isPlayheadDragging, setIsPlayheadDragging] = useState(false);
 
@@ -520,13 +540,22 @@ export function MultiTrackTimeline({
     };
   }, [isPlayheadDragging, onSeek, scrollLeft, zoom, songDuration]);
 
-  // Handle scroll - ignore programmatic scrolls to avoid infinite loops
+  // Handle scroll - track user scrolling to disable auto-follow
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     if (isProgrammaticScroll.current) {
       isProgrammaticScroll.current = false;
       return;
     }
     setScrollLeft(e.currentTarget.scrollLeft);
+
+    // Mark that user scrolled manually - disable auto-follow for 3 seconds
+    userScrolledRecently.current = true;
+    if (userScrollTimeout.current) {
+      clearTimeout(userScrollTimeout.current);
+    }
+    userScrollTimeout.current = setTimeout(() => {
+      userScrolledRecently.current = false;
+    }, 3000);
   }, []);
 
   // Handle zoom - allow minimum of 2 pixels per second (much more zoomed out)
@@ -559,14 +588,73 @@ export function MultiTrackTimeline({
     setContextMenu((prev) => ({ ...prev, isOpen: false }));
   }, []);
 
+  // Track row context menu handler
+  const handleTrackRowContextMenu = useCallback(
+    (e: React.MouseEvent, row: { position: number; name: string; clips: typeof unifiedTracks }) => {
+      e.preventDefault();
+      e.stopPropagation();
+      setTrackRowContextMenu({
+        isOpen: true,
+        x: e.clientX,
+        y: e.clientY,
+        position: row.position,
+        name: row.name,
+        clipIds: row.clips.map((c) => c.ref.id),
+      });
+    },
+    []
+  );
+
+  const closeTrackRowContextMenu = useCallback(() => {
+    setTrackRowContextMenu((prev) => ({ ...prev, isOpen: false }));
+  }, []);
+
+  // Delete entire track row
+  const handleDeleteTrackRow = useCallback(() => {
+    if (trackRowContextMenu.clipIds.length === 0) return;
+
+    const { getCurrentSong, removeTrackFromSong } = useSongsStore.getState();
+    const song = getCurrentSong();
+    if (!song) return;
+
+    // Stop playback when deleting tracks
+    const { isPlaying: wasPlaying } = useAudioStore.getState();
+    if (wasPlaying) {
+      if (onStop) onStop();
+      setPlaying(false);
+    }
+
+    // Remove all clips in this row
+    for (const clipId of trackRowContextMenu.clipIds) {
+      const trackRef = song.tracks.find((t) => t.id === clipId);
+      if (trackRef) {
+        removeTrackFromSong(song.id, clipId);
+
+        // If it's a loop track, also remove from loop tracks store
+        if (trackRef.type === 'loop') {
+          removeLoopTrack(trackRef.trackId);
+        }
+      }
+    }
+
+    // Reset current time
+    const { setCurrentTime } = useAudioStore.getState();
+    setCurrentTime(0);
+
+    closeTrackRowContextMenu();
+  }, [trackRowContextMenu.clipIds, onStop, setPlaying, removeLoopTrack, closeTrackRowContextMenu]);
+
   // Close context menu on click outside
   useEffect(() => {
-    if (contextMenu.isOpen) {
-      const handleClick = () => closeContextMenu();
+    if (contextMenu.isOpen || trackRowContextMenu.isOpen) {
+      const handleClick = () => {
+        closeContextMenu();
+        closeTrackRowContextMenu();
+      };
       window.addEventListener('click', handleClick);
       return () => window.removeEventListener('click', handleClick);
     }
-  }, [contextMenu.isOpen, closeContextMenu]);
+  }, [contextMenu.isOpen, trackRowContextMenu.isOpen, closeContextMenu, closeTrackRowContextMenu]);
 
   // Delete track handler - stops playback if needed
   const handleDeleteTrack = useCallback(() => {
@@ -930,9 +1018,9 @@ export function MultiTrackTimeline({
     return markers;
   }, [songDuration, zoom]);
 
-  // Keep playhead visible during playback
+  // Keep playhead visible during playback (only if user hasn't scrolled manually)
   useEffect(() => {
-    if (!containerRef.current || !isPlaying) return;
+    if (!containerRef.current || !isPlaying || userScrolledRecently.current) return;
 
     const playheadX = currentTime * zoom;
     const container = containerRef.current;
@@ -1056,8 +1144,11 @@ export function MultiTrackTimeline({
                   className="relative border-b border-gray-100 dark:border-white/5 hover:bg-gray-50/50 dark:hover:bg-white/[0.02]"
                   style={{ height: trackHeight }}
                 >
-                  {/* Track label on left */}
-                  <div className="absolute left-0 top-0 bottom-0 w-24 flex items-center gap-1.5 px-2 bg-gray-50/80 dark:bg-[#0d0d14]/80 border-r border-gray-100 dark:border-white/5 z-10">
+                  {/* Track label on left - right-click for context menu */}
+                  <div
+                    className="absolute left-0 top-0 bottom-0 w-24 flex items-center gap-1.5 px-2 bg-gray-50/80 dark:bg-[#0d0d14]/80 border-r border-gray-100 dark:border-white/5 z-10 cursor-context-menu"
+                    onContextMenu={(e) => handleTrackRowContextMenu(e, row)}
+                  >
                     <div
                       className="w-4 h-4 rounded flex items-center justify-center shrink-0"
                       style={{ backgroundColor: row.color, color: 'white' }}
@@ -1237,6 +1328,30 @@ export function MultiTrackTimeline({
           >
             <Trash2 className="w-4 h-4" />
             <span>Delete</span>
+          </button>
+        </div>
+      )}
+
+      {/* Track Row Context Menu */}
+      {trackRowContextMenu.isOpen && (
+        <div
+          className="fixed z-50 min-w-40 py-1 bg-white dark:bg-zinc-900 rounded-lg shadow-xl border border-gray-200 dark:border-zinc-700"
+          style={{
+            left: trackRowContextMenu.x,
+            top: trackRowContextMenu.y,
+          }}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 py-1.5 text-xs text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800 truncate">
+            Track: {trackRowContextMenu.name}
+          </div>
+
+          <button
+            onClick={handleDeleteTrackRow}
+            className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors"
+          >
+            <Trash2 className="w-4 h-4" />
+            <span>Delete Track ({trackRowContextMenu.clipIds.length} clip{trackRowContextMenu.clipIds.length !== 1 ? 's' : ''})</span>
           </button>
         </div>
       )}
