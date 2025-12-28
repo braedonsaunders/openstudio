@@ -380,6 +380,7 @@ export function MultiTrackTimeline({
   const { getTracksByRoom } = useLoopTracksStore();
   const { isPlaying, currentTime, duration, setPlaying } = useAudioStore();
   const sessionTempo = useSessionTempoStore((s) => s.tempo);
+  const { getLoop: getCustomLoop } = useCustomLoopsStore();
 
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
@@ -416,7 +417,11 @@ export function MultiTrackTimeline({
     return currentSong.tracks.map((trackRef) => {
       if (trackRef.type === 'loop') {
         const loopTrack = loopTracks.find((t) => t.id === trackRef.trackId);
-        const loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+        // Check both hardcoded library AND custom loops store (for database-stored loops)
+        let loopDef = loopTrack ? getLoopById(loopTrack.loopId) : undefined;
+        if (!loopDef && loopTrack) {
+          loopDef = getCustomLoop(loopTrack.loopId);
+        }
         const loopDuration = getLoopDuration(loopDef, loopTrack?.tempoLocked);
         const midiNotes = loopTrack?.customMidiData || loopDef?.midiData || [];
 
@@ -446,7 +451,7 @@ export function MultiTrackTimeline({
         };
       }
     });
-  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, waveformDataCache]);
+  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, waveformDataCache, getCustomLoop]);
 
   // Group tracks by position (track row) for rendering multiple clips on same row
   const trackRows = useMemo(() => {
