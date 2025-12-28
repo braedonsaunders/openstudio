@@ -7,7 +7,6 @@ import { Card } from '@/components/ui/card';
 import {
   Sparkles,
   RefreshCw,
-  Download,
   Save,
   Wand2,
   Check,
@@ -15,6 +14,7 @@ import {
   ImagePlus,
 } from 'lucide-react';
 import type { AvatarGenerationPreset, AvatarCategory, ComponentRarity } from '@/types/avatar';
+import { adminGet, adminPost } from '@/lib/api/admin';
 
 interface EnvDebug {
   hasAccountId: boolean;
@@ -67,7 +67,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
   useEffect(() => {
     const fetchConfig = async () => {
       try {
-        const response = await fetch('/api/admin/avatar/generate');
+        const response = await adminGet('/api/admin/avatar/generate');
         if (response.ok) {
           const data = await response.json();
           console.log('Generator config:', data);
@@ -78,6 +78,9 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
           if (data.presets?.length > 0) {
             setSelectedPreset(data.presets[0].id);
           }
+        } else {
+          const error = await response.json();
+          console.error('Failed to load config:', error);
         }
       } catch (error) {
         console.error('Failed to load config:', error);
@@ -112,11 +115,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
             count: imageCount,
           };
 
-      const response = await fetch('/api/admin/avatar/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-      });
+      const response = await adminPost('/api/admin/avatar/generate', body);
 
       if (response.ok) {
         const result = await response.json();
@@ -165,14 +164,10 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
         const componentName = selectedIndices.length > 1 ? `${saveComponentName} ${i + 1}` : saveComponentName;
 
         // Upload the image
-        const uploadResponse = await fetch('/api/admin/avatar/upload', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            imageData,
-            categoryId: saveCategory,
-            componentId,
-          }),
+        const uploadResponse = await adminPost('/api/admin/avatar/upload', {
+          imageData,
+          categoryId: saveCategory,
+          componentId,
         });
 
         if (!uploadResponse.ok) {
@@ -183,21 +178,17 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
         const uploadResult = await uploadResponse.json();
 
         // Create the component
-        const componentResponse = await fetch('/api/admin/avatar/components', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            id: componentId,
-            categoryId: saveCategory,
-            name: componentName,
-            imageUrl: uploadResult.url,
-            thumbnailUrl: uploadResult.thumbnailUrl,
-            r2Key: uploadResult.key,
-            tags: saveTags.split(',').map((t) => t.trim()).filter(Boolean),
-            rarity: saveRarity,
-            generationPrompt: useCustomPrompt ? customPrompt : `${selectedPreset}: ${componentDescription}`,
-            generationModel: selectedModel,
-          }),
+        const componentResponse = await adminPost('/api/admin/avatar/components', {
+          id: componentId,
+          categoryId: saveCategory,
+          name: componentName,
+          imageUrl: uploadResult.url,
+          thumbnailUrl: uploadResult.thumbnailUrl,
+          r2Key: uploadResult.key,
+          tags: saveTags.split(',').map((t) => t.trim()).filter(Boolean),
+          rarity: saveRarity,
+          generationPrompt: useCustomPrompt ? customPrompt : `${selectedPreset}: ${componentDescription}`,
+          generationModel: selectedModel,
         });
 
         if (componentResponse.ok) {

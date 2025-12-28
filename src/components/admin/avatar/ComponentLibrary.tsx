@@ -12,15 +12,14 @@ import {
   Edit2,
   Eye,
   EyeOff,
-  Lock,
   Star,
   Gem,
   Crown,
   Filter,
-  X,
   Save,
 } from 'lucide-react';
 import type { AvatarComponent, AvatarCategory, AvatarUnlockRule, ComponentRarity } from '@/types/avatar';
+import { adminGet, adminPatch, adminDelete } from '@/lib/api/admin';
 
 interface ComponentLibraryProps {
   categories: AvatarCategory[];
@@ -69,7 +68,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
   const loadComponents = async () => {
     setIsLoading(true);
     try {
-      const response = await fetch('/api/admin/avatar/components');
+      const response = await adminGet('/api/admin/avatar/components');
       if (response.ok) {
         const data = await response.json();
         setComponents(data);
@@ -122,15 +121,11 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     setIsSaving(true);
 
     try {
-      const response = await fetch(`/api/admin/avatar/components?id=${editingComponent.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          name: editName,
-          tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
-          rarity: editRarity,
-          unlockRuleIds: editRuleIds,
-        }),
+      const response = await adminPatch(`/api/admin/avatar/components?id=${editingComponent.id}`, {
+        name: editName,
+        tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
+        rarity: editRarity,
+        unlockRuleIds: editRuleIds,
       });
 
       if (response.ok) {
@@ -147,10 +142,8 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
 
   const handleToggleActive = async (component: AvatarComponent) => {
     try {
-      const response = await fetch(`/api/admin/avatar/components?id=${component.id}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ isActive: !component.isActive }),
+      const response = await adminPatch(`/api/admin/avatar/components?id=${component.id}`, {
+        isActive: !component.isActive,
       });
 
       if (response.ok) {
@@ -166,9 +159,7 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
     setIsDeleting(true);
 
     try {
-      const response = await fetch(`/api/admin/avatar/components?id=${deletingComponent.id}`, {
-        method: 'DELETE',
-      });
+      const response = await adminDelete(`/api/admin/avatar/components?id=${deletingComponent.id}`);
 
       if (response.ok) {
         setDeletingComponent(null);

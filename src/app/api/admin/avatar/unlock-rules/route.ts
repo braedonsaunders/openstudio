@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getUser, getUserProfile } from '@/lib/supabase/auth';
+import { verifyAdminRequest } from '@/lib/supabase/server';
 import {
   getAllUnlockRules,
   createUnlockRule,
@@ -9,18 +9,11 @@ import {
 } from '@/lib/avatar/supabase';
 import type { CreateUnlockRuleRequest, UpdateUnlockRuleRequest } from '@/types/avatar';
 
-// Check if user is admin
-async function isAdmin(): Promise<boolean> {
-  const user = await getUser();
-  if (!user) return false;
-  const profile = await getUserProfile(user.id);
-  return profile?.accountType === 'admin';
-}
-
 // GET /api/admin/avatar/unlock-rules - List all unlock rules
 export async function GET(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -60,7 +53,8 @@ export async function GET(req: NextRequest) {
 // POST /api/admin/avatar/unlock-rules - Create a new unlock rule
 export async function POST(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -111,7 +105,8 @@ export async function POST(req: NextRequest) {
 // PATCH /api/admin/avatar/unlock-rules - Update an unlock rule
 export async function PATCH(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
@@ -138,7 +133,8 @@ export async function PATCH(req: NextRequest) {
 // DELETE /api/admin/avatar/unlock-rules - Delete an unlock rule
 export async function DELETE(req: NextRequest) {
   try {
-    if (!(await isAdmin())) {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
