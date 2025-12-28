@@ -22,13 +22,13 @@ export function MainViewSwitcher({
   onViewChange,
 }: MainViewSwitcherProps) {
   return (
-    <div className="flex items-center gap-0.5 px-1 py-1 bg-gray-100 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
+    <div className="flex items-center gap-0.5 px-0.5 py-0.5 bg-gray-100 dark:bg-white/5 rounded-lg border border-gray-200 dark:border-white/10">
       {views.map(({ id, icon: Icon, label, shortcut }) => (
         <button
           key={id}
           onClick={() => onViewChange(id)}
           className={cn(
-            'p-1.5 rounded transition-all',
+            'p-1 rounded transition-all',
             activeView === id
               ? 'bg-white dark:bg-white/10 text-indigo-600 dark:text-indigo-400 shadow-sm'
               : 'text-gray-400 dark:text-zinc-500 hover:text-gray-600 dark:hover:text-zinc-300 hover:bg-white/50 dark:hover:bg-white/5'
