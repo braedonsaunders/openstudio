@@ -174,7 +174,8 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
 
         // Try to load existing canvas data (optional - may not exist yet)
         try {
-          const canvasResponse = await fetch('/api/avatar/canvas');
+          const headers = await getAuthHeaders();
+          const canvasResponse = await fetch('/api/avatar/canvas', { headers });
           if (canvasResponse.ok) {
             const canvasResult = await canvasResponse.json();
             if (canvasResult.canvasData) {
