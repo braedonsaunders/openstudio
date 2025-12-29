@@ -51,7 +51,9 @@ export function AIPanel() {
 
   // Songs store for creating Lyria songs
   const { createSong, addTrackToSong, getCurrentSong, currentSongId } = useSongsStore();
-  const { roomId, currentUser } = useRoomStore();
+  const room = useRoomStore((state) => state.room);
+  const currentUser = useRoomStore((state) => state.currentUser);
+  const roomId = room?.id;
 
   // UI state for config
   const [selectedStyle, setSelectedStyle] = useState<LyriaStyleId>('jazz');
@@ -94,7 +96,6 @@ export function AIPanel() {
     const session = lyriaStore.session;
     if (!session) return;
 
-    const { buildPrompt } = require('@/lib/ai/lyria');
     const prompt = customPrompt.trim() || buildPrompt(selectedStyle, selectedMood || undefined);
     session.setPrompts(prompt);
   }, [selectedStyle, selectedMood, customPrompt]);
