@@ -14,6 +14,7 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  R2_BUCKET: openstudio-releases
 
 jobs:
   build:
@@ -75,10 +76,7 @@ jobs:
             echo "CPAL_ASIO_DIR=${{ github.workspace }}/native-bridge/asio-sdk" >> $env:GITHUB_ENV
           } else {
             Write-Host "⚠ ASIO SDK not found at $asioPath"
-            Write-Host "  Download from https://www.steinberg.net/developers/"
-            Write-Host "  Extract to native-bridge/asio-sdk/"
             Write-Host "  Building without ASIO (WASAPI only)"
-            # Override features to not include ASIO
             echo "BUILD_FEATURES=default" >> $env:GITHUB_ENV
           }
 
@@ -120,13 +118,11 @@ jobs:
           path: ${{ matrix.artifact }}
           retention-days: 90
 
-  # Create a release when pushing to main
-  release:
+  # Upload to Cloudflare R2 when pushing to main
+  deploy:
     needs: build
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
 
     steps:
       - uses: actions/checkout@v4
@@ -137,52 +133,44 @@ jobs:
         run: |
           VERSION=$(grep '^version' Cargo.toml | head -1 | sed 's/.*"\(.*\)".*/\1/')
           echo "version=$VERSION" >> $GITHUB_OUTPUT
-          echo "tag=bridge-v$VERSION" >> $GITHUB_OUTPUT
 
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           path: artifacts
 
-      - name: Prepare release files
+      - name: Prepare files
         run: |
           mkdir -p release
           find artifacts -type f -exec mv {} release/ \;
           ls -la release/
 
-      - name: Create/Update Release
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: "Native Bridge v${{ steps.version.outputs.version }}"
-          body: |
-            ## OpenStudio Native Audio Bridge v${{ steps.version.outputs.version }}
+      - name: Install wrangler
+        run: npm install -g wrangler
 
-            Ultra-low-latency audio I/O for OpenStudio.
-
-            ### Downloads
-
-            | Platform | File | Latency |
-            |----------|------|---------|
-            | Windows | `openstudio-bridge-windows.exe` | ~5-10ms (ASIO) |
-            | macOS Intel | `openstudio-bridge-macos-x64` | ~5-10ms (CoreAudio) |
-            | macOS Apple Silicon | `openstudio-bridge-macos-arm64` | ~5-10ms (CoreAudio) |
-            | Linux | `openstudio-bridge-linux` | ~5-15ms (ALSA/JACK) |
-
-            ### First Run
-
-            **Windows:** Right-click → "Run anyway" (SmartScreen warning)
-            **macOS:** Right-click → Open → "Open anyway" (Gatekeeper)
-            **Linux:** `chmod +x openstudio-bridge-linux && ./openstudio-bridge-linux`
-
-            ### Usage
-
-            1. Download the file for your platform
-            2. Run it (dismiss security warnings)
-            3. In OpenStudio, click "⚡ Low Latency Mode"
-            4. The app auto-connects to the native bridge
-          files: release/*
-          draft: false
-          prerelease: false
+      - name: Upload to Cloudflare R2
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+
+          # Upload each file to R2
+          for file in release/*; do
+            filename=$(basename "$file")
+            echo "Uploading $filename..."
+
+            # Upload to versioned path
+            wrangler r2 object put "${{ env.R2_BUCKET }}/v${VERSION}/${filename}" --file="$file"
+
+            # Also upload to "latest" for easy access
+            wrangler r2 object put "${{ env.R2_BUCKET }}/latest/${filename}" --file="$file"
+          done
+
+          # Create version manifest
+          echo "{\"version\": \"${VERSION}\", \"date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > version.json
+          wrangler r2 object put "${{ env.R2_BUCKET }}/latest/version.json" --file="version.json"
+
+          echo "✓ Uploaded to R2 bucket: ${{ env.R2_BUCKET }}"
+          echo "  - /v${VERSION}/"
+          echo "  - /latest/"
