@@ -1,7 +1,6 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { UserTrack, TrackAudioSettings, UnifiedEffectsChain, ExtendedEffectsChain, InputChannelConfig, MidiInputSettings, UserTrackType } from '@/types';
-import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects/unified-effects-processor';
+import type { UserTrack, TrackAudioSettings, ExtendedEffectsChain, InputChannelConfig, MidiInputSettings, UserTrackType } from '@/types';
 import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
@@ -27,7 +26,7 @@ const DEFAULT_CHANNEL_CONFIG: InputChannelConfig = {
   rightChannel: 1,
 };
 
-// Default audio settings with unified effects chain
+// Default audio settings with extended effects chain
 const DEFAULT_AUDIO_SETTINGS: TrackAudioSettings = {
   inputMode: 'microphone',
   inputDeviceId: 'default',
@@ -38,7 +37,7 @@ const DEFAULT_AUDIO_SETTINGS: TrackAudioSettings = {
   autoGainControl: false,
   channelConfig: DEFAULT_CHANNEL_CONFIG,
   inputGain: 0,
-  effects: DEFAULT_UNIFIED_EFFECTS,
+  effects: DEFAULT_FULL_EFFECTS,
   directMonitoring: true,
   monitoringVolume: 1,
 };
@@ -414,10 +413,10 @@ export const useUserTracksStore = create<UserTracksState>()(
         if (!preset) return state;
 
         const tracks = new Map(state.tracks);
-        const currentEffects = track.audioSettings.effects || DEFAULT_UNIFIED_EFFECTS;
+        const currentEffects = { ...DEFAULT_FULL_EFFECTS, ...track.audioSettings.effects };
 
-        // Apply guitar preset effects to the unified chain (only guitar-specific effects)
-        const newEffects: UnifiedEffectsChain = {
+        // Apply guitar preset effects (only guitar-specific effects, preserve extended effects)
+        const newEffects: ExtendedEffectsChain = {
           ...currentEffects,
           wah: { ...preset.effects.wah },
           overdrive: { ...preset.effects.overdrive },

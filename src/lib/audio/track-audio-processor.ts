@@ -1,8 +1,8 @@
 // Track Audio Processor - Manages per-track audio processing
 // Includes: input gain, effects chain, mute, solo, volume, monitoring
 
-import { TrackEffectsProcessor } from './effects/track-effects-processor';
-import type { TrackEffectsChain, TrackAudioSettings } from '@/types';
+import { ExtendedEffectsProcessor } from './effects/extended-effects-processor';
+import type { ExtendedEffectsChain, TrackAudioSettings } from '@/types';
 
 export interface TrackAudioState {
   isMuted: boolean;
@@ -35,7 +35,7 @@ export class TrackAudioProcessor {
   private outputAnalyser: AnalyserNode;
 
   // Effects processor
-  private effectsProcessor: TrackEffectsProcessor;
+  private effectsProcessor: ExtendedEffectsProcessor;
 
   // State
   private state: TrackAudioState = {
@@ -57,7 +57,7 @@ export class TrackAudioProcessor {
     audioContext: AudioContext,
     trackId: string,
     initialSettings?: TrackAudioSettings,
-    onEffectsChange?: (effects: TrackEffectsChain) => void
+    onEffectsChange?: (effects: ExtendedEffectsChain) => void
   ) {
     this.audioContext = audioContext;
     this.trackId = trackId;
@@ -73,7 +73,7 @@ export class TrackAudioProcessor {
     this.outputAnalyser.fftSize = 256;
 
     // Create effects processor
-    this.effectsProcessor = new TrackEffectsProcessor(
+    this.effectsProcessor = new ExtendedEffectsProcessor(
       audioContext,
       initialSettings?.effects,
       onEffectsChange
@@ -203,14 +203,14 @@ export class TrackAudioProcessor {
   }
 
   // Update effects settings
-  updateEffects(effects: Partial<TrackEffectsChain>): void {
+  updateEffects(effects: Partial<ExtendedEffectsChain>): void {
     const start = performance.now();
     this.effectsProcessor.updateSettings(effects);
     this.lastProcessingTime = performance.now() - start;
   }
 
   // Get effects processor for direct manipulation
-  getEffectsProcessor(): TrackEffectsProcessor {
+  getEffectsProcessor(): ExtendedEffectsProcessor {
     return this.effectsProcessor;
   }
 
