@@ -99,6 +99,9 @@ export function DynamicWaveform({
   const smoothLevelRef = useRef<number>(0);
   const energyRef = useRef<number>(0);
   const phaseRef = useRef<number>(0);
+  // Store audioLevel in a ref to avoid restarting effects on every level change
+  const audioLevelRef = useRef<number>(audioLevel);
+  audioLevelRef.current = audioLevel;
 
   const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
@@ -112,7 +115,8 @@ export function DynamicWaveform({
   // Sample audio level at fixed interval
   useEffect(() => {
     const interval = setInterval(() => {
-      const amplified = amplifyLevel(audioLevel);
+      // Read from ref to get current level without restarting the interval
+      const amplified = amplifyLevel(audioLevelRef.current);
       waveformBufferRef.current.push(amplified);
 
       if (waveformBufferRef.current.length > maxSamples) {
@@ -121,7 +125,7 @@ export function DynamicWaveform({
     }, 1000 / SAMPLE_RATE);
 
     return () => clearInterval(interval);
-  }, [audioLevel, maxSamples]);
+  }, [maxSamples]);
 
   // Main render loop
   useEffect(() => {
@@ -153,8 +157,8 @@ export function DynamicWaveform({
       ctx.fillStyle = `rgba(${bgColor.r}, ${bgColor.g}, ${bgColor.b}, 0.15)`;
       ctx.fillRect(0, 0, width, height);
 
-      // Smooth the current level for animations
-      const targetLevel = amplifyLevel(audioLevel);
+      // Smooth the current level for animations (read from ref to avoid effect restarts)
+      const targetLevel = amplifyLevel(audioLevelRef.current);
       smoothLevelRef.current += (targetLevel - smoothLevelRef.current) * 0.15;
       const smoothLevel = smoothLevelRef.current;
 
@@ -445,7 +449,9 @@ export function DynamicWaveform({
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [trackColor, zoom, isMuted, isArmed, audioLevel, baseColor, historySeconds, maxSamples, bgColor, isDark]);
+  // Note: audioLevel is read from audioLevelRef inside draw() to avoid restarting the animation loop
+  // baseColor and bgColor are derived from trackColor and isDark, so they don't need to be in deps
+  }, [trackColor, zoom, isMuted, isArmed, historySeconds, maxSamples, isDark]);
 
   // Calculate opacity: muted or not armed = dimmed
   const opacity = isMuted ? 0.3 : !isArmed ? 0.4 : 1;
