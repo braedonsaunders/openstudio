@@ -1133,8 +1133,6 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
                 users={users}
                 currentUser={currentUser}
                 audioLevels={audioLevels}
-                activeView={mainView}
-                onViewChange={setMainView}
               />
             )}
           </div>
