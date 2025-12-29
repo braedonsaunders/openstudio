@@ -6,7 +6,6 @@ mod stream;
 
 pub use device::{AudioDevice, ChannelConfig, DeviceInfo};
 pub use engine::AudioEngine;
-pub use stream::{CaptureStream, PlaybackStream};
 
 /// Supported sample rates
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

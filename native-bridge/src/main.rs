@@ -12,7 +12,7 @@ use anyhow::Result;
 use protocol::LaunchParams;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use tracing::{info, error, Level};
+use tracing::{info, Level};
 
 /// Application state shared across all components
 pub struct AppState {

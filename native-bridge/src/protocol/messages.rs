@@ -1,8 +1,8 @@
 //! WebSocket message types for browser <-> native bridge communication
 
-use crate::audio::{BufferSize, ChannelConfig, DeviceInfo, SampleRate};
+use crate::audio::{ChannelConfig, DeviceInfo};
 use crate::effects::EffectsSettings;
-use crate::mixing::{BackingTrackState, RemoteUser, TrackState};
+use crate::mixing::TrackState;
 use serde::{Deserialize, Serialize};
 
 /// All messages from browser to native bridge
