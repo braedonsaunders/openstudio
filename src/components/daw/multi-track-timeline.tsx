@@ -627,6 +627,8 @@ export function MultiTrackTimeline({
   // Handle timeline click to seek - accurate positioning without snapping
   const handleTimelineClick = useCallback(
     (e: React.MouseEvent) => {
+      // Disable seeking for Lyria songs (they're infinite/live)
+      if (isLyriaSong) return;
       if (!onSeek || !containerRef.current) return;
 
       // Don't seek if clicking on a track clip (handled by drag)
@@ -641,15 +643,17 @@ export function MultiTrackTimeline({
       // Precise seek - no rounding or snapping
       onSeek(Math.min(songDuration, time));
     },
-    [onSeek, scrollLeft, zoom, songDuration]
+    [isLyriaSong, onSeek, scrollLeft, zoom, songDuration]
   );
 
   // Playhead drag handler - for precise seeking by dragging the playhead
   const handlePlayheadDragStart = useCallback((e: React.MouseEvent) => {
+    // Disable playhead dragging for Lyria songs
+    if (isLyriaSong) return;
     e.preventDefault();
     e.stopPropagation();
     setIsPlayheadDragging(true);
-  }, []);
+  }, [isLyriaSong]);
 
   // Playhead drag effect
   useEffect(() => {
@@ -1576,28 +1580,35 @@ export function MultiTrackTimeline({
             )}
           </div>
 
-          {/* Playhead - draggable for seeking */}
+          {/* Playhead - draggable for seeking (disabled for Lyria) */}
           <div
             data-playhead
             className={cn(
               'absolute top-0 bottom-0 z-30 group',
-              isPlayheadDragging ? 'cursor-grabbing' : 'cursor-grab'
+              isLyriaSong
+                ? 'cursor-default'
+                : isPlayheadDragging ? 'cursor-grabbing' : 'cursor-grab'
             )}
             style={{ left: currentTime * zoom + TRACK_LABEL_WIDTH - 6 }}
             onMouseDown={handlePlayheadDragStart}
           >
             {/* Wider hit area for easier grabbing */}
-            <div className="absolute inset-0 w-3 -ml-0" />
+            {!isLyriaSong && <div className="absolute inset-0 w-3 -ml-0" />}
             {/* Visible playhead line */}
             <div className={cn(
               'absolute left-1.5 top-0 bottom-0 w-0.5 transition-colors',
-              isPlayheadDragging ? 'bg-red-400' : 'bg-red-500 group-hover:bg-red-400'
+              isLyriaSong
+                ? 'bg-purple-500'
+                : isPlayheadDragging ? 'bg-red-400' : 'bg-red-500 group-hover:bg-red-400'
             )} />
             {/* Playhead handle */}
             <div className={cn(
-              'w-3 h-3 bg-red-500 rounded-sm rotate-45 transition-all',
-              isPlayheadDragging && 'scale-125 bg-red-400',
-              'group-hover:scale-110'
+              'w-3 h-3 rounded-sm rotate-45 transition-all',
+              isLyriaSong
+                ? 'bg-purple-500'
+                : 'bg-red-500',
+              !isLyriaSong && isPlayheadDragging && 'scale-125 bg-red-400',
+              !isLyriaSong && 'group-hover:scale-110'
             )} style={{ marginTop: '12px' }} />
           </div>
         </div>

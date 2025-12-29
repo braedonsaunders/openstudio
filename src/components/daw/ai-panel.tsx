@@ -26,6 +26,9 @@ import {
   Plus,
   Wifi,
   WifiOff,
+  Save,
+  Trash2,
+  RefreshCw,
 } from 'lucide-react';
 import {
   LYRIA_STYLES,
@@ -50,7 +53,7 @@ export function AIPanel() {
   const setLyriaVolume = useLyriaStore((state) => state.setVolume);
 
   // Songs store for creating Lyria songs
-  const { createSong, addTrackToSong, getCurrentSong, currentSongId } = useSongsStore();
+  const { createSong, addTrackToSong, getCurrentSong, currentSongId, updateTrackInSong, deleteSong } = useSongsStore();
   const room = useRoomStore((state) => state.room);
   const currentUser = useRoomStore((state) => state.currentUser);
   const roomId = room?.id;
@@ -67,6 +70,26 @@ export function AIPanel() {
   const [drums, setDrums] = useState(0.7);
   const [bass, setBass] = useState(0.7);
   const [temperature, setTemperature] = useState(0.5);
+
+  // Get current Lyria track from song if it exists
+  const currentSong = getCurrentSong();
+  const currentLyriaTrack = currentSong?.tracks.find(t => t.type === 'lyria');
+  const isEditingExisting = !!currentLyriaTrack;
+
+  // Load settings from current Lyria track when it changes
+  useEffect(() => {
+    if (currentLyriaTrack?.lyriaConfig) {
+      const config = currentLyriaTrack.lyriaConfig;
+      setSelectedStyle(config.styleId || 'jazz');
+      setSelectedMood(config.moodId || null);
+      setCustomPrompt(config.customPrompt || '');
+      setDensity(config.density ?? 0.5);
+      setBrightness(config.brightness ?? 0.5);
+      setDrums(config.drums ?? 0.7);
+      setBass(config.bass ?? 0.7);
+      setTemperature(config.temperature ?? 0.5);
+    }
+  }, [currentLyriaTrack?.id]); // Only reload when the track reference changes
 
   // Sync room context to Lyria store when BPM/key changes
   useEffect(() => {
@@ -137,7 +160,6 @@ export function AIPanel() {
 
   // Add Lyria track to current song
   const handleAddToCurrentSong = useCallback(() => {
-    const currentSong = getCurrentSong();
     if (!currentSong) return;
 
     const config = getCurrentConfig();
@@ -158,14 +180,38 @@ export function AIPanel() {
     });
 
     console.log('[AIPanel] Added Lyria track to song:', currentSong.name);
-  }, [getCurrentSong, getCurrentConfig, addTrackToSong, lyriaVolume]);
+  }, [currentSong, getCurrentConfig, addTrackToSong, lyriaVolume]);
+
+  // Save changes to existing Lyria track
+  const handleSaveChanges = useCallback(() => {
+    if (!currentSong || !currentLyriaTrack) return;
+
+    const config = getCurrentConfig();
+    updateTrackInSong(currentSong.id, currentLyriaTrack.id, {
+      lyriaConfig: config,
+      volume: lyriaVolume,
+    });
+
+    console.log('[AIPanel] Saved Lyria track changes');
+  }, [currentSong, currentLyriaTrack, getCurrentConfig, updateTrackInSong, lyriaVolume]);
+
+  // Delete current Lyria song
+  const handleDeleteSong = useCallback(() => {
+    if (!currentSong) return;
+
+    // Stop Lyria if playing
+    const lyriaStore = useLyriaStore.getState();
+    if (lyriaStore.sessionState === 'playing' || lyriaStore.sessionState === 'connected') {
+      lyriaStore.pause();
+    }
+
+    deleteSong(currentSong.id);
+    console.log('[AIPanel] Deleted Lyria song:', currentSong.name);
+  }, [currentSong, deleteSong]);
 
   // Connection state helpers
   const isConnected = sessionState === 'connected' || sessionState === 'playing' || sessionState === 'paused';
   const isPlaying = sessionState === 'playing';
-
-  // Check if current song has Lyria track
-  const currentSong = getCurrentSong();
   const currentSongHasLyria = currentSong?.tracks.some(t => t.type === 'lyria') ?? false;
 
   return (
@@ -234,39 +280,70 @@ export function AIPanel() {
               </div>
             )}
 
-            {/* Room Sync Info */}
-            <div className="flex items-center gap-3 p-3 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10">
-              <Music className="w-4 h-4 text-purple-400" />
-              <div className="flex-1">
-                <p className="text-xs text-gray-500 dark:text-zinc-400">Synced to Room</p>
-                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                  {roomBpm} BPM {roomKey ? `• ${roomKey}${roomKeyScale === 'minor' ? 'm' : ''}` : ''}
-                </p>
-              </div>
-            </div>
+            {/* Editing Status / Create Buttons */}
+            {isEditingExisting ? (
+              <div className="space-y-3">
+                {/* Editing indicator */}
+                <div className="flex items-center gap-2 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20">
+                  <Sparkles className="w-4 h-4 text-purple-400" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] text-purple-400/70 uppercase tracking-wide">Editing</p>
+                    <p className="text-sm font-medium text-purple-400 truncate">{currentSong?.name}</p>
+                  </div>
+                  <span className="text-[10px] text-gray-500 dark:text-zinc-500 px-1.5 py-0.5 bg-gray-200 dark:bg-white/10 rounded">
+                    {roomBpm} BPM
+                  </span>
+                </div>
 
-            {/* Create Lyria Song Button */}
-            <div className="space-y-2">
-              <button
-                onClick={handleCreateLyriaSong}
-                className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium rounded-xl transition-all shadow-lg"
-              >
-                <Plus className="w-4 h-4" />
-                Create Lyria Song
-              </button>
-              {currentSongId && !currentSongHasLyria && (
+                {/* Save & Delete buttons */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleSaveChanges}
+                    className="flex-1 flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-500 hover:bg-purple-600 text-white font-medium rounded-xl transition-all"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save Changes
+                  </button>
+                  <button
+                    onClick={handleDeleteSong}
+                    className="flex items-center justify-center gap-2 px-3 py-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 font-medium rounded-xl transition-all border border-red-500/20"
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* Create new song button */}
                 <button
-                  onClick={handleAddToCurrentSong}
-                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-white font-medium rounded-xl hover:bg-gray-300 dark:hover:bg-white/20 transition-all text-sm"
+                  onClick={handleCreateLyriaSong}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-zinc-300 font-medium rounded-xl hover:bg-gray-300 dark:hover:bg-white/20 transition-all text-sm"
                 >
                   <Plus className="w-3 h-3" />
-                  Add to Current Song
+                  Create New Lyria Song
                 </button>
-              )}
-              <p className="text-[10px] text-gray-500 dark:text-zinc-500 text-center">
-                Creates a song with infinite AI-generated music. Use the transport to play/pause.
-              </p>
-            </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <button
+                  onClick={handleCreateLyriaSong}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium rounded-xl transition-all shadow-lg"
+                >
+                  <Plus className="w-4 h-4" />
+                  Create Lyria Song
+                </button>
+                {currentSongId && !currentSongHasLyria && (
+                  <button
+                    onClick={handleAddToCurrentSong}
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2 bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-white font-medium rounded-xl hover:bg-gray-300 dark:hover:bg-white/20 transition-all text-sm"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Add to Current Song
+                  </button>
+                )}
+                <p className="text-[10px] text-gray-500 dark:text-zinc-500 text-center">
+                  Creates a song with infinite AI-generated music. Use the transport to play/pause.
+                </p>
+              </div>
+            )}
 
             {/* Prompt Input */}
             <div className="space-y-2">

@@ -486,6 +486,9 @@ export function TransportBar({
   // Check if there's something to play - either legacy queue track or song with tracks
   const hasPlayableContent = currentTrack || (currentSong && currentSong.tracks.length > 0);
 
+  // Check if current song has Lyria track (infinite duration)
+  const isLyriaSong = currentSong?.tracks.some(t => t.type === 'lyria') ?? false;
+
   // Get the buffer size from the user's track settings (not global settings)
   const userBufferSize = useMemo(() => {
     if (!currentUser) return settings.bufferSize;
@@ -736,12 +739,16 @@ export function TransportBar({
         {/* Time Display */}
         <div className="flex items-center gap-2 ml-4 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-black/30">
           <span className="time-display text-lg font-medium text-gray-900 dark:text-white">
-            {formatTimeDetailed(duration > 0 ? Math.min(currentTime, duration) : currentTime)}
+            {formatTimeDetailed(isLyriaSong ? currentTime : (duration > 0 ? Math.min(currentTime, duration) : currentTime))}
           </span>
           <span className="text-gray-400 dark:text-zinc-500">/</span>
-          <span className="time-display text-sm text-gray-500 dark:text-zinc-400">
-            {formatTimeDuration(duration)}
-          </span>
+          {isLyriaSong ? (
+            <span className="text-sm font-medium text-purple-500 dark:text-purple-400">∞</span>
+          ) : (
+            <span className="time-display text-sm text-gray-500 dark:text-zinc-400">
+              {formatTimeDuration(duration)}
+            </span>
+          )}
         </div>
       </div>
 
