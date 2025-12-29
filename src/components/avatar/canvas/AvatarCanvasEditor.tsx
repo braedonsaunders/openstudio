@@ -126,18 +126,29 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
         }
 
         const library = await libraryResponse.json();
+        console.log('[AvatarCanvasEditor] Library loaded:', {
+          categories: library.categories?.length,
+          components: library.components?.length,
+          componentUnlocks: library.componentUnlocks?.length,
+          unlockRules: library.unlockRules?.length,
+        });
 
         // Library API returns componentUnlocks (rules), but we need user's unlocked components
         // Get user's unlocked components from config endpoint
         let unlockedComponentIds: string[] = [];
         try {
           const configResponse = await fetch('/api/avatar/config');
+          console.log('[AvatarCanvasEditor] Config response status:', configResponse.status);
           if (configResponse.ok) {
             const configResult = await configResponse.json();
             unlockedComponentIds = configResult.unlockedComponentIds || [];
+            console.log('[AvatarCanvasEditor] Unlocked components:', unlockedComponentIds.length, unlockedComponentIds.slice(0, 5));
+          } else {
+            const errorText = await configResponse.text();
+            console.error('[AvatarCanvasEditor] Config fetch failed:', configResponse.status, errorText);
           }
-        } catch {
-          // Config fetch failed, continue with empty unlocked list
+        } catch (err) {
+          console.error('[AvatarCanvasEditor] Config fetch error:', err);
         }
 
         // Merge library data with unlocked components
