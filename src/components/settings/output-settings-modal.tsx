@@ -20,6 +20,8 @@ import {
   Loader2,
   ExternalLink,
   Globe,
+  Play,
+  Square,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -60,6 +62,9 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
     // Preference
     preferNativeBridge,
     setPreferNativeBridge,
+    // Audio control
+    startAudio,
+    stopAudio,
   } = useNativeBridge();
 
   const [outputDevices, setOutputDevices] = useState<AudioDevice[]>([]);
@@ -307,6 +312,30 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Lower buffer = lower latency but higher CPU. 128-256 recommended for most interfaces.
               </p>
+
+              {/* Start/Stop Audio Button */}
+              <div className="pt-2">
+                {isRunning ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={stopAudio}
+                    className="w-full text-xs h-9 border-red-300 dark:border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10"
+                  >
+                    <Square className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                    Stop Audio
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    onClick={startAudio}
+                    className="w-full text-xs h-9 bg-emerald-600 hover:bg-emerald-700"
+                  >
+                    <Play className="w-3.5 h-3.5 mr-1.5 fill-current" />
+                    Start Audio
+                  </Button>
+                )}
+              </div>
 
               {/* Disconnect button */}
               <Button

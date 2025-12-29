@@ -359,7 +359,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
           )}>
             <Zap className="w-3.5 h-3.5" />
             <span className="font-medium">
-              {bridgeRunning ? 'Low-Latency Bridge Active' : 'Bridge Connected - Start audio in settings'}
+              {bridgeRunning ? 'Low-Latency Bridge Active' : 'Bridge Connected - Click "Start Audio" in Audio Settings'}
             </span>
             {bridgeRunning && <CheckCircle2 className="w-3.5 h-3.5 ml-auto" />}
           </div>
