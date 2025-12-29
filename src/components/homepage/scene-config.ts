@@ -62,7 +62,7 @@ export const SCENE_CONFIGS: Record<HomepageSceneType, SceneConfig> = {
         minX: 10,
         maxX: 90,
         minY: 32,
-        maxY: 88,
+        maxY: 78,
       },
       scaleRange: {
         min: 0.4,
@@ -92,7 +92,7 @@ export const SCENE_CONFIGS: Record<HomepageSceneType, SceneConfig> = {
         minX: 8,
         maxX: 92,
         minY: 30,
-        maxY: 90,
+        maxY: 80,
       },
       scaleRange: {
         min: 0.45,
@@ -121,7 +121,7 @@ export const SCENE_CONFIGS: Record<HomepageSceneType, SceneConfig> = {
         minX: 5,
         maxX: 95,
         minY: 35,
-        maxY: 92,
+        maxY: 82,
       },
       scaleRange: {
         min: 0.4,
@@ -152,7 +152,7 @@ export const SCENE_CONFIGS: Record<HomepageSceneType, SceneConfig> = {
         minX: 12,
         maxX: 88,
         minY: 28,
-        maxY: 85,
+        maxY: 75,
       },
       scaleRange: {
         min: 0.5,
@@ -183,7 +183,7 @@ export const SCENE_CONFIGS: Record<HomepageSceneType, SceneConfig> = {
         minX: 15,
         maxX: 85,
         minY: 40,
-        maxY: 90,
+        maxY: 80,
       },
       scaleRange: {
         min: 0.45,
@@ -214,7 +214,7 @@ export const SCENE_CONFIGS: Record<HomepageSceneType, SceneConfig> = {
         minX: 8,
         maxX: 92,
         minY: 30,
-        maxY: 90,
+        maxY: 80,
       },
       scaleRange: {
         min: 0.4,
