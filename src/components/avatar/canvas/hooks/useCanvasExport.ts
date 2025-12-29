@@ -20,54 +20,6 @@ interface ExportedAvatars {
   thumbnails: ThumbnailUrls;
 }
 
-interface BoundingBox {
-  minX: number;
-  minY: number;
-  maxX: number;
-  maxY: number;
-}
-
-// Calculate the bounding box of a layer considering rotation
-function getLayerBounds(layer: CanvasLayer): BoundingBox {
-  const { x, y, width, height, rotation } = layer.transform;
-  const centerX = x + width / 2;
-  const centerY = y + height / 2;
-  const rad = (rotation * Math.PI) / 180;
-  const cos = Math.abs(Math.cos(rad));
-  const sin = Math.abs(Math.sin(rad));
-
-  // Rotated bounding box dimensions
-  const rotatedWidth = width * cos + height * sin;
-  const rotatedHeight = width * sin + height * cos;
-
-  return {
-    minX: centerX - rotatedWidth / 2,
-    minY: centerY - rotatedHeight / 2,
-    maxX: centerX + rotatedWidth / 2,
-    maxY: centerY + rotatedHeight / 2,
-  };
-}
-
-// Calculate combined bounding box of all layers
-function getContentBounds(layers: CanvasLayer[]): BoundingBox | null {
-  if (layers.length === 0) return null;
-
-  let minX = Infinity;
-  let minY = Infinity;
-  let maxX = -Infinity;
-  let maxY = -Infinity;
-
-  for (const layer of layers) {
-    const bounds = getLayerBounds(layer);
-    minX = Math.min(minX, bounds.minX);
-    minY = Math.min(minY, bounds.minY);
-    maxX = Math.max(maxX, bounds.maxX);
-    maxY = Math.max(maxY, bounds.maxY);
-  }
-
-  return { minX, minY, maxX, maxY };
-}
-
 export function useCanvasExport() {
   const stageRef = useRef<Konva.Stage | null>(null);
 
@@ -196,7 +148,7 @@ export function useCanvasExport() {
     }
   }, [generateHeadshot, generateThumbnails]);
 
-  // Internal export function with centering logic
+  // Internal export function - renders exactly as positioned (WYSIWYG)
   const exportFromCanvasDataInternal = async (
     canvasData: CanvasData,
     components: Map<string, AvatarComponent>
@@ -214,34 +166,7 @@ export function useCanvasExport() {
       // Sort layers by zIndex
       const sortedLayers = [...canvasData.layers].sort((a, b) => a.zIndex - b.zIndex);
 
-      if (sortedLayers.length === 0) {
-        // Empty canvas
-        const fullBodyDataUrl = canvas.toDataURL('image/png');
-        const [headshotDataUrl, thumbnails] = await Promise.all([
-          generateHeadshot(fullBodyDataUrl),
-          generateThumbnails(fullBodyDataUrl),
-        ]);
-        return { fullBodyDataUrl, headshotDataUrl, thumbnails };
-      }
-
-      // Calculate content bounds for centering
-      const bounds = getContentBounds(sortedLayers);
-      if (!bounds) {
-        throw new Error('Could not calculate content bounds');
-      }
-
-      const contentWidth = bounds.maxX - bounds.minX;
-      const contentHeight = bounds.maxY - bounds.minY;
-      const contentCenterX = bounds.minX + contentWidth / 2;
-      const contentCenterY = bounds.minY + contentHeight / 2;
-
-      // Calculate offset to center content in canvas
-      const canvasCenterX = CANVAS_SIZE / 2;
-      const canvasCenterY = CANVAS_SIZE / 2;
-      const offsetX = canvasCenterX - contentCenterX;
-      const offsetY = canvasCenterY - contentCenterY;
-
-      // Draw each layer with centering offset
+      // Draw each layer exactly as positioned (no centering - WYSIWYG)
       for (const layer of sortedLayers) {
         const component = components.get(layer.componentId);
         if (!component) continue;
@@ -251,15 +176,8 @@ export function useCanvasExport() {
           ? component.colorVariants[layer.colorVariant]
           : component.imageUrl;
 
-        // Apply offset to transform for centering
-        const centeredTransform = {
-          ...layer.transform,
-          x: layer.transform.x + offsetX,
-          y: layer.transform.y + offsetY,
-        };
-
-        // Load and draw image
-        await drawLayerImage(ctx, imageUrl, centeredTransform);
+        // Draw layer with its exact transform
+        await drawLayerImage(ctx, imageUrl, layer.transform);
       }
 
       const fullBodyDataUrl = canvas.toDataURL('image/png');
