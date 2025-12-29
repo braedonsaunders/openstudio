@@ -5,6 +5,7 @@ use crate::effects::EffectsChain;
 use crate::mixing::TrackState;
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, StreamTrait};
+use cpal::SampleFormat;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
@@ -277,55 +278,139 @@ impl AudioEngine {
         // Shared state for input stream
         let levels = self.levels.clone();
         let input_channels = input_config.channels as usize;
+        let input_sample_format = input_default_config.sample_format();
+        let output_sample_format = output_default_config.sample_format();
 
-        // Create input stream
-        let input_stream = input_device.device.build_input_stream(
-            &input_config,
-            move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                // Calculate input level from first channel
-                let level = data.chunks(input_channels)
-                    .map(|frame| frame.first().copied().unwrap_or(0.0).abs())
-                    .fold(0.0_f32, f32::max);
+        info!("Input sample format: {:?}, Output sample format: {:?}", input_sample_format, output_sample_format);
 
-                // Update levels (non-blocking)
-                if let Ok(mut lvl) = levels.try_write() {
-                    lvl.input_level = level;
-                    lvl.input_peak = lvl.input_peak.max(level);
-                }
-            },
-            |err| {
-                error!("Input stream error: {}", err);
-            },
-            None,
-        )?;
+        // Create input stream based on device's native sample format
+        let input_stream: cpal::Stream = match input_sample_format {
+            SampleFormat::F32 => {
+                input_device.device.build_input_stream(
+                    &input_config,
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let level = data.chunks(input_channels)
+                            .map(|frame| frame.first().copied().unwrap_or(0.0).abs())
+                            .fold(0.0_f32, f32::max);
+
+                        if let Ok(mut lvl) = levels.try_write() {
+                            lvl.input_level = level;
+                            lvl.input_peak = lvl.input_peak.max(level);
+                        }
+                    },
+                    |err| { error!("Input stream error: {}", err); },
+                    None,
+                )?
+            }
+            SampleFormat::I32 => {
+                input_device.device.build_input_stream(
+                    &input_config,
+                    move |data: &[i32], _: &cpal::InputCallbackInfo| {
+                        // Convert i32 to f32 (i32 range is -2^31 to 2^31-1)
+                        let level = data.chunks(input_channels)
+                            .map(|frame| {
+                                let sample = frame.first().copied().unwrap_or(0);
+                                (sample as f32 / i32::MAX as f32).abs()
+                            })
+                            .fold(0.0_f32, f32::max);
+
+                        if let Ok(mut lvl) = levels.try_write() {
+                            lvl.input_level = level;
+                            lvl.input_peak = lvl.input_peak.max(level);
+                        }
+                    },
+                    |err| { error!("Input stream error: {}", err); },
+                    None,
+                )?
+            }
+            SampleFormat::I16 => {
+                input_device.device.build_input_stream(
+                    &input_config,
+                    move |data: &[i16], _: &cpal::InputCallbackInfo| {
+                        let level = data.chunks(input_channels)
+                            .map(|frame| {
+                                let sample = frame.first().copied().unwrap_or(0);
+                                (sample as f32 / i16::MAX as f32).abs()
+                            })
+                            .fold(0.0_f32, f32::max);
+
+                        if let Ok(mut lvl) = levels.try_write() {
+                            lvl.input_level = level;
+                            lvl.input_peak = lvl.input_peak.max(level);
+                        }
+                    },
+                    |err| { error!("Input stream error: {}", err); },
+                    None,
+                )?
+            }
+            _ => {
+                return Err(anyhow::anyhow!("Unsupported input sample format: {:?}", input_sample_format));
+            }
+        };
 
         // Shared state for output stream
         let output_levels = self.levels.clone();
 
-        // Create output stream
-        let output_stream = output_device.device.build_output_stream(
-            &output_config,
-            move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                // For now, silence
-                for sample in data.iter_mut() {
-                    *sample = 0.0;
-                }
+        // Create output stream based on device's native sample format
+        let output_stream: cpal::Stream = match output_sample_format {
+            SampleFormat::F32 => {
+                output_device.device.build_output_stream(
+                    &output_config,
+                    move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                        for sample in data.iter_mut() {
+                            *sample = 0.0;
+                        }
 
-                // Calculate output level
-                let level = data.iter()
-                    .map(|s| s.abs())
-                    .fold(0.0_f32, f32::max);
+                        let level = data.iter()
+                            .map(|s| s.abs())
+                            .fold(0.0_f32, f32::max);
 
-                if let Ok(mut lvl) = output_levels.try_write() {
-                    lvl.output_level = level;
-                    lvl.output_peak = lvl.output_peak.max(level);
-                }
-            },
-            |err| {
-                error!("Output stream error: {}", err);
-            },
-            None,
-        )?;
+                        if let Ok(mut lvl) = output_levels.try_write() {
+                            lvl.output_level = level;
+                            lvl.output_peak = lvl.output_peak.max(level);
+                        }
+                    },
+                    |err| { error!("Output stream error: {}", err); },
+                    None,
+                )?
+            }
+            SampleFormat::I32 => {
+                output_device.device.build_output_stream(
+                    &output_config,
+                    move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
+                        for sample in data.iter_mut() {
+                            *sample = 0;
+                        }
+
+                        // Output is silence, level is 0
+                        if let Ok(mut lvl) = output_levels.try_write() {
+                            lvl.output_level = 0.0;
+                        }
+                    },
+                    |err| { error!("Output stream error: {}", err); },
+                    None,
+                )?
+            }
+            SampleFormat::I16 => {
+                output_device.device.build_output_stream(
+                    &output_config,
+                    move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                        for sample in data.iter_mut() {
+                            *sample = 0;
+                        }
+
+                        if let Ok(mut lvl) = output_levels.try_write() {
+                            lvl.output_level = 0.0;
+                        }
+                    },
+                    |err| { error!("Output stream error: {}", err); },
+                    None,
+                )?
+            }
+            _ => {
+                return Err(anyhow::anyhow!("Unsupported output sample format: {:?}", output_sample_format));
+            }
+        };
 
         // Start streams
         input_stream.play()?;
