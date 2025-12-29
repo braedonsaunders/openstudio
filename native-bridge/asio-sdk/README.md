@@ -1,20 +1,20 @@
 # ASIO SDK Setup
 
-Download the ASIO SDK from Steinberg and extract it here.
+Download the ASIO SDK from Steinberg and extract the required folders here.
 
 ## Steps
 
 1. Go to https://www.steinberg.net/developers/
 2. Download "ASIO SDK" (requires free account)
 3. Extract the zip file
-4. Copy the contents so you have this structure:
+4. Copy these folders into this directory:
 
 ```
-asio-sdk/
-├── README.md (this file)
-├── common/
-│   ├── asio.cpp
+native-bridge/asio-sdk/
+├── README.md        ← (this file, already here)
+├── common/          ← REQUIRED - copy this folder
 │   ├── asio.h
+│   ├── asio.cpp
 │   ├── asiodrivers.cpp
 │   ├── asiodrivers.h
 │   ├── asiodrvr.h
@@ -26,18 +26,27 @@ asio-sdk/
 │   ├── dllentry.cpp
 │   ├── iasiodrv.h
 │   └── register.cpp
-└── host/
+└── host/            ← REQUIRED - copy this folder
     ├── asiodrivers.cpp
     ├── asiodrivers.h
     ├── ginclude.h
-    ├── pc/
-    │   └── asiolist.cpp (and .h)
-    └── sample/
-        └── hostsample.cpp
+    └── pc/
+        └── asiolist.cpp
 ```
 
-The key files needed are in `common/` - especially `asio.h` and `iasiodrv.h`.
+## What's NOT needed
 
-## After Adding Files
+- `asio/` folder - sample projects, not needed
+- `driver/` folder - for building ASIO drivers, not needed
 
-Commit and push. The GitHub Actions workflow will automatically build with ASIO support.
+## Quick Copy
+
+From your extracted SDK folder, just copy:
+```bash
+cp -r ASIOSDK/common native-bridge/asio-sdk/
+cp -r ASIOSDK/host native-bridge/asio-sdk/
+```
+
+## After Adding
+
+Commit and push. GitHub Actions will detect the SDK and build with ASIO support automatically.
