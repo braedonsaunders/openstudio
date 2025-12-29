@@ -1,7 +1,8 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { UserTrack, TrackAudioSettings, UnifiedEffectsChain, InputChannelConfig, MidiInputSettings, UserTrackType } from '@/types';
+import type { UserTrack, TrackAudioSettings, UnifiedEffectsChain, ExtendedEffectsChain, InputChannelConfig, MidiInputSettings, UserTrackType } from '@/types';
 import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects/unified-effects-processor';
+import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
 
@@ -83,7 +84,7 @@ interface UserTracksState {
   updateTrackSettings: (trackId: string, settings: Partial<TrackAudioSettings>) => void;
   updateMidiSettings: (trackId: string, settings: Partial<MidiInputSettings>) => void;
   setActiveMidiNotes: (trackId: string, notes: number[]) => void;
-  updateTrackEffects: (trackId: string, effects: Partial<UnifiedEffectsChain>) => void;
+  updateTrackEffects: (trackId: string, effects: Partial<ExtendedEffectsChain>) => void;
   loadGuitarPreset: (trackId: string, presetId: string) => void;
   updateTrackChannelConfig: (trackId: string, channelConfig: InputChannelConfig) => void;
   setTrackInputGain: (trackId: string, gainDb: number) => void;
@@ -302,34 +303,27 @@ export const useUserTracksStore = create<UserTracksState>()(
         if (!track) return state;
 
         const tracks = new Map(state.tracks);
-        const currentEffects = track.audioSettings.effects || DEFAULT_UNIFIED_EFFECTS;
+        const currentEffects = { ...DEFAULT_FULL_EFFECTS, ...track.audioSettings.effects } as ExtendedEffectsChain;
 
-        // Merge all effects (unified chain includes all 15 effects)
-        const newEffects: UnifiedEffectsChain = {
-          // Guitar/instrument effects
-          wah: effects.wah ? { ...currentEffects.wah, ...effects.wah } : currentEffects.wah,
-          overdrive: effects.overdrive ? { ...currentEffects.overdrive, ...effects.overdrive } : currentEffects.overdrive,
-          distortion: effects.distortion ? { ...currentEffects.distortion, ...effects.distortion } : currentEffects.distortion,
-          ampSimulator: effects.ampSimulator ? { ...currentEffects.ampSimulator, ...effects.ampSimulator } : currentEffects.ampSimulator,
-          cabinet: effects.cabinet ? { ...currentEffects.cabinet, ...effects.cabinet } : currentEffects.cabinet,
-          // Track effects
-          noiseGate: effects.noiseGate ? { ...currentEffects.noiseGate, ...effects.noiseGate } : currentEffects.noiseGate,
-          eq: effects.eq ? {
-            enabled: effects.eq.enabled ?? currentEffects.eq.enabled,
-            bands: effects.eq.bands ?? currentEffects.eq.bands,
-          } : currentEffects.eq,
-          compressor: effects.compressor ? { ...currentEffects.compressor, ...effects.compressor } : currentEffects.compressor,
-          // Modulation effects
-          chorus: effects.chorus ? { ...currentEffects.chorus, ...effects.chorus } : currentEffects.chorus,
-          flanger: effects.flanger ? { ...currentEffects.flanger, ...effects.flanger } : currentEffects.flanger,
-          phaser: effects.phaser ? { ...currentEffects.phaser, ...effects.phaser } : currentEffects.phaser,
-          // Time-based effects
-          delay: effects.delay ? { ...currentEffects.delay, ...effects.delay } : currentEffects.delay,
-          tremolo: effects.tremolo ? { ...currentEffects.tremolo, ...effects.tremolo } : currentEffects.tremolo,
-          // Output effects
-          reverb: effects.reverb ? { ...currentEffects.reverb, ...effects.reverb } : currentEffects.reverb,
-          limiter: effects.limiter ? { ...currentEffects.limiter, ...effects.limiter } : currentEffects.limiter,
-        };
+        // Dynamically merge all effects (unified + extended = 35 effects total)
+        const newEffects = { ...currentEffects } as ExtendedEffectsChain;
+
+        for (const key of Object.keys(effects) as (keyof ExtendedEffectsChain)[]) {
+          const effectUpdate = effects[key];
+          if (effectUpdate !== undefined) {
+            const currentEffect = currentEffects[key];
+            if (key === 'eq' && effects.eq) {
+              // Special handling for EQ which has a different structure
+              newEffects.eq = {
+                enabled: effects.eq.enabled ?? currentEffects.eq.enabled,
+                bands: effects.eq.bands ?? currentEffects.eq.bands,
+              };
+            } else if (currentEffect && typeof currentEffect === 'object') {
+              // Merge effect settings
+              (newEffects as unknown as Record<string, unknown>)[key] = { ...currentEffect, ...effectUpdate };
+            }
+          }
+        }
 
         tracks.set(trackId, {
           ...track,

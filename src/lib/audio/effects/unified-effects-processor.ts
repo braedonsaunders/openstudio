@@ -156,7 +156,7 @@ export const DEFAULT_UNIFIED_EFFECTS: UnifiedEffectsChain = {
     mix: 0.3,
   },
   limiter: {
-    enabled: true,
+    enabled: false,
     threshold: -1,
     release: 100,
     ceiling: -0.3,
