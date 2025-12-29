@@ -5,11 +5,10 @@ use crate::effects::EffectsChain;
 use crate::mixing::TrackState;
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, StreamTrait};
-use ringbuf::{HeapRb, HeapProducer, HeapConsumer};
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
-use tokio::sync::RwLock;
-use tracing::{info, warn, error};
+use std::sync::RwLock;
+use tracing::{info, error};
 
 /// Audio engine configuration
 #[derive(Debug, Clone)]
@@ -63,15 +62,6 @@ pub struct AudioEngine {
     input_stream: Option<cpal::Stream>,
     output_stream: Option<cpal::Stream>,
 
-    // Ring buffers for inter-thread audio
-    // Browser -> Native (for backing tracks, remote audio)
-    from_browser_producer: Option<HeapProducer<f32>>,
-    from_browser_consumer: Option<HeapConsumer<f32>>,
-
-    // Native -> Browser (captured audio after effects)
-    to_browser_producer: Option<HeapProducer<f32>>,
-    to_browser_consumer: Option<HeapConsumer<f32>>,
-
     // Effects chain
     effects_chain: Arc<RwLock<EffectsChain>>,
 
@@ -90,13 +80,8 @@ pub struct AudioEngine {
 }
 
 impl AudioEngine {
-    pub async fn new() -> Result<Self> {
+    pub fn new() -> Result<Self> {
         let config = EngineConfig::default();
-
-        // Create ring buffers (enough for ~100ms at 48kHz stereo)
-        let buffer_size = 48000 / 10 * 2; // 100ms stereo
-        let (from_browser_producer, from_browser_consumer) = HeapRb::<f32>::new(buffer_size).split();
-        let (to_browser_producer, to_browser_consumer) = HeapRb::<f32>::new(buffer_size).split();
 
         let engine = Self {
             config,
@@ -104,10 +89,6 @@ impl AudioEngine {
             output_device: None,
             input_stream: None,
             output_stream: None,
-            from_browser_producer: Some(from_browser_producer),
-            from_browser_consumer: Some(from_browser_consumer),
-            to_browser_producer: Some(to_browser_producer),
-            to_browser_consumer: Some(to_browser_consumer),
             effects_chain: Arc::new(RwLock::new(EffectsChain::new())),
             track_state: Arc::new(RwLock::new(TrackState::default())),
             is_monitoring: Arc::new(AtomicBool::new(false)),
@@ -130,11 +111,11 @@ impl AudioEngine {
     }
 
     /// Set input device
-    pub async fn set_input_device(&mut self, device_id: &str) -> Result<()> {
+    pub fn set_input_device(&mut self, device_id: &str) -> Result<()> {
         let was_running = self.is_running.load(Ordering::SeqCst);
 
         if was_running {
-            self.stop().await?;
+            self.stop()?;
         }
 
         self.input_device = Some(AudioDevice::get_by_id(device_id)?);
@@ -143,18 +124,18 @@ impl AudioEngine {
         info!("Input device set: {}", self.input_device.as_ref().unwrap().info.name);
 
         if was_running {
-            self.start().await?;
+            self.start()?;
         }
 
         Ok(())
     }
 
     /// Set output device
-    pub async fn set_output_device(&mut self, device_id: &str) -> Result<()> {
+    pub fn set_output_device(&mut self, device_id: &str) -> Result<()> {
         let was_running = self.is_running.load(Ordering::SeqCst);
 
         if was_running {
-            self.stop().await?;
+            self.stop()?;
         }
 
         self.output_device = Some(AudioDevice::get_by_id(device_id)?);
@@ -163,39 +144,38 @@ impl AudioEngine {
         info!("Output device set: {}", self.output_device.as_ref().unwrap().info.name);
 
         if was_running {
-            self.start().await?;
+            self.start()?;
         }
 
         Ok(())
     }
 
     /// Set channel configuration
-    pub async fn set_channel_config(&mut self, config: ChannelConfig) -> Result<()> {
+    pub fn set_channel_config(&mut self, config: ChannelConfig) -> Result<()> {
         self.config.channel_config = config;
-        // Restart streams if running to apply new channel config
         if self.is_running.load(Ordering::SeqCst) {
-            self.stop().await?;
-            self.start().await?;
+            self.stop()?;
+            self.start()?;
         }
         Ok(())
     }
 
     /// Set buffer size
-    pub async fn set_buffer_size(&mut self, size: BufferSize) -> Result<()> {
+    pub fn set_buffer_size(&mut self, size: BufferSize) -> Result<()> {
         self.config.buffer_size = size;
         if self.is_running.load(Ordering::SeqCst) {
-            self.stop().await?;
-            self.start().await?;
+            self.stop()?;
+            self.start()?;
         }
         Ok(())
     }
 
     /// Set sample rate
-    pub async fn set_sample_rate(&mut self, rate: SampleRate) -> Result<()> {
+    pub fn set_sample_rate(&mut self, rate: SampleRate) -> Result<()> {
         self.config.sample_rate = rate;
         if self.is_running.load(Ordering::SeqCst) {
-            self.stop().await?;
-            self.start().await?;
+            self.stop()?;
+            self.start()?;
         }
         Ok(())
     }
@@ -211,20 +191,22 @@ impl AudioEngine {
     }
 
     /// Update track state (armed, muted, solo, volume)
-    pub async fn update_track_state(&self, state: TrackState) {
-        let mut track = self.track_state.write().await;
-        *track = state;
+    pub fn update_track_state(&self, state: TrackState) {
+        if let Ok(mut track) = self.track_state.write() {
+            *track = state;
+        }
     }
 
     /// Update effects chain
-    pub async fn update_effects(&self, effects: crate::effects::EffectsSettings) {
-        let mut chain = self.effects_chain.write().await;
-        chain.update_settings(effects);
+    pub fn update_effects(&self, effects: crate::effects::EffectsSettings) {
+        if let Ok(mut chain) = self.effects_chain.write() {
+            chain.update_settings(effects);
+        }
     }
 
     /// Get current audio levels
-    pub async fn get_levels(&self) -> AudioLevels {
-        self.levels.read().await.clone()
+    pub fn get_levels(&self) -> AudioLevels {
+        self.levels.read().map(|l| l.clone()).unwrap_or_default()
     }
 
     /// Get latency information
@@ -241,18 +223,8 @@ impl AudioEngine {
         }
     }
 
-    /// Get consumer for reading captured audio (to send to browser)
-    pub fn get_capture_consumer(&mut self) -> Option<HeapConsumer<f32>> {
-        self.to_browser_consumer.take()
-    }
-
-    /// Get producer for writing playback audio (from browser)
-    pub fn get_playback_producer(&mut self) -> Option<HeapProducer<f32>> {
-        self.from_browser_producer.take()
-    }
-
     /// Start audio streams
-    pub async fn start(&mut self) -> Result<()> {
+    pub fn start(&mut self) -> Result<()> {
         if self.is_running.load(Ordering::SeqCst) {
             return Ok(());
         }
@@ -280,13 +252,8 @@ impl AudioEngine {
         };
 
         // Shared state for input stream
-        let to_browser = self.to_browser_producer.take();
-        let effects_chain = self.effects_chain.clone();
-        let track_state = self.track_state.clone();
         let levels = self.levels.clone();
         let channel_cfg = channel_config.clone();
-        let is_monitoring = self.is_monitoring.clone();
-        let monitoring_volume = self.monitoring_volume.clone();
 
         // Create input stream
         let input_stream = input_device.device.build_input_stream(
@@ -307,9 +274,6 @@ impl AudioEngine {
                     samples.push(right);
                 }
 
-                // TODO: Apply effects chain here
-                // let processed = effects_chain.blocking_read().process(&samples);
-
                 // Calculate input level
                 let level = samples.iter()
                     .map(|s| s.abs())
@@ -319,11 +283,6 @@ impl AudioEngine {
                 if let Ok(mut lvl) = levels.try_write() {
                     lvl.input_level = level;
                     lvl.input_peak = lvl.input_peak.max(level);
-                }
-
-                // Send to browser
-                if let Some(ref mut producer) = to_browser.as_ref() {
-                    // producer.push_slice(&samples);
                 }
             },
             |err| {
@@ -341,18 +300,12 @@ impl AudioEngine {
         };
 
         // Shared state for output stream
-        let from_browser = self.from_browser_consumer.take();
         let output_levels = self.levels.clone();
 
         // Create output stream
         let output_stream = output_device.device.build_output_stream(
             &output_config,
             move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                // Read from browser ring buffer
-                // if let Some(ref mut consumer) = from_browser.as_ref() {
-                //     consumer.pop_slice(data);
-                // }
-
                 // For now, silence
                 for sample in data.iter_mut() {
                     *sample = 0.0;
@@ -384,7 +337,7 @@ impl AudioEngine {
 
         let latency = self.get_latency_info();
         info!(
-            "🎵 Audio started: {} → {} | Buffer: {} samples ({:.1}ms) @ {}Hz",
+            "Audio started: {} -> {} | Buffer: {} samples ({:.1}ms) @ {}Hz",
             self.input_device.as_ref().unwrap().info.name,
             self.output_device.as_ref().unwrap().info.name,
             latency.buffer_size_samples,
@@ -396,7 +349,7 @@ impl AudioEngine {
     }
 
     /// Stop audio streams
-    pub async fn stop(&mut self) -> Result<()> {
+    pub fn stop(&mut self) -> Result<()> {
         self.input_stream = None;
         self.output_stream = None;
         self.is_running.store(false, Ordering::SeqCst);

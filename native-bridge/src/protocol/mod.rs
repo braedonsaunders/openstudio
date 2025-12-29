@@ -6,8 +6,18 @@ mod server;
 pub use messages::*;
 pub use server::BridgeServer;
 
+use crate::AppState;
+use anyhow::Result;
+use std::sync::Arc;
+use tokio::sync::Mutex;
 use std::env;
 use url::Url;
+
+/// Run the WebSocket server
+pub async fn run_server(addr: &str, state: Arc<Mutex<AppState>>) -> Result<()> {
+    let server = BridgeServer::new(state);
+    server.run(addr).await
+}
 
 /// Parameters parsed from launch URL or CLI
 #[derive(Debug, Clone, Default)]
