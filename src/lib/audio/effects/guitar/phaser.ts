@@ -109,9 +109,9 @@ export class PhaserProcessor extends BaseEffect {
   }
 
   private wireUpSignalChain(): void {
-    // Dry path (always passes through)
+    // Dry path - routes through wetGain so it's blocked when effect is disabled
     this.inputGain.connect(this.phaserDryGain);
-    this.phaserDryGain.connect(this.outputGain);
+    this.phaserDryGain.connect(this.wetGain);
 
     // Wet path through allpass cascade - start from wetPathGate
     // When effect is disabled, wetPathGate blocks audio from entering filter chain

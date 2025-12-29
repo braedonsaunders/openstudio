@@ -73,12 +73,12 @@ export class ExciterProcessor extends BaseEffect {
     this.exciteGain = audioContext.createGain();
 
     // Wire up signal chain
-    // Dry path
+    // Dry path - routes through wetGain so it's blocked when effect is disabled
     this.inputGain.connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
-    // Exciter path
-    this.inputGain.connect(this.highPass);
+    // Exciter path - starts from wetPathGate to block filters when disabled
+    this.getWetPathInput().connect(this.highPass);
     this.highPass.connect(this.saturationGain);
     this.saturationGain.connect(this.waveshaper);
     this.waveshaper.connect(this.harmonicsFilter);

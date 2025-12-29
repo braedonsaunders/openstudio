@@ -69,17 +69,17 @@ export class TransientShaperProcessor extends BaseEffect {
     // Output mix
     this.outputMix = audioContext.createGain();
 
-    // Wire up signal chain
-    // Analysis path (parallel)
-    this.inputGain.connect(this.analyser);
+    // Wire up signal chain - start from wetPathGate to block filters when disabled
+    // Analysis path (parallel) - also gated
+    this.getWetPathInput().connect(this.analyser);
 
     // Attack processing
-    this.inputGain.connect(this.attackFilter);
+    this.getWetPathInput().connect(this.attackFilter);
     this.attackFilter.connect(this.attackGain);
     this.attackGain.connect(this.outputMix);
 
     // Sustain processing
-    this.inputGain.connect(this.sustainFilter);
+    this.getWetPathInput().connect(this.sustainFilter);
     this.sustainFilter.connect(this.sustainGain);
     this.sustainGain.connect(this.outputMix);
 

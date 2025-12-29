@@ -108,12 +108,12 @@ export class AmpSimulatorProcessor extends BaseEffect {
     this.preampWaveshaper.oversample = '4x';
     this.powerAmpWaveshaper.oversample = '4x';
 
-    // Wire up the signal chain:
-    // input -> inputFilter -> inputGain -> preampGain -> preampWaveshaper
+    // Wire up the signal chain - start from wetPathGate to allow disabling:
+    // wetPathGate -> inputFilter -> inputGain -> preampGain -> preampWaveshaper
     // -> bass -> mid -> treble -> powerAmpGain -> powerAmpWaveshaper
     // -> presence -> masterGain -> wetGain -> output
 
-    this.inputGain.connect(this.inputFilter);
+    this.getWetPathInput().connect(this.inputFilter);
     this.inputFilter.connect(this.inputGainNode);
     this.inputGainNode.connect(this.preampGain);
     this.preampGain.connect(this.preampWaveshaper);

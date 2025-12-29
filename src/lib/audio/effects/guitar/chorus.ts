@@ -88,17 +88,17 @@ export class ChorusProcessor extends BaseEffect {
   }
 
   private wireUpSignalChain(): void {
-    // Dry path
+    // Dry path - routes through wetGain so it's blocked when effect is disabled
     this.inputGain.connect(this.chorusDryGain);
-    this.chorusDryGain.connect(this.outputGain);
+    this.chorusDryGain.connect(this.wetGain);
 
-    // Wet path - Left channel
-    this.inputGain.connect(this.delayLeft);
+    // Wet path - Left channel - starts from wetPathGate
+    this.getWetPathInput().connect(this.delayLeft);
     this.delayLeft.connect(this.highPassFilter);
     this.highPassFilter.connect(this.chorusWetGain);
 
-    // Wet path - Right channel
-    this.inputGain.connect(this.delayRight);
+    // Wet path - Right channel - also starts from wetPathGate
+    this.getWetPathInput().connect(this.delayRight);
     this.delayRight.connect(this.highPassFilter);
 
     // LFO -> delay time modulation

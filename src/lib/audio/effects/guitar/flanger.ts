@@ -72,12 +72,12 @@ export class FlangerProcessor extends BaseEffect {
   }
 
   private wireUpSignalChain(): void {
-    // Dry path
+    // Dry path - routes through wetGain so it's blocked when effect is disabled
     this.inputGain.connect(this.flangerDryGain);
-    this.flangerDryGain.connect(this.outputGain);
+    this.flangerDryGain.connect(this.wetGain);
 
-    // Wet path through delay
-    this.inputGain.connect(this.delay);
+    // Wet path through delay - starts from wetPathGate
+    this.getWetPathInput().connect(this.delay);
     this.delay.connect(this.flangerWetGain);
 
     // Feedback loop

@@ -105,9 +105,9 @@ export class CabinetSimulatorProcessor extends BaseEffect {
     this.presenceFilter.Q.value = 0.7;
     this.registerFilter(this.presenceFilter);
 
-    // Wire up algorithmic path:
-    // input -> lowCut -> highCut -> resonance -> character -> presence -> algorithmicGain
-    this.inputGain.connect(this.lowCutFilter);
+    // Wire up algorithmic path - start from wetPathGate to allow disabling:
+    // wetPathGate -> lowCut -> highCut -> resonance -> character -> presence -> algorithmicGain
+    this.getWetPathInput().connect(this.lowCutFilter);
     this.lowCutFilter.connect(this.highCutFilter);
     this.highCutFilter.connect(this.resonanceFilter);
     this.resonanceFilter.connect(this.characterFilter);
@@ -119,8 +119,8 @@ export class CabinetSimulatorProcessor extends BaseEffect {
     this.roomSimulator.connect(this.roomGain);
     this.roomGain.connect(this.algorithmicGain);
 
-    // Convolver path (for custom IRs)
-    this.inputGain.connect(this.convolver);
+    // Convolver path (for custom IRs) - also gated
+    this.getWetPathInput().connect(this.convolver);
     this.convolver.connect(this.convolverGain);
 
     // Mix both paths to output
@@ -128,9 +128,9 @@ export class CabinetSimulatorProcessor extends BaseEffect {
     this.convolverGain.connect(this.wetGain);
     this.wetGain.connect(this.outputGain);
 
-    // Dry path for mix control
+    // Dry path for mix control - connects to wetGain so it's blocked when disabled
     this.inputGain.connect(this.dryGain);
-    this.dryGain.connect(this.outputGain);
+    this.dryGain.connect(this.wetGain);
 
     // Initialize
     this.generateAlgorithmicCabinetIR();
