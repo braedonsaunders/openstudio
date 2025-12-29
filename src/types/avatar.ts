@@ -346,3 +346,53 @@ export interface AdminAvatarStats {
   totalUnlockRules: number;
   lockedComponents: number;
 }
+
+// ============================================
+// HOMEPAGE CHARACTER TYPES
+// ============================================
+
+export type CharacterPersonality = 'energetic' | 'calm' | 'quirky' | 'mysterious' | 'friendly';
+export type IdleAnimation = 'bounce' | 'sway' | 'still' | 'dance';
+export type HomepageSceneType = 'campfire' | 'rooftop' | 'beach' | 'studio' | 'space' | 'forest';
+
+export interface HomepageCharacter {
+  id: string;
+  name: string;
+  description?: string;
+  canvasData: CanvasData;
+  fullBodyUrl: string | null;
+  thumbnailUrl: string | null;
+  personality?: CharacterPersonality;
+  preferredScenes?: HomepageSceneType[];
+  walkSpeed: number;
+  idleAnimation: IdleAnimation;
+  isActive: boolean;
+  sortOrder: number;
+  createdBy?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateHomepageCharacterRequest {
+  name: string;
+  description?: string;
+  canvasData: CanvasData;
+  personality?: CharacterPersonality;
+  preferredScenes?: HomepageSceneType[];
+  walkSpeed?: number;
+  idleAnimation?: IdleAnimation;
+}
+
+export interface UpdateHomepageCharacterRequest {
+  name?: string;
+  description?: string;
+  canvasData?: CanvasData;
+  fullBodyUrl?: string;
+  thumbnailUrl?: string;
+  personality?: CharacterPersonality;
+  preferredScenes?: HomepageSceneType[];
+  walkSpeed?: number;
+  idleAnimation?: IdleAnimation;
+  isActive?: boolean;
+  sortOrder?: number;
+}
