@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { Button } from '../ui/button';
 import { Modal } from '../ui/modal';
 import { useAudioStore } from '@/stores/audio-store';
@@ -146,6 +146,19 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
   // Determine if we're using native bridge for audio
   const usingNativeBridge = isConnected && preferNativeBridge;
 
+  // Filter to devices that support both input and output (required for ASIO)
+  // Also prioritize ASIO devices over WASAPI
+  const bridgeDevicesWithBothIO = useMemo(() => {
+    return bridgeOutputDevices
+      .filter(d => d.isInput && d.isOutput) // Must support both I/O
+      .sort((a, b) => {
+        // ASIO devices first
+        if (a.driverType === 'Asio' && b.driverType !== 'Asio') return -1;
+        if (b.driverType === 'Asio' && a.driverType !== 'Asio') return 1;
+        return a.name.localeCompare(b.name);
+      });
+  }, [bridgeOutputDevices]);
+
   return (
     <Modal
       isOpen={isOpen}
@@ -284,12 +297,17 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
                     className="w-full h-9 px-3 pr-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
                     <option value="">Select audio device...</option>
-                    {bridgeOutputDevices.map((device) => (
+                    {bridgeDevicesWithBothIO.map((device) => (
                       <option key={device.id} value={device.id}>
-                        {device.name} ({device.channels.length}ch)
+                        [{device.driverType}] {device.name} ({device.channels.length}ch)
                       </option>
                     ))}
                   </select>
+                  {bridgeDevicesWithBothIO.length === 0 && bridgeOutputDevices.length > 0 && (
+                    <p className="text-[10px] text-amber-500 dark:text-amber-400 mt-1">
+                      No devices with both input and output found. Install ASIO drivers for your interface.
+                    </p>
+                  )}
                   <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 </div>
                 <p className="text-[10px] text-gray-500 dark:text-gray-400">
