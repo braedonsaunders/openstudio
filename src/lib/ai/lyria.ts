@@ -28,6 +28,7 @@ export function keyToLyriaScale(key: string | null, keyScale: 'major' | 'minor' 
   if (!key) return 'C_MAJOR_A_MINOR';
 
   const keyMap: Record<string, LyriaScale> = {
+    // Major keys and their relative minors
     'C': 'C_MAJOR_A_MINOR',
     'Am': 'C_MAJOR_A_MINOR',
     'G': 'G_MAJOR_E_MINOR',
@@ -48,6 +49,15 @@ export function keyToLyriaScale(key: string | null, keyScale: 'major' | 'minor' 
     'Cm': 'E_FLAT_MAJOR_C_MINOR',
     'Ab': 'A_FLAT_MAJOR_F_MINOR',
     'Fm': 'A_FLAT_MAJOR_F_MINOR',
+    // Sharp major keys (map to enharmonic equivalents)
+    'F#': 'B_MAJOR_G_SHARP_MINOR', // F# major ≈ Gb major, use B major (closest)
+    'C#': 'E_MAJOR_C_SHARP_MINOR', // C# is relative minor of E
+    'G#': 'A_FLAT_MAJOR_F_MINOR', // G# = Ab enharmonic
+    'D#': 'E_FLAT_MAJOR_C_MINOR', // D# = Eb enharmonic
+    'A#': 'B_FLAT_MAJOR_G_MINOR', // A# = Bb enharmonic
+    // Minor variants without 'm' suffix
+    'Db': 'E_MAJOR_C_SHARP_MINOR', // Db = C# enharmonic
+    'Gb': 'B_MAJOR_G_SHARP_MINOR', // Gb = F# enharmonic
   };
 
   // Try direct match first
