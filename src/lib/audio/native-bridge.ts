@@ -336,14 +336,14 @@ export class NativeBridge {
    * Set input device
    */
   setInputDevice(deviceId: string): void {
-    this.send({ type: 'setInputDevice', deviceId: deviceId });
+    this.send({ type: 'setInputDevice', device_id: deviceId });
   }
 
   /**
    * Set output device
    */
   setOutputDevice(deviceId: string): void {
-    this.send({ type: 'setOutputDevice', deviceId: deviceId });
+    this.send({ type: 'setOutputDevice', device_id: deviceId });
   }
 
   /**
