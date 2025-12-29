@@ -806,12 +806,10 @@ export function TransportBar({
           <Settings className="w-5 h-5" />
         </button>
 
-        <div className="h-5 w-px bg-white/10" />
+        <div className="h-5 w-px bg-gray-200 dark:bg-white/10" />
 
-        {/* User Menu - force dark mode styling in DAW with dark background for text contrast */}
-        <div className="dark bg-[#12121a] rounded-lg">
-          <UserMenu />
-        </div>
+        {/* User Menu */}
+        <UserMenu />
 
         {/* Leave */}
         <button
