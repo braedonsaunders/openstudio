@@ -7,6 +7,7 @@ import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { useRoomStore } from '@/stores/room-store';
 import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { useMetronomeStore } from '@/stores/metronome-store';
+import { useAnalysisStore } from '@/stores/analysis-store';
 import type { User } from '@/types';
 import {
   Music, Mic, Guitar, Users2, Flame, TreePine, Building2,
@@ -322,50 +323,78 @@ function Stars({ count = 50 }: { count?: number }) {
 // Scene: Campfire
 // ============================================
 
-function CampfireScene({ keyColor }: { keyColor: string }) {
+function CampfireScene({ keyColor, isDark }: { keyColor: string; isDark: boolean }) {
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Night sky */}
-      <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-900/90 to-violet-900/70" />
+      {/* Sky */}
+      <div className={`absolute inset-0 ${
+        isDark
+          ? 'bg-gradient-to-b from-indigo-950 via-purple-900/90 to-violet-900/70'
+          : 'bg-gradient-to-b from-amber-200 via-orange-300/80 to-rose-300/70'
+      }`} />
 
-      {/* Stars */}
-      <Stars count={40} />
+      {/* Stars (dark mode) / Clouds (light mode) */}
+      {isDark ? (
+        <Stars count={40} />
+      ) : (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[15, 35, 65, 85].map((left, i) => (
+            <div
+              key={i}
+              className="absolute rounded-full bg-white/40"
+              style={{
+                left: `${left}%`,
+                top: `${10 + (i % 2) * 8}%`,
+                width: 80 + i * 20,
+                height: 30 + i * 5,
+                animation: `float ${15 + i * 3}s ease-in-out ${i * 2}s infinite`,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
-      {/* Moon */}
+      {/* Moon/Sun */}
       <div
-        className="absolute top-[8%] left-[12%] w-14 h-14 rounded-full bg-gradient-to-br from-gray-100 to-gray-300"
+        className={`absolute top-[8%] left-[12%] w-14 h-14 rounded-full ${
+          isDark
+            ? 'bg-gradient-to-br from-gray-100 to-gray-300'
+            : 'bg-gradient-to-br from-yellow-300 to-orange-400'
+        }`}
         style={{
-          boxShadow: '0 0 50px 15px rgba(255, 255, 255, 0.12)',
+          boxShadow: isDark
+            ? '0 0 50px 15px rgba(255, 255, 255, 0.12)'
+            : '0 0 60px 20px rgba(255, 180, 100, 0.4)',
           animation: 'gentle-pulse 6s ease-in-out infinite',
         }}
       />
 
-      {/* Mountains - static SVG */}
+      {/* Mountains */}
       <svg className="absolute bottom-[18%] left-0 right-0 w-full h-[35%]" viewBox="0 0 1440 300" preserveAspectRatio="none">
-        <path d="M0 300 L0 180 Q200 80 400 150 Q600 50 800 120 Q1000 40 1200 100 Q1350 60 1440 130 L1440 300 Z" fill="rgba(30, 27, 75, 0.6)" />
-        <path d="M0 300 L0 200 Q150 120 350 180 Q550 100 700 160 Q900 80 1100 140 Q1300 100 1440 160 L1440 300 Z" fill="rgba(49, 46, 129, 0.5)" />
+        <path d="M0 300 L0 180 Q200 80 400 150 Q600 50 800 120 Q1000 40 1200 100 Q1350 60 1440 130 L1440 300 Z"
+          fill={isDark ? 'rgba(30, 27, 75, 0.6)' : 'rgba(120, 100, 80, 0.4)'} />
+        <path d="M0 300 L0 200 Q150 120 350 180 Q550 100 700 160 Q900 80 1100 140 Q1300 100 1440 160 L1440 300 Z"
+          fill={isDark ? 'rgba(49, 46, 129, 0.5)' : 'rgba(100, 80, 60, 0.3)'} />
       </svg>
 
       {/* Ground */}
-      <div className="absolute bottom-0 left-0 right-0 h-[20%] bg-gradient-to-t from-indigo-950 via-violet-900/80 to-transparent" />
+      <div className={`absolute bottom-0 left-0 right-0 h-[20%] ${
+        isDark
+          ? 'bg-gradient-to-t from-indigo-950 via-violet-900/80 to-transparent'
+          : 'bg-gradient-to-t from-amber-700/60 via-orange-600/40 to-transparent'
+      }`} />
 
-      {/* Campfire - CSS animated */}
+      {/* Campfire */}
       <div className="absolute bottom-[8%] left-1/2 -translate-x-1/2">
         <svg width="160" height="130" viewBox="0 0 160 130">
-          {/* Logs */}
           <rect x="35" y="100" width="90" height="16" rx="8" fill="#78350f" transform="rotate(-8 80 105)" />
           <rect x="35" y="100" width="90" height="16" rx="8" fill="#92400e" transform="rotate(8 80 105)" />
-
-          {/* Fire glow */}
           <ellipse cx="80" cy="95" rx="45" ry="25" fill={keyColor} opacity="0.3" style={{ animation: 'gentle-pulse 3s ease-in-out infinite' }} />
-
-          {/* Flames - CSS animated */}
           <g style={{ transformOrigin: '80px 100px', animation: 'flame-flicker 2s ease-in-out infinite' }}>
             <ellipse cx="80" cy="70" rx="18" ry="35" fill="url(#flameGrad)" />
             <ellipse cx="65" cy="78" rx="10" ry="22" fill="url(#flameGrad2)" />
             <ellipse cx="95" cy="78" rx="10" ry="22" fill="url(#flameGrad2)" />
           </g>
-
           <defs>
             <linearGradient id="flameGrad" x1="0%" y1="100%" x2="0%" y2="0%">
               <stop offset="0%" stopColor="#dc2626" />
@@ -380,19 +409,19 @@ function CampfireScene({ keyColor }: { keyColor: string }) {
         </svg>
       </div>
 
-      {/* Fireflies - CSS animated */}
+      {/* Fireflies/Particles */}
       {useMemo(() => Array.from({ length: 8 }, (_, i) => (
         <div
           key={i}
-          className="absolute w-1.5 h-1.5 rounded-full bg-yellow-300"
+          className={`absolute w-1.5 h-1.5 rounded-full ${isDark ? 'bg-yellow-300' : 'bg-orange-400'}`}
           style={{
             left: `${15 + i * 10}%`,
             top: `${35 + (i % 3) * 12}%`,
-            boxShadow: '0 0 6px 2px rgba(253, 224, 71, 0.5)',
+            boxShadow: isDark ? '0 0 6px 2px rgba(253, 224, 71, 0.5)' : '0 0 6px 2px rgba(251, 146, 60, 0.4)',
             animation: `drift ${8 + i * 2}s ease-in-out ${i}s infinite, gentle-pulse ${3 + i}s ease-in-out ${i * 0.5}s infinite`,
           }}
         />
-      )), [])}
+      )), [isDark])}
     </div>
   );
 }
@@ -401,7 +430,7 @@ function CampfireScene({ keyColor }: { keyColor: string }) {
 // Scene: Rooftop
 // ============================================
 
-function RooftopScene({ keyColor }: { keyColor: string }) {
+function RooftopScene({ keyColor, isDark }: { keyColor: string; isDark: boolean }) {
   const windows = useMemo(() =>
     Array.from({ length: 80 }, (_, i) => ({
       x: 60 + (i % 20) * 70,
@@ -413,14 +442,34 @@ function RooftopScene({ keyColor }: { keyColor: string }) {
 
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Night sky */}
-      <div className="absolute inset-0 bg-gradient-to-b from-slate-900 via-indigo-950 to-purple-950" />
+      {/* Sky */}
+      <div className={`absolute inset-0 ${
+        isDark
+          ? 'bg-gradient-to-b from-slate-900 via-indigo-950 to-purple-950'
+          : 'bg-gradient-to-b from-sky-400 via-blue-300 to-indigo-200'
+      }`} />
 
-      <Stars count={30} />
+      {isDark ? <Stars count={30} /> : (
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          {[20, 50, 80].map((left, i) => (
+            <div
+              key={i}
+              className="absolute rounded-full bg-white/50"
+              style={{
+                left: `${left}%`,
+                top: `${5 + i * 4}%`,
+                width: 100 + i * 30,
+                height: 35 + i * 8,
+                animation: `float ${18 + i * 4}s ease-in-out ${i * 3}s infinite`,
+              }}
+            />
+          ))}
+        </div>
+      )}
 
       {/* City skyline */}
       <svg className="absolute bottom-[18%] left-0 right-0 w-full h-[55%]" viewBox="0 0 1440 350" preserveAspectRatio="none">
-        <g fill="rgba(30, 30, 50, 0.95)">
+        <g fill={isDark ? 'rgba(30, 30, 50, 0.95)' : 'rgba(100, 116, 139, 0.85)'}>
           <rect x="50" y="180" width="70" height="170" />
           <rect x="150" y="120" width="90" height="230" />
           <rect x="280" y="160" width="60" height="190" />
@@ -442,8 +491,8 @@ function RooftopScene({ keyColor }: { keyColor: string }) {
             y={w.y}
             width="8"
             height="12"
-            fill="#fef9c3"
-            opacity="0.7"
+            fill={isDark ? '#fef9c3' : '#60a5fa'}
+            opacity={isDark ? 0.7 : 0.5}
             style={{ animation: `gentle-pulse ${4 + (i % 3)}s ease-in-out ${w.delay}s infinite` }}
           />
         ))}
@@ -458,7 +507,11 @@ function RooftopScene({ keyColor }: { keyColor: string }) {
       </div>
 
       {/* Rooftop floor */}
-      <div className="absolute bottom-0 left-0 right-0 h-[20%] bg-gradient-to-t from-slate-800 via-slate-700 to-slate-600" />
+      <div className={`absolute bottom-0 left-0 right-0 h-[20%] ${
+        isDark
+          ? 'bg-gradient-to-t from-slate-800 via-slate-700 to-slate-600'
+          : 'bg-gradient-to-t from-slate-400 via-slate-300 to-slate-200'
+      }`} />
     </div>
   );
 }
@@ -467,16 +520,29 @@ function RooftopScene({ keyColor }: { keyColor: string }) {
 // Scene: Beach
 // ============================================
 
-function BeachScene({ keyColor }: { keyColor: string }) {
+function BeachScene({ keyColor, isDark }: { keyColor: string; isDark: boolean }) {
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Sunset sky */}
-      <div className="absolute inset-0 bg-gradient-to-b from-orange-400 via-pink-500 to-purple-700" />
+      {/* Sky */}
+      <div className={`absolute inset-0 ${
+        isDark
+          ? 'bg-gradient-to-b from-orange-400 via-pink-500 to-purple-700'
+          : 'bg-gradient-to-b from-sky-300 via-cyan-200 to-blue-300'
+      }`} />
 
       {/* Sun */}
       <div
-        className="absolute top-[18%] left-1/2 -translate-x-1/2 w-28 h-28 rounded-full bg-gradient-to-b from-yellow-300 to-orange-500"
-        style={{ boxShadow: '0 0 60px 20px rgba(255, 180, 100, 0.4)', animation: 'float 8s ease-in-out infinite' }}
+        className={`absolute top-[18%] left-1/2 -translate-x-1/2 w-28 h-28 rounded-full ${
+          isDark
+            ? 'bg-gradient-to-b from-yellow-300 to-orange-500'
+            : 'bg-gradient-to-b from-yellow-200 to-yellow-400'
+        }`}
+        style={{
+          boxShadow: isDark
+            ? '0 0 60px 20px rgba(255, 180, 100, 0.4)'
+            : '0 0 80px 30px rgba(255, 220, 100, 0.5)',
+          animation: 'float 8s ease-in-out infinite'
+        }}
       />
 
       {/* Clouds */}
@@ -487,26 +553,34 @@ function BeachScene({ keyColor }: { keyColor: string }) {
       </svg>
 
       {/* Ocean */}
-      <div className="absolute bottom-0 left-0 right-0 h-[42%] bg-gradient-to-b from-cyan-500 via-blue-600 to-blue-900" />
+      <div className={`absolute bottom-0 left-0 right-0 h-[42%] ${
+        isDark
+          ? 'bg-gradient-to-b from-cyan-500 via-blue-600 to-blue-900'
+          : 'bg-gradient-to-b from-cyan-400 via-blue-400 to-blue-500'
+      }`} />
 
-      {/* Waves - CSS animated */}
+      {/* Waves */}
       <svg className="absolute bottom-[22%] left-0 right-0 w-full h-[20%]" viewBox="0 0 1440 180" preserveAspectRatio="none">
         <path
           d="M0 90 Q180 50 360 90 Q540 130 720 90 Q900 50 1080 90 Q1260 130 1440 90 L1440 180 L0 180 Z"
-          fill="rgba(6, 182, 212, 0.5)"
+          fill={isDark ? 'rgba(6, 182, 212, 0.5)' : 'rgba(34, 211, 238, 0.6)'}
           style={{ animation: 'wave-motion 6s ease-in-out infinite' }}
         />
         <path
           d="M0 110 Q200 70 400 110 Q600 150 800 110 Q1000 70 1200 110 Q1400 150 1440 110 L1440 180 L0 180 Z"
-          fill="rgba(14, 165, 233, 0.6)"
+          fill={isDark ? 'rgba(14, 165, 233, 0.6)' : 'rgba(56, 189, 248, 0.7)'}
           style={{ animation: 'wave-motion 5s ease-in-out 0.5s infinite reverse' }}
         />
       </svg>
 
       {/* Beach/sand */}
-      <div className="absolute bottom-0 left-0 right-0 h-[25%] bg-gradient-to-t from-amber-200 via-amber-300 to-amber-400" />
+      <div className={`absolute bottom-0 left-0 right-0 h-[25%] ${
+        isDark
+          ? 'bg-gradient-to-t from-amber-200 via-amber-300 to-amber-400'
+          : 'bg-gradient-to-t from-amber-100 via-amber-200 to-amber-300'
+      }`} />
 
-      {/* Palm trees - static */}
+      {/* Palm trees */}
       <svg className="absolute bottom-[23%] left-[6%] w-20 h-40" viewBox="0 0 80 160" style={{ animation: 'float 10s ease-in-out infinite' }}>
         <path d="M38 160 Q40 120 42 80 Q44 40 42 20" stroke="#8B4513" strokeWidth="10" fill="none" />
         <path d="M42 25 Q25 15 8 30" stroke="#228B22" strokeWidth="4" fill="none" />
@@ -522,17 +596,21 @@ function BeachScene({ keyColor }: { keyColor: string }) {
 // Scene: Studio
 // ============================================
 
-function StudioScene({ keyColor, audioLevel }: { keyColor: string; audioLevel: number }) {
+function StudioScene({ keyColor, audioLevel, isDark }: { keyColor: string; audioLevel: number; isDark: boolean }) {
   const vuLevel = Math.floor(audioLevel * 10);
 
   return (
     <div className="absolute inset-0 overflow-hidden">
       {/* Studio wall */}
-      <div className="absolute inset-0 bg-gradient-to-b from-zinc-800 via-zinc-900 to-black" />
+      <div className={`absolute inset-0 ${
+        isDark
+          ? 'bg-gradient-to-b from-zinc-800 via-zinc-900 to-black'
+          : 'bg-gradient-to-b from-slate-200 via-slate-300 to-slate-400'
+      }`} />
 
       {/* Acoustic panels */}
-      <div className="absolute inset-0 opacity-15" style={{
-        backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 55px, #27272a 55px, #27272a 60px), repeating-linear-gradient(90deg, transparent, transparent 55px, #27272a 55px, #27272a 60px)',
+      <div className={`absolute inset-0 ${isDark ? 'opacity-15' : 'opacity-10'}`} style={{
+        backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 55px, ${isDark ? '#27272a' : '#94a3b8'} 55px, ${isDark ? '#27272a' : '#94a3b8'} 60px), repeating-linear-gradient(90deg, transparent, transparent 55px, ${isDark ? '#27272a' : '#94a3b8'} 55px, ${isDark ? '#27272a' : '#94a3b8'} 60px)`,
       }} />
 
       {/* LED strip */}
@@ -543,7 +621,11 @@ function StudioScene({ keyColor, audioLevel }: { keyColor: string; audioLevel: n
 
       {/* Mixing console */}
       <div className="absolute bottom-[18%] left-1/2 -translate-x-1/2 w-[65%] h-[22%]">
-        <div className="absolute inset-0 bg-gradient-to-b from-zinc-700 to-zinc-800 rounded-t-lg border-t border-x border-zinc-600" />
+        <div className={`absolute inset-0 rounded-t-lg border-t border-x ${
+          isDark
+            ? 'bg-gradient-to-b from-zinc-700 to-zinc-800 border-zinc-600'
+            : 'bg-gradient-to-b from-slate-500 to-slate-600 border-slate-400'
+        }`} />
 
         {/* VU meters */}
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 flex gap-6">
@@ -554,7 +636,7 @@ function StudioScene({ keyColor, audioLevel }: { keyColor: string; audioLevel: n
                   key={i}
                   className="w-2 h-3 rounded-sm transition-colors duration-150"
                   style={{
-                    backgroundColor: i < vuLevel ? (i < 7 ? '#22c55e' : i < 9 ? '#eab308' : '#ef4444') : '#27272a',
+                    backgroundColor: i < vuLevel ? (i < 7 ? '#22c55e' : i < 9 ? '#eab308' : '#ef4444') : (isDark ? '#27272a' : '#64748b'),
                     boxShadow: i < vuLevel ? `0 0 4px ${i < 7 ? '#22c55e' : i < 9 ? '#eab308' : '#ef4444'}` : 'none',
                   }}
                 />
@@ -568,24 +650,34 @@ function StudioScene({ keyColor, audioLevel }: { keyColor: string; audioLevel: n
       {[-1, 1].map((side) => (
         <div
           key={side}
-          className="absolute bottom-[42%] w-16 h-28 bg-zinc-800 rounded-lg border border-zinc-600 flex flex-col items-center justify-center gap-2"
+          className={`absolute bottom-[42%] w-16 h-28 rounded-lg border flex flex-col items-center justify-center gap-2 ${
+            isDark
+              ? 'bg-zinc-800 border-zinc-600'
+              : 'bg-slate-600 border-slate-500'
+          }`}
           style={{ [side < 0 ? 'left' : 'right']: '10%' }}
         >
-          <div className="w-5 h-5 rounded-full bg-zinc-700 border-2 border-zinc-500" />
-          <div className="w-10 h-10 rounded-full bg-zinc-700 border-2 border-zinc-500" />
+          <div className={`w-5 h-5 rounded-full border-2 ${isDark ? 'bg-zinc-700 border-zinc-500' : 'bg-slate-500 border-slate-400'}`} />
+          <div className={`w-10 h-10 rounded-full border-2 ${isDark ? 'bg-zinc-700 border-zinc-500' : 'bg-slate-500 border-slate-400'}`} />
         </div>
       ))}
 
       {/* Floor */}
-      <div className="absolute bottom-0 left-0 right-0 h-[20%] bg-gradient-to-t from-zinc-950 via-zinc-900 to-zinc-800" />
+      <div className={`absolute bottom-0 left-0 right-0 h-[20%] ${
+        isDark
+          ? 'bg-gradient-to-t from-zinc-950 via-zinc-900 to-zinc-800'
+          : 'bg-gradient-to-t from-slate-500 via-slate-400 to-slate-300'
+      }`} />
 
       {/* Recording light */}
-      <div className="absolute top-5 right-5 flex items-center gap-2 px-3 py-1.5 rounded-full bg-red-900/40 border border-red-500/40">
+      <div className={`absolute top-5 right-5 flex items-center gap-2 px-3 py-1.5 rounded-full border ${
+        isDark ? 'bg-red-900/40 border-red-500/40' : 'bg-red-100 border-red-300'
+      }`}>
         <div
           className="w-2 h-2 rounded-full bg-red-500"
           style={{ animation: audioLevel > 0.1 ? 'gentle-pulse 1s ease-in-out infinite' : 'none', opacity: audioLevel > 0.1 ? 1 : 0.4 }}
         />
-        <span className="text-xs font-bold text-red-400">REC</span>
+        <span className={`text-xs font-bold ${isDark ? 'text-red-400' : 'text-red-600'}`}>REC</span>
       </div>
     </div>
   );
@@ -595,35 +687,51 @@ function StudioScene({ keyColor, audioLevel }: { keyColor: string; audioLevel: n
 // Scene: Space
 // ============================================
 
-function SpaceScene({ keyColor }: { keyColor: string }) {
+function SpaceScene({ keyColor, isDark }: { keyColor: string; isDark: boolean }) {
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Deep space */}
-      <div className="absolute inset-0 bg-gradient-to-b from-black via-indigo-950/50 to-purple-950/30" />
+      {/* Deep space / Light sky */}
+      <div className={`absolute inset-0 ${
+        isDark
+          ? 'bg-gradient-to-b from-black via-indigo-950/50 to-purple-950/30'
+          : 'bg-gradient-to-b from-indigo-300 via-purple-200 to-pink-200'
+      }`} />
 
-      <Stars count={80} />
+      <Stars count={isDark ? 80 : 20} />
 
       {/* Nebula clouds */}
       <div
-        className="absolute top-0 left-0 w-1/2 h-2/5 opacity-25"
+        className={`absolute top-0 left-0 w-1/2 h-2/5 ${isDark ? 'opacity-25' : 'opacity-40'}`}
         style={{ background: `radial-gradient(ellipse at 30% 30%, ${keyColor}40 0%, transparent 60%)`, animation: 'float 20s ease-in-out infinite' }}
       />
 
       {/* Planet */}
       <div className="absolute top-[14%] right-[14%]" style={{ animation: 'float 12s ease-in-out infinite' }}>
         <div
-          className="w-16 h-16 rounded-full bg-gradient-to-br from-orange-400 via-red-500 to-purple-700"
-          style={{ boxShadow: '0 0 30px 8px rgba(249, 115, 22, 0.25)' }}
+          className={`w-16 h-16 rounded-full ${
+            isDark
+              ? 'bg-gradient-to-br from-orange-400 via-red-500 to-purple-700'
+              : 'bg-gradient-to-br from-pink-300 via-purple-400 to-indigo-400'
+          }`}
+          style={{ boxShadow: isDark ? '0 0 30px 8px rgba(249, 115, 22, 0.25)' : '0 0 30px 8px rgba(167, 139, 250, 0.4)' }}
         />
       </div>
 
       {/* Space platform */}
       <div className="absolute bottom-[14%] left-1/2 -translate-x-1/2 w-[75%]">
         <div
-          className="h-3 bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700 rounded-lg"
+          className={`h-3 rounded-lg ${
+            isDark
+              ? 'bg-gradient-to-r from-slate-700 via-slate-600 to-slate-700'
+              : 'bg-gradient-to-r from-slate-400 via-slate-300 to-slate-400'
+          }`}
           style={{ boxShadow: `0 0 20px ${keyColor}30` }}
         />
-        <div className="h-1.5 mt-1 mx-[5%] bg-gradient-to-r from-cyan-900 via-cyan-700 to-cyan-900 rounded" />
+        <div className={`h-1.5 mt-1 mx-[5%] rounded ${
+          isDark
+            ? 'bg-gradient-to-r from-cyan-900 via-cyan-700 to-cyan-900'
+            : 'bg-gradient-to-r from-cyan-400 via-cyan-300 to-cyan-400'
+        }`} />
 
         {/* Platform lights */}
         <div className="flex justify-around mt-2 mx-[10%]">
@@ -647,13 +755,17 @@ function SpaceScene({ keyColor }: { keyColor: string }) {
 // Scene: Forest
 // ============================================
 
-function ForestScene({ keyColor }: { keyColor: string }) {
+function ForestScene({ keyColor, isDark }: { keyColor: string; isDark: boolean }) {
   return (
     <div className="absolute inset-0 overflow-hidden">
       {/* Forest canopy */}
-      <div className="absolute inset-0 bg-gradient-to-b from-emerald-900 via-green-800 to-emerald-950" />
+      <div className={`absolute inset-0 ${
+        isDark
+          ? 'bg-gradient-to-b from-emerald-900 via-green-800 to-emerald-950'
+          : 'bg-gradient-to-b from-emerald-400 via-green-300 to-emerald-200'
+      }`} />
 
-      {/* Dappled light */}
+      {/* Dappled light / Sun rays */}
       {useMemo(() => Array.from({ length: 8 }, (_, i) => (
         <div
           key={i}
@@ -663,15 +775,17 @@ function ForestScene({ keyColor }: { keyColor: string }) {
             top: `${8 + (i % 3) * 7}%`,
             width: 40 + i * 8,
             height: 40 + i * 8,
-            background: 'radial-gradient(circle, rgba(254, 249, 195, 0.25) 0%, transparent 70%)',
+            background: isDark
+              ? 'radial-gradient(circle, rgba(254, 249, 195, 0.25) 0%, transparent 70%)'
+              : 'radial-gradient(circle, rgba(255, 255, 255, 0.6) 0%, transparent 70%)',
             animation: `gentle-pulse ${4 + i}s ease-in-out ${i * 0.5}s infinite`,
           }}
         />
-      )), [])}
+      )), [isDark])}
 
-      {/* Trees - static SVG */}
+      {/* Trees */}
       <svg className="absolute bottom-[22%] left-0 right-0 w-full h-[55%]" viewBox="0 0 1440 350" preserveAspectRatio="none">
-        <g fill="rgba(5, 46, 22, 0.85)">
+        <g fill={isDark ? 'rgba(5, 46, 22, 0.85)' : 'rgba(22, 101, 52, 0.7)'}>
           {[0, 120, 240, 360, 480, 600, 720, 840, 960, 1080, 1200, 1320].map((x, i) => (
             <path key={i} d={`M${x + 50} 350 L${x + 50} ${240 - i * 4} L${x + 20} ${280 - i * 4} L${x + 35} ${280 - i * 4} L${x + 10} ${310 - i * 4} L${x + 90} ${310 - i * 4} L${x + 65} ${280 - i * 4} L${x + 80} ${280 - i * 4} Z`} />
           ))}
@@ -679,7 +793,11 @@ function ForestScene({ keyColor }: { keyColor: string }) {
       </svg>
 
       {/* Ground */}
-      <div className="absolute bottom-0 left-0 right-0 h-[25%] bg-gradient-to-t from-emerald-950 via-green-900/80 to-transparent" />
+      <div className={`absolute bottom-0 left-0 right-0 h-[25%] ${
+        isDark
+          ? 'bg-gradient-to-t from-emerald-950 via-green-900/80 to-transparent'
+          : 'bg-gradient-to-t from-emerald-600/60 via-green-400/40 to-transparent'
+      }`} />
 
       {/* Magic circle */}
       <div
@@ -687,12 +805,12 @@ function ForestScene({ keyColor }: { keyColor: string }) {
         style={{ animation: 'slow-rotate 60s linear infinite' }}
       >
         <svg width="100%" height="100%" viewBox="0 0 260 80">
-          <ellipse cx="130" cy="40" rx="120" ry="35" fill="none" stroke={keyColor} strokeWidth="1.5" opacity="0.3" />
-          <ellipse cx="130" cy="40" rx="90" ry="25" fill="none" stroke={keyColor} strokeWidth="1" opacity="0.2" />
+          <ellipse cx="130" cy="40" rx="120" ry="35" fill="none" stroke={keyColor} strokeWidth="1.5" opacity={isDark ? 0.3 : 0.5} />
+          <ellipse cx="130" cy="40" rx="90" ry="25" fill="none" stroke={keyColor} strokeWidth="1" opacity={isDark ? 0.2 : 0.4} />
         </svg>
       </div>
 
-      {/* Fireflies */}
+      {/* Fireflies / Butterflies */}
       {useMemo(() => Array.from({ length: 12 }, (_, i) => (
         <div
           key={i}
@@ -700,14 +818,14 @@ function ForestScene({ keyColor }: { keyColor: string }) {
           style={{
             left: `${10 + (i * 7)}%`,
             top: `${25 + (i % 4) * 12}%`,
-            width: 4,
-            height: 4,
-            backgroundColor: i % 3 === 0 ? keyColor : '#fef08a',
-            boxShadow: `0 0 6px 2px ${i % 3 === 0 ? keyColor : 'rgba(253, 224, 71, 0.5)'}`,
+            width: isDark ? 4 : 6,
+            height: isDark ? 4 : 6,
+            backgroundColor: i % 3 === 0 ? keyColor : (isDark ? '#fef08a' : '#fbbf24'),
+            boxShadow: `0 0 6px 2px ${i % 3 === 0 ? keyColor : (isDark ? 'rgba(253, 224, 71, 0.5)' : 'rgba(251, 191, 36, 0.6)')}`,
             animation: `drift ${10 + i * 2}s ease-in-out ${i}s infinite, gentle-pulse ${4 + i}s ease-in-out ${i * 0.3}s infinite`,
           }}
         />
-      )), [keyColor])}
+      )), [keyColor, isDark])}
     </div>
   );
 }
@@ -933,66 +1051,65 @@ function BeatIndicator({ beat, beatsPerBar, isPlaying }: { beat: number; beatsPe
 // Stunning Real-Time Waveform Visualizer
 // ============================================
 
-function LiveWaveformVisualizer({ audioLevel, keyColor, audioLevels }: {
-  audioLevel: number;
+function LiveWaveformVisualizer({ keyColor, spectrumData, audioLevel }: {
   keyColor: string;
-  audioLevels: Map<string, number>;
+  spectrumData: Float32Array | null;
+  audioLevel: number;
 }) {
   const BAR_COUNT = 64;
   const [bars, setBars] = useState<number[]>(() => Array(BAR_COUNT).fill(0));
   const animationRef = useRef<number | null>(null);
-  const phaseRef = useRef(0);
   const lastFrameRef = useRef(0);
   const smoothedLevelsRef = useRef<number[]>(Array(BAR_COUNT).fill(0));
 
-  // Real-time animation loop at 60fps
+  // Real-time animation loop at ~45fps using actual spectrum data
   useEffect(() => {
     const animate = (time: number) => {
-      // Throttle to ~45fps for performance balance
       if (time - lastFrameRef.current < 22) {
         animationRef.current = requestAnimationFrame(animate);
         return;
       }
       lastFrameRef.current = time;
-      phaseRef.current += 0.06;
-
-      // Get individual audio levels for more variation
-      const levels: number[] = [];
-      audioLevels.forEach((level) => levels.push(level));
-      const avgLevel = audioLevel;
 
       setBars(() => {
         const newBars: number[] = [];
         const smoothed = smoothedLevelsRef.current;
+        const hasSpectrum = spectrumData && spectrumData.length > 0;
 
         for (let i = 0; i < BAR_COUNT; i++) {
-          // Create frequency-like distribution (bass heavy in middle, highs on sides)
-          const distFromCenter = Math.abs(i - BAR_COUNT / 2) / (BAR_COUNT / 2);
-          const freqMultiplier = 1 - distFromCenter * 0.5;
+          let target: number;
 
-          // Multiple wave components for organic movement
-          const wave1 = Math.sin(phaseRef.current * 1.5 + i * 0.15) * 0.3;
-          const wave2 = Math.sin(phaseRef.current * 2.3 + i * 0.08) * 0.2;
-          const wave3 = Math.cos(phaseRef.current * 0.7 + i * 0.2) * 0.15;
+          if (hasSpectrum) {
+            // Map bar index to spectrum bin (logarithmic scaling for better frequency representation)
+            const spectrumLength = spectrumData.length;
+            // Use logarithmic scaling: lower bars = lower frequencies (more resolution)
+            const logScale = Math.pow(i / BAR_COUNT, 1.5);
+            const binIndex = Math.floor(logScale * (spectrumLength - 1));
 
-          // Use individual user levels for more reactive feel
-          const userIndex = i % Math.max(levels.length, 1);
-          const userLevel = levels[userIndex] || avgLevel;
+            // Get the spectrum value (typically in dB, normalize to 0-1)
+            const rawValue = spectrumData[binIndex] || 0;
+            // Spectrum values are often in dB (-100 to 0), normalize them
+            const normalized = Math.max(0, Math.min(1, (rawValue + 100) / 100));
 
-          // Calculate target height
-          const baseHeight = 0.08;
-          const audioComponent = (avgLevel * 0.6 + userLevel * 0.4) * freqMultiplier;
-          const waveComponent = (wave1 + wave2 + wave3) * (0.1 + avgLevel * 0.3);
-          const target = baseHeight + audioComponent + waveComponent;
+            // Add some variation based on neighboring bins
+            const neighbor1 = spectrumData[Math.max(0, binIndex - 1)] || rawValue;
+            const neighbor2 = spectrumData[Math.min(spectrumLength - 1, binIndex + 1)] || rawValue;
+            const avgNormalized = Math.max(0, Math.min(1, ((rawValue + neighbor1 + neighbor2) / 3 + 100) / 100));
+
+            target = avgNormalized * 0.9 + 0.05; // Base floor + scaled spectrum
+          } else {
+            // Fallback: minimal movement when no spectrum data
+            target = 0.03 + audioLevel * 0.1;
+          }
 
           // Smooth interpolation (fast attack, slower decay)
           const current = smoothed[i];
-          const attackSpeed = 0.4;
-          const decaySpeed = 0.08;
+          const attackSpeed = 0.5;
+          const decaySpeed = 0.12;
           const speed = target > current ? attackSpeed : decaySpeed;
           smoothed[i] = current + (target - current) * speed;
 
-          newBars.push(Math.max(0.05, Math.min(1, smoothed[i])));
+          newBars.push(Math.max(0.03, Math.min(1, smoothed[i])));
         }
 
         smoothedLevelsRef.current = smoothed;
@@ -1006,74 +1123,51 @@ function LiveWaveformVisualizer({ audioLevel, keyColor, audioLevels }: {
     return () => {
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     };
-  }, [audioLevel, audioLevels]);
+  }, [spectrumData, audioLevel]);
 
   return (
-    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-[85%] max-w-[700px] z-[150]">
-      {/* Main visualizer container */}
-      <div className="relative h-20 px-4 py-3 rounded-2xl backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden">
-        {/* Ambient glow behind bars */}
-        <div
-          className="absolute inset-0 opacity-30 blur-2xl"
-          style={{
-            background: `radial-gradient(ellipse at 50% 100%, ${keyColor} 0%, transparent 70%)`,
-          }}
-        />
+    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[90%] max-w-[900px] z-[150] pointer-events-none">
+      {/* Ambient glow */}
+      <div
+        className="absolute inset-x-0 bottom-0 h-48 opacity-40 blur-3xl"
+        style={{
+          background: `radial-gradient(ellipse at 50% 100%, ${keyColor} 0%, transparent 70%)`,
+        }}
+      />
 
-        {/* Bars container */}
-        <div className="relative flex items-end justify-center gap-[2px] h-full">
-          {bars.map((height, i) => {
-            // Color gradient based on position and height
-            const hue = (i / BAR_COUNT) * 60 - 30; // Shift hue across spectrum
-            const saturation = 80 + height * 20;
-            const lightness = 50 + height * 30;
+      {/* Bars container - 280px tall (3.5x original) */}
+      <div className="relative flex items-end justify-center gap-[3px] h-72 pb-4">
+        {bars.map((height, i) => {
+          const hue = (i / BAR_COUNT) * 60 - 30;
+          const saturation = 80 + height * 20;
+          const lightness = 50 + height * 30;
 
-            return (
-              <div key={i} className="flex flex-col items-center gap-[1px]" style={{ height: '100%' }}>
-                {/* Main bar */}
-                <div
-                  className="w-[6px] rounded-full"
-                  style={{
-                    height: `${height * 100}%`,
-                    minHeight: '3px',
-                    background: `linear-gradient(to top, ${keyColor}, hsl(${hue + 280}, ${saturation}%, ${lightness}%), #fff)`,
-                    boxShadow: height > 0.3
-                      ? `0 0 ${4 + height * 12}px ${keyColor}, 0 0 ${2 + height * 6}px rgba(255,255,255,0.5)`
-                      : 'none',
-                    opacity: 0.7 + height * 0.3,
-                  }}
-                />
-                {/* Reflection (mirror effect) */}
-                <div
-                  className="w-[6px] rounded-full opacity-20"
-                  style={{
-                    height: `${height * 35}%`,
-                    minHeight: '1px',
-                    background: `linear-gradient(to bottom, ${keyColor}, transparent)`,
-                  }}
-                />
-              </div>
-            );
-          })}
-        </div>
-
-        {/* Peak line indicator */}
-        <div
-          className="absolute left-4 right-4 h-[1px] opacity-30"
-          style={{
-            top: '15%',
-            background: `linear-gradient(90deg, transparent, ${keyColor}, transparent)`,
-          }}
-        />
-
-        {/* Subtle scan line effect */}
-        <div
-          className="absolute inset-0 pointer-events-none opacity-[0.03]"
-          style={{
-            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, white 2px, white 3px)',
-          }}
-        />
+          return (
+            <div
+              key={i}
+              className="w-[8px] rounded-full transition-[height] duration-[50ms]"
+              style={{
+                height: `${Math.max(height * 100, 3)}%`,
+                background: `linear-gradient(to top, ${keyColor}, hsl(${hue + 280}, ${saturation}%, ${lightness}%), rgba(255,255,255,0.9))`,
+                boxShadow: height > 0.2
+                  ? `0 0 ${6 + height * 16}px ${keyColor}, 0 0 ${3 + height * 8}px rgba(255,255,255,0.4), inset 0 0 ${2 + height * 4}px rgba(255,255,255,0.3)`
+                  : `0 0 4px ${keyColor}40`,
+                opacity: 0.75 + height * 0.25,
+              }}
+            />
+          );
+        })}
       </div>
+
+      {/* Reflection effect at bottom */}
+      <div
+        className="absolute bottom-0 left-0 right-0 h-16 opacity-20 pointer-events-none"
+        style={{
+          background: `linear-gradient(to top, ${keyColor}30, transparent)`,
+          maskImage: 'linear-gradient(to top, black 0%, transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to top, black 0%, transparent 100%)',
+        }}
+      />
     </div>
   );
 }
@@ -1094,6 +1188,9 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
   const musicalKey = useSessionTempoStore(state => state.key);
   const keyScale = useSessionTempoStore(state => state.keyScale);
   const { beat, beatsPerBar, isPlaying } = useBeatPulse();
+
+  // Spectrum data from essentia analyzer
+  const spectrumData = useAnalysisStore(state => state.spectrumData);
 
   // Scene state
   const [currentScene, setCurrentScene] = useState<SceneType>('campfire');
@@ -1121,16 +1218,19 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
     setCurrentScene(scene);
   }, []);
 
+  // Dark mode
+  const isDark = resolvedTheme === 'dark';
+
   // Render scene
   const renderScene = () => {
     switch (currentScene) {
-      case 'campfire': return <CampfireScene keyColor={keyColor} />;
-      case 'rooftop': return <RooftopScene keyColor={keyColor} />;
-      case 'beach': return <BeachScene keyColor={keyColor} />;
-      case 'studio': return <StudioScene keyColor={keyColor} audioLevel={totalAudioLevel} />;
-      case 'space': return <SpaceScene keyColor={keyColor} />;
-      case 'forest': return <ForestScene keyColor={keyColor} />;
-      default: return <CampfireScene keyColor={keyColor} />;
+      case 'campfire': return <CampfireScene keyColor={keyColor} isDark={isDark} />;
+      case 'rooftop': return <RooftopScene keyColor={keyColor} isDark={isDark} />;
+      case 'beach': return <BeachScene keyColor={keyColor} isDark={isDark} />;
+      case 'studio': return <StudioScene keyColor={keyColor} audioLevel={totalAudioLevel} isDark={isDark} />;
+      case 'space': return <SpaceScene keyColor={keyColor} isDark={isDark} />;
+      case 'forest': return <ForestScene keyColor={keyColor} isDark={isDark} />;
+      default: return <CampfireScene keyColor={keyColor} isDark={isDark} />;
     }
   };
 
@@ -1183,7 +1283,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
         <RoomVibeIndicator userCount={allUsers.length} audioLevel={totalAudioLevel} />
         <MusicInfoDisplay tempo={tempo} musicalKey={musicalKey} keyScale={keyScale} keyColor={keyColor} />
         <BeatIndicator beat={beat} beatsPerBar={beatsPerBar} isPlaying={isPlaying} />
-        <LiveWaveformVisualizer audioLevel={totalAudioLevel} keyColor={keyColor} audioLevels={audioLevels} />
+        <LiveWaveformVisualizer keyColor={keyColor} spectrumData={spectrumData} audioLevel={totalAudioLevel} />
         <SceneSelector currentScene={currentScene} onSceneChange={handleSceneChange} keyColor={keyColor} />
       </div>
     </div>
