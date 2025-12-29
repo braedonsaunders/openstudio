@@ -43,12 +43,14 @@ export class ExciterProcessor extends BaseEffect {
     this.highPass = audioContext.createBiquadFilter();
     this.highPass.type = 'highpass';
     this.highPass.Q.value = 0.7;
+    this.registerFilter(this.highPass);
 
     // Low-pass for color control
     this.lowPass = audioContext.createBiquadFilter();
     this.lowPass.type = 'lowpass';
     this.lowPass.frequency.value = 15000;
     this.lowPass.Q.value = 0.5;
+    this.registerFilter(this.lowPass);
 
     // Waveshaper for harmonic generation
     this.waveshaper = audioContext.createWaveShaper();
@@ -61,6 +63,7 @@ export class ExciterProcessor extends BaseEffect {
     this.harmonicsFilter = audioContext.createBiquadFilter();
     this.harmonicsFilter.type = 'highpass';
     this.harmonicsFilter.Q.value = 0.5;
+    this.registerFilter(this.harmonicsFilter);
 
     // Harmonics output gain
     this.harmonicsGain = audioContext.createGain();

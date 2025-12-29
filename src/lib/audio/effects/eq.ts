@@ -28,6 +28,7 @@ export class EQProcessor extends BaseEffect {
     this.filters = this.settings.bands.map((band) => {
       const filter = audioContext.createBiquadFilter();
       this.updateFilter(filter, band);
+      this.registerFilter(filter);
       return filter;
     });
 
@@ -72,6 +73,7 @@ export class EQProcessor extends BaseEffect {
       // Update existing filters or create new ones
       while (this.filters.length < settings.bands.length) {
         const filter = this.audioContext.createBiquadFilter();
+        this.registerFilter(filter);
         this.filters.push(filter);
       }
 

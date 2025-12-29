@@ -83,6 +83,7 @@ export class RotarySpeakerProcessor extends BaseEffect {
     this.hornHighPass.type = 'highpass';
     this.hornHighPass.frequency.value = 800;
     this.hornHighPass.Q.value = 0.5;
+    this.registerFilter(this.hornHighPass);
 
     // Create drum section
     this.drumDelay = audioContext.createDelay(0.02);
@@ -101,6 +102,7 @@ export class RotarySpeakerProcessor extends BaseEffect {
     this.drumLowPass.type = 'lowpass';
     this.drumLowPass.frequency.value = 800;
     this.drumLowPass.Q.value = 0.5;
+    this.registerFilter(this.drumLowPass);
 
     // Create stereo panners for rotation effect
     this.hornPannerL = audioContext.createStereoPanner();

@@ -73,10 +73,12 @@ export class DelayProcessor extends BaseEffect {
     // Configure feedback filter (for analog/tape warmth)
     this.feedbackFilter.type = 'lowpass';
     this.feedbackFilter.Q.value = 0.7;
+    this.registerFilter(this.feedbackFilter);
 
     // Configure tone filter
     this.toneFilter.type = 'lowpass';
     this.toneFilter.Q.value = 0.7;
+    this.registerFilter(this.toneFilter);
 
     // Configure modulation
     this.modulationOscillator.type = 'sine';

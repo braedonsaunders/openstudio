@@ -50,10 +50,12 @@ export class ReverbProcessor extends BaseEffect {
     this.lowCutFilter.type = 'highpass';
     this.lowCutFilter.frequency.value = this.settings.lowCut;
     this.lowCutFilter.Q.value = 0.7;
+    this.registerFilter(this.lowCutFilter);
 
     this.highCutFilter.type = 'lowpass';
     this.highCutFilter.frequency.value = this.settings.highCut;
     this.highCutFilter.Q.value = 0.7;
+    this.registerFilter(this.highCutFilter);
 
     // Set initial gains
     this.updateMix();

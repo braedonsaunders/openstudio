@@ -73,10 +73,12 @@ export class StereoDelayProcessor extends BaseEffect {
     this.filterLeft = audioContext.createBiquadFilter();
     this.filterLeft.type = 'lowpass';
     this.filterLeft.Q.value = 0.5;
+    this.registerFilter(this.filterLeft);
 
     this.filterRight = audioContext.createBiquadFilter();
     this.filterRight.type = 'lowpass';
     this.filterRight.Q.value = 0.5;
+    this.registerFilter(this.filterRight);
 
     // Create wet/dry
     this.dryGain = audioContext.createGain();

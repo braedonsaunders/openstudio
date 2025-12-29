@@ -56,6 +56,13 @@ export abstract class BaseEffect implements EffectProcessor {
     this._enabled = enabled;
     const now = this.audioContext.currentTime;
 
+    // CRITICAL: Stabilize all registered filters BEFORE changing bypass/wet gains
+    // This prevents BiquadFilterNode instability ("state is bad") when toggling effects
+    if (!enabled) {
+      // When disabling: stabilize filters first, then crossfade to bypass
+      this.stabilizeAllFilters();
+    }
+
     // Smooth crossfade between bypass and wet signal
     if (enabled) {
       this.bypassGain.gain.setTargetAtTime(0, now, 0.01);
@@ -63,6 +70,52 @@ export abstract class BaseEffect implements EffectProcessor {
     } else {
       this.bypassGain.gain.setTargetAtTime(1, now, 0.01);
       this.wetGain.gain.setTargetAtTime(0, now, 0.01);
+    }
+  }
+
+  // Stabilize all registered filters to prevent instability
+  // Called automatically when effect is disabled
+  protected stabilizeAllFilters(): void {
+    for (const filter of this.registeredFilters) {
+      this.stabilizeFilter(filter);
+    }
+  }
+
+  // Stabilize a single filter by canceling automation and resetting to safe values
+  protected stabilizeFilter(filter: BiquadFilterNode): void {
+    try {
+      const now = this.audioContext.currentTime;
+
+      // Cancel all pending automation immediately
+      filter.frequency.cancelScheduledValues(now);
+      filter.Q.cancelScheduledValues(now);
+      filter.gain.cancelScheduledValues(now);
+
+      // Get current values, clamping to safe ranges
+      const currentFreq = Math.max(
+        BaseEffect.SAFE_FREQUENCY_MIN,
+        Math.min(BaseEffect.SAFE_FREQUENCY_MAX, filter.frequency.value || 1000)
+      );
+      const currentQ = Math.max(
+        BaseEffect.SAFE_Q_MIN,
+        Math.min(BaseEffect.SAFE_Q_MAX, filter.Q.value || 1)
+      );
+      const currentGain = Math.max(
+        BaseEffect.SAFE_GAIN_MIN,
+        Math.min(BaseEffect.SAFE_GAIN_MAX, filter.gain.value || 0)
+      );
+
+      // Check for NaN/Infinity and replace with safe defaults
+      const safeFreq = Number.isFinite(currentFreq) ? currentFreq : 1000;
+      const safeQ = Number.isFinite(currentQ) ? currentQ : 1;
+      const safeGain = Number.isFinite(currentGain) ? currentGain : 0;
+
+      // Set to safe values immediately to prevent any residual bad state
+      filter.frequency.setValueAtTime(safeFreq, now);
+      filter.Q.setValueAtTime(safeQ, now);
+      filter.gain.setValueAtTime(safeGain, now);
+    } catch {
+      // Ignore errors during stabilization - filter may already be in error state
     }
   }
 
