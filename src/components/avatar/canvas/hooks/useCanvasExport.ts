@@ -241,25 +241,24 @@ async function drawLayerImage(
       // Set opacity
       ctx.globalAlpha = transform.opacity;
 
-      // Move to center of where we want to draw
-      const centerX = transform.x + transform.width / 2;
-      const centerY = transform.y + transform.height / 2;
-      ctx.translate(centerX, centerY);
+      // Match Konva's transform order exactly:
+      // 1. Translate to position (x, y)
+      ctx.translate(transform.x, transform.y);
 
-      // Apply rotation
+      // 2. Apply rotation (around the origin point, which is now at x,y)
       ctx.rotate((transform.rotation * Math.PI) / 180);
 
-      // Apply flip
+      // 3. Apply scale for flip
       ctx.scale(transform.flipX ? -1 : 1, transform.flipY ? -1 : 1);
 
-      // Draw image centered
-      ctx.drawImage(
-        img,
-        -transform.width / 2,
-        -transform.height / 2,
-        transform.width,
-        transform.height
-      );
+      // 4. Apply offset (Konva uses offsetX/offsetY to shift the drawing point)
+      // When flipped, Konva sets offset to width/height to flip around the correct edge
+      const offsetX = transform.flipX ? transform.width : 0;
+      const offsetY = transform.flipY ? transform.height : 0;
+      ctx.translate(-offsetX, -offsetY);
+
+      // 5. Draw image at origin (0, 0)
+      ctx.drawImage(img, 0, 0, transform.width, transform.height);
 
       ctx.restore();
       resolve();
