@@ -211,6 +211,12 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
     setError(null);
 
     try {
+      // Deselect any selected layer to hide the transformer before export
+      selectLayer(null);
+
+      // Small delay to ensure the transformer is removed from render
+      await new Promise(resolve => setTimeout(resolve, 50));
+
       // Use Konva's native export - it handles all transforms correctly
       const exported = await exportFromStage();
 
