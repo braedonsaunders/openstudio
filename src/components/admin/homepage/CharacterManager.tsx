@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import dynamic from 'next/dynamic';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -23,6 +23,7 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
 import { adminGet, adminPost, adminPatch, adminDelete, adminPut } from '@/lib/api/admin';
+import { exportCanvasToDataUrl } from '@/lib/avatar/canvas-export';
 import type {
   HomepageCharacter,
   CreateHomepageCharacterRequest,
@@ -31,6 +32,7 @@ import type {
   CharacterPersonality,
   IdleAnimation,
   HomepageSceneType,
+  AvatarComponent,
 } from '@/types/avatar';
 
 // Dynamically import the canvas editor to avoid SSR issues
@@ -96,6 +98,10 @@ export function CharacterManager() {
   const [editingCharacter, setEditingCharacter] = useState<HomepageCharacter | null>(null);
   const [deleteConfirmId, setDeleteConfirmId] = useState<string | null>(null);
 
+  // Avatar library for canvas export
+  const [avatarComponents, setAvatarComponents] = useState<AvatarComponent[]>([]);
+  const [libraryLoaded, setLibraryLoaded] = useState(false);
+
   // Form state
   const [formData, setFormData] = useState<CharacterFormData>({
     name: '',
@@ -107,6 +113,11 @@ export function CharacterManager() {
     canvasData: DEFAULT_CANVAS_DATA,
   });
   const [isSaving, setSaving] = useState(false);
+
+  // Create components map for canvas export
+  const componentsMap = useMemo(() => {
+    return new Map(avatarComponents.map(c => [c.id, c]));
+  }, [avatarComponents]);
 
   const loadCharacters = useCallback(async () => {
     setIsLoading(true);
@@ -129,6 +140,28 @@ export function CharacterManager() {
   useEffect(() => {
     loadCharacters();
   }, [loadCharacters]);
+
+  // Load avatar library for canvas export (needed to render preview images)
+  const loadAvatarLibrary = useCallback(async () => {
+    if (libraryLoaded) return;
+    try {
+      const res = await fetch('/api/avatar/library');
+      if (res.ok) {
+        const data = await res.json();
+        setAvatarComponents(data.components || []);
+        setLibraryLoaded(true);
+      }
+    } catch (err) {
+      console.error('Failed to load avatar library:', err);
+    }
+  }, [libraryLoaded]);
+
+  // Load library when modal opens
+  useEffect(() => {
+    if (showCreateModal || editingCharacter) {
+      loadAvatarLibrary();
+    }
+  }, [showCreateModal, editingCharacter, loadAvatarLibrary]);
 
   const handleCreate = () => {
     setFormData({
@@ -169,7 +202,31 @@ export function CharacterManager() {
 
     setSaving(true);
     try {
+      // Export canvas to image data URL
+      let fullBodyUrl: string | undefined;
+      if (componentsMap.size > 0) {
+        const dataUrl = await exportCanvasToDataUrl(formData.canvasData, componentsMap);
+        if (dataUrl) {
+          // We'll upload after we have the character ID
+          fullBodyUrl = dataUrl;
+        }
+      }
+
       if (editingCharacter) {
+        // Upload image first if we have one
+        let uploadedUrl: string | undefined;
+        if (fullBodyUrl) {
+          const uploadRes = await adminPost('/api/admin/homepage/characters/upload', {
+            characterId: editingCharacter.id,
+            imageDataUrl: fullBodyUrl,
+            imageType: 'full-body',
+          });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            uploadedUrl = uploadData.url;
+          }
+        }
+
         // Update existing character
         const updateData: UpdateHomepageCharacterRequest = {
           name: formData.name,
@@ -179,6 +236,7 @@ export function CharacterManager() {
           walkSpeed: formData.walkSpeed,
           idleAnimation: formData.idleAnimation,
           canvasData: formData.canvasData,
+          fullBodyUrl: uploadedUrl,
         };
 
         const res = await adminPatch(`/api/admin/homepage/characters?id=${editingCharacter.id}`, updateData);
@@ -187,7 +245,7 @@ export function CharacterManager() {
         }
         setEditingCharacter(null);
       } else {
-        // Create new character
+        // Create new character first (without image)
         const createData: CreateHomepageCharacterRequest = {
           name: formData.name,
           description: formData.description || undefined,
@@ -201,6 +259,25 @@ export function CharacterManager() {
         const res = await adminPost('/api/admin/homepage/characters', createData);
         if (!res.ok) {
           throw new Error('Failed to create character');
+        }
+
+        // Get the created character to upload its image
+        const createdCharacter = await res.json();
+
+        // Upload image and update character with URL
+        if (fullBodyUrl && createdCharacter.id) {
+          const uploadRes = await adminPost('/api/admin/homepage/characters/upload', {
+            characterId: createdCharacter.id,
+            imageDataUrl: fullBodyUrl,
+            imageType: 'full-body',
+          });
+          if (uploadRes.ok) {
+            const uploadData = await uploadRes.json();
+            // Update the character with the image URL
+            await adminPatch(`/api/admin/homepage/characters?id=${createdCharacter.id}`, {
+              fullBodyUrl: uploadData.url,
+            });
+          }
         }
         setShowCreateModal(false);
       }
