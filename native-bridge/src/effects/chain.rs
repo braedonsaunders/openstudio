@@ -1,7 +1,6 @@
 //! Effects chain - processes audio through all effects in order
 
 use super::types::*;
-use super::AudioEffect;
 
 /// The complete effects chain
 pub struct EffectsChain {
@@ -126,7 +125,7 @@ impl EffectsChain {
     // === Effect processing stubs ===
     // Full implementations would use proper DSP algorithms
 
-    fn process_wah(&mut self, samples: &mut [f32]) {
+    fn process_wah(&mut self, _samples: &mut [f32]) {
         // Bandpass filter with LFO/envelope modulation
         // Would use biquad filter with frequency sweeping
     }
