@@ -96,10 +96,8 @@ export function AIPanel() {
     }
   }, [currentLyriaTrack?.id, currentSong?.id]); // Only reload when the track or song reference changes
 
-  // Sync room context to Lyria store when BPM/key changes
-  useEffect(() => {
-    useLyriaStore.getState().setRoomContext(roomBpm, roomKey, roomKeyScale);
-  }, [roomBpm, roomKey, roomKeyScale]);
+  // NOTE: BPM/key sync to Lyria is now handled by useSessionTempoSync hook with debouncing
+  // Do NOT add a sync here as it would bypass the debounce
 
   // Live update Lyria session when sliders change (only when playing)
   useEffect(() => {
