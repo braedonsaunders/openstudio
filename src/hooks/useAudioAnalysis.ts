@@ -25,19 +25,9 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   const visualizationFrameRef = useRef<number | null>(null);
   const didStartAnalysisRef = useRef(false);
 
-  // IMPORTANT: Only subscribe to values that are actually used in the component's render output
-  // Values used only in effects should be read via getState() to avoid infinite render loops
-  // DAWLayout only uses `resetAnalysis` from this hook, so we minimize subscriptions
-  const analysisSource = useAnalysisStore((state) => state.analysisSource);
-  const isWorkerReady = useAnalysisStore((state) => state.isWorkerReady);
-
-  // These are only used for the return value, not for effects
-  const localAnalysis = useAnalysisStore((state) => state.localAnalysis);
-  const syncedAnalysis = useAnalysisStore((state) => state.syncedAnalysis);
-  const isAnalyzing = useAnalysisStore((state) => state.isAnalyzing);
-  const spectrumData = useAnalysisStore((state) => state.spectrumData);
-  const waveformData = useAnalysisStore((state) => state.waveformData);
-  const tunerEnabled = useAnalysisStore((state) => state.tunerEnabled);
+  // CRITICAL: NO store subscriptions in this hook to avoid infinite render loops
+  // All store reads use getState() which doesn't trigger re-renders
+  // This hook is used by DAWLayout which only needs the stable callbacks (resetAnalysis, etc.)
 
   // Initialize the analyzer in background - doesn't block audio
   useEffect(() => {
@@ -78,13 +68,35 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   }, []);
 
   // Connect to audio context when available
+  // Use store subscription outside of React to avoid render cycles
   useEffect(() => {
-    console.log('Connect to audio context effect:', { audioContext: !!audioContext, isWorkerReady });
-    if (audioContext && isWorkerReady) {
-      console.log('Connecting analyzer to audio context...');
-      analyzerRef.current.connectToAudioContext(audioContext);
-    }
-  }, [audioContext, isWorkerReady]);
+    const checkAndConnect = () => {
+      const { isWorkerReady } = useAnalysisStore.getState();
+      console.log('Connect to audio context effect:', { audioContext: !!audioContext, isWorkerReady });
+      if (audioContext && isWorkerReady) {
+        console.log('Connecting analyzer to audio context...');
+        analyzerRef.current.connectToAudioContext(audioContext);
+        return true;
+      }
+      return false;
+    };
+
+    // Check immediately
+    if (checkAndConnect()) return;
+
+    // If not ready, subscribe to store changes outside of React
+    const unsubscribe = useAnalysisStore.subscribe(
+      (state) => state.isWorkerReady,
+      (isWorkerReady) => {
+        if (isWorkerReady && audioContext) {
+          console.log('Connecting analyzer to audio context (via subscription)...');
+          analyzerRef.current.connectToAudioContext(audioContext);
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [audioContext]);
 
   // Update backing track availability (for UI - e.g. enable/disable Track source button)
   useEffect(() => {
@@ -157,10 +169,11 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   // - Audio is playing
   // - Analyser is ready
   //
-  // IMPORTANT: We avoid having store setters and volatile props like isMaster in
-  // the dependency array to prevent infinite loops during room initialization.
-  // Use getState() for store functions and refs for values we need to read.
+  // CRITICAL: This effect uses getState() for ALL store reads to avoid render cycles.
+  // We only depend on props passed in from the parent, not on store state.
   useEffect(() => {
+    const { isWorkerReady, analysisSource } = useAnalysisStore.getState();
+
     console.log('Analysis effect running:', {
       isWorkerReady,
       audioContext: !!audioContext,
@@ -199,11 +212,8 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
             setIsAnalyzing(true);
             didStartAnalysisRef.current = true;
             console.log('Started backing track analysis (master)');
-          } else if (!isPlaying) {
-            // Stop analysis when not playing
-            analyzerRef.current.stopAnalysis();
-            setIsAnalyzing(false);
           }
+          // NOTE: Removed setIsAnalyzing(false) call when not playing - this was causing render loops
         } else if (analysisSource === 'mixed' && masterAnalyser) {
           // Mixed mode: analyze all audio (backing + all users' instruments)
           // Only analyze when master to avoid duplicate processing
@@ -226,8 +236,9 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     return () => {
       if (didStartAnalysisRef.current) {
         console.log('Analysis effect cleanup running');
+        const { analysisSource: currentSource } = useAnalysisStore.getState();
         const { setIsAnalyzing } = useAnalysisStore.getState();
-        if (analysisSource === 'backing' || analysisSource === 'mixed') {
+        if (currentSource === 'backing' || currentSource === 'mixed') {
           analyzerRef.current.stopAnalysis();
           setIsAnalyzing(false);
         }
@@ -235,41 +246,57 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
       }
     };
   }, [
-    analysisSource,
+    // Only depend on props, NOT on store state
     localStream,
     backingTrackAnalyser,
     masterAnalyser,
     isPlaying,
     isMaster,
     audioContext,
-    isWorkerReady,
-    // Removed setIsAnalyzing and setAnalysisError - use getState() instead
   ]);
 
   // Update visualization data
-  // Use getState() for store functions to avoid dependency issues
+  // Use store subscription outside of React to avoid render cycles
   useEffect(() => {
-    if (!isAnalyzing) return;
+    let animationFrameId: number | null = null;
 
     const updateVisualization = () => {
       const spectrum = analyzerRef.current.getSpectrumData();
       const waveform = analyzerRef.current.getWaveformData();
-      const { setSpectrumData, setWaveformData } = useAnalysisStore.getState();
+      const { setSpectrumData, setWaveformData, isAnalyzing: currentlyAnalyzing } = useAnalysisStore.getState();
 
-      if (spectrum) setSpectrumData(spectrum);
-      if (waveform) setWaveformData(waveform);
-
-      visualizationFrameRef.current = requestAnimationFrame(updateVisualization);
-    };
-
-    updateVisualization();
-
-    return () => {
-      if (visualizationFrameRef.current) {
-        cancelAnimationFrame(visualizationFrameRef.current);
+      if (currentlyAnalyzing) {
+        if (spectrum) setSpectrumData(spectrum);
+        if (waveform) setWaveformData(waveform);
+        animationFrameId = requestAnimationFrame(updateVisualization);
       }
     };
-  }, [isAnalyzing]);
+
+    // Subscribe to isAnalyzing changes to start/stop visualization loop
+    const unsubscribe = useAnalysisStore.subscribe(
+      (state) => state.isAnalyzing,
+      (isAnalyzing) => {
+        if (isAnalyzing) {
+          updateVisualization();
+        } else if (animationFrameId) {
+          cancelAnimationFrame(animationFrameId);
+          animationFrameId = null;
+        }
+      }
+    );
+
+    // Check initial state
+    if (useAnalysisStore.getState().isAnalyzing) {
+      updateVisualization();
+    }
+
+    return () => {
+      unsubscribe();
+      if (animationFrameId) {
+        cancelAnimationFrame(animationFrameId);
+      }
+    };
+  }, []);
 
   // Listen for synced analysis from other users
   // Use getState() for store functions to avoid dependency issues
@@ -335,25 +362,41 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   );
 
   // Get the effective analysis (synced or local)
-  const effectiveAnalysis = syncedAnalysis
-    ? {
-        ...localAnalysis,
-        key: syncedAnalysis.key,
-        keyScale: syncedAnalysis.keyScale,
-        bpm: syncedAnalysis.bpm,
-      }
-    : localAnalysis;
+  // Uses getState() to avoid triggering re-renders - consumers that need reactive updates
+  // should subscribe to the analysis store directly
+  const getEffectiveAnalysis = useCallback(() => {
+    const { localAnalysis, syncedAnalysis } = useAnalysisStore.getState();
+    return syncedAnalysis
+      ? {
+          ...localAnalysis,
+          key: syncedAnalysis.key,
+          keyScale: syncedAnalysis.keyScale,
+          bpm: syncedAnalysis.bpm,
+        }
+      : localAnalysis;
+  }, []);
+
+  // Get current store values via getState() - these are snapshots, not reactive
+  // For reactive updates, components should subscribe to useAnalysisStore directly
+  const getStoreValues = useCallback(() => {
+    const store = useAnalysisStore.getState();
+    return {
+      localAnalysis: store.localAnalysis,
+      syncedAnalysis: store.syncedAnalysis,
+      isAnalyzing: store.isAnalyzing,
+      isReady: store.isWorkerReady,
+      analysisSource: store.analysisSource,
+      spectrumData: store.spectrumData,
+      waveformData: store.waveformData,
+      tunerEnabled: store.tunerEnabled,
+    };
+  }, []);
 
   return {
-    analysis: effectiveAnalysis,
-    localAnalysis,
-    syncedAnalysis,
-    isAnalyzing,
-    isReady: isWorkerReady,
-    analysisSource,
-    spectrumData,
-    waveformData,
-    tunerEnabled,
+    // Getter functions for values (call these to get current state)
+    getAnalysis: getEffectiveAnalysis,
+    getStoreValues,
+    // Stable action callbacks
     stopAnalysis,
     resetAnalysis,
     toggleTuner,
