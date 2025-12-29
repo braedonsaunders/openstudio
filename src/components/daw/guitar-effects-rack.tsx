@@ -1,7 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
+import { Knob } from '@/components/ui/knob';
 import { GUITAR_PRESETS, getPresetsByCategory } from '@/lib/audio/effects/guitar';
 import type {
   GuitarEffectsChain,
@@ -34,115 +35,6 @@ import {
   Volume2,
   X,
 } from 'lucide-react';
-
-// Reusable Knob component
-function Knob({
-  value,
-  min,
-  max,
-  onChange,
-  label,
-  unit = '',
-  size = 'md',
-  disabled = false,
-}: {
-  value: number;
-  min: number;
-  max: number;
-  onChange: (value: number) => void;
-  label: string;
-  unit?: string;
-  size?: 'sm' | 'md';
-  disabled?: boolean;
-}) {
-  const [isDragging, setIsDragging] = useState(false);
-  const [startY, setStartY] = useState(0);
-  const [startValue, setStartValue] = useState(0);
-
-  const normalizedValue = (value - min) / (max - min);
-  const rotation = -135 + normalizedValue * 270;
-
-  const handleMouseDown = (e: React.MouseEvent) => {
-    if (disabled) return;
-    setIsDragging(true);
-    setStartY(e.clientY);
-    setStartValue(value);
-    e.preventDefault();
-  };
-
-  const handleMouseMove = useCallback(
-    (e: MouseEvent) => {
-      if (!isDragging) return;
-      const delta = (startY - e.clientY) * ((max - min) / 100);
-      const newValue = Math.max(min, Math.min(max, startValue + delta));
-      onChange(newValue);
-    },
-    [isDragging, startY, startValue, min, max, onChange]
-  );
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-  }, []);
-
-  useEffect(() => {
-    if (isDragging) {
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-      return () => {
-        window.removeEventListener('mousemove', handleMouseMove);
-        window.removeEventListener('mouseup', handleMouseUp);
-      };
-    }
-  }, [isDragging, handleMouseMove, handleMouseUp]);
-
-  const sizeClasses = size === 'sm' ? 'w-8 h-8' : 'w-10 h-10';
-
-  const formatValue = (v: number) => {
-    if (Math.abs(v) >= 1000) return `${(v / 1000).toFixed(1)}k`;
-    if (Number.isInteger(v)) return v.toString();
-    return v.toFixed(1);
-  };
-
-  return (
-    <div className="flex flex-col items-center gap-1">
-      <div
-        className={cn(
-          sizeClasses,
-          'relative rounded-full bg-gradient-to-b from-zinc-700 to-zinc-800 shadow-inner cursor-pointer',
-          disabled && 'opacity-50 cursor-not-allowed'
-        )}
-        onMouseDown={handleMouseDown}
-      >
-        <div
-          className="absolute inset-1 rounded-full bg-gradient-to-b from-zinc-600 to-zinc-700 shadow"
-          style={{ transform: `rotate(${rotation}deg)` }}
-        >
-          <div className="absolute top-1 left-1/2 -translate-x-1/2 w-0.5 h-1.5 bg-orange-400 rounded-full" />
-        </div>
-        <svg className="absolute inset-0 w-full h-full pointer-events-none" viewBox="0 0 40 40">
-          <circle
-            cx="20"
-            cy="20"
-            r="18"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeDasharray={`${normalizedValue * 85} 100`}
-            strokeDashoffset="25"
-            className="text-orange-500/30"
-            style={{ transform: 'rotate(-135deg)', transformOrigin: 'center' }}
-          />
-        </svg>
-      </div>
-      <div className="text-center">
-        <div className="text-[9px] text-zinc-500 uppercase tracking-wide">{label}</div>
-        <div className="text-[10px] text-zinc-300">
-          {formatValue(value)}{unit}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 // Effect Header component
 function EffectHeader({
@@ -260,6 +152,7 @@ function WahUI({
                 label="Position"
                 unit="%"
                 disabled={!settings.enabled}
+                color="orange"
               />
             )}
             {settings.mode === 'auto' && (
@@ -271,6 +164,7 @@ function WahUI({
                 label="Rate"
                 unit=" Hz"
                 disabled={!settings.enabled}
+                color="orange"
               />
             )}
             {settings.mode === 'envelope' && (
@@ -282,6 +176,7 @@ function WahUI({
                 label="Sens"
                 unit="%"
                 disabled={!settings.enabled}
+                color="orange"
               />
             )}
             <Knob
@@ -292,6 +187,7 @@ function WahUI({
               label="Depth"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.q}
@@ -300,6 +196,7 @@ function WahUI({
               onChange={(v) => onChange({ q: v })}
               label="Q"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -340,6 +237,7 @@ function OverdriveUI({
               label="Drive"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.tone * 100}
@@ -349,6 +247,7 @@ function OverdriveUI({
               label="Tone"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.level * 100}
@@ -358,6 +257,7 @@ function OverdriveUI({
               label="Level"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -423,6 +323,7 @@ function DistortionUI({
               label="Gain"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.tone * 100}
@@ -432,6 +333,7 @@ function DistortionUI({
               label="Tone"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.level * 100}
@@ -441,6 +343,7 @@ function DistortionUI({
               label="Level"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -508,6 +411,7 @@ function AmpSimulatorUI({
               label="Gain"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.bass * 100}
@@ -517,6 +421,7 @@ function AmpSimulatorUI({
               label="Bass"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.mid * 100}
@@ -526,6 +431,7 @@ function AmpSimulatorUI({
               label="Mid"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.treble * 100}
@@ -535,6 +441,7 @@ function AmpSimulatorUI({
               label="Treble"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.presence * 100}
@@ -544,6 +451,7 @@ function AmpSimulatorUI({
               label="Pres"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.master * 100}
@@ -553,6 +461,7 @@ function AmpSimulatorUI({
               label="Master"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -644,6 +553,7 @@ function CabinetUI({
               label="Mix"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.roomLevel * 100}
@@ -653,6 +563,7 @@ function CabinetUI({
               label="Room"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -718,6 +629,7 @@ function DelayUI({
               label="Time"
               unit=" ms"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.feedback * 100}
@@ -727,6 +639,7 @@ function DelayUI({
               label="Fdbk"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.mix * 100}
@@ -736,6 +649,7 @@ function DelayUI({
               label="Mix"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.tone * 100}
@@ -745,6 +659,7 @@ function DelayUI({
               label="Tone"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -785,6 +700,7 @@ function ChorusUI({
               label="Rate"
               unit=" Hz"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.depth * 100}
@@ -794,6 +710,7 @@ function ChorusUI({
               label="Depth"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.mix * 100}
@@ -803,6 +720,7 @@ function ChorusUI({
               label="Mix"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -843,6 +761,7 @@ function FlangerUI({
               label="Rate"
               unit=" Hz"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.depth * 100}
@@ -852,6 +771,7 @@ function FlangerUI({
               label="Depth"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.feedback * 100}
@@ -861,6 +781,7 @@ function FlangerUI({
               label="Fdbk"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.mix * 100}
@@ -870,6 +791,7 @@ function FlangerUI({
               label="Mix"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -910,6 +832,7 @@ function PhaserUI({
               label="Rate"
               unit=" Hz"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.depth * 100}
@@ -919,6 +842,7 @@ function PhaserUI({
               label="Depth"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.feedback * 100}
@@ -928,6 +852,7 @@ function PhaserUI({
               label="Fdbk"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.mix * 100}
@@ -937,6 +862,7 @@ function PhaserUI({
               label="Mix"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>
@@ -1001,6 +927,7 @@ function TremoloUI({
               label="Rate"
               unit=" Hz"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.depth * 100}
@@ -1010,6 +937,7 @@ function TremoloUI({
               label="Depth"
               unit="%"
               disabled={!settings.enabled}
+              color="orange"
             />
             <Knob
               value={settings.spread}
@@ -1019,6 +947,7 @@ function TremoloUI({
               label="Stereo"
               unit="°"
               disabled={!settings.enabled}
+              color="orange"
             />
           </div>
         </div>

@@ -1,31 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { v4 as uuidv4 } from 'uuid';
 import { deleteRoomFiles } from '@/lib/storage/r2';
-
-// Lazy initialization of Supabase client to avoid build-time errors
-let supabaseClient: SupabaseClient | null = null;
-
-function getSupabase(): SupabaseClient | null {
-  if (!supabaseClient) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (url && key) {
-      supabaseClient = createClient(url, key);
-    }
-  }
-  return supabaseClient;
-}
-
-// Get admin client with service role key (required for operations that bypass RLS)
-function getAdminSupabase(): SupabaseClient | null {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (url && key) {
-    return createClient(url, key);
-  }
-  return null;
-}
+import { getSupabase, getAdminSupabase } from '@/lib/supabase/server';
 
 // Transform database row to API response
 function transformRoom(room: Record<string, unknown>) {

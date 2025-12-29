@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
-import { adminGet, adminPost, adminPatch, adminDelete, adminPut } from '@/lib/api/admin';
+import { adminGet, adminPost, adminPatch, adminDelete } from '@/lib/api/admin';
 import { exportCanvasToDataUrl } from '@/lib/avatar/canvas-export';
 import type {
   HomepageCharacter,

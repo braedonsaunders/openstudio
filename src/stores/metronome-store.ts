@@ -100,6 +100,3 @@ export const useMetronomeStore = create<MetronomeState>()(
   }))
 );
 
-// Legacy exports for backwards compatibility
-// BPM modes are now in session-tempo-store
-export type BpmMode = 'manual' | 'track' | 'analyzer' | 'tap';

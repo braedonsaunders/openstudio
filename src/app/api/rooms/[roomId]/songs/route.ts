@@ -1,22 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
-// Lazy initialization to avoid build-time errors when env vars are missing
-let supabase: SupabaseClient | null = null;
-
-function getSupabase(): SupabaseClient {
-  if (!supabase) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-    if (!url || !key) {
-      throw new Error('Supabase configuration missing');
-    }
-
-    supabase = createClient(url, key);
-  }
-  return supabase;
-}
+import { getSupabase } from '@/lib/supabase/server';
 
 // GET - Fetch all songs for a room
 export async function GET(
@@ -24,9 +7,14 @@ export async function GET(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
     const { roomId } = await params;
 
-    const { data, error } = await getSupabase()
+    const { data, error } = await supabase
       .from('songs')
       .select('*')
       .eq('room_id', roomId)
@@ -56,12 +44,17 @@ export async function POST(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
     const { roomId } = await params;
     const body = await request.json();
 
     const dbRecord = transformToDb(body, roomId);
 
-    const { data, error } = await getSupabase()
+    const { data, error } = await supabase
       .from('songs')
       .insert(dbRecord)
       .select()
@@ -85,6 +78,11 @@ export async function PATCH(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
     const { roomId } = await params;
     const body = await request.json();
     const { songId, ...updates } = body;
@@ -99,7 +97,7 @@ export async function PATCH(
     delete dbUpdates.created_at;
     dbUpdates.updated_at = new Date().toISOString();
 
-    const { data, error } = await getSupabase()
+    const { data, error } = await supabase
       .from('songs')
       .update(dbUpdates)
       .eq('id', songId)
@@ -125,6 +123,11 @@ export async function DELETE(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
     const { roomId } = await params;
     const { searchParams } = new URL(request.url);
     const songId = searchParams.get('songId');
@@ -133,7 +136,7 @@ export async function DELETE(
       return NextResponse.json({ error: 'songId is required' }, { status: 400 });
     }
 
-    const { error } = await getSupabase()
+    const { error } = await supabase
       .from('songs')
       .delete()
       .eq('id', songId)

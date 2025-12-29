@@ -120,11 +120,6 @@ let notificationQueue: XPNotificationProps[] = [];
 let isShowingNotification = false;
 let showNotification: ((props: XPNotificationProps) => void) | null = null;
 
-export function setXPNotificationHandler(handler: (props: XPNotificationProps) => void) {
-  showNotification = handler;
-  processQueue();
-}
-
 export function queueXPNotification(props: XPNotificationProps) {
   notificationQueue.push(props);
   processQueue();

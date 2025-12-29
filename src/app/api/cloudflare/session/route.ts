@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
+import { getSupabase } from '@/lib/supabase/server';
 
 // Cloudflare Calls API configuration
 const CLOUDFLARE_CALLS_APP_ID = process.env.NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID || '';
@@ -7,20 +7,6 @@ const CLOUDFLARE_CALLS_APP_SECRET = process.env.CLOUDFLARE_CALLS_APP_SECRET || '
 
 // Cloudflare Calls API base URL
 const CALLS_API_BASE = `https://rtc.live.cloudflare.com/v1/apps/${CLOUDFLARE_CALLS_APP_ID}`;
-
-// Lazy initialization of Supabase client
-let supabaseClient: SupabaseClient | null = null;
-
-function getSupabase(): SupabaseClient | null {
-  if (!supabaseClient) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (url && key) {
-      supabaseClient = createClient(url, key);
-    }
-  }
-  return supabaseClient;
-}
 
 // CRITICAL: Room track storage
 // Previously this was an in-memory Map which COMPLETELY BREAKS in multi-instance deployments
