@@ -192,4 +192,52 @@ export abstract class BaseEffect implements EffectProcessor {
   protected isSafeValue(value: number): boolean {
     return Number.isFinite(value) && !Number.isNaN(value);
   }
+
+  // Track all filters for recovery
+  protected registeredFilters: BiquadFilterNode[] = [];
+
+  // Register a filter for automatic recovery
+  protected registerFilter(filter: BiquadFilterNode): void {
+    this.registeredFilters.push(filter);
+  }
+
+  // Recover from an error state - resets all filters and re-enables bypass
+  public recoverFromError(): void {
+    console.warn(`[${this.name}] Attempting recovery from error state`);
+
+    try {
+      // Reset all registered filters to safe values
+      for (const filter of this.registeredFilters) {
+        this.resetFilter(filter);
+      }
+
+      // Force bypass mode to ensure audio passes through
+      const now = this.audioContext.currentTime;
+      this.bypassGain.gain.cancelScheduledValues(now);
+      this.wetGain.gain.cancelScheduledValues(now);
+      this.bypassGain.gain.setValueAtTime(1, now);
+      this.wetGain.gain.setValueAtTime(0, now);
+      this._enabled = false;
+
+      console.log(`[${this.name}] Recovery successful - effect bypassed`);
+    } catch (e) {
+      console.error(`[${this.name}] Recovery failed:`, e);
+    }
+  }
+
+  // Check if the effect is in a healthy state
+  public isHealthy(): boolean {
+    try {
+      // Check if audio context is still running
+      if (this.audioContext.state !== 'running') {
+        return false;
+      }
+
+      // Verify gain nodes are not producing NaN
+      const testGain = this.outputGain.gain.value;
+      return this.isSafeValue(testGain);
+    } catch {
+      return false;
+    }
+  }
 }

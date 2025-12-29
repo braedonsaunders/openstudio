@@ -705,6 +705,57 @@ export class ExtendedEffectsProcessor {
     this.coreProcessor.setLowLatencyMode(enabled);
   }
 
+  // Recover all effects from error state - resets filters and bypasses all effects
+  recoverFromError(): void {
+    console.warn('[ExtendedEffectsProcessor] Attempting full recovery from error state');
+
+    try {
+      // Recover core processor
+      this.coreProcessor.recoverFromError();
+
+      // Recover all extended effects
+      this.pitchCorrection.recoverFromError();
+      this.vocalDoubler.recoverFromError();
+      this.deEsser.recoverFromError();
+      this.formantShifter.recoverFromError();
+      this.harmonizer.recoverFromError();
+
+      this.bitcrusher.recoverFromError();
+      this.ringModulator.recoverFromError();
+      this.frequencyShifter.recoverFromError();
+      this.granularDelay.recoverFromError();
+
+      this.rotarySpeaker.recoverFromError();
+      this.autoPan.recoverFromError();
+      this.multiFilter.recoverFromError();
+      this.vibrato.recoverFromError();
+
+      this.transientShaper.recoverFromError();
+      this.stereoImager.recoverFromError();
+      this.exciter.recoverFromError();
+      this.multibandCompressor.recoverFromError();
+
+      this.stereoDelay.recoverFromError();
+      this.roomSimulator.recoverFromError();
+      this.shimmerReverb.recoverFromError();
+
+      console.log('[ExtendedEffectsProcessor] Recovery complete - all effects bypassed');
+    } catch (e) {
+      console.error('[ExtendedEffectsProcessor] Recovery failed:', e);
+    }
+  }
+
+  // Check if all effects are healthy
+  isHealthy(): boolean {
+    try {
+      // Quick check - verify output gain is not producing NaN
+      const outputValue = this.outputGain.gain.value;
+      return Number.isFinite(outputValue) && !Number.isNaN(outputValue);
+    } catch {
+      return false;
+    }
+  }
+
   // Clean up
   dispose(): void {
     this.disconnect();
