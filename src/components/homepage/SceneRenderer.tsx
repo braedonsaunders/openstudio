@@ -1103,7 +1103,7 @@ export function SceneRenderer({
   const prevSceneRef = useRef<HomepageSceneType>(currentScene);
   const prevThemeRef = useRef<boolean>(isDark);
   const [transitionType, setTransitionType] = useState<'scene' | 'theme' | 'initial'>('initial');
-  const [slideDirection, setSlideDirection] = useState<number>(1); // 1 = right/down, -1 = left/up
+  const [sceneDirection, setSceneDirection] = useState<number>(1); // 1 = going right, -1 = going left
 
   // Determine transition type and direction when scene or theme changes
   useEffect(() => {
@@ -1113,12 +1113,11 @@ export function SceneRenderer({
     if (sceneChanged) {
       const prevIndex = SCENE_ORDER.indexOf(prevSceneRef.current);
       const currentIndex = SCENE_ORDER.indexOf(currentScene);
-      setSlideDirection(currentIndex > prevIndex ? 1 : -1);
+      // Positive = new scene is to the right, slides in from right
+      setSceneDirection(currentIndex > prevIndex ? 1 : -1);
       setTransitionType('scene');
       prevSceneRef.current = currentScene;
     } else if (themeChanged) {
-      // Dark mode = down (night falling), Light mode = up (sun rising)
-      setSlideDirection(isDark ? 1 : -1);
       setTransitionType('theme');
       prevThemeRef.current = isDark;
     }
@@ -1176,18 +1175,22 @@ export function SceneRenderer({
       };
     }
     if (transitionType === 'scene') {
-      // Horizontal slide for scene changes
+      // Horizontal slide - scenes are laid out left to right
+      // Going right (higher index): new scene enters from right, old exits left
+      // Going left (lower index): new scene enters from left, old exits right
       return {
-        initial: { opacity: 0, x: `${slideDirection * 100}%`, scale: 0.9 },
-        animate: { opacity: 1, x: 0, scale: 1 },
-        exit: { opacity: 0, x: `${-slideDirection * 100}%`, scale: 0.9 },
+        initial: { opacity: 0, x: `${sceneDirection * 100}%` },
+        animate: { opacity: 1, x: 0 },
+        exit: { opacity: 0, x: `${-sceneDirection * 100}%` },
       };
     }
-    // Vertical slide for theme changes (day/night)
+    // Vertical slide for theme changes
+    // Night: slides down from top (enters from -y)
+    // Day: slides up from bottom (enters from +y)
     return {
-      initial: { opacity: 0, y: `${slideDirection * 50}%`, scale: 0.95 },
-      animate: { opacity: 1, y: 0, scale: 1 },
-      exit: { opacity: 0, y: `${-slideDirection * 50}%`, scale: 0.95 },
+      initial: { opacity: 0, y: isDark ? '-60%' : '60%' },
+      animate: { opacity: 1, y: 0 },
+      exit: { opacity: 0, y: isDark ? '60%' : '-60%' },
     };
   };
 
@@ -1216,14 +1219,14 @@ export function SceneRenderer({
           style={{ background: ground, top: `${sceneConfig.ground.horizonY}%` }}
           initial={{
             opacity: 0,
-            x: transitionType === 'scene' ? `${slideDirection * 30}%` : 0,
-            y: transitionType === 'theme' ? `${slideDirection * 20}%` : 0,
+            x: transitionType === 'scene' ? `${sceneDirection * 30}%` : 0,
+            y: transitionType === 'theme' ? (isDark ? '-20%' : '20%') : 0,
           }}
           animate={{ opacity: 1, x: 0, y: 0 }}
           exit={{
             opacity: 0,
-            x: transitionType === 'scene' ? `${-slideDirection * 30}%` : 0,
-            y: transitionType === 'theme' ? `${-slideDirection * 20}%` : 0,
+            x: transitionType === 'scene' ? `${-sceneDirection * 30}%` : 0,
+            y: transitionType === 'theme' ? (isDark ? '20%' : '-20%') : 0,
           }}
           transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
         />
