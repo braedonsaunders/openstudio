@@ -451,10 +451,11 @@ export function isPresignedUrl(urlOrKey: string): boolean {
 
 /**
  * Extract the R2 key from a presigned URL or return the key if already a key
+ * For avatar components - handles both presigned URLs and plain keys
  * Example presigned URL: https://bucket.r2.cloudflarestorage.com/avatars/components/body/xyz.png?X-Amz-Algorithm=...
  * Returns: avatars/components/body/xyz.png
  */
-export function extractR2KeyFromUrl(urlOrKey: string): string {
+export function extractAvatarR2Key(urlOrKey: string): string {
   // If it's not a presigned URL, assume it's already a key
   if (!isPresignedUrl(urlOrKey)) {
     // Handle case where it might be a full URL without signature (public URL)
@@ -494,7 +495,7 @@ export function extractR2KeyFromUrl(urlOrKey: string): string {
 export async function getSignedUrlFromKeyOrUrl(urlOrKey: string | null | undefined, expiresIn: number = 86400): Promise<string | null> {
   if (!urlOrKey) return null;
 
-  const key = extractR2KeyFromUrl(urlOrKey);
+  const key = extractAvatarR2Key(urlOrKey);
   if (!key) return null;
 
   return getAvatarUrl(key, expiresIn);

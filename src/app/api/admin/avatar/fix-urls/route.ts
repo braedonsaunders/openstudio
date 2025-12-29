@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAdminRequest, getAdminSupabase } from '@/lib/supabase/server';
-import { extractR2KeyFromUrl, isPresignedUrl } from '@/lib/storage/r2';
+import { extractAvatarR2Key, isPresignedUrl } from '@/lib/storage/r2';
 
 /**
  * Fix avatar component URLs in the database
@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
 
         // Check if image_url needs fixing
         if (component.image_url && isPresignedUrl(component.image_url)) {
-          const key = extractR2KeyFromUrl(component.image_url);
+          const key = extractAvatarR2Key(component.image_url);
           if (key && key !== component.image_url) {
             updates.image_url = key;
             // Also update r2_key if it's not set or different
@@ -58,7 +58,7 @@ export async function POST(req: NextRequest) {
 
         // Check if thumbnail_url needs fixing
         if (component.thumbnail_url && isPresignedUrl(component.thumbnail_url)) {
-          const key = extractR2KeyFromUrl(component.thumbnail_url);
+          const key = extractAvatarR2Key(component.thumbnail_url);
           if (key && key !== component.thumbnail_url) {
             updates.thumbnail_url = key;
             needsUpdate = true;

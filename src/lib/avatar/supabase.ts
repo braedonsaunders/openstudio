@@ -2,7 +2,7 @@
 
 import { supabaseAuth } from '@/lib/supabase/auth';
 import { getAdminSupabase } from '@/lib/supabase/server';
-import { getSignedUrlFromKeyOrUrl, extractR2KeyFromUrl } from '@/lib/storage/r2';
+import { getSignedUrlFromKeyOrUrl, extractAvatarR2Key } from '@/lib/storage/r2';
 import type {
   AvatarCategory,
   AvatarComponent,
@@ -76,9 +76,9 @@ function transformComponent(data: Record<string, unknown>): AvatarComponent {
  */
 async function refreshComponentUrls(component: AvatarComponent): Promise<AvatarComponent> {
   // Use r2Key as the source of truth if available, otherwise extract from imageUrl
-  const imageKey = component.r2Key || extractR2KeyFromUrl(component.imageUrl);
+  const imageKey = component.r2Key || extractAvatarR2Key(component.imageUrl);
   const thumbnailKey = component.thumbnailUrl
-    ? extractR2KeyFromUrl(component.thumbnailUrl)
+    ? extractAvatarR2Key(component.thumbnailUrl)
     : imageKey.replace('.png', '_thumb.png');
 
   const [freshImageUrl, freshThumbnailUrl] = await Promise.all([
