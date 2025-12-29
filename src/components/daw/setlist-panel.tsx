@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useSongsStore } from '@/stores/songs-store';
 import { useLyriaStore } from '@/stores/lyria-store';
 import { useTrackPermissions } from '@/hooks/usePermissions';
+import { Modal } from '@/components/ui/modal';
 import {
   Music2,
   Plus,
@@ -17,6 +18,7 @@ import {
   ChevronRight,
   Clock,
   Lock,
+  AlertTriangle,
 } from 'lucide-react';
 import type { Song } from '@/types/songs';
 
@@ -57,6 +59,7 @@ export function SetlistPanel({
   const [newSongName, setNewSongName] = useState('');
   const [draggedSongId, setDraggedSongId] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [songToDelete, setSongToDelete] = useState<Song | null>(null);
 
   // Calculate total setlist duration
   const totalDuration = songs.reduce((acc, song) => acc + (song.duration || 0), 0);
@@ -156,29 +159,38 @@ export function SetlistPanel({
     setIsCreating(false);
   }, [newSongName, roomId, userId, userName, createSong]);
 
-  // Delete song
-  const handleDeleteSong = useCallback(async (songId: string) => {
-    if (!confirm('Delete this song? This cannot be undone.')) return;
+  // Open delete confirmation modal
+  const handleDeleteSong = useCallback((songId: string) => {
+    const song = songs.find(s => s.id === songId);
+    if (song) {
+      setSongToDelete(song);
+    }
+  }, [songs]);
+
+  // Confirm and delete the song
+  const confirmDeleteSong = useCallback(async () => {
+    if (!songToDelete) return;
 
     // Check if this song has a Lyria track and stop it if playing
-    const songToDelete = songs.find(s => s.id === songId);
-    if (songToDelete?.tracks.some(t => t.type === 'lyria')) {
+    if (songToDelete.tracks.some(t => t.type === 'lyria')) {
       const lyriaStore = useLyriaStore.getState();
       if (lyriaStore.sessionState === 'playing' || lyriaStore.sessionState === 'connected') {
         lyriaStore.pause();
       }
     }
 
-    deleteSong(songId);
+    deleteSong(songToDelete.id);
 
     try {
-      await fetch(`/api/rooms/${roomId}/songs?songId=${songId}`, {
+      await fetch(`/api/rooms/${roomId}/songs?songId=${songToDelete.id}`, {
         method: 'DELETE',
       });
     } catch (err) {
       console.error('Failed to delete song:', err);
     }
-  }, [roomId, deleteSong, songs]);
+
+    setSongToDelete(null);
+  }, [roomId, deleteSong, songToDelete]);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((e: React.DragEvent, songId: string) => {
@@ -501,6 +513,43 @@ export function SetlistPanel({
           {songs.reduce((acc, s) => acc + s.tracks.length, 0)} total tracks
         </span>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={!!songToDelete}
+        onClose={() => setSongToDelete(null)}
+        title="Delete Song"
+      >
+        <div className="flex flex-col gap-4">
+          <div className="flex items-start gap-3">
+            <div className="p-2 rounded-full bg-red-500/10">
+              <AlertTriangle className="w-5 h-5 text-red-500" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm text-gray-900 dark:text-white">
+                Are you sure you want to delete &quot;{songToDelete?.name}&quot;?
+              </p>
+              <p className="text-xs text-gray-500 dark:text-zinc-500 mt-1">
+                This will permanently delete the song and all its tracks. This action cannot be undone.
+              </p>
+            </div>
+          </div>
+          <div className="flex justify-end gap-2">
+            <button
+              onClick={() => setSongToDelete(null)}
+              className="px-3 py-1.5 text-xs font-medium text-gray-700 dark:text-zinc-300 bg-gray-100 dark:bg-white/10 hover:bg-gray-200 dark:hover:bg-white/20 rounded-lg transition-colors"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={confirmDeleteSong}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-red-500 hover:bg-red-600 rounded-lg transition-colors"
+            >
+              Delete Song
+            </button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }
