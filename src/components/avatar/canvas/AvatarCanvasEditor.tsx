@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import { useState, useEffect, useMemo, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import {
   Undo2,
@@ -17,7 +17,6 @@ import { LayerPanel } from './LayerPanel';
 import { TransformControls } from './TransformControls';
 import { useCanvasState } from './hooks/useCanvasState';
 import { useCanvasExport } from './hooks/useCanvasExport';
-import type Konva from 'konva';
 import type {
   AvatarCategory,
   AvatarComponent,
@@ -60,7 +59,8 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
   const [error, setError] = useState<string | null>(null);
   const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
 
-  const stageRef = useRef<Konva.Stage | null>(null);
+  // Canvas export - use stageRef from export hook directly
+  const { stageRef, exportFromStage, exportFromCanvasData } = useCanvasExport();
 
   // Canvas state management
   const {
@@ -85,9 +85,6 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
     undo,
     redo,
   } = useCanvasState(initialCanvasData || undefined);
-
-  // Canvas export
-  const { exportFromStage, setStageRef } = useCanvasExport();
 
   // Create lookup maps for components and categories
   const componentsMap = useMemo(() => {
@@ -186,13 +183,6 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
     loadData();
   }, [loadCanvas]);
 
-  // Handle stage ref
-  useEffect(() => {
-    if (stageRef.current) {
-      setStageRef(stageRef.current);
-    }
-  }, [setStageRef]);
-
   // Handle adding asset from library
   const handleAddAsset = useCallback(
     (component: AvatarComponent, category: AvatarCategory, position?: { x: number; y: number }) => {
@@ -207,8 +197,15 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
     setError(null);
 
     try {
-      // Export images
-      const exported = await exportFromStage();
+      // Try to export images from stage first, fallback to canvas data export
+      let exported = await exportFromStage();
+
+      if (!exported) {
+        // Fallback: export using canvas data directly
+        console.log('[AvatarCanvasEditor] Stage export failed, trying canvas data export');
+        exported = await exportFromCanvasData(canvasData, componentsMap);
+      }
+
       if (!exported) {
         throw new Error('Failed to generate avatar images');
       }
@@ -227,6 +224,9 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
+        if (response.status === 401) {
+          throw new Error('Please log in to save your avatar');
+        }
         throw new Error(errorData.error || 'Failed to save avatar');
       }
 
