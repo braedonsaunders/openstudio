@@ -895,7 +895,7 @@ export function SavedTrackEditor({
   const [isMuted, setIsMuted] = useState(preset?.isMuted ?? false);
 
   // Input settings
-  const [inputMode, setInputMode] = useState<'microphone' | 'application'>(
+  const [inputMode, setInputMode] = useState<'microphone' | 'application' | 'native'>(
     preset?.audioSettings?.inputMode || 'microphone'
   );
   const [inputDeviceId, setInputDeviceId] = useState(preset?.audioSettings?.inputDeviceId || 'default');
