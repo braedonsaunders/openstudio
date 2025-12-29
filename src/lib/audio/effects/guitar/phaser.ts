@@ -51,6 +51,8 @@ export class PhaserProcessor extends BaseEffect {
       filter.type = 'allpass';
       filter.Q.value = this.settings.q;
       this.allpassFilters.push(filter);
+      // Register filter for recovery tracking
+      this.registerFilter(filter);
     }
 
     // Create LFO

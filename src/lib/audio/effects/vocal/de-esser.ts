@@ -49,6 +49,7 @@ export class DeEsserProcessor extends BaseEffect {
     this.detectionFilter = audioContext.createBiquadFilter();
     this.detectionFilter.type = 'bandpass';
     this.detectionFilter.Q.value = 2;
+    this.registerFilter(this.detectionFilter);
 
     // Detection gain
     this.detectionGain = audioContext.createGain();
@@ -66,6 +67,7 @@ export class DeEsserProcessor extends BaseEffect {
     // High shelf for frequency-targeted reduction
     this.highShelf = audioContext.createBiquadFilter();
     this.highShelf.type = 'highshelf';
+    this.registerFilter(this.highShelf);
 
     // Reduction gain (applied based on detection)
     this.reductionGain = audioContext.createGain();

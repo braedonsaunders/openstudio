@@ -64,6 +64,7 @@ export class MultiFilterProcessor extends BaseEffect {
     // Create main filter
     this.filter = audioContext.createBiquadFilter();
     this.filter.type = this.settings.type;
+    this.registerFilter(this.filter);
 
     // Create LFO
     this.lfo = audioContext.createOscillator();
@@ -79,6 +80,7 @@ export class MultiFilterProcessor extends BaseEffect {
     this.envelopeFilter = audioContext.createBiquadFilter();
     this.envelopeFilter.type = 'lowpass';
     this.envelopeFilter.frequency.value = 20;
+    this.registerFilter(this.envelopeFilter);
 
     // Create drive
     this.driveWaveshaper = audioContext.createWaveShaper();

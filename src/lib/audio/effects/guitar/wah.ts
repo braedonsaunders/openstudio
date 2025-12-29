@@ -59,6 +59,7 @@ export class WahProcessor extends BaseEffect {
     // Create wah bandpass filter
     this.wahFilter = audioContext.createBiquadFilter();
     this.wahFilter.type = 'bandpass';
+    this.registerFilter(this.wahFilter);
 
     // Create LFO for auto mode
     this.lfo = audioContext.createOscillator();
@@ -68,6 +69,7 @@ export class WahProcessor extends BaseEffect {
     this.envelopeInput = audioContext.createGain();
     this.envelopeRectifier = audioContext.createWaveShaper();
     this.envelopeSmoother = audioContext.createBiquadFilter();
+    this.registerFilter(this.envelopeSmoother);
     this.envelopeGain = audioContext.createGain();
 
     // Create base frequency control

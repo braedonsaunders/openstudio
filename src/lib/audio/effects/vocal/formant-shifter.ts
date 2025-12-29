@@ -48,6 +48,7 @@ export class FormantShifterProcessor extends BaseEffect {
       const q = this.baseFormants[i] / this.formantBandwidths[i];
       filter.Q.value = Math.max(0.0001, Math.min(30, q));
       this.formantFilters.push(filter);
+      this.registerFilter(filter);
 
       const gain = audioContext.createGain();
       gain.gain.value = 1;
@@ -63,6 +64,7 @@ export class FormantShifterProcessor extends BaseEffect {
     this.lowPass.type = 'lowpass';
     this.lowPass.frequency.value = 10000;
     this.lowPass.Q.value = 0.7;
+    this.registerFilter(this.lowPass);
 
     // Wire up signal chain
     // Dry path
