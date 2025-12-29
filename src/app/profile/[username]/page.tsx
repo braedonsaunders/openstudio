@@ -153,7 +153,7 @@ export default function ProfilePage() {
         <div className="flex flex-col md:flex-row items-start gap-6 mb-8">
           {/* Avatar */}
           <div className="relative">
-            <UserAvatar userId={profileUserId || undefined} username={profile.username} size="xl" />
+            <UserAvatar userId={profileUserId || undefined} username={profile.username} size={180} />
             {profile.currentDailyStreak >= 7 && (
               <div className="absolute -bottom-2 -right-2 bg-orange-500 rounded-full p-1.5">
                 <Flame className="w-4 h-4 text-white" />
