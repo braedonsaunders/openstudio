@@ -90,6 +90,29 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     setJoining(true);
     setError(null);
 
+    // Clean up any stale connections from previous failed attempts
+    // This is critical for iPad where retries often fail with CLOSED status
+    if (realtimeRef.current) {
+      console.log('[useRoom] Cleaning up stale realtime connection before join');
+      try {
+        await realtimeRef.current.disconnect();
+      } catch (err) {
+        console.log('[useRoom] Error cleaning up stale realtime:', err);
+      }
+      realtimeRef.current = null;
+    }
+    if (cloudflareRef.current) {
+      console.log('[useRoom] Cleaning up stale cloudflare connection before join');
+      try {
+        await cloudflareRef.current.leaveRoom();
+      } catch (err) {
+        console.log('[useRoom] Error cleaning up stale cloudflare:', err);
+      }
+      cloudflareRef.current = null;
+    }
+    // Also clean up any orphaned Supabase channels for this room
+    await RealtimeRoomManager.cleanupExistingChannel(roomId);
+
     // Global join timeout - prevents hanging forever on iOS Safari
     const JOIN_TIMEOUT = 45000; // 45 seconds max for entire join operation
 

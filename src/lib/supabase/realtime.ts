@@ -9,6 +9,9 @@ export interface RoomState {
   messages: RoomMessage[];
 }
 
+// Track active channels by room ID to prevent conflicts
+const activeChannels = new Map<string, RealtimeChannel>();
+
 export class RealtimeRoomManager {
   private channel: RealtimeChannel | null = null;
   private roomId: string;
@@ -20,8 +23,54 @@ export class RealtimeRoomManager {
     this.userId = userId;
   }
 
+  /**
+   * Clean up any existing channel for a room before creating a new connection.
+   * This prevents the CLOSED status error on iPad when retrying after a timeout.
+   * MUST be called before creating a new RealtimeRoomManager instance.
+   */
+  static async cleanupExistingChannel(roomId: string): Promise<void> {
+    const existingChannel = activeChannels.get(roomId);
+    if (existingChannel) {
+      console.log('[Realtime] Cleaning up existing channel for room:', roomId);
+      try {
+        await existingChannel.untrack();
+      } catch (err) {
+        // Ignore untrack errors - channel may already be disconnected
+        console.log('[Realtime] Untrack during cleanup (expected):', err);
+      }
+      try {
+        await supabase.removeChannel(existingChannel);
+      } catch (err) {
+        console.log('[Realtime] Remove channel during cleanup (expected):', err);
+      }
+      activeChannels.delete(roomId);
+    }
+
+    // Also remove any orphaned channels with the same room pattern
+    // This handles edge cases where the channel wasn't tracked in our Map
+    const channels = supabase.getChannels();
+    for (const channel of channels) {
+      if (channel.topic === `realtime:room:${roomId}`) {
+        console.log('[Realtime] Removing orphaned channel:', channel.topic);
+        try {
+          await supabase.removeChannel(channel);
+        } catch (err) {
+          console.log('[Realtime] Error removing orphaned channel:', err);
+        }
+      }
+    }
+
+    // Small delay to let Supabase clean up server-side state
+    await new Promise(resolve => setTimeout(resolve, 100));
+  }
+
   async connect(user: User): Promise<void> {
+    // Clean up any existing channel first to prevent CLOSED status on retry
+    await RealtimeRoomManager.cleanupExistingChannel(this.roomId);
+
     this.channel = getRealtimeChannel(this.roomId);
+    // Track this channel so it can be cleaned up on retry
+    activeChannels.set(this.roomId, this.channel);
 
     // Track presence
     this.channel.on('presence', { event: 'sync' }, () => {
@@ -145,39 +194,106 @@ export class RealtimeRoomManager {
       this.emit('permissions:sync', payload);
     });
 
-    // Wrap subscription in a promise with timeout for iOS Safari reliability
-    const SUBSCRIPTION_TIMEOUT = 15000; // 15 seconds
+    // Subscription with retry logic for mobile reliability (especially iPad)
+    // Mobile devices often need multiple attempts due to network transitions
+    const MAX_RETRIES = 3;
+    const BASE_TIMEOUT = 20000; // 20 seconds base timeout (increased for mobile)
+    const RETRY_DELAYS = [0, 1000, 2000]; // Exponential backoff delays
 
-    await new Promise<void>((resolve, reject) => {
-      const timeoutId = setTimeout(() => {
-        reject(new Error(`Realtime subscription timed out after ${SUBSCRIPTION_TIMEOUT}ms`));
-      }, SUBSCRIPTION_TIMEOUT);
+    let lastError: Error | null = null;
 
-      this.channel!.subscribe(async (status) => {
-        console.log('[Realtime] Subscription status:', status);
+    for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+      if (attempt > 0) {
+        console.log(`[Realtime] Retry attempt ${attempt + 1}/${MAX_RETRIES} after ${RETRY_DELAYS[attempt]}ms`);
+        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt]));
 
-        if (status === 'SUBSCRIBED') {
-          clearTimeout(timeoutId);
-          try {
-            await this.channel?.track(user);
-            this.emit('connected', { roomId: this.roomId });
-            resolve();
-          } catch (err) {
-            reject(err);
-          }
-        } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
-          clearTimeout(timeoutId);
-          reject(new Error(`Realtime subscription failed with status: ${status}`));
+        // Recreate channel on retry to get fresh connection
+        await RealtimeRoomManager.cleanupExistingChannel(this.roomId);
+        this.channel = getRealtimeChannel(this.roomId);
+        activeChannels.set(this.roomId, this.channel);
+
+        // Re-attach event handlers for the new channel
+        this.channel.on('presence', { event: 'sync' }, () => {
+          const state = this.channel?.presenceState();
+          this.emit('presence:sync', state);
+        });
+        this.channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
+          this.emit('presence:join', { key, users: newPresences });
+        });
+        this.channel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
+          this.emit('presence:leave', { key, users: leftPresences });
+        });
+        // Note: broadcast handlers are attached before this loop, they persist
+      }
+
+      try {
+        await new Promise<void>((resolve, reject) => {
+          let resolved = false;
+          const timeoutId = setTimeout(() => {
+            if (!resolved) {
+              resolved = true;
+              reject(new Error(`Realtime subscription timed out after ${BASE_TIMEOUT}ms`));
+            }
+          }, BASE_TIMEOUT);
+
+          this.channel!.subscribe(async (status) => {
+            if (resolved) return; // Prevent multiple resolutions
+
+            console.log('[Realtime] Subscription status:', status);
+
+            if (status === 'SUBSCRIBED') {
+              resolved = true;
+              clearTimeout(timeoutId);
+              try {
+                await this.channel?.track(user);
+                this.emit('connected', { roomId: this.roomId });
+                resolve();
+              } catch (err) {
+                reject(err);
+              }
+            } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+              if (!resolved) {
+                resolved = true;
+                clearTimeout(timeoutId);
+                reject(new Error(`Realtime subscription failed with status: ${status}`));
+              }
+            }
+            // SUBSCRIBING status is transitional, just wait
+          });
+        });
+
+        // Success - exit retry loop
+        return;
+      } catch (err) {
+        lastError = err as Error;
+        console.warn(`[Realtime] Attempt ${attempt + 1} failed:`, lastError.message);
+
+        // On CLOSED status (conflict), cleanup aggressively before retry
+        if (lastError.message.includes('CLOSED')) {
+          console.log('[Realtime] CLOSED status detected, aggressive cleanup before retry');
+          await RealtimeRoomManager.cleanupExistingChannel(this.roomId);
+          await new Promise(resolve => setTimeout(resolve, 500)); // Extra delay for CLOSED
         }
-        // SUBSCRIBING status is transitional, just wait
-      });
-    });
+      }
+    }
+
+    // All retries exhausted
+    throw lastError || new Error('Realtime subscription failed after all retries');
   }
 
   async disconnect(): Promise<void> {
     if (this.channel) {
-      await this.channel.untrack();
-      await supabase.removeChannel(this.channel);
+      try {
+        await this.channel.untrack();
+      } catch (err) {
+        console.log('[Realtime] Untrack during disconnect:', err);
+      }
+      try {
+        await supabase.removeChannel(this.channel);
+      } catch (err) {
+        console.log('[Realtime] Remove channel during disconnect:', err);
+      }
+      activeChannels.delete(this.roomId);
       this.channel = null;
     }
     this.listeners.clear();
