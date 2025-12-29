@@ -133,23 +133,28 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
           unlockRules: library.unlockRules?.length,
         });
 
-        // Library API returns componentUnlocks (rules), but we need user's unlocked components
-        // Get user's unlocked components from config endpoint
-        let unlockedComponentIds: string[] = [];
-        try {
-          const configResponse = await fetch('/api/avatar/config');
-          console.log('[AvatarCanvasEditor] Config response status:', configResponse.status);
-          if (configResponse.ok) {
-            const configResult = await configResponse.json();
-            unlockedComponentIds = configResult.unlockedComponentIds || [];
-            console.log('[AvatarCanvasEditor] Unlocked components:', unlockedComponentIds.length, unlockedComponentIds.slice(0, 5));
-          } else {
-            const errorText = await configResponse.text();
-            console.error('[AvatarCanvasEditor] Config fetch failed:', configResponse.status, errorText);
+        // Evaluate unlocks using library data (components without rules are unlocked by default)
+        // Build a set of component IDs that have unlock rules
+        const componentUnlocks = library.componentUnlocks || [];
+        const lockedComponentIds = new Set<string>();
+
+        for (const unlock of componentUnlocks) {
+          // Only add to locked if there's an actual unlock rule attached
+          if (unlock.componentId && unlock.unlockRuleId) {
+            lockedComponentIds.add(unlock.componentId);
           }
-        } catch (err) {
-          console.error('[AvatarCanvasEditor] Config fetch error:', err);
         }
+
+        // All components without rules are unlocked by default
+        const unlockedComponentIds: string[] = (library.components || [])
+          .filter((c: { id: string; isActive: boolean }) => c.isActive && !lockedComponentIds.has(c.id))
+          .map((c: { id: string }) => c.id);
+
+        console.log('[AvatarCanvasEditor] Evaluated unlocks:', {
+          total: library.components?.length || 0,
+          locked: lockedComponentIds.size,
+          unlocked: unlockedComponentIds.length,
+        });
 
         // Merge library data with unlocked components
         setLibraryData({
