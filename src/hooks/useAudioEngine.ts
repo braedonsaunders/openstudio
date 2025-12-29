@@ -301,6 +301,11 @@ export function useAudioEngine() {
     globalEngine?.setLocalTrackVolume(volume);
   }, []);
 
+  // Set local track input gain in dB (-24 to +24 dB)
+  const setLocalInputGainDb = useCallback((gainDb: number) => {
+    globalEngine?.setLocalInputGainDb(gainDb);
+  }, []);
+
   // Update local effects (extended chain - all 35 effects)
   const updateLocalEffects = useCallback((effects: Partial<import('@/types').ExtendedEffectsChain>) => {
     globalEngine?.updateLocalEffects(effects);
@@ -596,6 +601,7 @@ export function useAudioEngine() {
     setLocalTrackArmed,
     setLocalTrackMuted,
     setLocalTrackVolume,
+    setLocalInputGainDb,
     updateLocalEffects,
     // Master effects chain
     setMasterEffectsEnabled,

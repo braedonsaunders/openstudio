@@ -65,7 +65,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     getDeviceChannelCount,
   } = useUserTracksStore();
 
-  const { recaptureWithSettings, isInitialized } = useAudioEngine();
+  const { recaptureWithSettings, isInitialized, setLocalInputGainDb } = useAudioEngine();
 
   const [testingInput, setTestingInput] = useState(false);
   const [inputLevel, setInputLevel] = useState(0);
@@ -74,6 +74,8 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
   const testStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
   const appStreamRef = useRef<MediaStream | null>(null);
+  // Use a ref to track testing state for the animation frame loop (avoids stale closure)
+  const testingInputRef = useRef(false);
 
   const currentDevice = inputDevices.find((d) => d.deviceId === track.audioSettings.inputDeviceId);
   const channelCount = currentDevice?.channelCount || getDeviceChannelCount(track.audioSettings.inputDeviceId) || 2;
@@ -86,9 +88,17 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     }
   }, [devicesLoaded, loadDevicesWithChannels]);
 
+  // Apply saved input gain to audio engine when component mounts and audio is initialized
+  useEffect(() => {
+    if (isInitialized && track.audioSettings.inputGain !== 0) {
+      setLocalInputGainDb(track.audioSettings.inputGain);
+    }
+  }, [isInitialized, track.audioSettings.inputGain, setLocalInputGainDb]);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
+      testingInputRef.current = false;
       testStreamRef.current?.getTracks().forEach((t) => t.stop());
       audioContextRef.current?.close();
       appStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -169,6 +179,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
 
   // Test input levels (works for both modes)
   const testInput = useCallback(async () => {
+    testingInputRef.current = true;
     setTestingInput(true);
     setError(null);
 
@@ -179,6 +190,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
         // Use existing app stream if available, otherwise prompt to select
         if (!appStreamRef.current || appStreamRef.current.getAudioTracks().length === 0) {
           setError('Select a source first');
+          testingInputRef.current = false;
           setTestingInput(false);
           return;
         }
@@ -207,13 +219,23 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
       analyser.fftSize = 256;
       source.connect(analyser);
 
-      const dataArray = new Uint8Array(analyser.frequencyBinCount);
+      // Use time-domain data for more accurate level metering (same as audio engine)
+      const dataArray = new Uint8Array(analyser.fftSize);
 
       const updateLevel = () => {
-        if (!testingInput) return;
-        analyser.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b, 0) / dataArray.length;
-        setInputLevel(average / 255);
+        // Use ref instead of state to avoid stale closure
+        if (!testingInputRef.current) return;
+
+        // Get time-domain data and calculate peak level (same as audio engine)
+        analyser.getByteTimeDomainData(dataArray);
+        let peak = 0;
+        for (let i = 0; i < dataArray.length; i++) {
+          const amplitude = Math.abs(dataArray[i] - 128);
+          if (amplitude > peak) peak = amplitude;
+        }
+        // Normalize to 0-1 range
+        setInputLevel(peak / 128);
+
         requestAnimationFrame(updateLevel);
       };
       updateLevel();
@@ -227,11 +249,15 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
           ? 'Could not access audio source'
           : 'Could not access input device'
       );
+      testingInputRef.current = false;
       setTestingInput(false);
     }
-  }, [track.audioSettings, testingInput]);
+  }, [track.audioSettings]);
 
   const stopTesting = useCallback(() => {
+    // Update ref first to stop animation frame loop
+    testingInputRef.current = false;
+
     // Only stop the test stream for direct input mode (keep app stream for reuse)
     if (track.audioSettings.inputMode === 'microphone') {
       testStreamRef.current?.getTracks().forEach((t) => t.stop());
@@ -465,7 +491,12 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
             max="24"
             step="0.5"
             value={track.audioSettings.inputGain}
-            onChange={(e) => setTrackInputGain(track.id, parseFloat(e.target.value))}
+            onChange={(e) => {
+              const gainDb = parseFloat(e.target.value);
+              setTrackInputGain(track.id, gainDb);
+              // Apply gain to audio engine in real-time
+              setLocalInputGainDb(gainDb);
+            }}
             className="w-full h-2 bg-gray-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer accent-indigo-500"
           />
           <div className="flex justify-between text-[10px] text-gray-500 dark:text-zinc-600">

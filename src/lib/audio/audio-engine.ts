@@ -244,6 +244,7 @@ export class AudioEngine {
       this.localAnalyser?.disconnect();
       this.localMonitorGain?.disconnect();
       this.localInputGain?.disconnect();
+      this.localInputGainNode?.disconnect();
       this.localArmGain?.disconnect();
       this.localMuteGain?.disconnect();
       this.localEffectsProcessor?.dispose();
@@ -252,7 +253,13 @@ export class AudioEngine {
       this.localAnalyser = this.audioContext.createAnalyser();
       this.localAnalyser.fftSize = 256;
 
-      // Create input gain for track level control
+      // Create input gain dB node for input level adjustment (-24 to +24 dB)
+      // This is the first gain stage in the signal chain
+      this.localInputGainNode = this.audioContext.createGain();
+      const linearGain = Math.pow(10, this.localInputGainDb / 20);
+      this.localInputGainNode.gain.value = linearGain;
+
+      // Create input gain for track level control (fader/volume)
       this.localInputGain = this.audioContext.createGain();
       this.localInputGain.gain.value = this.localTrackVolume;
 
@@ -270,7 +277,7 @@ export class AudioEngine {
       this.localMonitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
 
       // Audio signal flow:
-      // source -> channelMerger (if mono) -> inputGain -> armGain -> effects -> muteGain -> monitorGain -> masterGain
+      // source -> [channelSplitter if mono] -> inputGainNode (dB) -> inputGain (volume) -> armGain -> effects -> muteGain -> monitorGain -> masterGain
       // When not armed, armGain is 0, blocking all audio from being processed or monitored
 
       // For mono mode with a specific channel selection, use ChannelSplitter
@@ -287,20 +294,23 @@ export class AudioEngine {
           // Create a channel merger to convert back to mono for the analyser
           const merger = this.audioContext.createChannelMerger(1);
 
-          // Connect: source -> splitter -> specific channel -> merger -> inputGain
+          // Connect: source -> splitter -> specific channel -> merger -> inputGainNode (dB)
           this.localSourceNode.connect(this.localChannelSplitter);
           this.localChannelSplitter.connect(merger, channelConfig.leftChannel, 0);
-          merger.connect(this.localInputGain);
+          merger.connect(this.localInputGainNode);
         } else {
           // Requested channel not available, fall back to default
           console.warn('[AudioEngine] Requested channel', channelConfig.leftChannel,
             'not available (device has', actualChannelCount, 'channels). Using default.');
-          this.localSourceNode.connect(this.localInputGain);
+          this.localSourceNode.connect(this.localInputGainNode);
         }
       } else {
-        // Stereo or default: connect directly to inputGain
-        this.localSourceNode.connect(this.localInputGain);
+        // Stereo or default: connect directly to inputGainNode (dB)
+        this.localSourceNode.connect(this.localInputGainNode);
       }
+
+      // Connect input gain dB to track volume
+      this.localInputGainNode.connect(this.localInputGain);
 
       // Connect input gain to analyser (for input level metering before arm gate)
       this.localInputGain.connect(this.localAnalyser);
@@ -649,6 +659,30 @@ export class AudioEngine {
     if (this.localInputGain) {
       this.localInputGain.gain.setTargetAtTime(volume, this.audioContext!.currentTime, 0.01);
     }
+  }
+
+  /**
+   * Set the local track input gain in dB
+   * This is separate from track volume and applies gain/attenuation to the input signal
+   * @param gainDb Gain in decibels (-24 to +24 dB)
+   */
+  private localInputGainDb: number = 0;
+  private localInputGainNode: GainNode | null = null;
+
+  setLocalInputGainDb(gainDb: number): void {
+    this.localInputGainDb = Math.max(-24, Math.min(24, gainDb));
+    if (this.localInputGainNode && this.audioContext) {
+      // Convert dB to linear gain: gain = 10^(dB/20)
+      const linearGain = Math.pow(10, this.localInputGainDb / 20);
+      this.localInputGainNode.gain.setTargetAtTime(linearGain, this.audioContext.currentTime, 0.01);
+    }
+  }
+
+  /**
+   * Get the current local input gain in dB
+   */
+  getLocalInputGainDb(): number {
+    return this.localInputGainDb;
   }
 
   /**
@@ -1443,6 +1477,8 @@ export class AudioEngine {
     this.localMonitorGain = null;
     this.localInputGain?.disconnect();
     this.localInputGain = null;
+    this.localInputGainNode?.disconnect();
+    this.localInputGainNode = null;
     this.localArmGain?.disconnect();
     this.localArmGain = null;
     this.localMuteGain?.disconnect();
