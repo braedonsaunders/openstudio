@@ -211,14 +211,8 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
     setError(null);
 
     try {
-      // Try to export images from stage first, fallback to canvas data export
-      let exported = await exportFromStage();
-
-      if (!exported) {
-        // Fallback: export using canvas data directly
-        console.log('[AvatarCanvasEditor] Stage export failed, trying canvas data export');
-        exported = await exportFromCanvasData(canvasData, componentsMap);
-      }
+      // Always use canvas data export for proper centering and transparent background
+      const exported = await exportFromCanvasData(canvasData, componentsMap);
 
       if (!exported) {
         throw new Error('Failed to generate avatar images');
