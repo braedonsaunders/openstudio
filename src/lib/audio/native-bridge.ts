@@ -352,9 +352,9 @@ export class NativeBridge {
   setChannelConfig(config: InputChannelConfig): void {
     this.send({
       type: 'setChannelConfig',
-      channelCount: config.channelCount,
-      leftChannel: config.leftChannel,
-      rightChannel: config.rightChannel,
+      channel_count: config.channelCount,
+      left_channel: config.leftChannel,
+      right_channel: config.rightChannel,
     });
   }
 
