@@ -8,7 +8,6 @@ import { AIPanel } from './ai-panel';
 import { SetlistPanel } from './setlist-panel';
 import type { PanelType } from './daw-layout';
 import type { StemType, User, QualityPresetName, OpusEncodingSettings } from '@/types';
-import type { CloudflareCalls } from '@/lib/cloudflare/calls';
 import {
   Users,
   Activity,
@@ -46,8 +45,6 @@ interface PanelDockProps {
   onDismissOptimization?: (type: string) => void;
   // Layout props
   width?: number;
-  // WebRTC for AI audio sharing
-  getCloudflareRef?: () => CloudflareCalls | null;
 }
 
 const panels: { id: PanelType; icon: typeof Users; label: string }[] = [
@@ -81,7 +78,6 @@ export function PanelDock({
   onAcceptOptimization,
   onDismissOptimization,
   width,
-  getCloudflareRef,
 }: PanelDockProps) {
   // Redirect old panel types to new ones
   const validPanel = activePanel === 'queue' ? 'setlist' : activePanel === 'mixer' ? 'users' : activePanel === 'permissions' ? 'users' : activePanel;
@@ -157,7 +153,7 @@ export function PanelDock({
         )}
 
         {validPanel === 'ai' && (
-          <AIPanel getCloudflareRef={getCloudflareRef} />
+          <AIPanel />
         )}
       </div>
     </div>

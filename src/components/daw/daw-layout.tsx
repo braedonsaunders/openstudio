@@ -13,6 +13,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { useLyriaStore } from '@/stores/lyria-store';
 import { getLoopById } from '@/lib/audio/loop-library';
 import { getCachedLoopById } from '@/hooks/use-loop-library';
 import { useCustomLoopsStore } from '@/stores/custom-loops-store';
@@ -128,7 +129,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     getCloudflareRef,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume } = useAudioEngine();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume, currentTime } = useAudioStore();
 
@@ -294,6 +295,49 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     youtubePlayerRef.current?.seek(time);
   }, []);
 
+  // ==========================================================================
+  // Lyria Integration - AI Live Music
+  // ==========================================================================
+
+  // Initialize Lyria store and set up audio routing callbacks
+  useEffect(() => {
+    const lyriaStore = useLyriaStore.getState();
+
+    // Initialize the Lyria session (creates session but doesn't connect)
+    lyriaStore.initialize();
+
+    // Set up audio callbacks to route Lyria to master mixer
+    lyriaStore.setAudioCallbacks(
+      // onConnected - route Lyria audio to master mixer
+      (stream: MediaStream) => {
+        console.log('[DAWLayout] Lyria connected, routing to master mixer');
+        addExternalAudioSource('lyria', stream, lyriaStore.volume);
+
+        // Also share via WebRTC if available
+        const cloudflare = getCloudflareRef?.();
+        if (cloudflare) {
+          cloudflare.addTrack(stream, 'lyria', 'AI Live Music', true)
+            .then((trackId) => {
+              console.log('[DAWLayout] Lyria audio shared via WebRTC:', trackId);
+            })
+            .catch((err) => {
+              console.warn('[DAWLayout] Failed to share Lyria via WebRTC:', err);
+            });
+        }
+      },
+      // onDisconnected - remove Lyria from master mixer
+      () => {
+        console.log('[DAWLayout] Lyria disconnected, removing from master mixer');
+        removeExternalAudioSource('lyria');
+      }
+    );
+
+    return () => {
+      // Cleanup on unmount
+      useLyriaStore.getState().dispose();
+    };
+  }, [addExternalAudioSource, removeExternalAudioSource, getCloudflareRef]);
+
   // Song playback controls - plays tracks from the Song system
   const handleSongPlay = useCallback(async () => {
     if (!isMaster || !currentSong || songTracks.length === 0) {
@@ -363,8 +407,25 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       }
     }
 
-    // Note: Lyria tracks are controlled via the AI panel, not the transport
-    // The AI panel manages its own Lyria session
+    // Handle Lyria tracks - connect and play via Lyria store
+    for (const track of songTracks) {
+      if (track.type === 'lyria' && track.ref.lyriaConfig) {
+        console.log('[DAWLayout] Playing Lyria track:', track.name);
+        const lyriaStore = useLyriaStore.getState();
+
+        // Set the active config from the track
+        lyriaStore.setActiveConfig(track.ref.lyriaConfig, currentSong.id, track.ref.id);
+
+        // Connect and play
+        try {
+          await lyriaStore.connect();
+          lyriaStore.play(track.ref.lyriaConfig);
+        } catch (err) {
+          console.error('[DAWLayout] Failed to start Lyria:', err);
+        }
+        break; // Only one Lyria track per song
+      }
+    }
 
     setPlaying(true);
   }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setDuration, setPlaying, setBackingTrackVolume]);
@@ -382,7 +443,11 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       }
     }
 
-    // Note: Lyria is controlled via the AI panel
+    // Pause Lyria if playing
+    const lyriaStore = useLyriaStore.getState();
+    if (lyriaStore.sessionState === 'playing') {
+      lyriaStore.pause();
+    }
 
     setPlaying(false);
   }, [songTracks, pauseBackingTrack, stopLoopTrack, setPlaying]);
@@ -1083,8 +1148,6 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
             onAcceptOptimization={handleAcceptOptimization}
             onDismissOptimization={handleDismissOptimization}
             width={rightPanelWidth}
-            // WebRTC for AI audio sharing
-            getCloudflareRef={getCloudflareRef}
           />
         )}
       </div>

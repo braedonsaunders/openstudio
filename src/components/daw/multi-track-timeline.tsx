@@ -436,6 +436,17 @@ export function MultiTrackTimeline({
           loopDef,
           midiNotes,
         };
+      } else if (trackRef.type === 'lyria') {
+        // Lyria tracks are infinite duration - use a large placeholder
+        return {
+          ref: trackRef,
+          type: 'lyria' as const,
+          name: trackRef.lyriaConfig?.customPrompt || 'AI Live Music',
+          duration: Infinity, // Lyria is infinite
+          color: '#a855f7', // Purple for AI
+          muted: trackRef.muted || false,
+          lyriaConfig: trackRef.lyriaConfig,
+        };
       } else {
         const audioTrack = queue.tracks.find((t) => t.id === trackRef.trackId);
         return {
@@ -574,12 +585,26 @@ export function MultiTrackTimeline({
     }
   }, [unifiedTracks, containerWidth]);
 
+  // Check if this is a Lyria-only song (infinite duration)
+  const isLyriaSong = useMemo(() => {
+    return unifiedTracks.length > 0 && unifiedTracks.some(t => t.type === 'lyria');
+  }, [unifiedTracks]);
+
   // Calculate total song duration
   const songDuration = useMemo(() => {
     if (unifiedTracks.length === 0) return duration || 60;
 
+    // If it's a Lyria-only song, use a fixed display duration
+    const hasOnlyLyria = unifiedTracks.every(t => t.type === 'lyria');
+    if (hasOnlyLyria) {
+      // Use 5 minutes as the display duration for Lyria songs
+      return 300;
+    }
+
     let maxDuration = 0;
     unifiedTracks.forEach((track) => {
+      // Skip Lyria tracks for duration calculation (they're infinite)
+      if (track.type === 'lyria') return;
       const endTime = track.ref.startOffset + track.duration;
       maxDuration = Math.max(maxDuration, endTime);
     });
@@ -592,6 +617,7 @@ export function MultiTrackTimeline({
 
   // Get track icon
   const getTrackIcon = (track: typeof unifiedTracks[0]) => {
+    if (track.type === 'lyria') return <Sparkles className="w-3 h-3" />;
     if (track.type === 'loop') return <Repeat className="w-3 h-3" />;
     if (track.youtubeId) return <Youtube className="w-3 h-3" />;
     if (track.aiGenerated) return <Sparkles className="w-3 h-3" />;
@@ -1225,9 +1251,16 @@ export function MultiTrackTimeline({
           <span className="text-xs font-medium text-gray-900 dark:text-white">
             {currentSong?.name || 'No Song Selected'}
           </span>
-          <span className="text-[10px] text-gray-500 dark:text-zinc-500">
-            {trackRows.length} track{trackRows.length !== 1 ? 's' : ''}, {unifiedTracks.length} clip{unifiedTracks.length !== 1 ? 's' : ''}
-          </span>
+          {isLyriaSong ? (
+            <span className="flex items-center gap-1 px-1.5 py-0.5 bg-purple-500/20 text-purple-400 text-[10px] font-medium rounded-full">
+              <Sparkles className="w-2.5 h-2.5" />
+              ∞ Live
+            </span>
+          ) : (
+            <span className="text-[10px] text-gray-500 dark:text-zinc-500">
+              {trackRows.length} track{trackRows.length !== 1 ? 's' : ''}, {unifiedTracks.length} clip{unifiedTracks.length !== 1 ? 's' : ''}
+            </span>
+          )}
         </div>
 
         <div className="flex items-center gap-2">
@@ -1447,7 +1480,11 @@ export function MultiTrackTimeline({
 
                   {/* All clips on this row */}
                   {row.clips.map((track) => {
-                    const clipWidth = Math.max(track.duration * zoom, 40);
+                    // For Lyria tracks, extend to fill the visible timeline
+                    const isLyriaTrack = track.type === 'lyria';
+                    const clipWidth = isLyriaTrack
+                      ? Math.max(timelineWidth - TRACK_LABEL_WIDTH, containerWidth)
+                      : Math.max(track.duration * zoom, 40);
                     const isDraggingThis = dragState.isDragging && dragState.trackRefId === track.ref.id;
                     const displayOffset = isDraggingThis && dragOffset !== null ? dragOffset : track.ref.startOffset;
                     const clipLeft = displayOffset * zoom;
@@ -1457,7 +1494,10 @@ export function MultiTrackTimeline({
                         key={track.ref.id}
                         data-track-clip
                         className={cn(
-                          'absolute top-1 bottom-1 rounded-md overflow-hidden transition-opacity cursor-grab hover:ring-1 hover:ring-white/20',
+                          'absolute top-1 bottom-1 rounded-md overflow-hidden transition-opacity',
+                          // Lyria tracks are not draggable (they're infinite)
+                          !isLyriaTrack && 'cursor-grab hover:ring-1 hover:ring-white/20',
+                          isLyriaTrack && 'cursor-default',
                           track.muted ? 'opacity-40' : 'opacity-100',
                           isDraggingThis && 'cursor-grabbing z-20',
                           isDraggingThis && snapType === 'track-end' && 'ring-2 ring-green-500 shadow-lg shadow-green-500/30',
@@ -1468,11 +1508,11 @@ export function MultiTrackTimeline({
                         style={{
                           left: clipLeft + TRACK_LABEL_WIDTH,
                           width: clipWidth,
-                          backgroundColor: `${track.color}20`,
+                          backgroundColor: isLyriaTrack ? `${track.color}10` : `${track.color}20`,
                           borderLeft: `3px solid ${track.color}`,
                         }}
-                        onMouseDown={(e) => handleDragStart(e, track.ref)}
-                        onContextMenu={(e) => handleContextMenu(e, track)}
+                        onMouseDown={(e) => !isLyriaTrack && handleDragStart(e, track.ref)}
+                        onContextMenu={(e) => !isLyriaTrack && handleContextMenu(e, track)}
                       >
                         {/* Snap indicator */}
                         {isDraggingThis && snapType && (
@@ -1487,7 +1527,32 @@ export function MultiTrackTimeline({
                         )}
 
                         {/* Content visualization */}
-                        {track.type === 'loop' && track.loopDef ? (
+                        {track.type === 'lyria' ? (
+                          // Lyria infinite track visualization
+                          <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
+                            {/* Animated gradient background */}
+                            <div className="absolute inset-0 bg-gradient-to-r from-purple-500/20 via-pink-500/10 to-purple-500/20 animate-pulse" />
+                            {/* Infinite symbol and label */}
+                            <div className="relative z-10 flex items-center gap-2 px-3 py-1 bg-purple-500/20 rounded-full backdrop-blur-sm">
+                              <Sparkles className="w-3 h-3 text-purple-400" />
+                              <span className="text-[10px] font-medium text-purple-400">∞ AI Live Music</span>
+                            </div>
+                            {/* Decorative pattern */}
+                            <div className="absolute inset-0 opacity-30">
+                              {Array.from({ length: 20 }).map((_, i) => (
+                                <div
+                                  key={i}
+                                  className="absolute w-1 rounded-full bg-purple-500/40"
+                                  style={{
+                                    left: `${i * 5 + 2}%`,
+                                    top: `${20 + Math.sin(i * 0.5) * 30}%`,
+                                    height: `${40 + Math.sin(i * 0.7) * 20}%`,
+                                  }}
+                                />
+                              ))}
+                            </div>
+                          </div>
+                        ) : track.type === 'loop' && track.loopDef ? (
                           <MidiNoteVisualization
                             notes={track.midiNotes}
                             loopDef={track.loopDef}
@@ -1542,11 +1607,19 @@ export function MultiTrackTimeline({
       {currentSong && (
         <div className="h-6 px-3 flex items-center justify-between border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
           <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-zinc-500">
-            <span>
-              {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} / {Math.floor(songDuration / 60)}:{Math.floor(songDuration % 60).toString().padStart(2, '0')}
-            </span>
+            {isLyriaSong ? (
+              <span className="flex items-center gap-1">
+                {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
+                <span className="text-purple-400">/ ∞</span>
+              </span>
+            ) : (
+              <span>
+                {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} / {Math.floor(songDuration / 60)}:{Math.floor(songDuration % 60).toString().padStart(2, '0')}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2 text-[10px]">
+            {isLyriaSong && <span className="text-purple-500">● Lyria</span>}
             <span className="text-amber-500">● MIDI</span>
             <span className="text-indigo-500">● Audio</span>
           </div>
