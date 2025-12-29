@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   Sparkles,
+  AlertCircle,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -30,7 +31,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useLobbyStore, type LobbyUser, type LobbyMessage } from '@/stores/lobby-store';
 import { CreateRoomModal } from '@/components/rooms';
 import { generateRoomId } from '@/lib/utils';
-import { getPublicRooms, ROOM_GENRES } from '@/lib/rooms/service';
+import { getPublicRooms, getRoom, ROOM_GENRES } from '@/lib/rooms/service';
 import { ROOM_COLORS, ROOM_ICONS } from '@/types';
 import type { RoomListItem } from '@/types';
 import { INSTRUMENTS } from '@/types/user';
@@ -473,6 +474,8 @@ export default function LobbyPage() {
 
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [roomCode, setRoomCode] = useState('');
+  const [isJoining, setIsJoining] = useState(false);
+  const [joinError, setJoinError] = useState<string | null>(null);
   const [rooms, setRooms] = useState<RoomListItem[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
@@ -568,10 +571,31 @@ export default function LobbyPage() {
     return result;
   }, [roomsWithPresence, searchQuery, selectedGenre]);
 
-  const handleQuickJoin = () => {
-    if (roomCode.trim()) {
-      router.push(`/room/${roomCode.trim()}`);
+  const handleQuickJoin = async () => {
+    const code = roomCode.trim();
+    if (!code) return;
+
+    setIsJoining(true);
+    setJoinError(null);
+
+    try {
+      const room = await getRoom(code);
+      if (room) {
+        router.push(`/room/${code}`);
+      } else {
+        setJoinError(`Room "${code}" doesn't exist`);
+      }
+    } catch (err) {
+      setJoinError('Failed to check room. Please try again.');
+    } finally {
+      setIsJoining(false);
     }
+  };
+
+  const handleCreateInstead = () => {
+    setJoinError(null);
+    setRoomCode('');
+    setShowCreateModal(true);
   };
 
   const handleCreateRoom = () => {
@@ -670,21 +694,68 @@ export default function LobbyPage() {
               <div className={`flex items-center gap-1 px-2 py-1.5 rounded-lg ${isDark ? 'bg-white/10' : 'bg-white'}`}>
                 <Input
                   value={roomCode}
-                  onChange={(e) => setRoomCode(e.target.value.toUpperCase())}
+                  onChange={(e) => {
+                    setRoomCode(e.target.value.toUpperCase());
+                    setJoinError(null);
+                  }}
                   placeholder="CODE"
                   className={`w-20 text-center text-xs tracking-widest uppercase border-0 bg-transparent h-8 ${
                     isDark ? 'text-white placeholder:text-gray-500' : 'text-gray-900'
-                  }`}
-                  onKeyDown={(e) => e.key === 'Enter' && handleQuickJoin()}
+                  } ${joinError ? 'text-red-500' : ''}`}
+                  onKeyDown={(e) => e.key === 'Enter' && !isJoining && handleQuickJoin()}
                   maxLength={8}
+                  disabled={isJoining}
                 />
                 {roomCode.trim() && (
-                  <Button size="sm" variant="ghost" onClick={handleQuickJoin} className="h-8 px-2">
-                    <ArrowRight className="w-4 h-4" />
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={handleQuickJoin}
+                    disabled={isJoining}
+                    className={`h-8 px-2 ${isJoining ? 'opacity-50' : ''}`}
+                  >
+                    {isJoining ? (
+                      <motion.div
+                        className="w-4 h-4 border-2 border-current/30 border-t-current rounded-full"
+                        animate={{ rotate: 360 }}
+                        transition={{ duration: 1, repeat: Infinity, ease: 'linear' }}
+                      />
+                    ) : (
+                      <ArrowRight className="w-4 h-4" />
+                    )}
                   </Button>
                 )}
               </div>
             </div>
+
+            {/* Join error message */}
+            <AnimatePresence>
+              {joinError && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className={`flex items-center gap-2 mt-2 p-2 rounded-lg ${
+                    isDark
+                      ? 'bg-red-500/20 border border-red-500/30'
+                      : 'bg-red-50 border border-red-200'
+                  }`}
+                >
+                  <AlertCircle className={`w-4 h-4 flex-shrink-0 ${isDark ? 'text-red-400' : 'text-red-500'}`} />
+                  <span className={`text-sm ${isDark ? 'text-red-300' : 'text-red-600'}`}>
+                    {joinError}
+                  </span>
+                  <button
+                    onClick={handleCreateInstead}
+                    className={`ml-auto text-sm font-medium underline hover:no-underline whitespace-nowrap ${
+                      isDark ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-500'
+                    }`}
+                  >
+                    Create instead?
+                  </button>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </div>
 
           {/* Quick stats */}
