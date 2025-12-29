@@ -1148,8 +1148,6 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
             onAcceptOptimization={handleAcceptOptimization}
             onDismissOptimization={handleDismissOptimization}
             width={rightPanelWidth}
-            // WebRTC for AI audio sharing
-            getCloudflareRef={getCloudflareRef}
           />
         )}
       </div>
