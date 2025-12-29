@@ -189,10 +189,14 @@ impl BridgeServer {
             }
 
             BrowserMessage::SetChannelConfig { config } => {
+                info!("SetChannelConfig received: {:?}", config);
                 let mut app = self.state.lock().await;
 
                 match app.audio_engine.set_channel_config(config) {
-                    Ok(_) => None,
+                    Ok(_) => {
+                        info!("Channel config applied successfully");
+                        None
+                    }
                     Err(e) => Some(NativeMessage::Error {
                         code: "CONFIG_ERROR".to_string(),
                         message: e.to_string(),
@@ -234,6 +238,7 @@ impl BridgeServer {
             }
 
             BrowserMessage::SetBufferSize { size } => {
+                info!("SetBufferSize received: {}", size);
                 let mut app = self.state.lock().await;
 
                 let buffer_size = match size {
@@ -256,6 +261,7 @@ impl BridgeServer {
             }
 
             BrowserMessage::SetSampleRate { rate } => {
+                info!("SetSampleRate received: {}", rate);
                 let mut app = self.state.lock().await;
 
                 let sample_rate = match rate {
@@ -298,8 +304,8 @@ impl BridgeServer {
                 None
             }
 
-            _ => {
-                warn!("Unhandled message type");
+            other => {
+                warn!("Unhandled message type: {:?}", other);
                 None
             }
         }
