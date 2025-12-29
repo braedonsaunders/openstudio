@@ -121,11 +121,11 @@ const INSTRUMENT_ICONS: Record<string, React.ReactNode> = {
 
 // Walking configuration
 const WALK_X_BOUNDS = { minX: 10, maxX: 90 };
-const WALK_SPEED = 0.06; // Smooth walking
-const IDLE_DURATION_MIN = 6000;
-const IDLE_DURATION_MAX = 12000;
-const WALK_DURATION_MIN = 3000;
-const WALK_DURATION_MAX = 6000;
+const WALK_SPEED = 0.12; // Faster walking
+const IDLE_DURATION_MIN = 2000;  // Shorter idle times
+const IDLE_DURATION_MAX = 5000;
+const WALK_DURATION_MIN = 2000;
+const WALK_DURATION_MAX = 5000;
 
 // Calculate perspective scale based on Y position
 function calculatePerspectiveScale(yPosition: number, config: GroundConfig): number {
@@ -1091,8 +1091,8 @@ function StudioScene({ keyColor, audioLevel, isDark, activeUserPositions }: {
         )), [isDark])}
 
         {/* Cable runs on floor */}
-        <svg className="absolute inset-0 w-full h-full opacity-20" preserveAspectRatio="none">
-          <path d="M10% 60% Q30% 55% 50% 65% Q70% 75% 90% 70%" stroke={isDark ? '#52525b' : '#64748b'} strokeWidth="2" fill="none" />
+        <svg className="absolute inset-0 w-full h-full opacity-20" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M10 60 Q30 55 50 65 Q70 75 90 70" stroke={isDark ? '#52525b' : '#64748b'} strokeWidth="0.5" fill="none" />
         </svg>
       </div>
 
@@ -1459,6 +1459,109 @@ function ForestScene({ keyColor, isDark, audioLevel }: { keyColor: string; isDar
 }
 
 // ============================================
+// User Profile Popup
+// ============================================
+
+function UserProfilePopup({
+  user,
+  isCurrentUser,
+  keyColor,
+  onClose,
+}: {
+  user: User;
+  isCurrentUser: boolean;
+  keyColor: string;
+  onClose: () => void;
+}) {
+  const instrumentType = user.instrument || 'other';
+  const instrumentIcon = INSTRUMENT_ICONS[instrumentType.toLowerCase()] || INSTRUMENT_ICONS.other;
+
+  // Mock data - in real app would come from user object
+  const level = Math.floor(Math.random() * 50) + 1;
+  const xp = level * 250 + Math.floor(Math.random() * 250);
+  const tags = ['Producer', 'Guitarist', 'Songwriter'].slice(0, Math.floor(Math.random() * 3) + 1);
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 10, scale: 0.95 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: 5, scale: 0.98 }}
+      className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-56 p-3 rounded-xl bg-black/80 backdrop-blur-xl border border-white/20 shadow-2xl z-[300]"
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Header with avatar and name */}
+      <div className="flex items-center gap-3 mb-3">
+        <div className="relative">
+          <UserAvatar userId={user.id} username={user.name} size={40} variant="headshot" />
+          <div
+            className="absolute -bottom-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center border border-white/30"
+            style={{ background: `linear-gradient(135deg, ${keyColor}, #8b5cf6)` }}
+          >
+            <div className="text-white scale-[0.4]">{instrumentIcon}</div>
+          </div>
+        </div>
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-1">
+            <span className="text-sm font-semibold text-white truncate">{user.name}</span>
+            {isCurrentUser && <span className="text-[9px] text-indigo-400">(you)</span>}
+          </div>
+          <div className="text-[10px] text-white/50 capitalize">{instrumentType}</div>
+        </div>
+      </div>
+
+      {/* Level and XP */}
+      <div className="flex items-center gap-2 mb-2 p-2 rounded-lg bg-white/5">
+        <div className="flex items-center gap-1.5">
+          <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
+          <span className="text-xs font-medium text-white">Lvl {level}</span>
+        </div>
+        <div className="w-px h-4 bg-white/20" />
+        <div className="flex items-center gap-1">
+          <span className="text-[10px] text-white/60">{xp.toLocaleString()} XP</span>
+        </div>
+      </div>
+
+      {/* Tags */}
+      {tags.length > 0 && (
+        <div className="flex flex-wrap gap-1 mb-3">
+          {tags.map((tag, i) => (
+            <span
+              key={i}
+              className="px-1.5 py-0.5 text-[9px] font-medium rounded-full"
+              style={{ backgroundColor: `${keyColor}30`, color: keyColor }}
+            >
+              {tag}
+            </span>
+          ))}
+        </div>
+      )}
+
+      {/* Actions */}
+      <div className="flex gap-2">
+        <button
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 transition-colors text-xs font-medium text-white"
+          onClick={(e) => { e.stopPropagation(); /* Navigate to profile */ }}
+        >
+          <Users2 className="w-3 h-3" />
+          View Profile
+        </button>
+        {!isCurrentUser && (
+          <button
+            className="flex items-center justify-center px-2 py-1.5 rounded-lg hover:bg-white/10 transition-colors"
+            style={{ color: keyColor }}
+          >
+            <Heart className="w-3.5 h-3.5" />
+          </button>
+        )}
+      </div>
+
+      {/* Close hint */}
+      <div className="mt-2 text-center text-[9px] text-white/30">Click anywhere to close</div>
+    </motion.div>
+  );
+}
+
+// ============================================
 // Walking Avatar
 // ============================================
 
@@ -1475,33 +1578,48 @@ function WalkingAvatar({
   isCurrentUser: boolean;
   keyColor: string;
 }) {
+  const [showPopup, setShowPopup] = useState(false);
   const instrumentType = user.instrument || 'other';
   const instrumentIcon = INSTRUMENT_ICONS[instrumentType.toLowerCase()] || INSTRUMENT_ICONS.other;
 
   return (
     <div
-      className="absolute flex flex-col items-center transition-all duration-200 ease-out"
+      className="absolute flex flex-col items-center transition-all duration-200 ease-out cursor-pointer"
       style={{
         left: `${position.x}%`,
         top: `${position.y}%`,
         transform: `translateX(-50%) scale(${position.scale}) scaleX(${position.facingRight ? 1 : -1})`,
         transformOrigin: 'bottom center',
-        zIndex: Math.floor(position.y), // Higher Y = more in front = higher z-index
+        zIndex: showPopup ? 300 : Math.floor(position.y),
       }}
+      onClick={() => setShowPopup(!showPopup)}
     >
-      {/* Username */}
+      {/* Username with instrument icon */}
       <div
-        className="absolute -top-7 left-1/2 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 whitespace-nowrap"
+        className="absolute -top-7 left-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 whitespace-nowrap"
         style={{ transform: `translateX(-50%) scaleX(${position.facingRight ? 1 : -1})` }}
       >
+        <div className="text-white/70 scale-[0.6]">{instrumentIcon}</div>
         <span className="text-[10px] font-medium text-white/90">
           {user.name}
           {isCurrentUser && <span className="text-indigo-400 ml-1">(you)</span>}
         </span>
       </div>
 
+      {/* Profile popup */}
+      <AnimatePresence>
+        {showPopup && (
+          <UserProfilePopup
+            user={user}
+            isCurrentUser={isCurrentUser}
+            keyColor={keyColor}
+            onClose={() => setShowPopup(false)}
+          />
+        )}
+      </AnimatePresence>
+
       {/* Avatar */}
-      <div className="relative" style={{ animation: position.isWalking ? 'float 0.6s ease-in-out infinite' : 'float 4s ease-in-out infinite' }}>
+      <div className="relative" style={{ animation: position.isWalking ? 'float 0.5s ease-in-out infinite' : 'float 4s ease-in-out infinite' }}>
         {/* Glow */}
         {audioLevel > 0.1 && (
           <div
@@ -1517,31 +1635,6 @@ function WalkingAvatar({
         <div style={{ transform: `scaleX(${position.facingRight ? 1 : -1})` }}>
           <UserAvatar userId={user.id} username={user.name} size={100} variant="fullBody" />
         </div>
-
-        {/* Instrument badge */}
-        <div
-          className="absolute -bottom-1 -right-1 w-6 h-6 rounded-full flex items-center justify-center border-2 border-white/30"
-          style={{
-            background: `linear-gradient(135deg, ${keyColor}, #8b5cf6)`,
-            transform: `scaleX(${position.facingRight ? 1 : -1})`,
-          }}
-        >
-          <div className="text-white scale-[0.55]">{instrumentIcon}</div>
-        </div>
-      </div>
-
-      {/* Audio bars */}
-      <div className="flex gap-0.5 h-3 mt-1" style={{ transform: `scaleX(${position.facingRight ? 1 : -1})` }}>
-        {[0.15, 0.3, 0.45, 0.6, 0.75].map((threshold, i) => (
-          <div
-            key={i}
-            className="w-0.5 rounded-full transition-all duration-100"
-            style={{
-              height: audioLevel > threshold ? 12 : 4,
-              background: `linear-gradient(to top, ${keyColor}, #c4b5fd)`,
-            }}
-          />
-        ))}
       </div>
     </div>
   );
