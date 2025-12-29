@@ -103,13 +103,14 @@ export class GranularDelayProcessor extends BaseEffect {
     this.registerFilter(this.feedbackFilter);
 
     // Wire up main signal chain
-    // Dry path
-    this.inputGain.connect(this.dryGain);
+    // Dry path (goes through wetPathGate for proper bypass when disabled)
+    this.getWetPathInput().connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
     // Connect input to all grain delays
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
     for (const delay of this.delayLines) {
-      this.inputGain.connect(delay);
+      this.getWetPathInput().connect(delay);
     }
 
     // Connect all grain outputs to master wet

@@ -39,7 +39,8 @@ export class OverdriveProcessor extends BaseEffect {
     this.waveshaper.oversample = '4x';
 
     // Wire up: input -> preGain -> waveshaper -> toneFilter -> postGain -> wetGain -> output
-    this.inputGain.connect(this.preGain);
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
+    this.getWetPathInput().connect(this.preGain);
     this.preGain.connect(this.waveshaper);
     this.waveshaper.connect(this.toneFilter);
     this.toneFilter.connect(this.postGain);

@@ -86,11 +86,12 @@ export class StereoDelayProcessor extends BaseEffect {
     this.wetRight = audioContext.createGain();
 
     // Wire up signal chain
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
     // Split stereo input
-    this.inputGain.connect(this.splitter);
+    this.getWetPathInput().connect(this.splitter);
 
-    // Dry path
-    this.inputGain.connect(this.dryGain);
+    // Dry path (goes through wetPathGate for proper bypass)
+    this.getWetPathInput().connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
     // Left delay path

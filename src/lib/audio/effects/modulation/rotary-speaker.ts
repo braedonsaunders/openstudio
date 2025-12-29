@@ -125,7 +125,8 @@ export class RotarySpeakerProcessor extends BaseEffect {
     this.hornLFOGain.connect(this.hornDelay.delayTime);
     this.hornLFO.connect(this.hornAmGain.gain); // AM modulation
 
-    this.inputGain.connect(this.driveWaveshaper);
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
+    this.getWetPathInput().connect(this.driveWaveshaper);
     this.driveWaveshaper.connect(this.hornHighPass);
     this.hornHighPass.connect(this.hornDelay);
     this.hornDelay.connect(this.hornAmGain);
@@ -149,8 +150,8 @@ export class RotarySpeakerProcessor extends BaseEffect {
     this.drumPannerL.connect(this.wetGain2);
     this.drumPannerR.connect(this.wetGain2);
 
-    // Dry path
-    this.inputGain.connect(this.dryGain);
+    // Dry path (goes through wetPathGate for proper bypass)
+    this.getWetPathInput().connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
     // Wet output

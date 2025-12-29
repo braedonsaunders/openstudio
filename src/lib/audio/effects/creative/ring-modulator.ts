@@ -60,13 +60,14 @@ export class RingModulatorProcessor extends BaseEffect {
     this.registerFilter(this.envelopeFilter);
 
     // Wire up signal chain
-    // Dry path
-    this.inputGain.connect(this.dryGain);
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
+    // Dry path (goes through wetPathGate for proper bypass)
+    this.getWetPathInput().connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
     // Ring modulation path
     // Input goes through carrierGain which is modulated by carrier oscillator
-    this.inputGain.connect(this.carrierGain);
+    this.getWetPathInput().connect(this.carrierGain);
     this.carrierGain.connect(this.modGain);
     this.modGain.connect(this.wetGain);
 

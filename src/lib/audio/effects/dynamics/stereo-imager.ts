@@ -79,8 +79,9 @@ export class StereoImagerProcessor extends BaseEffect {
     this.registerFilter(this.sideFilter);
 
     // Wire up M/S processing
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
     // Input -> splitter
-    this.inputGain.connect(this.splitter);
+    this.getWetPathInput().connect(this.splitter);
 
     // M/S encoding:
     // Mid = (L + R) / 2
