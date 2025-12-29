@@ -26,6 +26,7 @@ pub struct DeviceInfo {
     pub is_output: bool,
     pub channels: Vec<ChannelInfo>,
     pub sample_rates: Vec<u32>,
+    pub buffer_sizes: Vec<u32>,
     pub is_default: bool,
     pub driver_type: DriverType,
 }
@@ -278,6 +279,28 @@ impl AudioDevice {
             output_channels
         };
 
+        // Determine supported buffer sizes based on driver type
+        // ASIO typically reports specific sizes, WASAPI/CoreAudio are more flexible
+        let buffer_sizes = match driver_type {
+            DriverType::Asio => {
+                // ASIO drivers typically support specific buffer sizes
+                // Common ASIO buffer sizes (driver-dependent, but these are typical)
+                vec![32, 64, 128, 256, 512, 1024, 2048]
+            }
+            DriverType::Wasapi => {
+                // WASAPI exclusive mode typically supports powers of 2
+                vec![128, 256, 512, 1024, 2048]
+            }
+            DriverType::CoreAudio => {
+                // CoreAudio is very flexible with buffer sizes
+                vec![32, 64, 128, 256, 512, 1024, 2048]
+            }
+            _ => {
+                // Default reasonable buffer sizes
+                vec![128, 256, 512, 1024]
+            }
+        };
+
         Some(DeviceInfo {
             id,
             name,
@@ -285,6 +308,7 @@ impl AudioDevice {
             is_output,
             channels,
             sample_rates,
+            buffer_sizes,
             is_default: false,
             driver_type,
         })

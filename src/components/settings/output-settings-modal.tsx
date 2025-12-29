@@ -9,6 +9,7 @@ import { useNativeBridge } from '@/hooks/useNativeBridge';
 import { nativeBridge } from '@/lib/audio/native-bridge';
 import {
   Speaker,
+  Mic,
   Volume2,
   AlertCircle,
   RefreshCw,
@@ -51,8 +52,11 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
     getDownloadUrl,
     refreshDevices,
     // Device selection
+    inputDevices: bridgeInputDevices,
     outputDevices: bridgeOutputDevices,
+    selectedInputDeviceId,
     selectedOutputDeviceId,
+    setInputDevice: setBridgeInputDevice,
     setOutputDevice: setBridgeOutputDevice,
     // Settings
     bufferSize,
@@ -241,18 +245,25 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
 
               {/* Error display */}
               {lastError && (
-                <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-600 dark:text-red-400">
-                  <AlertCircle className="w-4 h-4 shrink-0" />
-                  <span className="truncate">{lastError.message}</span>
+                <div className="flex items-start gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-600 dark:text-red-400">
+                  <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="font-medium">{lastError.message}</div>
+                    {lastError.message.includes('not supported') && (
+                      <div className="text-red-500/70 dark:text-red-400/70 mt-1">
+                        Try using the same ASIO device for input/output, or increase buffer size.
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 
-              {/* Output Device Selection */}
+              {/* Audio Device Selection (same device for input/output with ASIO) */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
                     <Speaker className="w-3.5 h-3.5" />
-                    Output Device
+                    Audio Device
                   </label>
                   <button
                     onClick={refreshDevices}
@@ -265,10 +276,14 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
                 <div className="relative">
                   <select
                     value={selectedOutputDeviceId || ''}
-                    onChange={(e) => setBridgeOutputDevice(e.target.value)}
+                    onChange={(e) => {
+                      // Set both input and output to same device for ASIO compatibility
+                      setBridgeInputDevice(e.target.value);
+                      setBridgeOutputDevice(e.target.value);
+                    }}
                     className="w-full h-9 px-3 pr-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
                   >
-                    <option value="">Select output device...</option>
+                    <option value="">Select audio device...</option>
                     {bridgeOutputDevices.map((device) => (
                       <option key={device.id} value={device.id}>
                         {device.name} ({device.channels.length}ch)
@@ -277,6 +292,9 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
                   </select>
                   <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
                 </div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400">
+                  ASIO uses the same device for input and output
+                </p>
               </div>
 
               {/* Buffer & Sample Rate Settings */}
