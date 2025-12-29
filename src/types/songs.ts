@@ -2,23 +2,55 @@
 
 import type { BackingTrack } from './index';
 import type { LoopTrackState } from './loops';
+import type { LyriaStyleId, LyriaMoodId } from '@/lib/ai/lyria';
 
 // =============================================================================
-// Song Track Reference - unified reference to audio or loop track
+// Lyria Track Configuration - for AI-generated music tracks
 // =============================================================================
 
-export type SongTrackType = 'audio' | 'loop';
+export interface LyriaTrackConfig {
+  // Style and mood settings
+  styleId: LyriaStyleId;
+  moodId: LyriaMoodId | null;
+  customPrompt?: string;
+
+  // Generation controls
+  density: number;
+  brightness: number;
+  drums: number;
+  bass: number;
+  temperature: number;
+}
+
+// Default Lyria config for new tracks
+export const DEFAULT_LYRIA_CONFIG: LyriaTrackConfig = {
+  styleId: 'jazz',
+  moodId: 'chill',
+  density: 0.5,
+  brightness: 0.5,
+  drums: 0.7,
+  bass: 0.7,
+  temperature: 0.5,
+};
+
+// =============================================================================
+// Song Track Reference - unified reference to audio, loop, or lyria track
+// =============================================================================
+
+export type SongTrackType = 'audio' | 'loop' | 'lyria';
 
 export interface SongTrackReference {
   id: string;
   type: SongTrackType;
-  trackId: string; // Reference to BackingTrack.id or LoopTrackState.id
+  trackId: string; // Reference to BackingTrack.id, LoopTrackState.id, or 'lyria-{id}' for Lyria
   position: number; // Order in the song's track list
   startOffset: number; // When this track starts (in seconds from song start)
   // Overrides (if different from source track)
   volume?: number;
   muted?: boolean;
   solo?: boolean;
+  // Lyria-specific config (only for type='lyria')
+  lyriaConfig?: LyriaTrackConfig;
 }
 
 // =============================================================================

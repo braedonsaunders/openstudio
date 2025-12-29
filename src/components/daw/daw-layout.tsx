@@ -13,6 +13,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { useLyriaStore } from '@/stores/lyria-store';
 import { getLoopById } from '@/lib/audio/loop-library';
 import { getCachedLoopById } from '@/hooks/use-loop-library';
 import { useCustomLoopsStore } from '@/stores/custom-loops-store';
@@ -128,7 +129,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     getCloudflareRef,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume } = useAudioEngine();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume, currentTime } = useAudioStore();
 
@@ -138,6 +139,11 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   const { getLoop: getCustomLoop } = useCustomLoopsStore();
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
+
+  // Lyria store - for AI music generation tracks
+  const lyriaStore = useLyriaStore();
+  const lyriaStoreRef = useRef(lyriaStore);
+  lyriaStoreRef.current = lyriaStore;
 
   // Calculate loop duration from definition
   const getLoopDuration = useCallback((loopDef: ReturnType<typeof getLoopById>): number => {
@@ -169,6 +175,15 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
           loopTrack,
           loopDef,
         };
+      } else if (trackRef.type === 'lyria') {
+        // Lyria AI music track - infinite duration (plays continuously)
+        return {
+          ref: trackRef,
+          type: 'lyria' as const,
+          name: trackRef.lyriaConfig?.customPrompt || `AI Music (${trackRef.lyriaConfig?.styleId || 'jazz'})`,
+          duration: Infinity, // Lyria is continuous, doesn't have a fixed duration
+          lyriaConfig: trackRef.lyriaConfig,
+        };
       } else {
         const audioTrack = queue.tracks.find((t: BackingTrack) => t.id === trackRef.trackId);
         return {
@@ -198,6 +213,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   // Memoize track type checks to avoid recalculating on every render
   const hasAudioTracks = useMemo(() => songTracks.some((t) => t.type === 'audio'), [songTracks]);
   const hasLoopTracks = useMemo(() => songTracks.some((t) => t.type === 'loop'), [songTracks]);
+  const hasLyriaTracks = useMemo(() => songTracks.some((t) => t.type === 'lyria'), [songTracks]);
 
   // Check if Song has any tracks to play
   const hasSongTracks = songTracks.length > 0;
@@ -217,6 +233,40 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
 
   // Sync session tempo from track/analyzer to loop scheduler
   useSessionTempoSync();
+
+  // Store audio engine methods in ref for Lyria callbacks
+  const audioEngineRef = useRef({ addExternalAudioSource, removeExternalAudioSource });
+  audioEngineRef.current = { addExternalAudioSource, removeExternalAudioSource };
+
+  // Lyria audio source ID
+  const LYRIA_AUDIO_SOURCE_ID = 'lyria-ai-music';
+
+  // Initialize Lyria store and connect to audio engine
+  useEffect(() => {
+    const lyria = lyriaStoreRef.current;
+
+    // Initialize the Lyria session
+    lyria.initialize();
+
+    // Set up audio callbacks to route Lyria through the audio engine
+    lyria.setAudioCallbacks(
+      (stream: MediaStream) => {
+        // Called when Lyria connects - add stream to audio engine
+        audioEngineRef.current.addExternalAudioSource(LYRIA_AUDIO_SOURCE_ID, stream, lyria.volume);
+        console.log('[DAWLayout] Lyria audio connected to AudioEngine');
+      },
+      () => {
+        // Called when Lyria disconnects - remove stream from audio engine
+        audioEngineRef.current.removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
+        console.log('[DAWLayout] Lyria audio disconnected from AudioEngine');
+      }
+    );
+
+    return () => {
+      // Cleanup on unmount
+      lyria.dispose();
+    };
+  }, []);
 
   // Loop playback - connects loop scheduler to sound engine
   // This is now BULLETPROOF - it automatically reacts to song changes during playback
@@ -354,6 +404,29 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       }
     }
 
+    // Play Lyria tracks - AI music generation
+    for (const track of songTracks) {
+      if (track.type === 'lyria' && track.lyriaConfig && !track.ref.muted) {
+        console.log('Playing Lyria track:', track.name);
+        const lyria = lyriaStoreRef.current;
+
+        // Connect to Lyria if not already connected
+        if (lyria.sessionState === 'disconnected' || lyria.sessionState === 'error') {
+          try {
+            await lyria.connect();
+          } catch (err) {
+            console.error('Failed to connect to Lyria:', err);
+            continue;
+          }
+        }
+
+        // Set config and play
+        lyria.setActiveConfig(track.lyriaConfig, currentSong.id, track.ref.id);
+        lyria.play(track.lyriaConfig);
+        break; // Only one Lyria track at a time
+      }
+    }
+
     setPlaying(true);
   }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setDuration, setPlaying, setBackingTrackVolume]);
 
@@ -368,6 +441,12 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       if (track.type === 'loop' && track.loopTrack) {
         stopLoopTrack(track.loopTrack.id);
       }
+    }
+
+    // Pause Lyria if playing
+    const lyria = lyriaStoreRef.current;
+    if (lyria.sessionState === 'playing') {
+      lyria.pause();
     }
 
     setPlaying(false);
