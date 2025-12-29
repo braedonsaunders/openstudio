@@ -301,8 +301,8 @@ export function useAudioEngine() {
     globalEngine?.setLocalTrackVolume(volume);
   }, []);
 
-  // Update local effects (unified chain - all 15 effects)
-  const updateLocalEffects = useCallback((effects: Partial<import('@/types').UnifiedEffectsChain>) => {
+  // Update local effects (extended chain - all 35 effects)
+  const updateLocalEffects = useCallback((effects: Partial<import('@/types').ExtendedEffectsChain>) => {
     globalEngine?.updateLocalEffects(effects);
   }, []);
 
