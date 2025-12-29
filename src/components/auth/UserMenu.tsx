@@ -158,7 +158,7 @@ export function UserMenu() {
           onClick={() => setShowDropdown(!showDropdown)}
           className="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
-          <UserAvatar userId={user.id} username={profile.username} size="sm" />
+          <UserAvatar userId={user.id} username={profile.username} size="sm" variant="headshot" />
           <div className="hidden sm:block text-left">
             <p className="text-sm font-medium text-gray-900 dark:text-white">{profile.displayName}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">Level {profile.level}</p>
@@ -171,7 +171,7 @@ export function UserMenu() {
             {/* Header */}
             <div className="p-4 border-b border-gray-200 dark:border-gray-800">
               <div className="flex items-center gap-3">
-                <UserAvatar userId={user.id} username={profile.username} size="md" />
+                <UserAvatar userId={user.id} username={profile.username} size="md" variant="headshot" />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 dark:text-white truncate">{profile.displayName}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">@{profile.username}</p>

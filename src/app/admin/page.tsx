@@ -9,7 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { Modal } from '@/components/ui/modal';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import type { UserProfile } from '@/types/user';
 import {
   ArrowLeft,
@@ -468,7 +468,7 @@ function UsersTab({ adminId }: { adminId: string }) {
                 <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
                   <td className="px-4 py-4">
                     <div className="flex items-center gap-3">
-                      <AvatarDisplay avatar={null} size="sm" username={user.username} />
+                      <UserAvatar userId={user.id} username={user.username} size="sm" variant="headshot" />
                       <div>
                         <p className="text-gray-900 dark:text-white font-medium">{user.displayName}</p>
                         <p className="text-sm text-gray-500 dark:text-gray-400">@{user.username}</p>

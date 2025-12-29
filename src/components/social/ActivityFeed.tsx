@@ -3,10 +3,9 @@
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { Card } from '@/components/ui/card';
-import { getActivityFeed, getUserAvatar, type ActivityItem } from '@/lib/supabase/auth';
-import type { Avatar } from '@/types/user';
+import { getActivityFeed, type ActivityItem } from '@/lib/supabase/auth';
 import { ALL_ACHIEVEMENTS } from '@/data/achievements';
 import {
   Trophy,
@@ -30,7 +29,6 @@ export function ActivityFeed({ limit = 20, showHeader = true, className = '' }: 
   const { user } = useAuthStore();
 
   const [activities, setActivities] = useState<ActivityItem[]>([]);
-  const [avatarCache, setAvatarCache] = useState<Record<string, Avatar | null>>({});
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -45,16 +43,6 @@ export function ActivityFeed({ limit = 20, showHeader = true, className = '' }: 
     try {
       const feed = await getActivityFeed(user.id, limit);
       setActivities(feed);
-
-      // Fetch avatars
-      const newCache = { ...avatarCache };
-      for (const item of feed) {
-        if (item.userId && !newCache[item.userId]) {
-          const avatar = await getUserAvatar(item.userId);
-          newCache[item.userId] = avatar;
-        }
-      }
-      setAvatarCache(newCache);
     } catch (error) {
       console.error('Failed to load activity feed:', error);
     } finally {
@@ -159,10 +147,11 @@ export function ActivityFeed({ limit = 20, showHeader = true, className = '' }: 
                       className="cursor-pointer"
                       onClick={() => activity.user && router.push(`/profile/${activity.user.username}`)}
                     >
-                      <AvatarDisplay
-                        avatar={avatarCache[activity.userId]}
-                        size="sm"
+                      <UserAvatar
+                        userId={activity.userId}
                         username={activity.user?.username || ''}
+                        size="sm"
+                        variant="headshot"
                       />
                     </div>
 

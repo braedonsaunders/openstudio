@@ -6,7 +6,7 @@ import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import {
   Mic,
   Guitar,
@@ -350,11 +350,11 @@ function UserChannelStrip({
         <div className="flex flex-col items-center gap-1.5">
           {/* Avatar */}
           <div className="relative">
-            <AvatarDisplay
-              avatar={null}
+            <UserAvatar
+              userId={user.id}
               username={user.name}
               size="sm"
-              showEffects={audioLevel > 0.1}
+              variant="headshot"
             />
             {audioLevel > 0.1 && (
               <motion.div

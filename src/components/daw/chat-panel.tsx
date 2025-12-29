@@ -6,7 +6,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { saveChatMessage, getRoomChatMessages } from '@/lib/supabase/auth';
 import { useChatPermissions } from '@/hooks/usePermissions';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { REACTION_TYPES, type ReactionType } from '@/types/user';
 import { Send, MessageSquare, Link2, Video, VideoOff, X, ExternalLink, Mic, MicOff, Phone, PhoneOff, ChevronLeft, Headphones, Lock } from 'lucide-react';
 import { AudioChatPanel } from './audio-chat-panel';
@@ -497,11 +497,13 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
                   )}
                 >
                   {/* Avatar */}
-                  <div
-                    className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-semibold text-white shrink-0"
-                    style={{ backgroundColor: msg.userColor || '#6366f1' }}
-                  >
-                    {msg.userName?.charAt(0).toUpperCase() || '?'}
+                  <div className="shrink-0">
+                    <UserAvatar
+                      userId={msg.userId}
+                      username={msg.userName}
+                      size={28}
+                      variant="headshot"
+                    />
                   </div>
 
                   {/* Message Bubble */}
