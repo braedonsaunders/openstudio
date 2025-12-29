@@ -572,7 +572,7 @@ function NightScene() {
         exit={{ x: '30%' }}
         transition={{ ...parallaxTransition, duration: 1 }}
       >
-        <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-900 via-60% to-orange-500" />
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-950 via-purple-950 via-45% to-amber-700" />
       </motion.div>
 
       {/* Layer 2: Stars - slow, far away */}
@@ -603,8 +603,8 @@ function NightScene() {
             ease: 'easeInOut',
           }}
         >
-          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-100 to-gray-300"
-            style={{ boxShadow: '0 0 60px 15px rgba(255, 255, 255, 0.2)' }}
+          <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-200 to-gray-400"
+            style={{ boxShadow: '0 0 40px 10px rgba(255, 255, 255, 0.12)' }}
           />
         </motion.div>
       </motion.div>
@@ -644,7 +644,7 @@ function NightScene() {
               width="3"
               height="4"
               fill="#fef08a"
-              animate={{ opacity: [0.3, 1, 0.3] }}
+              animate={{ opacity: [0.2, 0.7, 0.2] }}
               transition={{
                 duration: 1 + (i % 3),
                 delay: (i % 10) * 0.2,
@@ -660,7 +660,7 @@ function NightScene() {
               width="3"
               height="4"
               fill="#fef08a"
-              animate={{ opacity: [0.3, 1, 0.3] }}
+              animate={{ opacity: [0.2, 0.7, 0.2] }}
               transition={{
                 duration: 1 + (i % 3),
                 delay: (i % 10) * 0.2,
@@ -725,13 +725,13 @@ function NightScene() {
         <svg className="w-full h-full" viewBox="0 0 1440 250" preserveAspectRatio="none">
           <defs>
             <linearGradient id="oceanGradient" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#7c3aed" stopOpacity="0.6" />
-              <stop offset="50%" stopColor="#4c1d95" stopOpacity="0.8" />
+              <stop offset="0%" stopColor="#5b21b6" stopOpacity="0.7" />
+              <stop offset="50%" stopColor="#3b0764" stopOpacity="0.85" />
               <stop offset="100%" stopColor="#1e1b4b" />
             </linearGradient>
             <linearGradient id="sunReflection" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#fb923c" stopOpacity="0.6" />
-              <stop offset="100%" stopColor="#fb923c" stopOpacity="0" />
+              <stop offset="0%" stopColor="#d97706" stopOpacity="0.4" />
+              <stop offset="100%" stopColor="#d97706" stopOpacity="0" />
             </linearGradient>
           </defs>
           <rect x="0" y="0" width="1440" height="250" fill="url(#oceanGradient)" />
@@ -745,7 +745,7 @@ function NightScene() {
           animate={{ x: [-50, 0, -50] }}
           transition={{ duration: 8, repeat: Infinity, ease: 'easeInOut' }}
         >
-          <path d="M0 25 Q60 10 120 25 Q180 40 240 25 Q300 10 360 25 Q420 40 480 25 Q540 10 600 25 Q660 40 720 25 Q780 10 840 25 Q900 40 960 25 Q1020 10 1080 25 Q1140 40 1200 25 Q1260 10 1320 25 Q1380 40 1440 25 L1440 50 L0 50 Z" fill="rgba(139, 92, 246, 0.3)" />
+          <path d="M0 25 Q60 10 120 25 Q180 40 240 25 Q300 10 360 25 Q420 40 480 25 Q540 10 600 25 Q660 40 720 25 Q780 10 840 25 Q900 40 960 25 Q1020 10 1080 25 Q1140 40 1200 25 Q1260 10 1320 25 Q1380 40 1440 25 L1440 50 L0 50 Z" fill="rgba(91, 33, 182, 0.25)" />
         </motion.svg>
       </motion.div>
 
@@ -757,7 +757,7 @@ function NightScene() {
         exit={{ y: '100%' }}
         transition={{ ...parallaxTransition, duration: 0.65 }}
       >
-        <div className="w-full h-full bg-gradient-to-t from-amber-900/80 to-amber-800/60" />
+        <div className="w-full h-full bg-gradient-to-t from-amber-950/85 to-amber-900/70" />
       </motion.div>
 
       {/* Layer 8: Campfire - slides up from bottom */}
@@ -784,7 +784,7 @@ function NightScene() {
             style={{
               left: `${20 + i * 30}%`,
               top: '10%',
-              boxShadow: '0 0 6px 2px rgba(255, 255, 255, 0.8)',
+              boxShadow: '0 0 4px 1px rgba(255, 255, 255, 0.6)',
             }}
             animate={{
               x: [0, 200],
@@ -816,7 +816,7 @@ function NightScene() {
             style={{
               left: `${10 + (i * 6) % 80}%`,
               bottom: `${15 + (i * 3) % 20}%`,
-              background: 'radial-gradient(circle, rgba(250, 204, 21, 0.9), transparent)',
+              background: 'radial-gradient(circle, rgba(250, 204, 21, 0.7), transparent)',
             }}
             animate={{
               opacity: [0, 1, 0],
