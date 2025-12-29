@@ -438,9 +438,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
           }
         }
 
-        // Play (or resume) if connected
+        // Play (or resume) if connected - must await to ensure AudioContext is resumed
         if (lyriaStore.sessionState === 'connected' || lyriaStore.sessionState === 'paused') {
-          lyriaStore.play(track.ref.lyriaConfig);
+          await lyriaStore.play(track.ref.lyriaConfig);
         }
         break; // Only one Lyria track per song
       }

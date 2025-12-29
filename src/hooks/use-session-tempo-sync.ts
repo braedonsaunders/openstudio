@@ -4,6 +4,7 @@ import { useEffect, useRef } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-tempo-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
+import { useLyriaStore } from '@/stores/lyria-store';
 import { useRoomStore } from '@/stores/room-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { useAnalysisStore } from '@/stores/analysis-store';
@@ -151,6 +152,14 @@ export function useSessionTempoSync(): void {
       setMasterKey(null);
     }
   }, [key, keyScale]);
+
+  // ==========================================================================
+  // Sync session tempo and key to Lyria store
+  // This ensures Lyria receives BPM/key updates even when AI panel is not visible
+  // ==========================================================================
+  useEffect(() => {
+    useLyriaStore.getState().setRoomContext(tempo, key, keyScale);
+  }, [tempo, key, keyScale]);
 }
 
 /**
