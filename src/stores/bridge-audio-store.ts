@@ -49,6 +49,9 @@ interface BridgeAudioState {
   bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
   sampleRate: 44100 | 48000;
 
+  // Preference: use native bridge when available (persisted)
+  preferNativeBridge: boolean;
+
   // Error state
   lastError: { code: string; message: string } | null;
 
@@ -64,6 +67,7 @@ interface BridgeAudioState {
   setOutputChannelConfig: (config: { channelCount: 1 | 2; leftChannel: number; rightChannel?: number }) => void;
   setBufferSize: (size: 32 | 64 | 128 | 256 | 512 | 1024) => void;
   setSampleRate: (rate: 44100 | 48000) => void;
+  setPreferNativeBridge: (prefer: boolean) => void;
   setError: (error: { code: string; message: string } | null) => void;
   reset: () => void;
 
@@ -99,6 +103,7 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
       },
       bufferSize: 256,
       sampleRate: 48000,
+      preferNativeBridge: true,
 
       // Actions
       setConnected: (connected) => set({ isConnected: connected }),
@@ -141,6 +146,7 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
 
       setBufferSize: (size) => set({ bufferSize: size }),
       setSampleRate: (rate) => set({ sampleRate: rate }),
+      setPreferNativeBridge: (prefer) => set({ preferNativeBridge: prefer }),
 
       setError: (error) => set({ lastError: error }),
 
@@ -175,6 +181,7 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
         outputChannelConfig: state.outputChannelConfig,
         bufferSize: state.bufferSize,
         sampleRate: state.sampleRate,
+        preferNativeBridge: state.preferNativeBridge,
       }),
     }
   )

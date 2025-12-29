@@ -320,8 +320,8 @@ export class NativeBridge {
     this.send({
       type: 'hello',
       version: '1.0.0',
-      roomId,
-      userId,
+      room_id: roomId,
+      user_id: userId,
     });
   }
 
@@ -336,14 +336,14 @@ export class NativeBridge {
    * Set input device
    */
   setInputDevice(deviceId: string): void {
-    this.send({ type: 'setInputDevice', deviceId });
+    this.send({ type: 'setInputDevice', device_id: deviceId });
   }
 
   /**
    * Set output device
    */
   setOutputDevice(deviceId: string): void {
-    this.send({ type: 'setOutputDevice', deviceId });
+    this.send({ type: 'setOutputDevice', device_id: deviceId });
   }
 
   /**
@@ -352,9 +352,9 @@ export class NativeBridge {
   setChannelConfig(config: InputChannelConfig): void {
     this.send({
       type: 'setChannelConfig',
-      channelCount: config.channelCount,
-      leftChannel: config.leftChannel,
-      rightChannel: config.rightChannel,
+      channel_count: config.channelCount,
+      left_channel: config.leftChannel,
+      right_channel: config.rightChannel,
     });
   }
 
@@ -401,14 +401,25 @@ export class NativeBridge {
       monitoringVolume?: number;
     }
   ): void {
-    this.send({ type: 'updateTrackState', trackId, ...state });
+    // Convert camelCase to snake_case for Rust serde
+    this.send({
+      type: 'updateTrackState',
+      track_id: trackId,
+      is_armed: state.isArmed,
+      is_muted: state.isMuted,
+      is_solo: state.isSolo,
+      volume: state.volume,
+      input_gain_db: state.inputGainDb,
+      monitoring_enabled: state.monitoringEnabled,
+      monitoring_volume: state.monitoringVolume,
+    });
   }
 
   /**
    * Update effects
    */
   updateEffects(trackId: string, effects: Partial<UnifiedEffectsChain>): void {
-    this.send({ type: 'updateEffects', trackId, effects });
+    this.send({ type: 'updateEffects', track_id: trackId, effects });
   }
 
   /**
@@ -429,14 +440,14 @@ export class NativeBridge {
    * Add remote user
    */
   addRemoteUser(userId: string, userName: string): void {
-    this.send({ type: 'addRemoteUser', userId, userName });
+    this.send({ type: 'addRemoteUser', user_id: userId, user_name: userName });
   }
 
   /**
    * Remove remote user
    */
   removeRemoteUser(userId: string): void {
-    this.send({ type: 'removeRemoteUser', userId });
+    this.send({ type: 'removeRemoteUser', user_id: userId });
   }
 
   /**
@@ -448,7 +459,13 @@ export class NativeBridge {
     muted: boolean,
     compensationDelayMs: number
   ): void {
-    this.send({ type: 'updateRemoteUser', userId, volume, muted, compensationDelayMs });
+    this.send({
+      type: 'updateRemoteUser',
+      user_id: userId,
+      volume,
+      muted,
+      compensation_delay_ms: compensationDelayMs,
+    });
   }
 
   /**
@@ -462,7 +479,7 @@ export class NativeBridge {
    * Play backing track
    */
   playBackingTrack(syncTimestamp: number, offset: number): void {
-    this.send({ type: 'playBackingTrack', syncTimestamp, offset });
+    this.send({ type: 'playBackingTrack', sync_timestamp: syncTimestamp, offset });
   }
 
   /**

@@ -6,6 +6,7 @@ import { Modal } from '../ui/modal';
 import { useAudioStore } from '@/stores/audio-store';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useNativeBridge } from '@/hooks/useNativeBridge';
+import { nativeBridge } from '@/lib/audio/native-bridge';
 import {
   Speaker,
   Volume2,
@@ -18,9 +19,7 @@ import {
   XCircle,
   Loader2,
   ExternalLink,
-  Mic,
-  Play,
-  Square,
+  Globe,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -35,32 +34,8 @@ interface OutputSettingsModalProps {
   onClose: () => void;
 }
 
-// Generate channel options based on device channel count
-function getChannelOptions(channels: { index: number; name: string }[]): { mono: number[]; stereo: [number, number][] } {
-  const mono: number[] = channels.map(ch => ch.index);
-  const stereo: [number, number][] = [];
-
-  // Create stereo pairs
-  for (let i = 0; i < channels.length - 1; i += 2) {
-    stereo.push([channels[i].index, channels[i + 1].index]);
-  }
-
-  return { mono, stereo };
-}
-
-function formatChannel(index: number, channels: { index: number; name: string }[]): string {
-  const channel = channels.find(ch => ch.index === index);
-  return channel?.name || `Ch ${index + 1}`;
-}
-
-function formatStereoPair(left: number, right: number, channels: { index: number; name: string }[]): string {
-  const leftCh = channels.find(ch => ch.index === left);
-  const rightCh = channels.find(ch => ch.index === right);
-  return `${leftCh?.name || `Ch ${left + 1}`} / ${rightCh?.name || `Ch ${right + 1}`}`;
-}
-
 export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProps) {
-  const { outputDeviceId, masterVolume, setMasterVolume, backingTrackVolume, setBackingTrackVolume } = useAudioStore();
+  const { outputDeviceId, masterVolume, setMasterVolume } = useAudioStore();
   const { setOutputDevice } = useAudioEngine();
   const {
     isAvailable,
@@ -72,24 +47,19 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
     connect,
     disconnect,
     getDownloadUrl,
-    startAudio,
-    stopAudio,
     refreshDevices,
     // Device selection
-    inputDevices: bridgeInputDevices,
     outputDevices: bridgeOutputDevices,
-    selectedInputDeviceId,
     selectedOutputDeviceId,
-    setInputDevice: setBridgeInputDevice,
     setOutputDevice: setBridgeOutputDevice,
     // Settings
     bufferSize,
     sampleRate,
-    inputChannelConfig,
     setBufferSize,
     setSampleRate,
-    setChannelConfig,
-    getSelectedInputDevice,
+    // Preference
+    preferNativeBridge,
+    setPreferNativeBridge,
   } = useNativeBridge();
 
   const [outputDevices, setOutputDevices] = useState<AudioDevice[]>([]);
@@ -97,11 +67,6 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isConnecting, setIsConnecting] = useState(false);
-
-  // Get selected input device for channel options
-  const selectedBridgeInput = getSelectedInputDevice();
-  const inputChannels = selectedBridgeInput?.channels || [];
-  const channelOptions = getChannelOptions(inputChannels);
 
   // Load available browser devices
   const loadDevices = useCallback(async () => {
@@ -138,9 +103,12 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
   }, [isOpen, loadDevices, outputDeviceId]);
 
   const handleSave = useCallback(async () => {
-    await setOutputDevice(selectedOutput);
+    // Save browser output device when not using native bridge
+    if (!preferNativeBridge || !isConnected) {
+      await setOutputDevice(selectedOutput);
+    }
     onClose();
-  }, [selectedOutput, setOutputDevice, onClose]);
+  }, [selectedOutput, setOutputDevice, onClose, preferNativeBridge, isConnected]);
 
   const handleConnect = useCallback(async () => {
     setIsConnecting(true);
@@ -158,18 +126,22 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
     }
   }, [getDownloadUrl]);
 
-  const handleChannelConfigChange = useCallback((config: { channelCount: 1 | 2; leftChannel: number; rightChannel?: number }) => {
-    setChannelConfig(config);
-  }, [setChannelConfig]);
+  // Handle master volume change - send to native bridge if connected and preferred
+  const handleMasterVolumeChange = useCallback((volume: number) => {
+    setMasterVolume(volume);
+    if (isConnected && preferNativeBridge) {
+      nativeBridge.setMasterVolume(volume);
+    }
+  }, [setMasterVolume, isConnected, preferNativeBridge]);
 
-  // Check if we can start audio
-  const canStartAudio = isConnected && selectedInputDeviceId && selectedOutputDeviceId;
+  // Determine if we're using native bridge for audio
+  const usingNativeBridge = isConnected && preferNativeBridge;
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Audio Output Settings"
+      title="Audio Settings"
       description="Configure your audio output and volume levels"
       className="max-w-lg"
     >
@@ -181,13 +153,53 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
           </div>
         )}
 
+        {/* Audio Engine Toggle - only show when bridge is available */}
+        {isConnected && (
+          <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl">
+            <div className="flex items-center justify-between">
+              <div>
+                <div className="text-sm font-medium text-gray-900 dark:text-white">Audio Engine</div>
+                <div className="text-xs text-gray-500 dark:text-gray-400">
+                  {preferNativeBridge ? 'Using low-latency native bridge' : 'Using browser Web Audio'}
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setPreferNativeBridge(false)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                    !preferNativeBridge
+                      ? 'bg-indigo-500 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                  )}
+                >
+                  <Globe className="w-3.5 h-3.5" />
+                  Web Audio
+                </button>
+                <button
+                  onClick={() => setPreferNativeBridge(true)}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                    preferNativeBridge
+                      ? 'bg-indigo-500 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                  )}
+                >
+                  <Zap className="w-3.5 h-3.5" />
+                  Native Bridge
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Native Bridge Section */}
         <div className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-500/10 dark:to-purple-500/10 border border-indigo-200 dark:border-indigo-500/20 rounded-xl space-y-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Zap className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
               <span className="text-sm font-medium text-gray-900 dark:text-white">
-                Low-Latency Audio Bridge
+                Native Audio Bridge
               </span>
             </div>
             {isAvailable === null ? (
@@ -230,12 +242,12 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
                 </div>
               )}
 
-              {/* Input Device Selection */}
+              {/* Output Device Selection */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between">
                   <label className="text-xs font-medium text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
-                    <Mic className="w-3.5 h-3.5" />
-                    Input Device
+                    <Speaker className="w-3.5 h-3.5" />
+                    Output Device
                   </label>
                   <button
                     onClick={refreshDevices}
@@ -245,109 +257,6 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
                     <RefreshCw className="w-3 h-3" />
                   </button>
                 </div>
-                <div className="relative">
-                  <select
-                    value={selectedInputDeviceId || ''}
-                    onChange={(e) => setBridgeInputDevice(e.target.value)}
-                    className="w-full h-9 px-3 pr-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500"
-                  >
-                    <option value="">Select input device...</option>
-                    {bridgeInputDevices.map((device) => (
-                      <option key={device.id} value={device.id}>
-                        {device.name} ({device.channels.length}ch)
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-                </div>
-              </div>
-
-              {/* Channel Configuration */}
-              {selectedBridgeInput && inputChannels.length > 0 && (
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-600 dark:text-gray-300">
-                    Input Channels
-                  </label>
-                  <div className="grid grid-cols-2 gap-2">
-                    <button
-                      onClick={() => handleChannelConfigChange({
-                        channelCount: 1,
-                        leftChannel: inputChannelConfig.leftChannel,
-                      })}
-                      className={cn(
-                        'p-2 rounded-lg border text-xs font-medium transition-all',
-                        inputChannelConfig.channelCount === 1
-                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-                      )}
-                    >
-                      Mono
-                    </button>
-                    <button
-                      onClick={() => handleChannelConfigChange({
-                        channelCount: 2,
-                        leftChannel: inputChannelConfig.leftChannel,
-                        rightChannel: (inputChannelConfig.leftChannel + 1) % inputChannels.length,
-                      })}
-                      className={cn(
-                        'p-2 rounded-lg border text-xs font-medium transition-all',
-                        inputChannelConfig.channelCount === 2
-                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400'
-                          : 'border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300 dark:hover:border-gray-600'
-                      )}
-                    >
-                      Stereo
-                    </button>
-                  </div>
-
-                  {/* Channel select */}
-                  <div className="relative">
-                    {inputChannelConfig.channelCount === 1 ? (
-                      <select
-                        value={inputChannelConfig.leftChannel}
-                        onChange={(e) => handleChannelConfigChange({
-                          channelCount: 1,
-                          leftChannel: parseInt(e.target.value),
-                        })}
-                        className="w-full h-8 px-3 pr-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      >
-                        {channelOptions.mono.map((ch) => (
-                          <option key={ch} value={ch}>
-                            {formatChannel(ch, inputChannels)}
-                          </option>
-                        ))}
-                      </select>
-                    ) : (
-                      <select
-                        value={`${inputChannelConfig.leftChannel}-${inputChannelConfig.rightChannel ?? inputChannelConfig.leftChannel + 1}`}
-                        onChange={(e) => {
-                          const [left, right] = e.target.value.split('-').map(Number);
-                          handleChannelConfigChange({
-                            channelCount: 2,
-                            leftChannel: left,
-                            rightChannel: right,
-                          });
-                        }}
-                        className="w-full h-8 px-3 pr-8 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg text-xs text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      >
-                        {channelOptions.stereo.map(([left, right]) => (
-                          <option key={`${left}-${right}`} value={`${left}-${right}`}>
-                            {formatStereoPair(left, right, inputChannels)}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400 pointer-events-none" />
-                  </div>
-                </div>
-              )}
-
-              {/* Output Device Selection */}
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-gray-600 dark:text-gray-300 flex items-center gap-1.5">
-                  <Speaker className="w-3.5 h-3.5" />
-                  Output Device
-                </label>
                 <div className="relative">
                   <select
                     value={selectedOutputDeviceId || ''}
@@ -374,12 +283,13 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
                     onChange={(e) => setBufferSize(parseInt(e.target.value) as 32 | 64 | 128 | 256 | 512 | 1024)}
                     className="w-full h-8 px-2 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded text-xs text-gray-900 dark:text-white appearance-none"
                   >
-                    <option value={32}>32 samples</option>
-                    <option value={64}>64 samples</option>
-                    <option value={128}>128 samples</option>
-                    <option value={256}>256 samples</option>
-                    <option value={512}>512 samples</option>
-                    <option value={1024}>1024 samples</option>
+                    {/* ASIO typically supports these buffer sizes - device-specific filtering can be added later */}
+                    <option value={32}>32 (~0.7ms)</option>
+                    <option value={64}>64 (~1.3ms)</option>
+                    <option value={128}>128 (~2.7ms)</option>
+                    <option value={256}>256 (~5.3ms)</option>
+                    <option value={512}>512 (~10.7ms)</option>
+                    <option value={1024}>1024 (~21.3ms)</option>
                   </select>
                 </div>
                 <div className="space-y-1">
@@ -394,45 +304,19 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
                   </select>
                 </div>
               </div>
+              <p className="text-xs text-gray-500 dark:text-gray-400">
+                Lower buffer = lower latency but higher CPU. 128-256 recommended for most interfaces.
+              </p>
 
-              {/* Control buttons */}
-              <div className="flex gap-2">
-                {isRunning ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={stopAudio}
-                    className="flex-1 text-xs h-9"
-                  >
-                    <Square className="w-3.5 h-3.5 mr-1.5" />
-                    Stop Audio
-                  </Button>
-                ) : (
-                  <Button
-                    size="sm"
-                    onClick={startAudio}
-                    disabled={!canStartAudio}
-                    className="flex-1 text-xs h-9 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50"
-                  >
-                    <Play className="w-3.5 h-3.5 mr-1.5" />
-                    Start Audio
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={disconnect}
-                  className="text-xs h-9"
-                >
-                  Disconnect
-                </Button>
-              </div>
-
-              {!canStartAudio && !isRunning && (
-                <p className="text-xs text-amber-600 dark:text-amber-400">
-                  Select input and output devices to start audio
-                </p>
-              )}
+              {/* Disconnect button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={disconnect}
+                className="w-full text-xs h-9"
+              >
+                Disconnect Bridge
+              </Button>
             </div>
           ) : (
             // Not connected - show download/connect options
@@ -478,34 +362,39 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
           )}
         </div>
 
-        {/* Browser Output Device - only show when bridge not connected */}
-        {!isConnected && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
-                <Speaker className="w-4 h-4 text-gray-500 dark:text-gray-400" />
-                Browser Output Device
-              </label>
-              <Button variant="ghost" size="sm" onClick={loadDevices} className="h-7 px-2">
-                <RefreshCw className="w-3 h-3" />
-              </Button>
+        {/* Browser Output Device - only show when not using native bridge */}
+        {!usingNativeBridge && (
+          <div className="space-y-4">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 flex items-center gap-2">
+                  <Speaker className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+                  Browser Output Device
+                </label>
+                <Button variant="ghost" size="sm" onClick={loadDevices} className="h-7 px-2">
+                  <RefreshCw className="w-3 h-3" />
+                </Button>
+              </div>
+              <div className="relative">
+                <select
+                  value={selectedOutput}
+                  onChange={(e) => setSelectedOutput(e.target.value)}
+                  disabled={isLoading}
+                  className="w-full h-10 px-3 pr-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-50"
+                >
+                  <option value="default">System Default</option>
+                  {outputDevices.map((device) => (
+                    <option key={device.deviceId} value={device.deviceId}>
+                      {device.label}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
+              </div>
             </div>
-            <div className="relative">
-              <select
-                value={selectedOutput}
-                onChange={(e) => setSelectedOutput(e.target.value)}
-                disabled={isLoading}
-                className="w-full h-10 px-3 pr-10 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 disabled:opacity-50"
-              >
-                <option value="default">System Default</option>
-                {outputDevices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 pointer-events-none" />
-            </div>
+            <p className="text-xs text-gray-500 dark:text-gray-400">
+              Web Audio uses a fixed 128-sample buffer (~2.7ms at 48kHz). For lower latency, use the native bridge.
+            </p>
           </div>
         )}
 
@@ -524,24 +413,7 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
             max="1"
             step="0.01"
             value={masterVolume}
-            onChange={(e) => setMasterVolume(parseFloat(e.target.value))}
-            className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-indigo-500"
-          />
-        </div>
-
-        {/* Backing Track Volume */}
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <label className="text-sm font-medium text-gray-700 dark:text-gray-300">Backing Track Volume</label>
-            <span className="text-sm text-gray-500 dark:text-gray-400">{Math.round(backingTrackVolume * 100)}%</span>
-          </div>
-          <input
-            type="range"
-            min="0"
-            max="1"
-            step="0.01"
-            value={backingTrackVolume}
-            onChange={(e) => setBackingTrackVolume(parseFloat(e.target.value))}
+            onChange={(e) => handleMasterVolumeChange(parseFloat(e.target.value))}
             className="w-full h-2 bg-gray-100 dark:bg-gray-700 rounded-full appearance-none cursor-pointer accent-indigo-500"
           />
         </div>
@@ -551,7 +423,7 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
           <Button variant="outline" onClick={onClose} className="flex-1">
             Cancel
           </Button>
-          <Button onClick={handleSave} className="flex-1" disabled={isConnected}>
+          <Button onClick={handleSave} className="flex-1">
             Save Settings
           </Button>
         </div>
