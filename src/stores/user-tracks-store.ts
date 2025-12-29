@@ -320,7 +320,7 @@ export const useUserTracksStore = create<UserTracksState>()(
               };
             } else if (currentEffect && typeof currentEffect === 'object') {
               // Merge effect settings
-              (newEffects as Record<string, unknown>)[key] = { ...currentEffect, ...effectUpdate };
+              (newEffects as unknown as Record<string, unknown>)[key] = { ...currentEffect, ...effectUpdate };
             }
           }
         }
