@@ -255,8 +255,8 @@ export interface TrackAudioSettings {
   channelConfig: InputChannelConfig;
   // Input gain before effects
   inputGain: number; // dB (-24 to 24)
-  // Unified effects chain (all 15 effects in signal chain order)
-  effects: UnifiedEffectsChain;
+  // Extended effects chain (all 35 effects in signal chain order)
+  effects: ExtendedEffectsChain;
   // Active preset (if any)
   activePreset?: string;
   // Monitoring
