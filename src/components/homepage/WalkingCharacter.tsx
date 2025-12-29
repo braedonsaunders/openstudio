@@ -28,11 +28,12 @@ interface CharacterState {
   idleTimer: number;
 }
 
-const WALK_SPEED = 0.04; // Base speed per animation frame
-const IDLE_DURATION_MIN = 5000;
-const IDLE_DURATION_MAX = 12000;
-const WALK_DURATION_MIN = 3000;
-const WALK_DURATION_MAX = 7000;
+// Slow, casual lobby movement - characters meander around
+const WALK_SPEED = 0.008; // Much slower base speed for casual strolling
+const IDLE_DURATION_MIN = 1500; // Short idles - just pausing to look around
+const IDLE_DURATION_MAX = 4000; // Longer idles occasionally
+const WALK_DURATION_MIN = 2000; // Short walks between stops
+const WALK_DURATION_MAX = 5000; // Longer walks occasionally
 
 // Idle animation variants
 const idleAnimations: Record<IdleAnimation, {
@@ -80,17 +81,31 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
 
-  // Start walking to a new target
+  // Start walking to a new target - short distances for casual strolling
   const startWalking = useCallback(() => {
-    const newTarget = getRandomWalkablePosition(groundConfig);
-    setState(prev => ({
-      ...prev,
-      targetX: newTarget.x,
-      targetY: newTarget.y,
-      isWalking: true,
-      facingRight: newTarget.x > prev.x,
-      walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
-    }));
+    setState(prev => {
+      // Pick a nearby target instead of anywhere in the walkable area
+      const { walkableArea } = groundConfig;
+      const maxStepX = 15; // Maximum 15% of screen width per walk
+      const maxStepY = 12; // Maximum 12% of screen height per walk
+
+      // Random offset within step range
+      const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
+      const offsetY = (Math.random() - 0.5) * 2 * maxStepY;
+
+      // Calculate new target, clamped to walkable area
+      const newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + offsetX));
+      const newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + offsetY));
+
+      return {
+        ...prev,
+        targetX: newX,
+        targetY: newY,
+        isWalking: true,
+        facingRight: newX > prev.x,
+        walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
+      };
+    });
   }, [groundConfig]);
 
   // Stop walking and start idle
@@ -145,14 +160,21 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         } else {
           // Idle - count down timer
           if (prev.idleTimer <= 0) {
-            // Start walking
-            const newTarget = getRandomWalkablePosition(groundConfig);
+            // Start walking to a nearby position (casual strolling)
+            const { walkableArea } = groundConfig;
+            const maxStepX = 15;
+            const maxStepY = 12;
+            const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
+            const offsetY = (Math.random() - 0.5) * 2 * maxStepY;
+            const newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + offsetX));
+            const newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + offsetY));
+
             return {
               ...prev,
-              targetX: newTarget.x,
-              targetY: newTarget.y,
+              targetX: newX,
+              targetY: newY,
               isWalking: true,
-              facingRight: newTarget.x > prev.x,
+              facingRight: newX > prev.x,
               walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
             };
           }
@@ -210,8 +232,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           height: baseSize * scale,
           transform: `scaleX(${state.facingRight ? 1 : -1})`,
         }}
-        animate={!state.isWalking ? idleConfig.animate : { y: [0, -2, 0] }}
-        transition={!state.isWalking ? idleConfig.transition : { duration: 0.4, repeat: Infinity }}
+        animate={!state.isWalking ? idleConfig.animate : { y: [0, -1.5, 0], rotate: [-0.5, 0.5, -0.5] }}
+        transition={!state.isWalking ? idleConfig.transition : { duration: 0.5, repeat: Infinity, ease: 'easeInOut' }}
       >
         {/* Character Image */}
         {character.fullBodyUrl ? (
