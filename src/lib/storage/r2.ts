@@ -360,6 +360,8 @@ export async function uploadAvatarComponent(
 
 /**
  * Upload an avatar component with thumbnail
+ * NOTE: Returns R2 keys as URLs to avoid storing expiring presigned URLs in database.
+ * Use getAvatarUrl() to generate fresh signed URLs when displaying images.
  */
 export async function uploadAvatarComponentWithThumbnail(
   file: Buffer | Uint8Array,
@@ -391,16 +393,14 @@ export async function uploadAvatarComponentWithThumbnail(
     ),
   ]);
 
-  const [url, thumbnailUrl] = await Promise.all([
-    getAvatarUrl(key),
-    getAvatarUrl(thumbnailKey),
-  ]);
-
-  return { key, url, thumbnailKey, thumbnailUrl };
+  // Return keys as URLs - they will be converted to signed URLs when fetched
+  // This prevents storing expiring presigned URLs in the database
+  return { key, url: key, thumbnailKey, thumbnailUrl: thumbnailKey };
 }
 
 /**
  * Upload a color variant of an avatar component
+ * NOTE: Returns R2 key as URL to avoid storing expiring presigned URLs
  */
 export async function uploadAvatarColorVariant(
   file: Buffer | Uint8Array,
@@ -420,9 +420,8 @@ export async function uploadAvatarColorVariant(
     })
   );
 
-  const url = await getAvatarUrl(key);
-
-  return { key, url };
+  // Return key as URL - will be converted to signed URL when fetched
+  return { key, url: key };
 }
 
 /**
@@ -441,6 +440,65 @@ export async function getAvatarUrl(key: string, expiresIn: number = 86400): Prom
   });
 
   return getSignedUrl(s3Client, command, { expiresIn });
+}
+
+/**
+ * Check if a URL is a presigned URL (has AWS signature params) or an R2 key
+ */
+export function isPresignedUrl(urlOrKey: string): boolean {
+  return urlOrKey.includes('X-Amz-Signature') || urlOrKey.includes('X-Amz-Credential');
+}
+
+/**
+ * Extract the R2 key from a presigned URL or return the key if already a key
+ * For avatar components - handles both presigned URLs and plain keys
+ * Example presigned URL: https://bucket.r2.cloudflarestorage.com/avatars/components/body/xyz.png?X-Amz-Algorithm=...
+ * Returns: avatars/components/body/xyz.png
+ */
+export function extractAvatarR2Key(urlOrKey: string): string {
+  // If it's not a presigned URL, assume it's already a key
+  if (!isPresignedUrl(urlOrKey)) {
+    // Handle case where it might be a full URL without signature (public URL)
+    if (urlOrKey.startsWith('http')) {
+      try {
+        const url = new URL(urlOrKey);
+        // Remove leading slash from pathname
+        return url.pathname.replace(/^\//, '');
+      } catch {
+        return urlOrKey;
+      }
+    }
+    return urlOrKey;
+  }
+
+  try {
+    const url = new URL(urlOrKey);
+    // Remove leading slash from pathname
+    return url.pathname.replace(/^\//, '');
+  } catch {
+    // If URL parsing fails, try to extract path before query string
+    const questionMarkIndex = urlOrKey.indexOf('?');
+    if (questionMarkIndex !== -1) {
+      const pathPart = urlOrKey.substring(0, questionMarkIndex);
+      // Try to extract just the key portion
+      const match = pathPart.match(/avatars\/.*$/);
+      if (match) return match[0];
+    }
+    return urlOrKey;
+  }
+}
+
+/**
+ * Convert a URL or key to a fresh signed URL
+ * Handles both presigned URLs (extracts key first) and plain keys
+ */
+export async function getSignedUrlFromKeyOrUrl(urlOrKey: string | null | undefined, expiresIn: number = 86400): Promise<string | null> {
+  if (!urlOrKey) return null;
+
+  const key = extractAvatarR2Key(urlOrKey);
+  if (!key) return null;
+
+  return getAvatarUrl(key, expiresIn);
 }
 
 /**
