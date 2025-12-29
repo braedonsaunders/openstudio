@@ -39,10 +39,18 @@ export function CanvasWorkspace({
 }: CanvasWorkspaceProps) {
   const transformerRef = useRef<Konva.Transformer>(null);
   const layerRefs = useRef<Map<string, Konva.Image>>(new Map());
-  const internalStageRef = useRef<Konva.Stage>(null);
+  const internalStageRef = useRef<Konva.Stage | null>(null);
 
   // Sort layers by zIndex
   const sortedLayers = [...layers].sort((a, b) => a.zIndex - b.zIndex);
+
+  // Use callback ref to sync stage ref when it mounts
+  const handleStageRef = useCallback((stage: Konva.Stage | null) => {
+    internalStageRef.current = stage;
+    if (stageRef) {
+      stageRef.current = stage;
+    }
+  }, [stageRef]);
 
   // Update transformer when selection changes
   useEffect(() => {
@@ -60,13 +68,6 @@ export function CanvasWorkspace({
       transformer.getLayer()?.batchDraw();
     }
   }, [selectedLayerId, layers]);
-
-  // Handle stage ref
-  useEffect(() => {
-    if (stageRef && internalStageRef.current) {
-      stageRef.current = internalStageRef.current;
-    }
-  }, [stageRef]);
 
   // Handle click on stage background
   const handleStageClick = (e: Konva.KonvaEventObject<MouseEvent | TouchEvent>) => {
@@ -130,7 +131,7 @@ export function CanvasWorkspace({
       />
 
       <Stage
-        ref={internalStageRef}
+        ref={handleStageRef}
         width={CANVAS_SIZE}
         height={CANVAS_SIZE}
         onClick={handleStageClick}
