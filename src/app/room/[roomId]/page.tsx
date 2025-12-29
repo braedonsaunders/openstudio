@@ -12,7 +12,7 @@ import { useRoom } from '@/hooks/useRoom';
 import { useAuthStore } from '@/stores/auth-store';
 import { useSavedTracksStore, presetToTrackSettings } from '@/stores/saved-tracks-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { InstrumentIcon } from '@/components/ui/instrument-icon';
 import { INSTRUMENTS, getInstrumentEmoji, type SavedTrackPreset } from '@/types/user';
 import {
@@ -177,12 +177,11 @@ export default function RoomPage() {
           {/* Show user avatar if logged in, otherwise show music icon */}
           {user && profile ? (
             <div className="flex flex-col items-center mb-4">
-              <AvatarDisplay
-                avatar={avatar}
-                size="xl"
+              <UserAvatar
+                userId={user.id}
                 username={profile.username}
-                showFrame={true}
-                showEffects={true}
+                size="xl"
+                variant="fullBody"
               />
               <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
                 Joining as <span className="font-medium text-gray-900 dark:text-white">{profile.displayName}</span>

@@ -3,13 +3,13 @@
 import { useState, useEffect, useMemo } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Modal } from '@/components/ui/modal';
-import { searchUsers, getUserAvatar, getFollowers, getFollowing, followUser, unfollowUser } from '@/lib/supabase/auth';
-import type { UserProfile, Avatar } from '@/types/user';
+import { searchUsers, getFollowers, getFollowing, followUser, unfollowUser } from '@/lib/supabase/auth';
+import type { UserProfile } from '@/types/user';
 import { getLevelTitle } from '@/types/user';
 import {
   ArrowLeft,
@@ -30,10 +30,6 @@ import { motion, AnimatePresence } from 'framer-motion';
 
 type Tab = 'friends' | 'pending' | 'find' | 'followers' | 'following';
 
-interface UserWithAvatar extends UserProfile {
-  avatar?: Avatar | null;
-}
-
 export default function FriendsPage() {
   const router = useRouter();
   const {
@@ -49,12 +45,11 @@ export default function FriendsPage() {
 
   const [activeTab, setActiveTab] = useState<Tab>('friends');
   const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState<UserWithAvatar[]>([]);
+  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const [followers, setFollowers] = useState<UserProfile[]>([]);
   const [following, setFollowing] = useState<UserProfile[]>([]);
-  const [avatarCache, setAvatarCache] = useState<Record<string, Avatar | null>>({});
-  const [selectedUser, setSelectedUser] = useState<UserWithAvatar | null>(null);
+  const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
 
   // Fetch followers and following
   useEffect(() => {
@@ -64,20 +59,6 @@ export default function FriendsPage() {
       getFollowing(user.id).then(setFollowing);
     }
   }, [user, activeTab]);
-
-  // Fetch avatars for friends
-  useEffect(() => {
-    const fetchAvatars = async () => {
-      const allUsers = [...friends, ...pendingFriendRequests];
-      for (const u of allUsers) {
-        if (!avatarCache[u.id]) {
-          const avatar = await getUserAvatar(u.id);
-          setAvatarCache(prev => ({ ...prev, [u.id]: avatar }));
-        }
-      }
-    };
-    fetchAvatars();
-  }, [friends, pendingFriendRequests, avatarCache]);
 
   // Search for users
   useEffect(() => {
@@ -94,23 +75,7 @@ export default function FriendsPage() {
         const filteredResults = results.filter(
           u => u.id !== user?.id && !friends.find(f => f.id === u.id)
         );
-
-        // Fetch avatars for results
-        const resultsWithAvatars: UserWithAvatar[] = await Promise.all(
-          filteredResults.map(async (u) => ({
-            ...u,
-            avatar: avatarCache[u.id] || await getUserAvatar(u.id),
-          }))
-        );
-
-        setSearchResults(resultsWithAvatars);
-
-        // Update avatar cache
-        const newCache = { ...avatarCache };
-        for (const u of resultsWithAvatars) {
-          if (u.avatar) newCache[u.id] = u.avatar;
-        }
-        setAvatarCache(newCache);
+        setSearchResults(filteredResults);
       } catch (error) {
         console.error('Search failed:', error);
       } finally {
@@ -120,7 +85,7 @@ export default function FriendsPage() {
 
     const debounce = setTimeout(search, 300);
     return () => clearTimeout(debounce);
-  }, [searchQuery, user, friends, avatarCache]);
+  }, [searchQuery, user, friends]);
 
   const handleAcceptRequest = async (friendId: string) => {
     await acceptFriendRequest(friendId);
@@ -250,7 +215,6 @@ export default function FriendsPage() {
                 <FriendCard
                   key={friend.id}
                   user={friend}
-                  avatar={avatarCache[friend.id]}
                   actions={
                     <>
                       <Button
@@ -290,7 +254,6 @@ export default function FriendsPage() {
                 <FriendCard
                   key={requester.id}
                   user={requester}
-                  avatar={avatarCache[requester.id]}
                   subtitle="Wants to be your friend"
                   actions={
                     <>
@@ -345,7 +308,6 @@ export default function FriendsPage() {
                     >
                       <FriendCard
                         user={searchUser}
-                        avatar={searchUser.avatar}
                         actions={
                           <Button
                             size="sm"
@@ -391,7 +353,6 @@ export default function FriendsPage() {
                 <FriendCard
                   key={follower.id}
                   user={follower}
-                  avatar={avatarCache[follower.id]}
                   actions={
                     <Button
                       variant="ghost"
@@ -422,7 +383,6 @@ export default function FriendsPage() {
                 <FriendCard
                   key={followedUser.id}
                   user={followedUser}
-                  avatar={avatarCache[followedUser.id]}
                   actions={
                     <>
                       <Button
@@ -458,11 +418,11 @@ export default function FriendsPage() {
         {selectedUser && (
           <div className="space-y-4">
             <div className="flex items-center gap-4">
-              <AvatarDisplay
-                avatar={selectedUser.avatar || null}
-                size="lg"
+              <UserAvatar
+                userId={selectedUser.id}
                 username={selectedUser.username}
-                showEffects
+                size="lg"
+                variant="headshot"
               />
               <div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
@@ -503,13 +463,11 @@ export default function FriendsPage() {
 
 function FriendCard({
   user,
-  avatar,
   subtitle,
   actions,
   onClick,
 }: {
   user: UserProfile;
-  avatar?: Avatar | null;
   subtitle?: string;
   actions?: React.ReactNode;
   onClick?: () => void;
@@ -519,7 +477,7 @@ function FriendCard({
       className="p-4 flex items-center gap-4 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors"
       onClick={onClick}
     >
-      <AvatarDisplay avatar={avatar || null} size="md" username={user.username} />
+      <UserAvatar userId={user.id} username={user.username} size="md" variant="headshot" />
       <div className="flex-1 min-w-0">
         <h4 className="font-medium text-gray-900 dark:text-white truncate">
           {user.displayName}

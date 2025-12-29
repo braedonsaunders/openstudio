@@ -3,7 +3,7 @@
 import { useMemo } from 'react';
 import { motion } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import {
   Crown,
   Mic,
@@ -218,12 +218,11 @@ export function UserPerformanceCard({
         <div className="flex items-center gap-3">
           {/* Avatar with activity indicator */}
           <div className="relative">
-            <AvatarDisplay
-              avatar={null}
+            <UserAvatar
+              userId={user.id}
               username={user.name}
               size="md"
-              showEffects={isActive}
-              showFrame
+              variant="headshot"
             />
 
             {/* Audio activity ring */}
