@@ -6,14 +6,27 @@ import type { UserTrack } from '@/types';
 
 // Debounce delay for persisting track changes (ms)
 const PERSIST_DEBOUNCE_MS = 1000;
+// Broadcast immediately for real-time sync
+const BROADCAST_DEBOUNCE_MS = 50;
+
+/**
+ * Callback type for broadcasting track updates to other clients
+ */
+export type BroadcastTrackUpdate = (trackId: string, updates: Partial<UserTrack>) => void;
 
 /**
  * Hook that automatically persists track changes to the database
- * Uses debouncing to avoid excessive API calls
+ * and broadcasts changes to other clients in real-time.
+ * Uses debouncing to avoid excessive API calls.
  */
-export function useTrackPersistence(roomId: string | undefined) {
+export function useTrackPersistence(
+  roomId: string | undefined,
+  onBroadcast?: BroadcastTrackUpdate
+) {
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map());
+  const pendingBroadcasts = useRef<Map<string, NodeJS.Timeout>>(new Map());
   const lastPersistedState = useRef<Map<string, string>>(new Map());
+  const lastBroadcastState = useRef<Map<string, string>>(new Map());
 
   // Persist a track to the database
   const persistTrack = useCallback(async (track: UserTrack) => {
@@ -40,6 +53,52 @@ export function useTrackPersistence(roomId: string | undefined) {
     }
   }, [roomId]);
 
+  // Broadcast track updates to other clients (fast, for real-time sync)
+  const broadcastTrack = useCallback((track: UserTrack) => {
+    if (!onBroadcast) return;
+
+    // Clear any pending broadcast for this track
+    const existing = pendingBroadcasts.current.get(track.id);
+    if (existing) {
+      clearTimeout(existing);
+    }
+
+    // Create a hash of the broadcast-relevant state
+    const stateHash = JSON.stringify({
+      name: track.name,
+      color: track.color,
+      isMuted: track.isMuted,
+      isSolo: track.isSolo,
+      volume: track.volume,
+      isArmed: track.isArmed,
+      isRecording: track.isRecording,
+      isActive: track.isActive,
+    });
+
+    // Skip if nothing changed
+    if (lastBroadcastState.current.get(track.id) === stateHash) {
+      return;
+    }
+
+    // Schedule the broadcast with minimal delay for real-time feel
+    const timeout = setTimeout(() => {
+      onBroadcast(track.id, {
+        name: track.name,
+        color: track.color,
+        isMuted: track.isMuted,
+        isSolo: track.isSolo,
+        volume: track.volume,
+        isArmed: track.isArmed,
+        isRecording: track.isRecording,
+        isActive: track.isActive,
+      });
+      lastBroadcastState.current.set(track.id, stateHash);
+      pendingBroadcasts.current.delete(track.id);
+    }, BROADCAST_DEBOUNCE_MS);
+
+    pendingBroadcasts.current.set(track.id, timeout);
+  }, [onBroadcast]);
+
   // Debounced persist function
   const debouncedPersist = useCallback((track: UserTrack) => {
     // Clear any pending update for this track
@@ -64,7 +123,10 @@ export function useTrackPersistence(roomId: string | undefined) {
       return;
     }
 
-    // Schedule the persist
+    // Broadcast immediately for real-time sync
+    broadcastTrack(track);
+
+    // Schedule the persist to database (slower, for durability)
     const timeout = setTimeout(() => {
       persistTrack(track);
       lastPersistedState.current.set(track.id, stateHash);
@@ -72,7 +134,7 @@ export function useTrackPersistence(roomId: string | undefined) {
     }, PERSIST_DEBOUNCE_MS);
 
     pendingUpdates.current.set(track.id, timeout);
-  }, [persistTrack]);
+  }, [persistTrack, broadcastTrack]);
 
   // Subscribe to track changes
   useEffect(() => {
@@ -92,11 +154,15 @@ export function useTrackPersistence(roomId: string | undefined) {
     );
 
     return () => {
-      // Clear all pending updates on cleanup
+      // Clear all pending updates and broadcasts on cleanup
       for (const timeout of pendingUpdates.current.values()) {
         clearTimeout(timeout);
       }
+      for (const timeout of pendingBroadcasts.current.values()) {
+        clearTimeout(timeout);
+      }
       pendingUpdates.current.clear();
+      pendingBroadcasts.current.clear();
       unsubscribe();
     };
   }, [roomId, debouncedPersist]);

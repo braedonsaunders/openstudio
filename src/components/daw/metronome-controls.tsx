@@ -146,10 +146,15 @@ export function MetronomeControls({
 
   // Handle tempo input change
   const handleTempoChange = useCallback((value: number) => {
+    // Check permission before allowing BPM change
+    if (!canSetBpm) {
+      console.warn('User does not have permission to change BPM');
+      return;
+    }
     if (source === 'manual' || source === 'tap') {
       setManualTempo(value);
     }
-  }, [source, setManualTempo]);
+  }, [source, setManualTempo, canSetBpm]);
 
   // Handle tap tempo
   const handleTap = useCallback(() => {
@@ -606,10 +611,15 @@ export function MetronomeInline({
   }, [enabled, setEnabled, start, stop]);
 
   const handleTempoChange = useCallback((value: number) => {
+    // Check permission before allowing BPM change
+    if (!canSetBpm) {
+      console.warn('User does not have permission to change BPM');
+      return;
+    }
     if (source === 'manual' || source === 'tap') {
       setManualTempo(value);
     }
-  }, [source, setManualTempo]);
+  }, [source, setManualTempo, canSetBpm]);
 
   const handleSourceChange = useCallback((newSource: TempoSource) => {
     setSource(newSource);

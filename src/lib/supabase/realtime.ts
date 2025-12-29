@@ -173,6 +173,19 @@ export class RealtimeRoomManager {
       this.emit('looptrack:sync', payload);
     });
 
+    // Tempo/Session state events
+    this.channel.on('broadcast', { event: 'tempo:update' }, ({ payload }) => {
+      this.emit('tempo:update', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'tempo:source' }, ({ payload }) => {
+      this.emit('tempo:source', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'tempo:timesig' }, ({ payload }) => {
+      this.emit('tempo:timesig', payload);
+    });
+
     // Permission events
     this.channel.on('broadcast', { event: 'permissions:role_update' }, ({ payload }) => {
       this.emit('permissions:role_update', payload);
@@ -471,6 +484,31 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'looptrack:sync',
       payload: { tracks, userId: this.userId },
+    });
+  }
+
+  // Tempo broadcasts
+  async broadcastTempoUpdate(tempo: number, source: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'tempo:update',
+      payload: { tempo, source, userId: this.userId },
+    });
+  }
+
+  async broadcastTempoSource(source: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'tempo:source',
+      payload: { source, userId: this.userId },
+    });
+  }
+
+  async broadcastTimeSignature(beatsPerBar: number, beatUnit: number): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'tempo:timesig',
+      payload: { beatsPerBar, beatUnit, userId: this.userId },
     });
   }
 

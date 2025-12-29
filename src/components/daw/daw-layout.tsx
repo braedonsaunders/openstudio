@@ -8,6 +8,7 @@ import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { useTrackPersistence } from '@/hooks/useTrackPersistence';
 import { useTrackAudioSync } from '@/hooks/useTrackAudioSync';
 import { useSessionTempoSync } from '@/hooks/use-session-tempo-sync';
+import { useTempoRealtimeBroadcast } from '@/hooks/useTempoRealtimeBroadcast';
 import { useLoopPlayback } from '@/hooks/useLoopPlayback';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
@@ -127,6 +128,11 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     setQualityPreset,
     // WebRTC
     getCloudflareRef,
+    // Real-time broadcast
+    broadcastUserTrackUpdate,
+    broadcastTempoUpdate,
+    broadcastTempoSource,
+    broadcastTimeSignature,
   } = useRoom(roomId);
 
   const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource } = useAudioEngine();
@@ -220,13 +226,17 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   }, [hasSongTracks, songDuration, setDuration]);
 
   // Track persistence - automatically saves track settings changes to database
-  useTrackPersistence(roomId);
+  // and broadcasts changes to other clients for real-time sync
+  useTrackPersistence(roomId, broadcastUserTrackUpdate);
 
   // Sync track audio state (mute/solo/volume/effects) with audio engine
   useTrackAudioSync(currentUser?.id);
 
   // Sync session tempo from track/analyzer to loop scheduler
   useSessionTempoSync();
+
+  // Broadcast tempo changes to other clients for real-time sync
+  useTempoRealtimeBroadcast(broadcastTempoUpdate, broadcastTempoSource, broadcastTimeSignature);
 
   // Loop playback - connects loop scheduler to sound engine
   // This is now BULLETPROOF - it automatically reacts to song changes during playback
