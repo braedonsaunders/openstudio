@@ -86,6 +86,11 @@ export class PhaserProcessor extends BaseEffect {
     this.updateFeedback();
     this.updateQ();
     this.updateMix();
+
+    // If starting disabled, zero out LFO to prevent filter modulation
+    if (!this.settings.enabled) {
+      this.lfoGain.gain.value = 0;
+    }
   }
 
   private wireUpSignalChain(): void {
@@ -245,6 +250,20 @@ export class PhaserProcessor extends BaseEffect {
 
   getSettings(): PhaserSettings {
     return { ...this.settings };
+  }
+
+  // Override setEnabled to stop LFO modulation when disabled
+  setEnabled(enabled: boolean): void {
+    super.setEnabled(enabled);
+    const now = this.audioContext.currentTime;
+
+    if (!enabled) {
+      // Stop LFO modulation to prevent filter instability when disabled
+      this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
+    } else {
+      // Restore LFO modulation
+      this.updateDepth();
+    }
   }
 
   dispose(): void {

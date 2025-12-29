@@ -122,6 +122,11 @@ export class MultiFilterProcessor extends BaseEffect {
     if (this.settings.envelopeAmount !== 0) {
       this.startEnvelopeFollower();
     }
+
+    // If starting disabled, zero out LFO to prevent filter modulation
+    if (!this.settings.enabled) {
+      this.lfoGain.gain.value = 0;
+    }
   }
 
   private startEnvelopeFollower(): void {
@@ -257,6 +262,24 @@ export class MultiFilterProcessor extends BaseEffect {
     this.currentBpm = bpm;
     if (this.settings.tempoSync) {
       this.updateLFO();
+    }
+  }
+
+  // Override setEnabled to stop LFO modulation when disabled
+  setEnabled(enabled: boolean): void {
+    super.setEnabled(enabled);
+    const now = this.audioContext.currentTime;
+
+    if (!enabled) {
+      // Stop LFO modulation to prevent filter instability when disabled
+      this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
+      this.stopEnvelopeFollower();
+    } else {
+      // Restore LFO modulation
+      this.updateLFO();
+      if (this.settings.envelopeAmount !== 0) {
+        this.startEnvelopeFollower();
+      }
     }
   }
 
