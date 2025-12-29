@@ -172,19 +172,21 @@ export class MultibandCompressorProcessor extends BaseEffect {
   }
 
   private updateCrossovers(): void {
-    const now = this.audioContext.currentTime;
+    try {
+      // Low crossover - use safe frequency setting
+      this.safeSetFilterFrequency(this.lowCrossoverLP, this.settings.lowCrossover);
+      this.safeSetFilterFrequency(this.lowCrossoverLP2, this.settings.lowCrossover);
+      this.safeSetFilterFrequency(this.midCrossoverHP, this.settings.lowCrossover);
+      this.safeSetFilterFrequency(this.midCrossoverHP2, this.settings.lowCrossover);
 
-    // Low crossover
-    this.lowCrossoverLP.frequency.setTargetAtTime(this.settings.lowCrossover, now, 0.01);
-    this.lowCrossoverLP2.frequency.setTargetAtTime(this.settings.lowCrossover, now, 0.01);
-    this.midCrossoverHP.frequency.setTargetAtTime(this.settings.lowCrossover, now, 0.01);
-    this.midCrossoverHP2.frequency.setTargetAtTime(this.settings.lowCrossover, now, 0.01);
-
-    // High crossover
-    this.midCrossoverLP.frequency.setTargetAtTime(this.settings.highCrossover, now, 0.01);
-    this.midCrossoverLP2.frequency.setTargetAtTime(this.settings.highCrossover, now, 0.01);
-    this.highCrossoverHP.frequency.setTargetAtTime(this.settings.highCrossover, now, 0.01);
-    this.highCrossoverHP2.frequency.setTargetAtTime(this.settings.highCrossover, now, 0.01);
+      // High crossover
+      this.safeSetFilterFrequency(this.midCrossoverLP, this.settings.highCrossover);
+      this.safeSetFilterFrequency(this.midCrossoverLP2, this.settings.highCrossover);
+      this.safeSetFilterFrequency(this.highCrossoverHP, this.settings.highCrossover);
+      this.safeSetFilterFrequency(this.highCrossoverHP2, this.settings.highCrossover);
+    } catch (e) {
+      console.warn('[Multiband Compressor] Crossover update error:', e);
+    }
   }
 
   private updateBandSettings(band: 'low' | 'mid' | 'high'): void {

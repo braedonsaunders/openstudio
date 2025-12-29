@@ -98,4 +98,98 @@ export abstract class BaseEffect implements EffectProcessor {
   protected linearToDb(linear: number): number {
     return 20 * Math.log10(Math.max(linear, 0.0001));
   }
+
+  // Safe filter parameter ranges to prevent instability
+  protected static readonly SAFE_FREQUENCY_MIN = 20;
+  protected static readonly SAFE_FREQUENCY_MAX = 20000;
+  protected static readonly SAFE_Q_MIN = 0.0001;
+  protected static readonly SAFE_Q_MAX = 30;
+  protected static readonly SAFE_GAIN_MIN = -40;
+  protected static readonly SAFE_GAIN_MAX = 40;
+
+  // Safely set a filter frequency with clamping and error handling
+  protected safeSetFilterFrequency(
+    filter: BiquadFilterNode,
+    frequency: number,
+    timeConstant: number = 0.02
+  ): void {
+    try {
+      const safeFreq = Math.max(
+        BaseEffect.SAFE_FREQUENCY_MIN,
+        Math.min(BaseEffect.SAFE_FREQUENCY_MAX, frequency)
+      );
+      const now = this.audioContext.currentTime;
+      filter.frequency.setTargetAtTime(safeFreq, now, timeConstant);
+    } catch (e) {
+      console.warn(`[${this.name}] Filter frequency error, resetting:`, e);
+      this.resetFilter(filter);
+    }
+  }
+
+  // Safely set a filter Q with clamping and error handling
+  protected safeSetFilterQ(
+    filter: BiquadFilterNode,
+    q: number,
+    timeConstant: number = 0.02
+  ): void {
+    try {
+      const safeQ = Math.max(
+        BaseEffect.SAFE_Q_MIN,
+        Math.min(BaseEffect.SAFE_Q_MAX, q)
+      );
+      const now = this.audioContext.currentTime;
+      filter.Q.setTargetAtTime(safeQ, now, timeConstant);
+    } catch (e) {
+      console.warn(`[${this.name}] Filter Q error, resetting:`, e);
+      this.resetFilter(filter);
+    }
+  }
+
+  // Safely set a filter gain with clamping and error handling
+  protected safeSetFilterGain(
+    filter: BiquadFilterNode,
+    gain: number,
+    timeConstant: number = 0.02
+  ): void {
+    try {
+      const safeGain = Math.max(
+        BaseEffect.SAFE_GAIN_MIN,
+        Math.min(BaseEffect.SAFE_GAIN_MAX, gain)
+      );
+      // Check for NaN/Infinity
+      if (!Number.isFinite(safeGain)) {
+        console.warn(`[${this.name}] Invalid gain value: ${gain}, using 0`);
+        filter.gain.setTargetAtTime(0, this.audioContext.currentTime, timeConstant);
+        return;
+      }
+      const now = this.audioContext.currentTime;
+      filter.gain.setTargetAtTime(safeGain, now, timeConstant);
+    } catch (e) {
+      console.warn(`[${this.name}] Filter gain error, resetting:`, e);
+      this.resetFilter(filter);
+    }
+  }
+
+  // Reset a filter to safe default state
+  protected resetFilter(filter: BiquadFilterNode): void {
+    try {
+      const now = this.audioContext.currentTime;
+      // Use cancelScheduledValues to clear any pending automation
+      filter.frequency.cancelScheduledValues(now);
+      filter.Q.cancelScheduledValues(now);
+      filter.gain.cancelScheduledValues(now);
+
+      // Set to safe values immediately
+      filter.frequency.setValueAtTime(1000, now);
+      filter.Q.setValueAtTime(1, now);
+      filter.gain.setValueAtTime(0, now);
+    } catch (e) {
+      console.error(`[${this.name}] Failed to reset filter:`, e);
+    }
+  }
+
+  // Check if a value is safe (not NaN, not Infinity)
+  protected isSafeValue(value: number): boolean {
+    return Number.isFinite(value) && !Number.isNaN(value);
+  }
 }

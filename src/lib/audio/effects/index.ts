@@ -29,8 +29,8 @@ export {
   getGuitarPreset,
 } from './guitar';
 
-// Legacy exports (deprecated - use UnifiedEffectsProcessor instead)
-export { TrackEffectsProcessor } from './track-effects-processor';
+// Presets
 export { DEFAULT_EFFECTS_CHAIN, EFFECT_PRESETS, getPresetByType } from './presets';
-export { ExtendedTrackEffectsProcessor } from './extended-track-effects-processor';
-export type { ExtendedEffectsSettings } from './extended-track-effects-processor';
+
+// Extended effects processor (all 35 effects)
+export { ExtendedEffectsProcessor, DEFAULT_FULL_EFFECTS } from './extended-effects-processor';
