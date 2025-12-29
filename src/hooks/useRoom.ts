@@ -427,6 +427,28 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             console.error('[useRoom] Failed to refresh remote tracks:', err);
           }
         }
+
+        // CRITICAL: Sync room state to new joiners
+        // If we're the master, broadcast current tempo/time signature so new users get the current state
+        // This fixes the issue where new users always see 120 BPM regardless of actual room state
+        if (hasNewUsers && useRoomStore.getState().isMaster) {
+          // Small delay to ensure new user's broadcast handlers are ready
+          // The new user needs time to complete subscription before receiving broadcasts
+          setTimeout(() => {
+            console.log('[useRoom] Master broadcasting room state to new users...');
+            const { useSessionTempoStore } = require('@/stores/session-tempo-store');
+            const tempoState = useSessionTempoStore.getState();
+
+            // Broadcast current tempo
+            realtime.broadcastTempoUpdate(tempoState.manualTempo, tempoState.source);
+
+            // Broadcast current time signature
+            realtime.broadcastTimeSignature(tempoState.beatsPerBar, tempoState.beatUnit);
+
+            // Broadcast current tempo source
+            realtime.broadcastTempoSource(tempoState.source);
+          }, 500);
+        }
       });
 
       realtime.on('presence:leave', (data) => {

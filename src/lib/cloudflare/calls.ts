@@ -373,6 +373,15 @@ export class CloudflareCalls {
       }
     };
 
+    // CRITICAL: Handle incoming data channels from other peers
+    // The initiating peer creates the data channel, but the receiving peer
+    // must handle the ondatachannel event to receive it
+    this.peerConnection.ondatachannel = (event) => {
+      console.log('[CloudflareCalls] Received data channel from remote peer');
+      this.dataChannel = event.channel;
+      this.setupDataChannelHandlers(this.dataChannel);
+    };
+
     // Start stats monitoring
     this.startStatsMonitoring();
   }
@@ -417,7 +426,9 @@ export class CloudflareCalls {
         throw new Error('No audio track in stream');
       }
 
-      const trackId = `${trackType}-${this.userId}`;
+      // CRITICAL: Use audio-{userId} format for track names
+      // This must match what pullRemoteTracks and the API expect
+      const trackId = `audio-${this.userId}`;
 
       // Add transceiver for sending audio with priority hints for low latency
       const transceiver = this.peerConnection!.addTransceiver(audioTrack, {
@@ -533,7 +544,8 @@ export class CloudflareCalls {
       const remoteUserId = remoteTrack.userId || remoteTrack.trackName.split('-')[1];
       if (remoteUserId === this.userId) continue; // Skip self
 
-      const trackName = `audio-${remoteUserId}`;
+      // Use the trackName from the API directly - it's already in correct format
+      const trackName = remoteTrack.trackName;
 
       // Add a transceiver for receiving
       const transceiver = this.peerConnection!.addTransceiver('audio', {
@@ -877,7 +889,7 @@ export class CloudflareCalls {
   }
 
   /**
-   * Set up the data channel for sync messages
+   * Set up the data channel for sync messages (initiator side)
    */
   private setupDataChannel(): void {
     if (!this.peerConnection) return;
@@ -889,8 +901,14 @@ export class CloudflareCalls {
     });
 
     this.dataChannel.binaryType = 'arraybuffer';
+    this.setupDataChannelHandlers(this.dataChannel);
+  }
 
-    const channel = this.dataChannel;
+  /**
+   * Set up event handlers on a data channel (works for both created and received channels)
+   */
+  private setupDataChannelHandlers(channel: RTCDataChannel): void {
+    channel.binaryType = 'arraybuffer';
 
     channel.onopen = () => {
       console.log('[CloudflareCalls] Data channel opened');
