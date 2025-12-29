@@ -85,6 +85,8 @@ export function MetronomeControls({
 }: MetronomeControlsProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [showModeDropdown, setShowModeDropdown] = useState(false);
+  const [isEditingBpm, setIsEditingBpm] = useState(false);
+  const [editBpmValue, setEditBpmValue] = useState('');
 
   // Permission checks
   const { canSetBpm, canSetSource, canSetTimeSignature, canMetronome } = useTempoPermissions();
@@ -325,8 +327,26 @@ export function MetronomeControls({
             >
               <input
                 type="number"
-                value={Math.round(tempo)}
-                onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
+                value={isEditingBpm ? editBpmValue : Math.round(tempo)}
+                onFocus={() => {
+                  setIsEditingBpm(true);
+                  setEditBpmValue(Math.round(tempo).toString());
+                }}
+                onChange={(e) => setEditBpmValue(e.target.value)}
+                onBlur={() => {
+                  const value = parseInt(editBpmValue);
+                  if (!isNaN(value) && value >= 40 && value <= 240) {
+                    handleTempoChange(value);
+                  }
+                  setIsEditingBpm(false);
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    (e.target as HTMLInputElement).blur();
+                  } else if (e.key === 'Escape') {
+                    setIsEditingBpm(false);
+                  }
+                }}
                 className={cn(
                   'w-16 px-2 py-1 text-xl font-bold bg-transparent border-none outline-none text-center',
                   (source === 'analyzer' || source === 'track')
@@ -546,6 +566,8 @@ export function MetronomeInline({
   isMaster?: boolean;
 }) {
   const [showPopover, setShowPopover] = useState(false);
+  const [isEditingBpm, setIsEditingBpm] = useState(false);
+  const [editBpmValue, setEditBpmValue] = useState('');
 
   // Permission checks
   const { canSetBpm, canSetSource, canSetTimeSignature, canMetronome } = useTempoPermissions();
@@ -723,8 +745,26 @@ export function MetronomeInline({
               >
                 <input
                   type="number"
-                  value={Math.round(tempo)}
-                  onChange={(e) => handleTempoChange(parseInt(e.target.value) || 120)}
+                  value={isEditingBpm ? editBpmValue : Math.round(tempo)}
+                  onFocus={() => {
+                    setIsEditingBpm(true);
+                    setEditBpmValue(Math.round(tempo).toString());
+                  }}
+                  onChange={(e) => setEditBpmValue(e.target.value)}
+                  onBlur={() => {
+                    const value = parseInt(editBpmValue);
+                    if (!isNaN(value) && value >= 40 && value <= 240) {
+                      handleTempoChange(value);
+                    }
+                    setIsEditingBpm(false);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      (e.target as HTMLInputElement).blur();
+                    } else if (e.key === 'Escape') {
+                      setIsEditingBpm(false);
+                    }
+                  }}
                   className={cn(
                     'w-full px-3 py-2 text-lg font-bold rounded-lg bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 outline-none',
                     (source === 'analyzer' || source === 'track')

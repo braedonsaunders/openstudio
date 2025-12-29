@@ -6,6 +6,7 @@ import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useCustomLoopsStore } from '@/stores/custom-loops-store';
+import { useLyriaStore } from '@/stores/lyria-store';
 import { LoopBrowserModal } from '../loops/loop-browser-modal';
 import { LoopCreatorModal } from '../loops/loop-creator-modal';
 import { useContextMenu } from '../ui/context-menu';
@@ -61,6 +62,10 @@ export function QueuePanel({
   } = useLoopTracksStore();
   const { createLoop: createCustomLoop } = useCustomLoopsStore();
   const { showContextMenu, ContextMenuComponent } = useContextMenu();
+
+  // Check if Lyria is active
+  const lyriaSessionState = useLyriaStore((state) => state.sessionState);
+  const isLyriaActive = lyriaSessionState === 'playing' || lyriaSessionState === 'connected' || lyriaSessionState === 'paused';
 
   const [showLoopBrowser, setShowLoopBrowser] = useState(false);
   const [showLoopEditor, setShowLoopEditor] = useState(false);
@@ -198,7 +203,18 @@ export function QueuePanel({
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col relative">
+      {/* Lyria Active Overlay */}
+      {isLyriaActive && (
+        <div className="absolute inset-0 bg-gray-100/80 dark:bg-black/60 backdrop-blur-sm z-20 flex flex-col items-center justify-center">
+          <Sparkles className="w-8 h-8 text-purple-500 mb-3" />
+          <p className="text-sm font-medium text-gray-700 dark:text-white">Lyria Active</p>
+          <p className="text-xs text-gray-500 dark:text-zinc-400 text-center px-4 mt-1">
+            Audio tracks are disabled while Lyria is streaming
+          </p>
+        </div>
+      )}
+
       {/* Header with Add Buttons */}
       <div className="px-4 py-3 border-b border-gray-200 dark:border-white/5">
         <div className="flex items-center gap-2 mb-2">
