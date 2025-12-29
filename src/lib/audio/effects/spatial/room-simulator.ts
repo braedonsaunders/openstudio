@@ -125,12 +125,13 @@ export class RoomSimulatorProcessor extends BaseEffect {
     this.lateGain = audioContext.createGain();
 
     // Wire up signal chain
-    // Dry path
-    this.inputGain.connect(this.dryGain);
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
+    // Dry path (goes through wetPathGate for proper bypass)
+    this.getWetPathInput().connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
     // Pre-delay
-    this.inputGain.connect(this.preDelay);
+    this.getWetPathInput().connect(this.preDelay);
 
     // Early reflections
     for (let i = 0; i < this.numTaps; i++) {

@@ -67,13 +67,14 @@ export class FormantShifterProcessor extends BaseEffect {
     this.registerFilter(this.lowPass);
 
     // Wire up signal chain
-    // Dry path
-    this.inputGain.connect(this.dryGain);
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
+    // Dry path (goes through wetPathGate for proper bypass)
+    this.getWetPathInput().connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
     // Wet path - parallel formant filters
     for (let i = 0; i < this.formantFilters.length; i++) {
-      this.inputGain.connect(this.formantFilters[i]);
+      this.getWetPathInput().connect(this.formantFilters[i]);
       this.formantFilters[i].connect(this.formantGains[i]);
       this.formantGains[i].connect(this.wetMasterGain);
     }

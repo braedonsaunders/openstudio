@@ -135,12 +135,13 @@ export class ShimmerReverbProcessor extends BaseEffect {
     this.shimmerMix = audioContext.createGain();
 
     // Wire up signal chain
-    // Dry path
-    this.inputGain.connect(this.dryGain);
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
+    // Dry path (goes through wetPathGate for proper bypass)
+    this.getWetPathInput().connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
     // Pre-delay and diffusion
-    this.inputGain.connect(this.preDelay);
+    this.getWetPathInput().connect(this.preDelay);
     this.preDelay.connect(this.allpass1);
     this.allpass1.connect(this.allpass2);
 

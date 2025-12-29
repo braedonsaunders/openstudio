@@ -79,19 +79,20 @@ export class VocalDoublerProcessor extends BaseEffect {
     this.registerFilter(this.highPass);
 
     // Wire up signal chain
-    // Dry path
-    this.inputGain.connect(this.dryGain);
+    // CRITICAL: Use getWetPathInput() to prevent filter instability when disabled
+    // Dry path (goes through wetPathGate for proper bypass)
+    this.getWetPathInput().connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
     // Wet path - left voice
-    this.inputGain.connect(this.delayLeft);
+    this.getWetPathInput().connect(this.delayLeft);
     this.delayLeft.connect(this.highPass);
     this.highPass.connect(this.wetGainLeft);
     this.wetGainLeft.connect(this.panLeft);
     this.panLeft.connect(this.wetGain);
 
     // Wet path - right voice
-    this.inputGain.connect(this.delayRight);
+    this.getWetPathInput().connect(this.delayRight);
     this.delayRight.connect(this.wetGainRight);
     this.wetGainRight.connect(this.panRight);
     this.panRight.connect(this.wetGain);

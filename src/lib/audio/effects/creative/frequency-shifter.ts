@@ -97,7 +97,8 @@ export class FrequencyShifterProcessor extends BaseEffect {
     this.feedbackDelay.delayTime.value = 0.01;
 
     // Wire up Hilbert transform (real path)
-    let prevNodeReal: AudioNode = this.inputGain;
+    // CRITICAL: Use getWetPathInput() to ensure filters don't process audio when disabled
+    let prevNodeReal: AudioNode = this.getWetPathInput();
     for (const filter of this.allpassReal) {
       prevNodeReal.connect(filter);
       prevNodeReal = filter;
@@ -105,7 +106,7 @@ export class FrequencyShifterProcessor extends BaseEffect {
     prevNodeReal.connect(this.gainSin);
 
     // Wire up Hilbert transform (imaginary path - with phase shift)
-    let prevNodeImag: AudioNode = this.inputGain;
+    let prevNodeImag: AudioNode = this.getWetPathInput();
     for (const filter of this.allpassImag) {
       prevNodeImag.connect(filter);
       prevNodeImag = filter;
