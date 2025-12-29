@@ -24,11 +24,8 @@ import {
   ChevronUp,
   Lock,
   Plus,
-  Wifi,
-  WifiOff,
   Save,
   Trash2,
-  RefreshCw,
 } from 'lucide-react';
 import {
   LYRIA_STYLES,
@@ -53,7 +50,7 @@ export function AIPanel() {
   const setLyriaVolume = useLyriaStore((state) => state.setVolume);
 
   // Songs store for creating Lyria songs
-  const { createSong, addTrackToSong, getCurrentSong, currentSongId, updateTrackInSong, deleteSong } = useSongsStore();
+  const { createSong, addTrackToSong, getCurrentSong, currentSongId, updateTrackInSong, deleteSong, updateSong } = useSongsStore();
   const room = useRoomStore((state) => state.room);
   const currentUser = useRoomStore((state) => state.currentUser);
   const roomId = room?.id;
@@ -70,6 +67,10 @@ export function AIPanel() {
   const [drums, setDrums] = useState(0.7);
   const [bass, setBass] = useState(0.7);
   const [temperature, setTemperature] = useState(0.5);
+
+  // Song name for editing
+  const [editingSongName, setEditingSongName] = useState('');
+  const [newSongName, setNewSongName] = useState('');
 
   // Get current Lyria track from song if it exists
   const currentSong = getCurrentSong();
@@ -89,7 +90,11 @@ export function AIPanel() {
       setBass(config.bass ?? 0.7);
       setTemperature(config.temperature ?? 0.5);
     }
-  }, [currentLyriaTrack?.id]); // Only reload when the track reference changes
+    // Also load song name
+    if (currentSong) {
+      setEditingSongName(currentSong.name);
+    }
+  }, [currentLyriaTrack?.id, currentSong?.id]); // Only reload when the track or song reference changes
 
   // Sync room context to Lyria store when BPM/key changes
   useEffect(() => {
@@ -141,7 +146,8 @@ export function AIPanel() {
 
     const config = getCurrentConfig();
     const styleName = LYRIA_STYLES.find(s => s.id === selectedStyle)?.label || 'AI Music';
-    const songName = `Lyria - ${styleName}`;
+    // Use custom name if provided, otherwise generate from style
+    const songName = newSongName.trim() || `Lyria - ${styleName}`;
 
     // Create a new song
     const song = createSong(roomId, songName, currentUser.id, currentUser.name);
@@ -155,8 +161,11 @@ export function AIPanel() {
       lyriaConfig: config,
     });
 
+    // Clear the new song name input
+    setNewSongName('');
+
     console.log('[AIPanel] Created Lyria song:', song.name);
-  }, [roomId, currentUser, getCurrentConfig, selectedStyle, createSong, addTrackToSong, lyriaVolume]);
+  }, [roomId, currentUser, getCurrentConfig, selectedStyle, createSong, addTrackToSong, lyriaVolume, newSongName]);
 
   // Add Lyria track to current song
   const handleAddToCurrentSong = useCallback(() => {
@@ -192,8 +201,13 @@ export function AIPanel() {
       volume: lyriaVolume,
     });
 
+    // Also update song name if changed
+    if (editingSongName.trim() && editingSongName !== currentSong.name) {
+      updateSong(currentSong.id, { name: editingSongName.trim() });
+    }
+
     console.log('[AIPanel] Saved Lyria track changes');
-  }, [currentSong, currentLyriaTrack, getCurrentConfig, updateTrackInSong, lyriaVolume]);
+  }, [currentSong, currentLyriaTrack, getCurrentConfig, updateTrackInSong, lyriaVolume, editingSongName, updateSong]);
 
   // Delete current Lyria song
   const handleDeleteSong = useCallback(() => {
@@ -209,9 +223,7 @@ export function AIPanel() {
     console.log('[AIPanel] Deleted Lyria song:', currentSong.name);
   }, [currentSong, deleteSong]);
 
-  // Connection state helpers
-  const isConnected = sessionState === 'connected' || sessionState === 'playing' || sessionState === 'paused';
-  const isPlaying = sessionState === 'playing';
+  // Helper to check if current song has a Lyria track
   const currentSongHasLyria = currentSong?.tracks.some(t => t.type === 'lyria') ?? false;
 
   return (
@@ -241,38 +253,6 @@ export function AIPanel() {
           </div>
         ) : (
           <>
-            {/* Connection Status (read-only) */}
-            <div className={cn(
-              'flex items-center gap-2 p-3 rounded-xl transition-all',
-              isConnected
-                ? 'bg-emerald-500/10 border border-emerald-500/20'
-                : 'bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10'
-            )}>
-              {isConnected ? (
-                <Wifi className="w-4 h-4 text-emerald-400" />
-              ) : (
-                <WifiOff className="w-4 h-4 text-gray-400 dark:text-zinc-500" />
-              )}
-              <div className="flex-1">
-                <p className="text-sm font-medium text-gray-900 dark:text-white">
-                  {isPlaying ? 'Playing' : isConnected ? 'Connected' : 'Ready'}
-                </p>
-                <p className="text-[10px] text-gray-500 dark:text-zinc-500">
-                  {isPlaying
-                    ? 'Streaming live to room'
-                    : isConnected
-                    ? 'Press play on transport to start'
-                    : 'Add a Lyria song to get started'}
-                </p>
-              </div>
-              {isPlaying && (
-                <span className="flex items-center gap-1 text-[10px] text-emerald-400">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                  Live
-                </span>
-              )}
-            </div>
-
             {/* Error Display */}
             {error && (
               <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
@@ -283,16 +263,21 @@ export function AIPanel() {
             {/* Editing Status / Create Buttons */}
             {isEditingExisting ? (
               <div className="space-y-3">
-                {/* Editing indicator */}
-                <div className="flex items-center gap-2 p-3 rounded-xl bg-purple-500/10 border border-purple-500/20">
-                  <Sparkles className="w-4 h-4 text-purple-400" />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[10px] text-purple-400/70 uppercase tracking-wide">Editing</p>
-                    <p className="text-sm font-medium text-purple-400 truncate">{currentSong?.name}</p>
+                {/* Song name input */}
+                <div className="space-y-1.5">
+                  <label className="text-[10px] text-purple-400/70 uppercase tracking-wide font-medium">Song Name</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="text"
+                      value={editingSongName}
+                      onChange={(e) => setEditingSongName(e.target.value)}
+                      placeholder="Enter song name..."
+                      className="flex-1 px-3 py-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    />
+                    <span className="text-[10px] text-gray-500 dark:text-zinc-500 px-1.5 py-0.5 bg-gray-200 dark:bg-white/10 rounded whitespace-nowrap">
+                      {roomBpm} BPM
+                    </span>
                   </div>
-                  <span className="text-[10px] text-gray-500 dark:text-zinc-500 px-1.5 py-0.5 bg-gray-200 dark:bg-white/10 rounded">
-                    {roomBpm} BPM
-                  </span>
                 </div>
 
                 {/* Save & Delete buttons */}
@@ -322,7 +307,18 @@ export function AIPanel() {
                 </button>
               </div>
             ) : (
-              <div className="space-y-2">
+              <div className="space-y-3">
+                {/* Song name input for new song */}
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Song Name</label>
+                  <input
+                    type="text"
+                    value={newSongName}
+                    onChange={(e) => setNewSongName(e.target.value)}
+                    placeholder="e.g., Lyria - Jazz (optional)"
+                    className="w-full px-3 py-2 bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                </div>
                 <button
                   onClick={handleCreateLyriaSong}
                   className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-medium rounded-xl transition-all shadow-lg"
