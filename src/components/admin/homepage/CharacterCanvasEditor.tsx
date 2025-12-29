@@ -310,13 +310,15 @@ export function CharacterCanvasEditor({ initialCanvasData, onChange }: Character
           <LayerPanel
             layers={sortedLayers}
             selectedLayerId={selectedLayerId}
-            componentsMap={componentsMap}
+            components={componentsMap}
+            categories={categoriesMap}
             colorPalettes={colorPalettesRecord}
             onSelectLayer={selectLayer}
             onRemoveLayer={removeLayer}
             onDuplicateLayer={duplicateLayer}
             onReorderLayers={reorderLayers}
             onSetColorVariant={setColorVariant}
+            onUpdateTransform={(layerId, transform) => updateTransform(layerId, transform)}
           />
         </div>
       </div>
