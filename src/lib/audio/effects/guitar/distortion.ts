@@ -35,14 +35,16 @@ export class DistortionProcessor extends BaseEffect {
     this.toneFilter = audioContext.createBiquadFilter();
     this.highPassFilter = audioContext.createBiquadFilter();
 
-    // Configure filters
+    // Configure and register filters
     this.toneFilter.type = 'lowpass';
     this.toneFilter.Q.value = 0.7;
+    this.registerFilter(this.toneFilter);
 
     // High pass to remove mud
     this.highPassFilter.type = 'highpass';
     this.highPassFilter.frequency.value = 80;
     this.highPassFilter.Q.value = 0.7;
+    this.registerFilter(this.highPassFilter);
 
     // Use 4x oversampling to reduce aliasing
     this.waveshaper.oversample = '4x';

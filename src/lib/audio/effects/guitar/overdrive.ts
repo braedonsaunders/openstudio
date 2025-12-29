@@ -33,6 +33,7 @@ export class OverdriveProcessor extends BaseEffect {
     // Configure tone filter (low-pass to tame harsh highs)
     this.toneFilter.type = 'lowpass';
     this.toneFilter.Q.value = 0.7;
+    this.registerFilter(this.toneFilter);
 
     // Set oversample for better quality (reduces aliasing)
     this.waveshaper.oversample = '4x';

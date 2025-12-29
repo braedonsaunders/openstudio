@@ -50,12 +50,14 @@ export class FrequencyShifterProcessor extends BaseEffect {
     };
 
     // Create Hilbert transform approximation (allpass filter network)
+    // CRITICAL: Allpass filters must be registered for stability when toggling effect
     // Real path (0 degree)
     for (const coeff of this.allpassCoeffs) {
       const filter = audioContext.createBiquadFilter();
       filter.type = 'allpass';
       filter.frequency.value = coeff * 22050;
       filter.Q.value = 0.5;
+      this.registerFilter(filter);
       this.allpassReal.push(filter);
     }
 
@@ -65,6 +67,7 @@ export class FrequencyShifterProcessor extends BaseEffect {
       filter.type = 'allpass';
       filter.frequency.value = coeff * 22050;
       filter.Q.value = 0.5;
+      this.registerFilter(filter);
       this.allpassImag.push(filter);
     }
 

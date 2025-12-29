@@ -100,6 +100,7 @@ export class GranularDelayProcessor extends BaseEffect {
     this.feedbackFilter.type = 'lowpass';
     this.feedbackFilter.frequency.value = 8000;
     this.feedbackFilter.Q.value = 0.5;
+    this.registerFilter(this.feedbackFilter);
 
     // Wire up main signal chain
     // Dry path

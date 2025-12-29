@@ -57,6 +57,7 @@ export class RingModulatorProcessor extends BaseEffect {
     this.envelopeFilter = audioContext.createBiquadFilter();
     this.envelopeFilter.type = 'lowpass';
     this.envelopeFilter.frequency.value = 50;
+    this.registerFilter(this.envelopeFilter);
 
     // Wire up signal chain
     // Dry path
