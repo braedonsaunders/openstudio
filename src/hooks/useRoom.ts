@@ -726,19 +726,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Get current user before disconnecting
     const currentUserId = userIdRef.current;
 
-    // Check if we should delete the room when leaving
-    // CRITICAL: Only delete if:
-    // 1. We're still tracked in presence (our connection didn't already drop)
-    // 2. There are no other connections in the room
-    // If our presence was already removed, we can't trust the count - DON'T delete
-    const isStillTracked = realtimeRef.current?.isStillTracked() ?? false;
-    const otherConnectionsCount = realtimeRef.current?.getOtherConnectionsCount() ?? 0;
-    const totalConnections = realtimeRef.current?.getUserCount() ?? 0;
-    console.log(`[useRoom] leave() - isStillTracked: ${isStillTracked}, totalConnections: ${totalConnections}, otherConnections: ${otherConnectionsCount}`);
-
-    // Only consider deleting if we're definitely still tracked AND there are no other connections
-    const isLastUser = isStillTracked && otherConnectionsCount === 0;
-
     // Mark this user's tracks as inactive (not deleted) so they persist
     const userTracksState = useUserTracksStore.getState();
     const userTracks = userTracksState.getTracksByUser(currentUserId);
@@ -768,17 +755,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     await realtimeRef.current?.disconnect();
     await cloudflareRef.current?.leaveRoom();
 
-    // If we were the last user, destroy the room and its tracks
-    if (isLastUser && roomId) {
-      try {
-        await fetch(`/api/rooms?id=${roomId}`, {
-          method: 'DELETE',
-        });
-        console.log('Room destroyed after last user left');
-      } catch (err) {
-        console.error('Failed to destroy room:', err);
-      }
-    }
+    // NOTE: Room cleanup is handled server-side, not by clients.
+    // Client-side deletion was removed due to race conditions causing
+    // rooms to be incorrectly deleted while other users were still present.
 
     realtimeRef.current = null;
     cloudflareRef.current = null;
