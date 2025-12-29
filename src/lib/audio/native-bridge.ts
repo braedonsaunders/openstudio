@@ -474,15 +474,15 @@ export async function isNativeBridgeAvailable(): Promise<boolean> {
   return connected;
 }
 
-// GitHub repo for releases
-const GITHUB_REPO = 'braedonsaunders/openstudio';
-const BRIDGE_VERSION = '0.1.0';
+// R2 public URL - uses same bucket as tracks, files stored under bridge/ path
+// This should match CLOUDFLARE_R2_PUBLIC_URL env var
+const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://cdn.openstudio.live';
 
 /**
- * Get download URL for native bridge from GitHub Releases
+ * Get download URL for native bridge from Cloudflare R2
  */
 export function getNativeBridgeDownloadUrl(): string {
-  const baseUrl = `https://github.com/${GITHUB_REPO}/releases/download/bridge-v${BRIDGE_VERSION}`;
+  const baseUrl = `${R2_PUBLIC_URL}/bridge/latest`;
   const platform = navigator.platform.toLowerCase();
   const userAgent = navigator.userAgent.toLowerCase();
 
@@ -490,7 +490,6 @@ export function getNativeBridgeDownloadUrl(): string {
     return `${baseUrl}/openstudio-bridge-windows.exe`;
   } else if (platform.includes('mac')) {
     // Detect Apple Silicon vs Intel
-    // Chrome/Safari expose this, Firefox doesn't reliably
     const isAppleSilicon = userAgent.includes('arm') ||
       (platform.includes('mac') && !userAgent.includes('intel'));
 
@@ -502,23 +501,38 @@ export function getNativeBridgeDownloadUrl(): string {
     return `${baseUrl}/openstudio-bridge-linux`;
   }
 
-  // Fallback to releases page
-  return `https://github.com/${GITHUB_REPO}/releases/latest`;
+  // Fallback to latest directory
+  return baseUrl;
 }
 
 /**
  * Get all download URLs for all platforms
  */
 export function getAllDownloadUrls(): Record<string, string> {
-  const baseUrl = `https://github.com/${GITHUB_REPO}/releases/download/bridge-v${BRIDGE_VERSION}`;
+  const baseUrl = `${R2_PUBLIC_URL}/bridge/latest`;
 
   return {
     windows: `${baseUrl}/openstudio-bridge-windows.exe`,
     macosIntel: `${baseUrl}/openstudio-bridge-macos-x64`,
     macosArm: `${baseUrl}/openstudio-bridge-macos-arm64`,
     linux: `${baseUrl}/openstudio-bridge-linux`,
-    releasePage: `https://github.com/${GITHUB_REPO}/releases/latest`,
   };
+}
+
+/**
+ * Get the current bridge version from R2
+ */
+export async function getLatestBridgeVersion(): Promise<string | null> {
+  try {
+    const res = await fetch(`${R2_PUBLIC_URL}/bridge/latest/version.json`);
+    if (res.ok) {
+      const data = await res.json();
+      return data.version;
+    }
+  } catch {
+    // Ignore errors
+  }
+  return null;
 }
 
 // Export singleton
