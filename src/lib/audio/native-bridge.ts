@@ -219,7 +219,10 @@ export class NativeBridge {
   private handleMessage(data: string): void {
     try {
       const msg = JSON.parse(data) as NativeMessage;
-      console.log('[NativeBridge] Received message:', msg.type, msg);
+      // Only log non-levels messages to avoid console spam
+      if (msg.type !== 'levels') {
+        console.log('[NativeBridge] Received message:', msg.type, msg);
+      }
 
       switch (msg.type) {
         case 'welcome':
@@ -281,11 +284,11 @@ export class NativeBridge {
   // === Commands ===
 
   private send(message: object): void {
-    if (this.ws && this.isConnected) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
       console.log('[NativeBridge] Sending message:', message);
       this.ws.send(JSON.stringify(message));
     } else {
-      console.warn('[NativeBridge] Cannot send - not connected. Message:', message);
+      console.warn('[NativeBridge] Cannot send - WebSocket not open. State:', this.ws?.readyState);
     }
   }
 

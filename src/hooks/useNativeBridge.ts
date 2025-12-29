@@ -94,22 +94,12 @@ export function useNativeBridge() {
 
     console.log('[useNativeBridge] Event listeners registered, checking availability...');
 
-    // Check if bridge is available
+    // Check if bridge is available - the 'connected' event handler will request devices
     const checkAvailability = async () => {
       try {
         const connected = await nativeBridge.connect();
         console.log('[useNativeBridge] Connection result:', connected);
-
-        if (connected) {
-          const s = useBridgeAudioStore.getState();
-          s.setConnected(true);
-          const driverType = nativeBridge.getDriverType();
-          console.log('[useNativeBridge] Driver type:', driverType);
-          s.setDriverType(driverType);
-          // Request devices
-          console.log('[useNativeBridge] Requesting devices after connect...');
-          nativeBridge.getDevices();
-        }
+        // Note: Don't call getDevices() here - handleConnected will do it when 'connected' event fires
       } catch (err) {
         console.error('[useNativeBridge] Connection error:', err);
       }
@@ -132,16 +122,8 @@ export function useNativeBridge() {
     console.log('[useNativeBridge] Manual connect requested');
     const connected = await nativeBridge.connect();
     console.log('[useNativeBridge] Manual connect result:', connected);
-
-    const store = useBridgeAudioStore.getState();
-    if (connected) {
-      store.setConnected(true);
-      store.setDriverType(nativeBridge.getDriverType());
-      console.log('[useNativeBridge] Requesting devices after manual connect...');
-      nativeBridge.getDevices();
-    } else {
-      store.setConnected(false);
-    }
+    // Note: Don't manually update store or call getDevices here
+    // The 'connected' event handler (handleConnected) will do this
     return connected;
   }, []);
 
