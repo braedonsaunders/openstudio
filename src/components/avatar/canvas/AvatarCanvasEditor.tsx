@@ -21,7 +21,6 @@ import type Konva from 'konva';
 import type {
   AvatarCategory,
   AvatarComponent,
-  AvatarColorPalette,
   CanvasData,
   CanvasBackground,
 } from '@/types/avatar';
@@ -48,7 +47,7 @@ interface AvatarCanvasEditorProps {
 interface LibraryData {
   categories: AvatarCategory[];
   components: AvatarComponent[];
-  colorPalettes: AvatarColorPalette[];
+  colorPalettes: Record<string, string[]>; // API returns Record, not array
   unlockedComponentIds: string[];
 }
 
@@ -103,11 +102,8 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
 
   const colorPalettesRecord = useMemo(() => {
     if (!libraryData) return {};
-    const record: Record<string, string[]> = {};
-    for (const palette of libraryData.colorPalettes) {
-      record[palette.id] = palette.colors;
-    }
-    return record;
+    // colorPalettes is already a Record<string, string[]> from the API
+    return libraryData.colorPalettes || {};
   }, [libraryData]);
 
   const unlockedSet = useMemo(() => {
@@ -122,11 +118,8 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
       setError(null);
 
       try {
-        // Load library and canvas in parallel
-        const [libraryResponse, canvasResponse] = await Promise.all([
-          fetch('/api/avatar/library'),
-          fetch('/api/avatar/canvas'),
-        ]);
+        // Load library first (required)
+        const libraryResponse = await fetch('/api/avatar/library');
 
         if (!libraryResponse.ok) {
           throw new Error('Failed to load avatar library');
@@ -135,12 +128,19 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
         const library = await libraryResponse.json();
         setLibraryData(library);
 
-        if (canvasResponse.ok) {
-          const canvasResult = await canvasResponse.json();
-          if (canvasResult.canvasData) {
-            setInitialCanvasData(canvasResult.canvasData);
-            loadCanvas(canvasResult.canvasData);
+        // Try to load existing canvas data (optional - may not exist yet or user not authenticated)
+        try {
+          const canvasResponse = await fetch('/api/avatar/canvas');
+          if (canvasResponse.ok) {
+            const canvasResult = await canvasResponse.json();
+            if (canvasResult.canvasData) {
+              setInitialCanvasData(canvasResult.canvasData);
+              loadCanvas(canvasResult.canvasData);
+            }
           }
+          // Ignore 401/404 - user just doesn't have canvas data yet
+        } catch {
+          // Canvas load failed, continue without it
         }
       } catch (err) {
         setError(err instanceof Error ? err.message : 'Failed to load');
