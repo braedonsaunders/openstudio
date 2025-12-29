@@ -749,12 +749,18 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Get current user before disconnecting
     const currentUserId = userIdRef.current;
 
-    // Check if we're the last user before disconnecting
-    // Use getOtherUsersCount() to avoid race condition where our presence
-    // was already removed (e.g., network disconnect) - we only destroy
-    // the room if there are NO other users, not based on total count
-    const otherUsersCount = realtimeRef.current?.getOtherUsersCount() ?? 0;
-    const isLastUser = otherUsersCount === 0;
+    // Check if we should delete the room when leaving
+    // CRITICAL: Only delete if:
+    // 1. We're still tracked in presence (our connection didn't already drop)
+    // 2. There are no other connections in the room
+    // If our presence was already removed, we can't trust the count - DON'T delete
+    const isStillTracked = realtimeRef.current?.isStillTracked() ?? false;
+    const otherConnectionsCount = realtimeRef.current?.getOtherConnectionsCount() ?? 0;
+    const totalConnections = realtimeRef.current?.getUserCount() ?? 0;
+    console.log(`[useRoom] leave() - isStillTracked: ${isStillTracked}, totalConnections: ${totalConnections}, otherConnections: ${otherConnectionsCount}`);
+
+    // Only consider deleting if we're definitely still tracked AND there are no other connections
+    const isLastUser = isStillTracked && otherConnectionsCount === 0;
 
     // Mark this user's tracks as inactive (not deleted) so they persist
     const userTracksState = useUserTracksStore.getState();

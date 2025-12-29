@@ -553,6 +553,44 @@ export class RealtimeRoomManager {
     return count;
   }
 
+  /**
+   * Get count of OTHER connections in the room (excluding ours).
+   * This counts presence entries (connections/devices), not unique users.
+   * Handles the case where the same user is on multiple devices.
+   * Returns totalConnections - 1 (assuming we're still tracked).
+   */
+  getOtherConnectionsCount(): number {
+    const state = this.getPresenceState();
+    if (!state) return 0;
+
+    // Each key in presence state is a unique connection/device
+    const totalConnections = Object.keys(state).length;
+
+    // Subtract 1 for our own connection (assuming we're still tracked)
+    // If we're already untracked, this might undercount by 1, which is safe
+    // (we'd rather NOT delete the room than delete it incorrectly)
+    return Math.max(0, totalConnections - 1);
+  }
+
+  /**
+   * Check if we're still tracked in the presence state.
+   * Returns false if our presence has already been removed (e.g., network disconnect).
+   */
+  isStillTracked(): boolean {
+    const state = this.getPresenceState();
+    if (!state) return false;
+
+    // Check if any presence entry contains our userId
+    for (const users of Object.values(state)) {
+      for (const user of users) {
+        if (user.id === this.userId) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   // Event listener management
   on(event: string, callback: (data: unknown) => void): () => void {
     if (!this.listeners.has(event)) {
