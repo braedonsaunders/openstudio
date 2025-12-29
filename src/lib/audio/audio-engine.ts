@@ -2,9 +2,9 @@
 // Manages all audio processing, routing, and playback
 
 import { AdaptiveJitterBuffer } from './jitter-buffer';
-import { UnifiedEffectsProcessor } from './effects/unified-effects-processor';
+import { ExtendedEffectsProcessor } from './effects/extended-effects-processor';
 import { MasterEffectsProcessor, type MasterEffectsChain } from './effects/master-effects-processor';
-import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, UnifiedEffectsChain } from '@/types';
+import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, ExtendedEffectsChain } from '@/types';
 
 export interface CaptureAudioOptions {
   deviceId?: string;
@@ -42,7 +42,7 @@ export class AudioEngine {
   private localInputGain: GainNode | null = null;
   private localArmGain: GainNode | null = null;
   private localMuteGain: GainNode | null = null;
-  private localEffectsProcessor: UnifiedEffectsProcessor | null = null;
+  private localEffectsProcessor: ExtendedEffectsProcessor | null = null;
   private masterEffectsProcessor: MasterEffectsProcessor | null = null;
   private monitoringEnabled: boolean = true;
   private localTrackMuted: boolean = false;
@@ -305,9 +305,9 @@ export class AudioEngine {
       // Connect input gain to arm gate (this is where audio gets blocked when unarmed)
       this.localInputGain.connect(this.localArmGain);
 
-      // Create unified effects processor (all 15 effects in signal chain order)
+      // Create extended effects processor (all 35 effects in signal chain order)
       // Connect: inputGain -> armGain -> effectsProcessor -> muteGain -> monitorGain -> masterGain
-      this.localEffectsProcessor = new UnifiedEffectsProcessor(this.audioContext);
+      this.localEffectsProcessor = new ExtendedEffectsProcessor(this.audioContext);
       this.localArmGain.connect(this.localEffectsProcessor.getInputNode());
       this.localEffectsProcessor.connect(this.localMuteGain);
       this.localMuteGain.connect(this.localMonitorGain);
@@ -639,9 +639,9 @@ export class AudioEngine {
   }
 
   /**
-   * Update the local track effects (unified - all 15 effects)
+   * Update the local track effects (extended - all 35 effects)
    */
-  updateLocalEffects(effects: Partial<UnifiedEffectsChain>): void {
+  updateLocalEffects(effects: Partial<ExtendedEffectsChain>): void {
     if (this.localEffectsProcessor) {
       this.localEffectsProcessor.updateSettings(effects);
     }
@@ -650,7 +650,7 @@ export class AudioEngine {
   /**
    * Get the local effects processor (for direct manipulation)
    */
-  getLocalEffectsProcessor(): UnifiedEffectsProcessor | null {
+  getLocalEffectsProcessor(): ExtendedEffectsProcessor | null {
     return this.localEffectsProcessor;
   }
 

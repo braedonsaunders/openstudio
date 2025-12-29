@@ -700,6 +700,11 @@ export class ExtendedEffectsProcessor {
     this.updateSettings(DEFAULT_FULL_EFFECTS);
   }
 
+  // Set low-latency mode (delegates to core processor)
+  setLowLatencyMode(enabled: boolean): void {
+    this.coreProcessor.setLowLatencyMode(enabled);
+  }
+
   // Clean up
   dispose(): void {
     this.disconnect();
