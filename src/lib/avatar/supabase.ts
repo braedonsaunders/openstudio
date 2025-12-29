@@ -851,7 +851,10 @@ export async function saveUserAvatarCanvas(
   headshotUrl?: string,
   thumbnailUrls?: UserAvatarCanvas['thumbnailUrls']
 ): Promise<UserAvatarCanvas> {
-  const { data, error } = await supabaseAuth
+  // Use admin client to bypass RLS - API already validates auth
+  const supabase = getAdminSupabase();
+  if (!supabase) throw new Error('Admin client not available');
+  const { data, error } = await supabase
     .from('user_avatar_canvas')
     .upsert({
       user_id: userId,
