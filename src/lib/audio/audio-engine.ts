@@ -478,10 +478,20 @@ export class AudioEngine {
    * @param stream MediaStream from the external source
    * @param volume Initial volume (0-1)
    */
-  addExternalAudioSource(id: string, stream: MediaStream, volume: number = 1): void {
+  async addExternalAudioSource(id: string, stream: MediaStream, volume: number = 1): Promise<void> {
     if (!this.audioContext || !this.masterGain) {
       console.warn('[AudioEngine] Cannot add external source: not initialized');
       return;
+    }
+
+    // Ensure AudioContext is running before adding external source
+    if (this.audioContext.state === 'suspended') {
+      try {
+        await this.audioContext.resume();
+        console.log('[AudioEngine] Resumed AudioContext for external source:', id);
+      } catch (err) {
+        console.warn('[AudioEngine] Failed to resume AudioContext for external source:', err);
+      }
     }
 
     // Remove existing source with same ID

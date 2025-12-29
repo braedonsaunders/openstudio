@@ -82,16 +82,29 @@ export class PhaserProcessor extends BaseEffect {
 
     // Apply initial settings
     this.updateRate();
-    this.updateDepth();
-    this.updateBaseFrequency();
     this.updateStages();
     this.updateFeedback();
     this.updateQ();
     this.updateMix();
 
-    // If starting disabled, zero out LFO to prevent filter modulation
-    if (!this.settings.enabled) {
+    // Initialize filters to safe state first
+    for (const filter of this.allpassFilters) {
+      filter.frequency.value = 1000; // Safe default
+    }
+
+    // Only connect modulation and set values if enabled
+    if (this.settings.enabled) {
+      // Connect modulation to all filters
+      for (const filter of this.allpassFilters) {
+        this.baseFrequencyGain.connect(filter.frequency);
+        this.lfoGain.connect(filter.frequency);
+      }
+      this.updateBaseFrequency();
+      this.updateDepth();
+    } else {
+      // Keep gains at zero when disabled
       this.lfoGain.gain.value = 0;
+      this.baseFrequencyGain.gain.value = 0;
     }
   }
 
@@ -121,11 +134,9 @@ export class PhaserProcessor extends BaseEffect {
     this.baseFrequencySource.connect(this.baseFrequencyGain);
     this.lfo.connect(this.lfoGain);
 
-    // Connect frequency control to all filters
-    for (const filter of this.allpassFilters) {
-      this.baseFrequencyGain.connect(filter.frequency);
-      this.lfoGain.connect(filter.frequency);
-    }
+    // NOTE: We do NOT connect modulation to filter.frequency here.
+    // Modulation connections are managed by setEnabled() to prevent
+    // BiquadFilterNode instability when the effect is disabled.
 
     // Wet to output through base class wetGain
     this.phaserWetGain.connect(this.wetGain);
@@ -254,16 +265,40 @@ export class PhaserProcessor extends BaseEffect {
     return { ...this.settings };
   }
 
-  // Override setEnabled to stop LFO modulation when disabled
+  // Override setEnabled to completely disconnect modulation when disabled
+  // This prevents BiquadFilterNode instability from audio-rate parameter automation
   setEnabled(enabled: boolean): void {
     super.setEnabled(enabled);
     const now = this.audioContext.currentTime;
 
     if (!enabled) {
-      // Stop LFO modulation to prevent filter instability when disabled
+      // CRITICAL: Disconnect ALL modulation sources from filter.frequency
+      // Just zeroing the gain is not enough - the connected oscillators can still
+      // cause filter instability even at very low amplitudes
+      try {
+        this.lfoGain.disconnect();
+        this.baseFrequencyGain.disconnect();
+      } catch {
+        // Ignore if already disconnected
+      }
+
+      // Zero the gains for safety
       this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
+      this.baseFrequencyGain.gain.setTargetAtTime(0, now, 0.01);
+
+      // Reset all filters to a safe, stable state
+      for (const filter of this.allpassFilters) {
+        this.resetFilter(filter);
+      }
     } else {
-      // Restore LFO modulation
+      // Reconnect modulation sources to all filters
+      for (const filter of this.allpassFilters) {
+        this.baseFrequencyGain.connect(filter.frequency);
+        this.lfoGain.connect(filter.frequency);
+      }
+
+      // Restore modulation values
+      this.updateBaseFrequency();
       this.updateDepth();
     }
   }

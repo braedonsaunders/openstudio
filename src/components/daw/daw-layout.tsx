@@ -320,9 +320,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     // Set up audio callbacks to route Lyria to master mixer
     lyriaStore.setAudioCallbacks(
       // onConnected - route Lyria audio to master mixer
-      (stream: MediaStream) => {
+      async (stream: MediaStream) => {
         console.log('[DAWLayout] Lyria connected, routing to master mixer');
-        addExternalAudioSource('lyria', stream, lyriaStore.volume);
+        await addExternalAudioSource('lyria', stream, lyriaStore.volume);
 
         // Also share via WebRTC if available
         const cloudflare = getCloudflareRef?.();
