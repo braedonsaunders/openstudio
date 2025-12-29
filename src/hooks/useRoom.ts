@@ -360,24 +360,23 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         usePermissionsStore.getState().setMyPermissions('owner');
 
         // Load existing tracks from database (includes both file uploads and YouTube tracks)
+        // Always set queue to this room's tracks (even if empty) to clear any previous room data
         try {
           const response = await fetch(`/api/rooms/${roomId}/tracks`);
           if (response.ok) {
-            const tracks = await response.json();
-            if (tracks.length > 0) {
-              console.log('Loaded tracks from database:', tracks.length, 'tracks');
-              tracks.forEach((t: BackingTrack) => {
-                console.log(`  - ${t.name} (${t.youtubeId ? 'YouTube: ' + t.youtubeId : 'file upload'})`);
-              });
-              setQueue({
-                tracks,
-                currentIndex: 0,
-                isPlaying: false,
-                currentTime: 0,
-                syncTimestamp: 0,
-              });
-              setCurrentTrack(tracks[0]);
-            }
+            const tracks: BackingTrack[] = await response.json();
+            console.log('Loaded tracks from database:', tracks.length, 'tracks');
+            tracks.forEach((t: BackingTrack) => {
+              console.log(`  - ${t.name} (${t.youtubeId ? 'YouTube: ' + t.youtubeId : 'file upload'})`);
+            });
+            setQueue({
+              tracks,
+              currentIndex: tracks.length > 0 ? 0 : -1,
+              isPlaying: false,
+              currentTime: 0,
+              syncTimestamp: 0,
+            });
+            setCurrentTrack(tracks.length > 0 ? tracks[0] : null);
           }
         } catch (err) {
           console.error('Failed to load tracks:', err);
