@@ -245,8 +245,10 @@ impl AudioEngine {
         let input_default_config = input_device.device.default_input_config()
             .map_err(|e| {
                 let msg = e.to_string();
+                // Log the actual error for debugging
+                tracing::error!("Failed to get input config: {}", msg);
                 if msg.contains("no longer available") || msg.contains("unplugged") {
-                    anyhow::anyhow!("ASIO device busy - close other audio apps (DAW, UA Console) and try again")
+                    anyhow::anyhow!("ASIO device error ({}). Try: 1) Close other audio apps, 2) Unplug/replug device, 3) Restart bridge", msg)
                 } else {
                     anyhow::anyhow!("No input config: {}", e)
                 }
