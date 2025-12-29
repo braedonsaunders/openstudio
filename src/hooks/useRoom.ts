@@ -423,6 +423,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         leftUsers.forEach((u) => {
           removeUser(u.id);
           removeRemoteStream(u.id);
+          // Remove from latency compensator to update jam compatibility
+          cloudflare.removeParticipant(u.id);
+          // Remove from performance sync store
+          usePerformanceSyncStore.getState().removeParticipant(u.id);
           // Mark their tracks as inactive (greyed out)
           userTracksStore.setUserTracksActive(u.id, false);
           options.onUserLeft?.(u.id);
