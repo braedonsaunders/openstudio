@@ -172,7 +172,7 @@ export default function FriendsPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
-        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
+        <div className="w-full max-w-6xl mx-auto px-6 sm:px-8 h-16 flex items-center justify-between">
           <button
             onClick={() => router.back()}
             className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
@@ -188,7 +188,7 @@ export default function FriendsPage() {
         </div>
       </header>
 
-      <main className="max-w-4xl mx-auto px-4 py-8">
+      <main className="w-full max-w-6xl mx-auto px-6 sm:px-8 py-8">
         {/* Stats */}
         <div className="grid grid-cols-3 gap-4 mb-6">
           <Card className="p-4 text-center">
