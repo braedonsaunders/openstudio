@@ -28,14 +28,7 @@ jobs:
             binary: openstudio-bridge.exe
             features: asio
 
-          # macOS x64 (Intel)
-          - os: macos-15-large
-            target: x86_64-apple-darwin
-            artifact: openstudio-bridge-macos-x64
-            binary: openstudio-bridge
-            features: default
-
-          # macOS ARM64 (Apple Silicon)
+          # macOS ARM64 (Apple Silicon) - covers most modern Macs
           - os: macos-latest
             target: aarch64-apple-darwin
             artifact: openstudio-bridge-macos-arm64
