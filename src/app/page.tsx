@@ -49,7 +49,7 @@ function ThemeToggle() {
 // Animated campfire for night scene
 function Campfire() {
   return (
-    <div className="absolute bottom-[22%] left-1/2 -translate-x-1/2 z-10">
+    <div className="absolute bottom-[5%] left-1/2 -translate-x-1/2 z-10">
       <svg width="120" height="100" viewBox="0 0 120 100">
         {/* Logs */}
         <rect x="25" y="75" width="70" height="12" rx="6" fill="#78350f" transform="rotate(-10 60 80)" />
