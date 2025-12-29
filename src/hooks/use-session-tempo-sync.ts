@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useShallow } from 'zustand/react/shallow';
 import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-tempo-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
@@ -154,11 +154,28 @@ export function useSessionTempoSync(): void {
   }, [key, keyScale]);
 
   // ==========================================================================
-  // Sync session tempo and key to Lyria store
+  // Sync session tempo and key to Lyria store (debounced)
   // This ensures Lyria receives BPM/key updates even when AI panel is not visible
+  // Debounced to prevent rapid-fire updates when adjusting BPM slider/input
   // ==========================================================================
+  const lyriaSyncTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
   useEffect(() => {
-    useLyriaStore.getState().setRoomContext(tempo, key, keyScale);
+    // Clear any pending sync
+    if (lyriaSyncTimeoutRef.current) {
+      clearTimeout(lyriaSyncTimeoutRef.current);
+    }
+
+    // Debounce: wait 300ms after last change before syncing to Lyria
+    lyriaSyncTimeoutRef.current = setTimeout(() => {
+      useLyriaStore.getState().setRoomContext(tempo, key, keyScale);
+    }, 300);
+
+    return () => {
+      if (lyriaSyncTimeoutRef.current) {
+        clearTimeout(lyriaSyncTimeoutRef.current);
+      }
+    };
   }, [tempo, key, keyScale]);
 }
 
