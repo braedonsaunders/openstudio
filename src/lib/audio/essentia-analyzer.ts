@@ -15,6 +15,11 @@ export class EssentiaAnalyzer {
   private analysisInterval: number | null = null;
   private initializationPromise: Promise<void> | null = null;
 
+  // Idle detection to prevent memory leaks during extended silence
+  private consecutiveSilentFrames = 0;
+  private static readonly IDLE_THRESHOLD_FRAMES = 300; // 30 seconds at 100ms intervals
+  private isIdle = false;
+
   async initialize(sampleRate: number = 44100): Promise<void> {
     if (this.isInitialized) return;
 
@@ -157,6 +162,8 @@ export class EssentiaAnalyzer {
     if (!this.analyserNode || !this.worker) return;
 
     this.isAnalyzing = true;
+    this.consecutiveSilentFrames = 0;
+    this.isIdle = false;
 
     // Reset worker state
     this.worker.postMessage({ type: 'reset' });
@@ -185,9 +192,32 @@ export class EssentiaAnalyzer {
       }
 
       if (maxAmplitude < 0.001) {
-        // Audio is silent, skip sending to worker
+        // Audio is silent
+        this.consecutiveSilentFrames++;
+
+        // After extended silence, enter idle mode and tell worker to clear buffers
+        if (
+          this.consecutiveSilentFrames >= EssentiaAnalyzer.IDLE_THRESHOLD_FRAMES &&
+          !this.isIdle
+        ) {
+          this.isIdle = true;
+          // Clear worker buffers to free WASM memory
+          this.worker.postMessage({ type: 'reset' });
+          console.log(
+            '[EssentiaAnalyzer] Entered idle mode after extended silence - cleared worker buffers'
+          );
+        }
+
+        // Skip sending silent frames to worker
         return;
       }
+
+      // Audio detected - reset idle state
+      if (this.isIdle) {
+        this.isIdle = false;
+        console.log('[EssentiaAnalyzer] Audio detected - resuming analysis');
+      }
+      this.consecutiveSilentFrames = 0;
 
       // Send audio data to worker for analysis
       // Use transferable to avoid copying (better performance)
@@ -273,6 +303,53 @@ let analyzerInstance: EssentiaAnalyzer | null = null;
 export function getEssentiaAnalyzer(): EssentiaAnalyzer {
   if (!analyzerInstance) {
     analyzerInstance = new EssentiaAnalyzer();
+
+    // Register cleanup on page unload to prevent memory leaks
+    if (typeof window !== 'undefined') {
+      const cleanup = () => {
+        if (analyzerInstance) {
+          analyzerInstance.dispose();
+          analyzerInstance = null;
+        }
+      };
+
+      // Use both events for better browser coverage
+      window.addEventListener('beforeunload', cleanup);
+      window.addEventListener('unload', cleanup);
+
+      // Also handle visibility change to clean up when tab is hidden for extended time
+      let hiddenSince: number | null = null;
+      const HIDDEN_CLEANUP_THRESHOLD = 5 * 60 * 1000; // 5 minutes
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden) {
+          hiddenSince = Date.now();
+        } else {
+          // Tab became visible again
+          if (hiddenSince && Date.now() - hiddenSince > HIDDEN_CLEANUP_THRESHOLD) {
+            // Tab was hidden for a long time - reset the analyzer to clear accumulated memory
+            if (analyzerInstance) {
+              analyzerInstance.resetAnalysis();
+              console.log(
+                '[EssentiaAnalyzer] Tab was hidden for extended period - cleared analysis buffers'
+              );
+            }
+          }
+          hiddenSince = null;
+        }
+      });
+    }
   }
   return analyzerInstance;
+}
+
+/**
+ * Dispose the singleton analyzer instance.
+ * Call this when the app is shutting down or when the audio analysis is no longer needed.
+ */
+export function disposeEssentiaAnalyzer(): void {
+  if (analyzerInstance) {
+    analyzerInstance.dispose();
+    analyzerInstance = null;
+  }
 }
