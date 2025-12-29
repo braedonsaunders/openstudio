@@ -954,10 +954,7 @@ export class AudioEngine {
    */
   getBackingTrackLevel(): number {
     if (!this.backingTrackAnalyser) return 0;
-    const data = new Uint8Array(this.backingTrackAnalyser.frequencyBinCount);
-    this.backingTrackAnalyser.getByteFrequencyData(data);
-    const sum = data.reduce((acc, val) => acc + val, 0);
-    return sum / data.length / 255;
+    return this.calculateLevel(this.backingTrackAnalyser);
   }
 
   /**
@@ -965,10 +962,7 @@ export class AudioEngine {
    */
   getMasterLevel(): number {
     if (!this.masterAnalyser) return 0;
-    const data = new Uint8Array(this.masterAnalyser.frequencyBinCount);
-    this.masterAnalyser.getByteFrequencyData(data);
-    const sum = data.reduce((acc, val) => acc + val, 0);
-    return sum / data.length / 255;
+    return this.calculateLevel(this.masterAnalyser);
   }
 
   /**
@@ -977,10 +971,7 @@ export class AudioEngine {
   getRemoteLevel(userId: string): number {
     const streamData = this.remoteStreams.get(userId);
     if (!streamData?.analyser) return 0;
-    const data = new Uint8Array(streamData.analyser.frequencyBinCount);
-    streamData.analyser.getByteFrequencyData(data);
-    const sum = data.reduce((acc, val) => acc + val, 0);
-    return sum / data.length / 255;
+    return this.calculateLevel(streamData.analyser);
   }
 
   /**
@@ -988,10 +979,7 @@ export class AudioEngine {
    */
   getLocalLevel(): number {
     if (!this.localAnalyser) return 0;
-    const data = new Uint8Array(this.localAnalyser.frequencyBinCount);
-    this.localAnalyser.getByteFrequencyData(data);
-    const sum = data.reduce((acc, val) => acc + val, 0);
-    return sum / data.length / 255;
+    return this.calculateLevel(this.localAnalyser);
   }
 
   async loadStem(stemType: string, url: string): Promise<void> {
@@ -1228,46 +1216,55 @@ export class AudioEngine {
   private static readonly UNHEALTHY_THRESHOLD = 3; // Frames before triggering recovery
   private static readonly RECOVERY_COOLDOWN_MS = 5000; // Min time between recoveries
 
+  /**
+   * Calculate audio level from an analyser node using time-domain data.
+   * Uses peak detection for responsive metering.
+   * @param analyser The AnalyserNode to read from
+   * @returns Normalized level from 0-1
+   */
+  private calculateLevel(analyser: AnalyserNode): number {
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+
+    // Find peak amplitude (max deviation from center at 128)
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) {
+      const amplitude = Math.abs(data[i] - 128);
+      if (amplitude > peak) peak = amplitude;
+    }
+
+    // Normalize to 0-1 range (128 is max deviation from center)
+    return peak / 128;
+  }
+
   private startLevelMonitoring(): void {
     this.levelUpdateInterval = setInterval(() => {
       const levels = new Map<string, number>();
 
       // Local level
       if (this.localAnalyser) {
-        const data = new Uint8Array(this.localAnalyser.frequencyBinCount);
-        this.localAnalyser.getByteFrequencyData(data);
-        const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
-        levels.set('local', level);
+        levels.set('local', this.calculateLevel(this.localAnalyser));
       }
 
       // Remote levels
       for (const [userId, streamData] of this.remoteStreams) {
         if (streamData.analyser) {
-          const data = new Uint8Array(streamData.analyser.frequencyBinCount);
-          streamData.analyser.getByteFrequencyData(data);
-          const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
-          levels.set(userId, level);
+          levels.set(userId, this.calculateLevel(streamData.analyser));
         }
       }
 
       // Backing track level
       if (this.backingTrackAnalyser) {
-        const data = new Uint8Array(this.backingTrackAnalyser.frequencyBinCount);
-        this.backingTrackAnalyser.getByteFrequencyData(data);
-        const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
-        levels.set('backingTrack', level);
+        levels.set('backingTrack', this.calculateLevel(this.backingTrackAnalyser));
       }
 
       // Master output level
       if (this.masterAnalyser) {
-        const data = new Uint8Array(this.masterAnalyser.frequencyBinCount);
-        this.masterAnalyser.getByteFrequencyData(data);
-        const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
+        const level = this.calculateLevel(this.masterAnalyser);
         levels.set('master', level);
 
-        // Health check: detect NaN/Infinity in audio data which indicates filter failure
-        const hasNaN = data.some(v => !Number.isFinite(v) || Number.isNaN(v));
-        if (hasNaN) {
+        // Health check: detect NaN/Infinity in level which indicates filter failure
+        if (!Number.isFinite(level) || Number.isNaN(level)) {
           this.handleUnhealthyAudio();
         } else {
           this.consecutiveUnhealthyFrames = 0;
