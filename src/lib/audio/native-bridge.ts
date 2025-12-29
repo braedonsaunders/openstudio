@@ -42,8 +42,9 @@ interface EffectsMetering {
   limiterReduction: number;
 }
 
+// Native bridge sends snake_case, we normalize to camelCase
 type NativeMessage =
-  | { type: 'welcome'; version: string; driverType: string }
+  | { type: 'welcome'; version: string; driverType?: string; driver_type?: string }
   | { type: 'pong'; timestamp: number; nativeTime: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'devices'; inputs: BridgeDevice[]; outputs: BridgeDevice[] }
@@ -82,6 +83,7 @@ type BridgeEventCallback<T extends BridgeEventType> = (data: BridgeEventData[T])
 export class NativeBridge {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
+  private connectingPromise: Promise<boolean> | null = null;
   private listeners: Map<BridgeEventType, Set<BridgeEventCallback<any>>> = new Map();
   private isConnected = false;
   private version: string | null = null;
@@ -124,12 +126,23 @@ export class NativeBridge {
       return true;
     }
 
-    return new Promise((resolve) => {
+    // Prevent concurrent connection attempts - return existing promise if connecting
+    if (this.connectingPromise) {
+      console.log('[NativeBridge] Connection already in progress, waiting...');
+      return this.connectingPromise;
+    }
+
+    this.connectingPromise = new Promise<boolean>((resolve) => {
       try {
         this.ws = new WebSocket('ws://127.0.0.1:9999');
 
+        const cleanup = () => {
+          this.connectingPromise = null;
+        };
+
         const timeout = setTimeout(() => {
           this.ws?.close();
+          cleanup();
           resolve(false);
         }, 2000);
 
@@ -141,9 +154,10 @@ export class NativeBridge {
         this.ws.onmessage = (event) => {
           this.handleMessage(event.data);
 
-          // First message should be welcome
+          // First message should be welcome - mark as connected and resolve
           if (!this.isConnected) {
             this.isConnected = true;
+            cleanup();
             resolve(true);
           }
         };
@@ -160,17 +174,22 @@ export class NativeBridge {
             this.emit('disconnected', { reason: 'Connection closed' });
           }
 
+          cleanup();
           resolve(false);
         };
 
         this.ws.onerror = () => {
           clearTimeout(timeout);
+          cleanup();
           resolve(false);
         };
       } catch {
+        this.connectingPromise = null;
         resolve(false);
       }
     });
+
+    return this.connectingPromise;
   }
 
   /**
@@ -227,9 +246,11 @@ export class NativeBridge {
       switch (msg.type) {
         case 'welcome':
           this.version = msg.version;
-          this.driverType = msg.driverType;
-          console.log('[NativeBridge] Welcome received, driver:', msg.driverType);
-          this.emit('connected', { version: msg.version, driverType: msg.driverType });
+          // Handle both camelCase and snake_case from native bridge
+          const driverType = msg.driverType || msg.driver_type || 'Unknown';
+          this.driverType = driverType;
+          console.log('[NativeBridge] Welcome received, driver:', driverType);
+          this.emit('connected', { version: msg.version, driverType });
           break;
 
         case 'devices':

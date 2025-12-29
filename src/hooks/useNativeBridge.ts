@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback, useRef, useState } from 'react';
 import {
   nativeBridge,
   launchNativeBridge,
@@ -22,6 +22,9 @@ interface BridgeDevice {
 export function useNativeBridge() {
   // Get store state reactively for UI updates
   const storeState = useBridgeAudioStore();
+
+  // Track whether we've completed the initial availability check
+  const [hasCheckedAvailability, setHasCheckedAvailability] = useState(false);
 
   // Use refs to track initialization
   const initialized = useRef(false);
@@ -102,6 +105,8 @@ export function useNativeBridge() {
         // Note: Don't call getDevices() here - handleConnected will do it when 'connected' event fires
       } catch (err) {
         console.error('[useNativeBridge] Connection error:', err);
+      } finally {
+        setHasCheckedAvailability(true);
       }
     };
 
@@ -249,7 +254,8 @@ export function useNativeBridge() {
 
   return {
     // Connection state (reactive from store)
-    isAvailable: storeState.isConnected ? true : null,
+    // isAvailable: null = still checking, true = connected, false = not available
+    isAvailable: !hasCheckedAvailability ? null : storeState.isConnected,
     isConnected: storeState.isConnected,
     driverType: storeState.driverType,
 

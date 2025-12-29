@@ -110,10 +110,9 @@ jobs:
           path: ${{ matrix.artifact }}
           retention-days: 90
 
-  # Upload to Cloudflare R2 when pushing to main or manual trigger
+  # Upload to Cloudflare R2 after every successful build
   deploy:
     needs: build
-    if: (github.ref == 'refs/heads/main' && github.event_name == 'push') || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
