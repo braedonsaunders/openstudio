@@ -180,7 +180,7 @@ export default function SettingsPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-white/80 dark:bg-gray-950/80 backdrop-blur-lg border-b border-gray-200 dark:border-gray-800">
-        <div className="w-full max-w-6xl mx-auto px-6 sm:px-8 h-16 flex items-center gap-4">
+        <div className="px-6 sm:px-8 h-16 flex items-center gap-4">
           <button
             onClick={() => router.back()}
             className="flex items-center gap-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white transition-colors"
@@ -191,30 +191,49 @@ export default function SettingsPage() {
         </div>
       </header>
 
-      <main className="w-full max-w-6xl mx-auto px-6 sm:px-8 py-8">
-        <div className="flex flex-col md:flex-row gap-8">
-          {/* Sidebar */}
-          <nav className="w-full md:w-64 shrink-0">
-            <div className="space-y-1">
-              {tabs.map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id)}
-                  className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
-                    activeTab === tab.id
-                      ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
-                      : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
-                  }`}
-                >
-                  <tab.icon className="w-5 h-5" />
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-          </nav>
+      <div className="flex">
+        {/* Fixed Sidebar */}
+        <nav className="hidden md:block w-64 shrink-0 border-r border-gray-200 dark:border-gray-800 min-h-[calc(100vh-4rem)] p-6">
+          <div className="sticky top-24 space-y-1">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`w-full flex items-center gap-3 px-4 py-3 rounded-lg text-sm font-medium transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800 hover:text-gray-900 dark:hover:text-white'
+                }`}
+              >
+                <tab.icon className="w-5 h-5" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </nav>
 
-          {/* Content */}
-          <div className="flex-1 min-w-0">
+        {/* Mobile Tabs */}
+        <div className="md:hidden w-full px-4 py-3 border-b border-gray-200 dark:border-gray-800 overflow-x-auto">
+          <div className="flex gap-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setActiveTab(tab.id)}
+                className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium whitespace-nowrap transition-colors ${
+                  activeTab === tab.id
+                    ? 'bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-800'
+                }`}
+              >
+                <tab.icon className="w-4 h-4" />
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <main className="flex-1 p-6 sm:p-8 min-w-0">
             {activeTab === 'profile' && (
               <Card className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Profile Information</h2>
@@ -284,7 +303,7 @@ export default function SettingsPage() {
             )}
 
             {activeTab === 'avatar' && (
-              <Card className="p-6">
+              <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Customize Avatar</h2>
                 <AvatarCanvasEditor
                   userId={profile.id}
@@ -293,7 +312,7 @@ export default function SettingsPage() {
                     setTimeout(() => setSaveSuccess(false), 2000);
                   }}
                 />
-              </Card>
+              </div>
             )}
 
             {activeTab === 'instruments' && (
@@ -616,9 +635,8 @@ export default function SettingsPage() {
                 </div>
               </Card>
             )}
-          </div>
-        </div>
-      </main>
+        </main>
+      </div>
     </div>
   );
 }

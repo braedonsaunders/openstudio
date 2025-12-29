@@ -392,9 +392,9 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
       )}
 
       {/* Main Editor Layout */}
-      <div className="flex gap-4">
+      <div className="flex flex-col lg:flex-row gap-4">
         {/* Asset Library */}
-        <div className="w-48 h-[600px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+        <div className="w-full lg:w-64 h-[300px] lg:h-[520px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
           <AssetLibraryPanel
             categories={libraryData.categories}
             components={libraryData.components}
@@ -405,7 +405,7 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
         </div>
 
         {/* Canvas */}
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 flex justify-center">
           <CanvasWorkspace
             layers={sortedLayers}
             selectedLayerId={selectedLayerId}
@@ -420,7 +420,7 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
         </div>
 
         {/* Right Panel: Layers + Transform */}
-        <div className="flex-1 flex flex-col min-w-[200px] max-w-[280px] h-[600px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+        <div className="w-full lg:w-72 flex flex-col h-[400px] lg:h-[520px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
           <div className="flex-1 overflow-hidden">
             <LayerPanel
               layers={layers}
