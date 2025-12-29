@@ -101,17 +101,24 @@ export class WahProcessor extends BaseEffect {
     this.lfo.start();
     this.baseFrequencySource.start();
 
+    // Initialize filter to safe state first
+    this.wahFilter.frequency.value = 1000; // Safe default
+
     // Apply initial settings
-    this.updateMode();
     this.updateRate();
-    this.updateDepth();
     this.updateQ();
     this.updateEnvelopeSettings();
 
-    // If starting disabled, zero out all modulation to prevent filter issues
-    if (!this.settings.enabled) {
+    // Only connect modulation if enabled
+    if (this.settings.enabled) {
+      this.connectModulation();
+      this.updateMode();
+      this.updateDepth();
+    } else {
+      // Keep gains at zero when disabled
       this.lfoGain.gain.value = 0;
       this.envelopeGain.gain.value = 0;
+      this.baseFrequencyGain.gain.value = 0;
     }
   }
 
@@ -139,20 +146,39 @@ export class WahProcessor extends BaseEffect {
     this.inputGain.connect(this.bypassGain);
     this.bypassGain.connect(this.outputGain);
 
-    // Frequency control sources
+    // Frequency control sources (internal connections only)
     this.baseFrequencySource.connect(this.baseFrequencyGain);
-    this.baseFrequencyGain.connect(this.wahFilter.frequency);
-
-    // LFO path (for auto mode)
     this.lfo.connect(this.lfoGain);
-    this.lfoGain.connect(this.wahFilter.frequency);
 
-    // Envelope follower path
+    // Envelope follower path (internal connections only)
     this.inputGain.connect(this.envelopeInput);
     this.envelopeInput.connect(this.envelopeRectifier);
     this.envelopeRectifier.connect(this.envelopeSmoother);
     this.envelopeSmoother.connect(this.envelopeGain);
+
+    // NOTE: We do NOT connect modulation to wahFilter.frequency here.
+    // Modulation connections are managed by setEnabled() to prevent
+    // BiquadFilterNode instability when the effect is disabled.
+  }
+
+  // Connect all modulation sources to filter.frequency
+  private connectModulation(): void {
+    this.baseFrequencyGain.connect(this.wahFilter.frequency);
+    this.lfoGain.connect(this.wahFilter.frequency);
     this.envelopeGain.connect(this.wahFilter.frequency);
+  }
+
+  // Disconnect all modulation sources from filter.frequency
+  private disconnectModulation(): void {
+    try {
+      this.baseFrequencyGain.disconnect(this.wahFilter.frequency);
+    } catch { /* already disconnected */ }
+    try {
+      this.lfoGain.disconnect(this.wahFilter.frequency);
+    } catch { /* already disconnected */ }
+    try {
+      this.envelopeGain.disconnect(this.wahFilter.frequency);
+    } catch { /* already disconnected */ }
   }
 
   private updateMode(): void {
@@ -234,16 +260,27 @@ export class WahProcessor extends BaseEffect {
     this.safeSetFilterFrequency(this.envelopeSmoother, smootherFreq);
   }
 
-  // Override setEnabled to control LFO modulation
+  // Override setEnabled to completely disconnect modulation when disabled
+  // This prevents BiquadFilterNode instability from audio-rate parameter automation
   setEnabled(enabled: boolean): void {
     super.setEnabled(enabled);
     const now = this.audioContext.currentTime;
 
     if (!enabled) {
-      // Stop all modulation to prevent filter instability when disabled
+      // CRITICAL: Disconnect ALL modulation sources from filter.frequency
+      this.disconnectModulation();
+
+      // Zero the gains for safety
       this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
       this.envelopeGain.gain.setTargetAtTime(0, now, 0.01);
+      this.baseFrequencyGain.gain.setTargetAtTime(0, now, 0.01);
+
+      // Reset filter to a safe, stable state
+      this.resetFilter(this.wahFilter);
     } else {
+      // Reconnect modulation sources to filter
+      this.connectModulation();
+
       // Restore modulation based on current mode
       this.updateMode();
     }

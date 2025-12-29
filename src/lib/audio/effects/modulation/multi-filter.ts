@@ -104,28 +104,49 @@ export class MultiFilterProcessor extends BaseEffect {
     this.inputGain.connect(this.envelopeAnalyser);
 
     // LFO -> filter frequency modulation
+    // NOTE: We do NOT connect lfoGain to filter.frequency here.
+    // Modulation connections are managed by setEnabled() to prevent
+    // BiquadFilterNode instability when the effect is disabled.
     this.lfo.connect(this.lfoGain);
-    this.lfoGain.connect(this.filter.frequency);
 
     this.wetGain.connect(this.outputGain);
 
     // Start LFO
     this.lfo.start();
 
+    // Initialize filter to safe state first
+    this.filter.frequency.value = 1000; // Safe default
+
     // Apply initial settings
     this.updateFilter();
-    this.updateLFO();
     this.updateDrive();
     this.updateMix();
 
-    // Start envelope follower if needed
-    if (this.settings.envelopeAmount !== 0) {
-      this.startEnvelopeFollower();
-    }
-
-    // If starting disabled, zero out LFO to prevent filter modulation
-    if (!this.settings.enabled) {
+    // Only connect modulation and update LFO if enabled
+    if (this.settings.enabled) {
+      this.connectLFO();
+      this.updateLFO();
+      // Start envelope follower if needed
+      if (this.settings.envelopeAmount !== 0) {
+        this.startEnvelopeFollower();
+      }
+    } else {
+      // Keep LFO gain at zero when disabled
       this.lfoGain.gain.value = 0;
+    }
+  }
+
+  // Connect LFO to filter frequency
+  private connectLFO(): void {
+    this.lfoGain.connect(this.filter.frequency);
+  }
+
+  // Disconnect LFO from filter frequency
+  private disconnectLFO(): void {
+    try {
+      this.lfoGain.disconnect(this.filter.frequency);
+    } catch {
+      // Already disconnected
     }
   }
 
@@ -265,18 +286,34 @@ export class MultiFilterProcessor extends BaseEffect {
     }
   }
 
-  // Override setEnabled to stop LFO modulation when disabled
+  // Override setEnabled to completely disconnect modulation when disabled
+  // This prevents BiquadFilterNode instability from audio-rate parameter automation
   setEnabled(enabled: boolean): void {
     super.setEnabled(enabled);
     const now = this.audioContext.currentTime;
 
     if (!enabled) {
-      // Stop LFO modulation to prevent filter instability when disabled
+      // CRITICAL: Disconnect LFO from filter.frequency
+      // Just zeroing the gain is not enough - the connected oscillator can still
+      // cause filter instability even at very low amplitudes
+      this.disconnectLFO();
+
+      // Zero the gain for safety
       this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
+
+      // Stop envelope follower
       this.stopEnvelopeFollower();
+
+      // Reset filter to a safe, stable state
+      this.resetFilter(this.filter);
     } else {
+      // Reconnect LFO to filter
+      this.connectLFO();
+
       // Restore LFO modulation
       this.updateLFO();
+
+      // Restart envelope follower if needed
       if (this.settings.envelopeAmount !== 0) {
         this.startEnvelopeFollower();
       }
