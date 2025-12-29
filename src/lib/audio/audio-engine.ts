@@ -1222,6 +1222,12 @@ export class AudioEngine {
     this.onTrackEnded = callback;
   }
 
+  // Track audio health state for recovery
+  private consecutiveUnhealthyFrames: number = 0;
+  private lastRecoveryTime: number = 0;
+  private static readonly UNHEALTHY_THRESHOLD = 3; // Frames before triggering recovery
+  private static readonly RECOVERY_COOLDOWN_MS = 5000; // Min time between recoveries
+
   private startLevelMonitoring(): void {
     this.levelUpdateInterval = setInterval(() => {
       const levels = new Map<string, number>();
@@ -1258,10 +1264,66 @@ export class AudioEngine {
         this.masterAnalyser.getByteFrequencyData(data);
         const level = data.reduce((sum, val) => sum + val, 0) / data.length / 255;
         levels.set('master', level);
+
+        // Health check: detect NaN/Infinity in audio data which indicates filter failure
+        const hasNaN = data.some(v => !Number.isFinite(v) || Number.isNaN(v));
+        if (hasNaN) {
+          this.handleUnhealthyAudio();
+        } else {
+          this.consecutiveUnhealthyFrames = 0;
+        }
       }
 
       this.onLevelUpdate?.(levels);
     }, 50); // 20 FPS level updates
+  }
+
+  // Handle detection of unhealthy audio (NaN/Infinity in signal)
+  private handleUnhealthyAudio(): void {
+    this.consecutiveUnhealthyFrames++;
+
+    if (this.consecutiveUnhealthyFrames >= AudioEngine.UNHEALTHY_THRESHOLD) {
+      const now = Date.now();
+      if (now - this.lastRecoveryTime > AudioEngine.RECOVERY_COOLDOWN_MS) {
+        this.recoverFromAudioError();
+        this.lastRecoveryTime = now;
+        this.consecutiveUnhealthyFrames = 0;
+      }
+    }
+  }
+
+  // Attempt to recover from audio processing errors
+  private recoverFromAudioError(): void {
+    console.warn('[AudioEngine] Detected audio processing error, attempting recovery...');
+
+    try {
+      // Recover local effects processor
+      if (this.localEffectsProcessor) {
+        this.localEffectsProcessor.recoverFromError();
+      }
+
+      // Recover master effects processor
+      if (this.masterEffectsProcessor) {
+        this.masterEffectsProcessor.recoverFromError();
+      }
+
+      // Resume audio context if suspended
+      if (this.audioContext?.state === 'suspended') {
+        this.audioContext.resume().catch(e => {
+          console.error('[AudioEngine] Failed to resume AudioContext:', e);
+        });
+      }
+
+      console.log('[AudioEngine] Recovery attempt complete - effects bypassed');
+    } catch (e) {
+      console.error('[AudioEngine] Recovery failed:', e);
+    }
+  }
+
+  // Public method to manually trigger recovery
+  public forceRecovery(): void {
+    console.log('[AudioEngine] Manual recovery triggered');
+    this.recoverFromAudioError();
   }
 
   async resume(): Promise<void> {

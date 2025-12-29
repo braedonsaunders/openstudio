@@ -271,6 +271,33 @@ export class MasterEffectsProcessor {
     this.updateSettings(preset);
   }
 
+  // Recover all effects from error state - resets filters and bypasses all effects
+  recoverFromError(): void {
+    console.warn('[MasterEffectsProcessor] Attempting recovery from error state');
+
+    try {
+      // Recover all effects
+      this.eq.recoverFromError();
+      this.compressor.recoverFromError();
+      this.reverb.recoverFromError();
+      this.limiter.recoverFromError();
+
+      console.log('[MasterEffectsProcessor] Recovery complete - all effects bypassed');
+    } catch (e) {
+      console.error('[MasterEffectsProcessor] Recovery failed:', e);
+    }
+  }
+
+  // Check if processor is healthy
+  isHealthy(): boolean {
+    try {
+      const outputValue = this.outputGain.gain.value;
+      return Number.isFinite(outputValue) && !Number.isNaN(outputValue);
+    } catch {
+      return false;
+    }
+  }
+
   // Clean up resources
   dispose(): void {
     this.disconnect();

@@ -558,6 +558,49 @@ export class UnifiedEffectsProcessor {
     }
   }
 
+  // Recover all effects from error state - resets filters and bypasses all effects
+  recoverFromError(): void {
+    console.warn('[UnifiedEffectsProcessor] Attempting recovery from error state');
+
+    try {
+      // Recover all effects
+      this.wah.recoverFromError();
+      this.overdrive.recoverFromError();
+      this.distortion.recoverFromError();
+      this.ampSimulator.recoverFromError();
+      this.cabinet.recoverFromError();
+      this.noiseGate.recoverFromError();
+      this.eq.recoverFromError();
+      this.compressor.recoverFromError();
+      this.chorus.recoverFromError();
+      this.flanger.recoverFromError();
+      this.phaser.recoverFromError();
+      this.delay.recoverFromError();
+      this.tremolo.recoverFromError();
+      this.reverb.recoverFromError();
+      this.limiter.recoverFromError();
+
+      // If in low latency mode, ensure bypass is working
+      if (this.lowLatencyMode) {
+        this.optimizeSignalChain();
+      }
+
+      console.log('[UnifiedEffectsProcessor] Recovery complete - all effects bypassed');
+    } catch (e) {
+      console.error('[UnifiedEffectsProcessor] Recovery failed:', e);
+    }
+  }
+
+  // Check if the processor is healthy
+  isHealthy(): boolean {
+    try {
+      const outputValue = this.outputGain.gain.value;
+      return Number.isFinite(outputValue) && !Number.isNaN(outputValue);
+    } catch {
+      return false;
+    }
+  }
+
   // Clean up resources
   dispose(): void {
     this.disconnect();
