@@ -17,12 +17,25 @@ import { LayerPanel } from './LayerPanel';
 import { TransformControls } from './TransformControls';
 import { useCanvasState } from './hooks/useCanvasState';
 import { useCanvasExport } from './hooks/useCanvasExport';
+import { supabaseAuth } from '@/lib/supabase/auth';
 import type {
   AvatarCategory,
   AvatarComponent,
   CanvasData,
   CanvasBackground,
 } from '@/types/avatar';
+
+// Helper to get auth headers for API calls
+async function getAuthHeaders(): Promise<HeadersInit> {
+  const { data: { session } } = await supabaseAuth.auth.getSession();
+  if (session?.access_token) {
+    return {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${session.access_token}`,
+    };
+  }
+  return { 'Content-Type': 'application/json' };
+}
 
 // Dynamically import CanvasWorkspace to avoid SSR issues with Konva
 const CanvasWorkspace = dynamic(
@@ -210,10 +223,11 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
         throw new Error('Failed to generate avatar images');
       }
 
-      // Save to server
+      // Save to server with auth
+      const headers = await getAuthHeaders();
       const response = await fetch('/api/avatar/canvas', {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers,
         body: JSON.stringify({
           canvasData,
           fullBodyImage: exported.fullBodyDataUrl,
