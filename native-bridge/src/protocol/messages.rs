@@ -132,25 +132,30 @@ pub enum BrowserMessage {
 pub enum NativeMessage {
     // === Connection ===
     /// Handshake response
+    #[serde(rename = "welcome")]
     Welcome {
         version: String,
         driver_type: String,
     },
 
     /// Pong response
+    #[serde(rename = "pong")]
     Pong { timestamp: u64, native_time: u64 },
 
     /// Error message
+    #[serde(rename = "error")]
     Error { code: String, message: String },
 
     // === Device Info ===
     /// List of available devices
+    #[serde(rename = "devices")]
     Devices {
         inputs: Vec<DeviceInfo>,
         outputs: Vec<DeviceInfo>,
     },
 
     /// Current device configuration
+    #[serde(rename = "deviceConfig")]
     DeviceConfig {
         input_device: Option<DeviceInfo>,
         output_device: Option<DeviceInfo>,
@@ -161,6 +166,7 @@ pub enum NativeMessage {
 
     // === Status ===
     /// Audio engine status
+    #[serde(rename = "audioStatus")]
     AudioStatus {
         is_running: bool,
         input_latency_ms: f32,
@@ -169,6 +175,7 @@ pub enum NativeMessage {
     },
 
     /// Connection quality update
+    #[serde(rename = "connectionQuality")]
     ConnectionQuality {
         quality: String, // "excellent" | "good" | "fair" | "poor"
         jitter_ms: f32,
@@ -177,6 +184,7 @@ pub enum NativeMessage {
 
     // === Metering ===
     /// Audio levels (sent at ~50ms intervals)
+    #[serde(rename = "levels")]
     Levels {
         input_level: f32,
         input_peak: f32,
@@ -186,6 +194,7 @@ pub enum NativeMessage {
     },
 
     /// Effects metering
+    #[serde(rename = "effectsMetering")]
     EffectsMetering {
         track_id: String,
         noise_gate_open: bool,
@@ -195,15 +204,18 @@ pub enum NativeMessage {
 
     // === Backing Track ===
     /// Backing track loaded
+    #[serde(rename = "backingTrackLoaded")]
     BackingTrackLoaded {
         duration: f32,
         waveform: Vec<f32>, // Normalized peaks for visualization
     },
 
     /// Backing track playback position
+    #[serde(rename = "backingTrackPosition")]
     BackingTrackPosition { time: f32 },
 
     /// Backing track ended
+    #[serde(rename = "backingTrackEnded")]
     BackingTrackEnded,
 
     // === Audio Data ===

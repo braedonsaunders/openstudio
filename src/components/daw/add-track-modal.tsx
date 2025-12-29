@@ -7,6 +7,7 @@ import { Button } from '../ui/button';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { DEFAULT_EFFECTS_CHAIN } from '@/lib/audio/effects/presets';
 import { MidiDeviceSelector } from '../midi/midi-device-selector';
+import { useNativeBridge } from '@/hooks/useNativeBridge';
 import type { TrackAudioSettings, MidiInputSettings } from '@/types';
 import {
   Mic,
@@ -17,6 +18,7 @@ import {
   Headphones,
   Piano,
   ArrowLeft,
+  Zap,
 } from 'lucide-react';
 
 type TrackTypeOption = 'audio' | 'midi';
@@ -58,6 +60,13 @@ const DEFAULT_MIDI_SETTINGS: MidiInputSettings = {
 
 export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: AddTrackModalProps) {
   const { inputDevices, devicesLoaded, loadDevices, addTrack, addMidiTrack, getTracksByUser } = useUserTracksStore();
+  const {
+    isConnected: nativeBridgeConnected,
+    driverType,
+    inputDevices: nativeInputDevices,
+    isRunning: nativeAudioRunning,
+    latency: nativeLatency,
+  } = useNativeBridge();
 
   const [trackType, setTrackType] = useState<TrackTypeOption | null>(null);
   const [trackName, setTrackName] = useState('');
@@ -353,7 +362,37 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
             {/* Input Mode Selection */}
             <div className="space-y-3">
               <label className="text-sm font-medium text-slate-700">Audio Source</label>
-              <div className="grid grid-cols-2 gap-3">
+              <div className={cn('grid gap-3', nativeBridgeConnected ? 'grid-cols-3' : 'grid-cols-2')}>
+                {/* Native Bridge Input - shown first when connected */}
+                {nativeBridgeConnected && (
+                  <button
+                    onClick={() => setSettings({ ...settings, inputMode: 'native' })}
+                    className={cn(
+                      'flex items-center gap-3 p-4 rounded-xl border-2 transition-all',
+                      settings.inputMode === 'native'
+                        ? 'border-indigo-500 bg-indigo-50'
+                        : 'border-slate-200 hover:border-slate-300'
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        'w-10 h-10 rounded-full flex items-center justify-center',
+                        settings.inputMode === 'native'
+                          ? 'bg-indigo-500 text-white'
+                          : 'bg-slate-100 text-slate-500'
+                      )}
+                    >
+                      <Zap className="w-5 h-5" />
+                    </div>
+                    <div className="text-left">
+                      <div className="font-medium text-slate-900">{driverType || 'Native'}</div>
+                      <div className="text-xs text-slate-500">
+                        {nativeLatency.total > 0 ? `${nativeLatency.total.toFixed(1)}ms latency` : 'Low latency'}
+                      </div>
+                    </div>
+                  </button>
+                )}
+
                 <button
                   onClick={() => setSettings({ ...settings, inputMode: 'microphone' })}
                   className={cn(
@@ -375,7 +414,7 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
                   </div>
                   <div className="text-left">
                     <div className="font-medium text-slate-900">Microphone</div>
-                    <div className="text-xs text-slate-500">Direct audio input</div>
+                    <div className="text-xs text-slate-500">Browser audio</div>
                   </div>
                 </button>
 
@@ -405,11 +444,43 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
                   <div className="text-left">
                     <div className="font-medium text-slate-900">Application</div>
                     <div className="text-xs text-slate-500">
-                      {appCaptureSupported ? 'Capture app audio' : 'Not supported'}
+                      {appCaptureSupported ? 'Capture app' : 'Not supported'}
                     </div>
                   </div>
                 </button>
               </div>
+
+              {/* Native Bridge device selector */}
+              {settings.inputMode === 'native' && nativeBridgeConnected && (
+                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-indigo-800">
+                      {driverType} Input Device
+                    </span>
+                    {nativeAudioRunning && (
+                      <span className="text-xs text-green-600 flex items-center gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                        Active
+                      </span>
+                    )}
+                  </div>
+                  <select
+                    value={settings.inputDeviceId}
+                    onChange={(e) => setSettings({ ...settings, inputDeviceId: e.target.value })}
+                    className="w-full h-9 px-2 bg-white border border-indigo-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                  >
+                    {nativeInputDevices.length === 0 ? (
+                      <option value="default">Default Device</option>
+                    ) : (
+                      nativeInputDevices.map((device) => (
+                        <option key={device.id} value={device.id}>
+                          {device.name} {device.isDefault && '(Default)'}
+                        </option>
+                      ))
+                    )}
+                  </select>
+                </div>
+              )}
 
               {settings.inputMode === 'application' && (
                 <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg">
