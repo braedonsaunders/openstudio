@@ -168,12 +168,25 @@ export class DeEsserProcessor extends BaseEffect {
   }
 
   setEnabled(enabled: boolean): void {
+    if (!enabled) {
+      // CRITICAL: Stop monitoring BEFORE calling super.setEnabled
+      // This prevents any pending envelope-driven filter changes during stabilization
+      this.stopMonitoring();
+
+      // Reset the high shelf filter to neutral gain to prevent any stuck reduction
+      const now = this.audioContext.currentTime;
+      try {
+        this.highShelf.gain.cancelScheduledValues(now);
+        this.highShelf.gain.setValueAtTime(0, now);
+      } catch {
+        // Ignore errors if filter is already in error state
+      }
+    }
+
     super.setEnabled(enabled);
 
     if (enabled) {
       this.startMonitoring();
-    } else {
-      this.stopMonitoring();
     }
   }
 

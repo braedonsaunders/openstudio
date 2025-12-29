@@ -348,6 +348,12 @@ export class ExtendedEffectsProcessor {
   private settings: ExtendedEffectsChain;
   private onSettingsChange?: (settings: ExtendedEffectsChain) => void;
 
+  // Console error interception for BiquadFilterNode instability detection
+  private originalConsoleWarn: typeof console.warn | null = null;
+  private isRecovering: boolean = false;
+  private lastRecoveryTime: number = 0;
+  private recoveryDebounceMs: number = 1000; // Minimum time between recoveries
+
   constructor(
     audioContext: AudioContext,
     initialSettings?: Partial<ExtendedEffectsChain>,
@@ -398,6 +404,61 @@ export class ExtendedEffectsProcessor {
 
     // Wire up signal chain
     this.wireSignalChain();
+
+    // Set up console interception for BiquadFilterNode error detection
+    this.setupErrorDetection();
+  }
+
+  // Set up console interception to detect BiquadFilterNode instability
+  private setupErrorDetection(): void {
+    // Store original console.warn
+    this.originalConsoleWarn = console.warn.bind(console);
+
+    // Override console.warn to detect BiquadFilterNode errors
+    console.warn = (...args: unknown[]) => {
+      // Call original first
+      if (this.originalConsoleWarn) {
+        this.originalConsoleWarn(...args);
+      }
+
+      // Check for BiquadFilterNode instability error
+      const message = args.join(' ');
+      if (message.includes('BiquadFilterNode') && message.includes('state is bad')) {
+        this.handleFilterInstability();
+      }
+    };
+  }
+
+  // Handle BiquadFilterNode instability by triggering recovery
+  private handleFilterInstability(): void {
+    const now = Date.now();
+
+    // Debounce recovery to prevent repeated triggering
+    if (this.isRecovering || (now - this.lastRecoveryTime) < this.recoveryDebounceMs) {
+      return;
+    }
+
+    this.isRecovering = true;
+    this.lastRecoveryTime = now;
+
+    console.log('[ExtendedEffectsProcessor] BiquadFilterNode instability detected - initiating auto-recovery');
+
+    // Use setTimeout to break out of the current call stack
+    setTimeout(() => {
+      try {
+        this.recoverFromError();
+      } finally {
+        this.isRecovering = false;
+      }
+    }, 10);
+  }
+
+  // Restore original console.warn when disposed
+  private restoreConsole(): void {
+    if (this.originalConsoleWarn) {
+      console.warn = this.originalConsoleWarn;
+      this.originalConsoleWarn = null;
+    }
   }
 
   private wireSignalChain(): void {
@@ -758,6 +819,9 @@ export class ExtendedEffectsProcessor {
 
   // Clean up
   dispose(): void {
+    // Restore original console.warn
+    this.restoreConsole();
+
     this.disconnect();
     this.coreProcessor.dispose();
 

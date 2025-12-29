@@ -70,6 +70,7 @@ export class ChorusProcessor extends BaseEffect {
     this.highPassFilter.type = 'highpass';
     this.highPassFilter.frequency.value = 100;
     this.highPassFilter.Q.value = 0.7;
+    this.registerFilter(this.highPassFilter);
 
     // Wire up the signal chain
     this.wireUpSignalChain();

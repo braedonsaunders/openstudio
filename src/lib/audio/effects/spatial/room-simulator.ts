@@ -108,11 +108,13 @@ export class RoomSimulatorProcessor extends BaseEffect {
     this.lateFilter = audioContext.createBiquadFilter();
     this.lateFilter.type = 'lowpass';
     this.lateFilter.Q.value = 0.5;
+    this.registerFilter(this.lateFilter);
 
     // Damping filter
     this.dampingFilter = audioContext.createBiquadFilter();
     this.dampingFilter.type = 'lowpass';
     this.dampingFilter.Q.value = 0.5;
+    this.registerFilter(this.dampingFilter);
 
     // Pre-delay
     this.preDelay = audioContext.createDelay(0.2);
