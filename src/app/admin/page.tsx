@@ -51,10 +51,11 @@ import {
   InstrumentLibrary,
   InstantBandManager,
 } from '@/components/admin/loops';
+import { CharacterManager } from '@/components/admin/homepage';
 import type { LoopDefinition, LoopCategoryInfo, InstantBandPreset } from '@/types/loops';
 import type { InstrumentDefinition, InstrumentCategory } from '@/lib/audio/instrument-registry';
 
-type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics' | 'avatars' | 'loops';
+type Tab = 'dashboard' | 'users' | 'rooms' | 'reports' | 'analytics' | 'avatars' | 'loops' | 'homepage';
 
 export default function AdminPage() {
   const router = useRouter();
@@ -196,6 +197,12 @@ export default function AdminPage() {
               active={activeTab === 'loops'}
               onClick={() => setActiveTab('loops')}
             />
+            <NavItem
+              icon={Home}
+              label="Homepage"
+              active={activeTab === 'homepage'}
+              onClick={() => setActiveTab('homepage')}
+            />
           </div>
         </nav>
 
@@ -208,6 +215,7 @@ export default function AdminPage() {
           {activeTab === 'analytics' && <AnalyticsTab />}
           {activeTab === 'avatars' && <AvatarsTab />}
           {activeTab === 'loops' && <LoopsTab />}
+          {activeTab === 'homepage' && <HomepageTab />}
         </main>
       </div>
     </div>
@@ -1107,6 +1115,53 @@ function LoopsTab() {
           loops={loops}
           onRefresh={loadData}
         />
+      )}
+    </div>
+  );
+}
+
+type HomepageSubTab = 'characters' | 'scenes';
+
+function HomepageTab() {
+  const [subTab, setSubTab] = useState<HomepageSubTab>('characters');
+
+  const subTabItems = [
+    { id: 'characters' as const, label: 'Characters', icon: Users },
+    { id: 'scenes' as const, label: 'Scenes', icon: Home },
+  ];
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <h2 className="text-2xl font-bold text-gray-900 dark:text-white">Homepage</h2>
+      </div>
+
+      {/* Sub-tabs */}
+      <div className="flex gap-2 mb-6 border-b border-gray-200 dark:border-gray-800">
+        {subTabItems.map((item) => (
+          <button
+            key={item.id}
+            onClick={() => setSubTab(item.id)}
+            className={`flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+              subTab === item.id
+                ? 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
+                : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            <item.icon className="w-4 h-4" />
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Sub-tab content */}
+      {subTab === 'characters' && <CharacterManager />}
+      {subTab === 'scenes' && (
+        <Card className="p-8 text-center text-gray-500 dark:text-gray-400">
+          <Home className="w-12 h-12 mx-auto mb-4 opacity-50" />
+          <p>Scene configuration coming soon</p>
+          <p className="text-sm mt-2">Manage ground planes, horizon lines, and walkable areas for each scene.</p>
+        </Card>
       )}
     </div>
   );
