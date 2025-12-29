@@ -227,13 +227,13 @@ export default function FriendsPage() {
                       <Button
                         variant="ghost"
                         size="sm"
-                        onClick={() => setSelectedUser({ ...friend, avatar: avatarCache[friend.id] })}
+                        onClick={() => setSelectedUser(friend)}
                       >
                         <MessageSquare className="w-4 h-4" />
                       </Button>
                     </>
                   }
-                  onClick={() => setSelectedUser({ ...friend, avatar: avatarCache[friend.id] })}
+                  onClick={() => setSelectedUser(friend)}
                 />
               ))
             )}
