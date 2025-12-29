@@ -17,7 +17,7 @@ import {
 } from 'lucide-react';
 import { toast } from 'sonner';
 import type { AvatarGenerationPreset, AvatarCategory, ComponentRarity } from '@/types/avatar';
-import { adminGet, adminPost } from '@/lib/api/admin';
+import { adminGet, adminPost, getAuthHeaders } from '@/lib/api/admin';
 
 interface EnvDebug {
   hasAccountId: boolean;
@@ -258,13 +258,13 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
     setBatchProgress('Generating varied prompts with AI...');
 
     try {
+      // Get auth headers for authenticated request
+      const authHeaders = await getAuthHeaders();
+
       // Use fetch with streaming for SSE
       const response = await fetch('/api/admin/avatar/generate/batch', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        credentials: 'include',
+        headers: authHeaders,
         body: JSON.stringify({
           theme: batchTheme,
           categoryId: batchCategory,
