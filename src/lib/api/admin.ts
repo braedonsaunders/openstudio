@@ -70,3 +70,13 @@ export async function adminPatch(url: string, body: unknown): Promise<Response> 
 export async function adminDelete(url: string): Promise<Response> {
   return adminFetch(url, { method: 'DELETE' });
 }
+
+/**
+ * PUT request to admin API
+ */
+export async function adminPut(url: string, body: unknown): Promise<Response> {
+  return adminFetch(url, {
+    method: 'PUT',
+    body: JSON.stringify(body),
+  });
+}
