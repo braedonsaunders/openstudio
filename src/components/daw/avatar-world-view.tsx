@@ -250,7 +250,7 @@ function ChatBubble({ message, index }: { message: { content: string; userName: 
 }
 
 // User avatar with instrument animation
-function UserAvatar({
+function UserAvatarItem({
   user,
   position,
   audioLevel,
@@ -531,7 +531,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels, activeView, o
       {/* User avatars arranged around the campfire */}
       <AnimatePresence>
         {allUsers.map((user, index) => (
-          <UserAvatar
+          <UserAvatarItem
             key={user.id}
             user={user}
             position={userPositions[index] || { x: '50%', y: '20%', scale: 1 }}
