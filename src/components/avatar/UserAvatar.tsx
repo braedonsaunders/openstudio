@@ -14,6 +14,7 @@ const SIZE_MAP = {
 } as const;
 
 type AvatarSize = keyof typeof SIZE_MAP | number;
+type AvatarVariant = 'auto' | 'fullBody' | 'headshot' | 'thumbnail';
 
 interface UserAvatarProps {
   /** User ID to fetch avatar for */
@@ -24,6 +25,8 @@ interface UserAvatarProps {
   username?: string;
   /** Size - either preset or pixel value */
   size?: AvatarSize;
+  /** Force a specific image variant instead of auto-selecting based on size */
+  variant?: AvatarVariant;
   /** Additional CSS classes */
   className?: string;
   /** Whether to show loading state */
@@ -57,6 +60,7 @@ export function UserAvatar({
   imageUrl,
   username,
   size = 'md',
+  variant = 'auto',
   className = '',
   showLoading = false,
 }: UserAvatarProps) {
@@ -103,14 +107,25 @@ export function UserAvatar({
     fetchAvatar();
   }, [userId, imageUrl]);
 
-  // Determine which image URL to use based on size
+  // Determine which image URL to use based on variant or size
   const getOptimalImageUrl = (): string | null => {
     // Direct URL takes precedence
     if (imageUrl) return imageUrl;
 
     if (!avatarUrls) return null;
 
-    // Use thumbnails for small sizes, headshot for medium, fullBody for large
+    // If variant is specified, use that directly
+    if (variant === 'fullBody') {
+      return avatarUrls.fullBodyUrl;
+    }
+    if (variant === 'headshot') {
+      return avatarUrls.headshotUrl || avatarUrls.fullBodyUrl;
+    }
+    if (variant === 'thumbnail') {
+      return avatarUrls.thumbnailUrls?.lg || avatarUrls.headshotUrl || avatarUrls.fullBodyUrl;
+    }
+
+    // Auto mode: Use thumbnails for small sizes, headshot for medium, fullBody for large
     if (pixelSize <= 32 && avatarUrls.thumbnailUrls?.xs) {
       return avatarUrls.thumbnailUrls.xs;
     }

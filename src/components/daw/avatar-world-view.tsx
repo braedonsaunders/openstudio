@@ -3,7 +3,7 @@
 import { useMemo, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@/components/theme/ThemeProvider';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { useRoomStore } from '@/stores/room-store';
 import type { User } from '@/types';
 import { Music, Mic, Guitar, Users2 } from 'lucide-react';
@@ -317,12 +317,11 @@ function UserAvatar({
         />
 
         <div className="relative">
-          <AvatarDisplay
-            avatar={null}
+          <UserAvatar
+            userId={user.id}
             username={user.name}
-            size="xl"
-            showEffects
-            showFrame
+            size={128}
+            variant="fullBody"
           />
         </div>
 
