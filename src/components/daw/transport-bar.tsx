@@ -405,17 +405,13 @@ function KeyBadge() {
       {/* Key picker dropdown */}
       {showKeyMenu && (
         <div className="absolute top-full right-0 mt-1 p-2 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[180px]">
-          {sessionKey && (
-            <>
-              <button
-                onClick={handleClearKey}
-                className="w-full px-2 py-1.5 rounded text-xs font-medium text-left transition-all bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-400"
-              >
-                Clear key
-              </button>
-              <div className="border-t border-gray-200 dark:border-white/10 my-2" />
-            </>
-          )}
+          <button
+            onClick={handleClearKey}
+            className="w-full px-2 py-1.5 rounded text-xs font-medium text-left transition-all bg-gray-100 dark:bg-white/5 text-gray-600 dark:text-zinc-400 hover:bg-red-100 dark:hover:bg-red-500/20 hover:text-red-600 dark:hover:text-red-400"
+          >
+            None
+          </button>
+          <div className="border-t border-gray-200 dark:border-white/10 my-2" />
           <div className="text-[10px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wide mb-2 px-1">Major</div>
           <div className="grid grid-cols-4 gap-1 mb-2">
             {allKeys.map((k) => (
