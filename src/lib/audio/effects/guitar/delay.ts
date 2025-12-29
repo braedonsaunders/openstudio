@@ -99,18 +99,18 @@ export class DelayProcessor extends BaseEffect {
   }
 
   private wireUpSignalChain(): void {
-    // Dry path
+    // Dry path - routes through wetGain so it's blocked when effect is disabled
     this.inputGain.connect(this.delayDryGain);
-    this.delayDryGain.connect(this.outputGain);
+    this.delayDryGain.connect(this.wetGain);
 
-    // Standard stereo delay path
+    // Standard stereo delay path - starts from wetPathGate
     // Left channel
-    this.inputGain.connect(this.delayLeft);
+    this.getWetPathInput().connect(this.delayLeft);
     this.delayLeft.connect(this.toneFilter);
     this.toneFilter.connect(this.delayWetGain);
 
     // Right channel (for ping-pong this will have different time)
-    this.inputGain.connect(this.delayRight);
+    this.getWetPathInput().connect(this.delayRight);
     this.delayRight.connect(this.toneFilter);
 
     // Feedback path through filter

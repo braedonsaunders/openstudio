@@ -213,7 +213,7 @@ function EffectHeader({
         <div className={cn('p-1.5 rounded', enabled ? colorMap[color] || colorMap.indigo : 'text-zinc-600 bg-white/5')}>
           <Icon className="w-3.5 h-3.5" />
         </div>
-        <span className={cn('text-xs font-medium', enabled ? 'text-white' : 'text-zinc-500')}>
+        <span className={cn('text-xs font-medium', enabled ? 'text-gray-900 dark:text-white' : 'text-zinc-500')}>
           {name}
         </span>
       </button>

@@ -64,12 +64,12 @@ export class BitcrusherProcessor extends BaseEffect {
     this.crushGain = audioContext.createGain();
 
     // Wire up signal chain
-    // Dry path
+    // Dry path - routes through wetGain so it's blocked when effect is disabled
     this.inputGain.connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
-    // Wet path (bit crush)
-    this.inputGain.connect(this.preFilter);
+    // Wet path (bit crush) - starts from wetPathGate to block filters when disabled
+    this.getWetPathInput().connect(this.preFilter);
     this.preFilter.connect(this.waveshaper);
     this.waveshaper.connect(this.holdGain);
     this.holdGain.connect(this.postFilter);
