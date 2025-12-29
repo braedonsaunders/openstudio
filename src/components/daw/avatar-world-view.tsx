@@ -813,14 +813,14 @@ function SceneSelector({ currentScene, onSceneChange, keyColor }: {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="absolute bottom-4 right-4 z-50">
+    <div className="absolute bottom-4 right-4 z-[200]">
       <AnimatePresence>
         {isOpen && (
           <motion.div
             initial={{ opacity: 0, y: 8 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 8 }}
-            className="absolute bottom-12 right-0 p-2 rounded-xl backdrop-blur-xl bg-black/60 border border-white/15"
+            className="absolute bottom-12 right-0 p-2 rounded-xl backdrop-blur-xl bg-black/70 border border-white/20 shadow-2xl z-[201]"
           >
             <div className="grid grid-cols-2 gap-1.5 w-56">
               {SCENES.map((scene) => (
@@ -930,26 +930,150 @@ function BeatIndicator({ beat, beatsPerBar, isPlaying }: { beat: number; beatsPe
 }
 
 // ============================================
-// Simple Waveform (throttled updates)
+// Stunning Real-Time Waveform Visualizer
 // ============================================
 
-function SimpleWaveform({ audioLevel, keyColor }: { audioLevel: number; keyColor: string }) {
+function LiveWaveformVisualizer({ audioLevel, keyColor, audioLevels }: {
+  audioLevel: number;
+  keyColor: string;
+  audioLevels: Map<string, number>;
+}) {
+  const BAR_COUNT = 64;
+  const [bars, setBars] = useState<number[]>(() => Array(BAR_COUNT).fill(0));
+  const animationRef = useRef<number | null>(null);
+  const phaseRef = useRef(0);
+  const lastFrameRef = useRef(0);
+  const smoothedLevelsRef = useRef<number[]>(Array(BAR_COUNT).fill(0));
+
+  // Real-time animation loop at 60fps
+  useEffect(() => {
+    const animate = (time: number) => {
+      // Throttle to ~45fps for performance balance
+      if (time - lastFrameRef.current < 22) {
+        animationRef.current = requestAnimationFrame(animate);
+        return;
+      }
+      lastFrameRef.current = time;
+      phaseRef.current += 0.06;
+
+      // Get individual audio levels for more variation
+      const levels: number[] = [];
+      audioLevels.forEach((level) => levels.push(level));
+      const avgLevel = audioLevel;
+
+      setBars(() => {
+        const newBars: number[] = [];
+        const smoothed = smoothedLevelsRef.current;
+
+        for (let i = 0; i < BAR_COUNT; i++) {
+          // Create frequency-like distribution (bass heavy in middle, highs on sides)
+          const distFromCenter = Math.abs(i - BAR_COUNT / 2) / (BAR_COUNT / 2);
+          const freqMultiplier = 1 - distFromCenter * 0.5;
+
+          // Multiple wave components for organic movement
+          const wave1 = Math.sin(phaseRef.current * 1.5 + i * 0.15) * 0.3;
+          const wave2 = Math.sin(phaseRef.current * 2.3 + i * 0.08) * 0.2;
+          const wave3 = Math.cos(phaseRef.current * 0.7 + i * 0.2) * 0.15;
+
+          // Use individual user levels for more reactive feel
+          const userIndex = i % Math.max(levels.length, 1);
+          const userLevel = levels[userIndex] || avgLevel;
+
+          // Calculate target height
+          const baseHeight = 0.08;
+          const audioComponent = (avgLevel * 0.6 + userLevel * 0.4) * freqMultiplier;
+          const waveComponent = (wave1 + wave2 + wave3) * (0.1 + avgLevel * 0.3);
+          const target = baseHeight + audioComponent + waveComponent;
+
+          // Smooth interpolation (fast attack, slower decay)
+          const current = smoothed[i];
+          const attackSpeed = 0.4;
+          const decaySpeed = 0.08;
+          const speed = target > current ? attackSpeed : decaySpeed;
+          smoothed[i] = current + (target - current) * speed;
+
+          newBars.push(Math.max(0.05, Math.min(1, smoothed[i])));
+        }
+
+        smoothedLevelsRef.current = smoothed;
+        return newBars;
+      });
+
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+    return () => {
+      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
+    };
+  }, [audioLevel, audioLevels]);
+
   return (
-    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 flex items-end gap-[2px] h-10 px-3 py-1.5 rounded-xl backdrop-blur-xl bg-black/30 border border-white/10">
-      {Array.from({ length: 24 }).map((_, i) => {
-        const baseHeight = 6 + Math.sin(i * 0.4) * 3;
-        const height = baseHeight + audioLevel * 16 * Math.sin(i * 0.5 + Date.now() * 0.001);
-        return (
-          <div
-            key={i}
-            className="w-1 rounded-full transition-all duration-150"
-            style={{
-              height: Math.max(4, height),
-              background: `linear-gradient(to top, ${keyColor}, #fff)`,
-            }}
-          />
-        );
-      })}
+    <div className="absolute bottom-3 left-1/2 -translate-x-1/2 w-[85%] max-w-[700px] z-[150]">
+      {/* Main visualizer container */}
+      <div className="relative h-20 px-4 py-3 rounded-2xl backdrop-blur-xl bg-black/40 border border-white/10 shadow-2xl overflow-hidden">
+        {/* Ambient glow behind bars */}
+        <div
+          className="absolute inset-0 opacity-30 blur-2xl"
+          style={{
+            background: `radial-gradient(ellipse at 50% 100%, ${keyColor} 0%, transparent 70%)`,
+          }}
+        />
+
+        {/* Bars container */}
+        <div className="relative flex items-end justify-center gap-[2px] h-full">
+          {bars.map((height, i) => {
+            // Color gradient based on position and height
+            const hue = (i / BAR_COUNT) * 60 - 30; // Shift hue across spectrum
+            const saturation = 80 + height * 20;
+            const lightness = 50 + height * 30;
+
+            return (
+              <div key={i} className="flex flex-col items-center gap-[1px]" style={{ height: '100%' }}>
+                {/* Main bar */}
+                <div
+                  className="w-[6px] rounded-full"
+                  style={{
+                    height: `${height * 100}%`,
+                    minHeight: '3px',
+                    background: `linear-gradient(to top, ${keyColor}, hsl(${hue + 280}, ${saturation}%, ${lightness}%), #fff)`,
+                    boxShadow: height > 0.3
+                      ? `0 0 ${4 + height * 12}px ${keyColor}, 0 0 ${2 + height * 6}px rgba(255,255,255,0.5)`
+                      : 'none',
+                    opacity: 0.7 + height * 0.3,
+                  }}
+                />
+                {/* Reflection (mirror effect) */}
+                <div
+                  className="w-[6px] rounded-full opacity-20"
+                  style={{
+                    height: `${height * 35}%`,
+                    minHeight: '1px',
+                    background: `linear-gradient(to bottom, ${keyColor}, transparent)`,
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Peak line indicator */}
+        <div
+          className="absolute left-4 right-4 h-[1px] opacity-30"
+          style={{
+            top: '15%',
+            background: `linear-gradient(90deg, transparent, ${keyColor}, transparent)`,
+          }}
+        />
+
+        {/* Subtle scan line effect */}
+        <div
+          className="absolute inset-0 pointer-events-none opacity-[0.03]"
+          style={{
+            backgroundImage: 'repeating-linear-gradient(0deg, transparent, transparent 2px, white 2px, white 3px)',
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -1059,7 +1183,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
         <RoomVibeIndicator userCount={allUsers.length} audioLevel={totalAudioLevel} />
         <MusicInfoDisplay tempo={tempo} musicalKey={musicalKey} keyScale={keyScale} keyColor={keyColor} />
         <BeatIndicator beat={beat} beatsPerBar={beatsPerBar} isPlaying={isPlaying} />
-        <SimpleWaveform audioLevel={totalAudioLevel} keyColor={keyColor} />
+        <LiveWaveformVisualizer audioLevel={totalAudioLevel} keyColor={keyColor} audioLevels={audioLevels} />
         <SceneSelector currentScene={currentScene} onSceneChange={handleSceneChange} keyColor={keyColor} />
       </div>
     </div>
