@@ -2,6 +2,7 @@
 
 import { supabaseAuth } from '@/lib/supabase/auth';
 import { getAdminSupabase } from '@/lib/supabase/server';
+import { getSignedUrlFromKeyOrUrl, extractR2KeyFromUrl } from '@/lib/storage/r2';
 import type {
   AvatarCategory,
   AvatarComponent,
@@ -69,6 +70,49 @@ function transformComponent(data: Record<string, unknown>): AvatarComponent {
   };
 }
 
+/**
+ * Refresh component URLs to use fresh signed URLs
+ * This handles both expired presigned URLs and plain R2 keys
+ */
+async function refreshComponentUrls(component: AvatarComponent): Promise<AvatarComponent> {
+  // Use r2Key as the source of truth if available, otherwise extract from imageUrl
+  const imageKey = component.r2Key || extractR2KeyFromUrl(component.imageUrl);
+  const thumbnailKey = component.thumbnailUrl
+    ? extractR2KeyFromUrl(component.thumbnailUrl)
+    : imageKey.replace('.png', '_thumb.png');
+
+  const [freshImageUrl, freshThumbnailUrl] = await Promise.all([
+    getSignedUrlFromKeyOrUrl(imageKey),
+    getSignedUrlFromKeyOrUrl(thumbnailKey),
+  ]);
+
+  // Also refresh color variant URLs if present
+  let freshColorVariants = component.colorVariants;
+  if (component.colorVariants && Object.keys(component.colorVariants).length > 0) {
+    const variantEntries = await Promise.all(
+      Object.entries(component.colorVariants).map(async ([color, url]) => {
+        const freshUrl = await getSignedUrlFromKeyOrUrl(url);
+        return [color, freshUrl || url] as [string, string];
+      })
+    );
+    freshColorVariants = Object.fromEntries(variantEntries);
+  }
+
+  return {
+    ...component,
+    imageUrl: freshImageUrl || component.imageUrl,
+    thumbnailUrl: freshThumbnailUrl || component.thumbnailUrl,
+    colorVariants: freshColorVariants,
+  };
+}
+
+/**
+ * Refresh URLs for multiple components in parallel
+ */
+async function refreshComponentsUrls(components: AvatarComponent[]): Promise<AvatarComponent[]> {
+  return Promise.all(components.map(refreshComponentUrls));
+}
+
 function transformUnlockRule(data: Record<string, unknown>): AvatarUnlockRule {
   return {
     id: data.id as string,
@@ -130,7 +174,9 @@ export async function getAvatarLibrary(): Promise<AvatarComponentLibrary> {
   ]);
 
   const categories = (categoriesData || []).map(transformCategory);
-  const components = (componentsData || []).map(transformComponent);
+  const rawComponents = (componentsData || []).map(transformComponent);
+  // Refresh URLs to get fresh signed URLs (handles expired presigned URLs)
+  const components = await refreshComponentsUrls(rawComponents);
   const unlockRules = (rulesData || []).map(transformUnlockRule);
 
   const colorPalettes: Record<string, string[]> = {};
@@ -309,7 +355,8 @@ export async function getAllComponents(): Promise<AvatarComponent[]> {
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []).map(transformComponent);
+  const rawComponents = (data || []).map(transformComponent);
+  return refreshComponentsUrls(rawComponents);
 }
 
 export async function getComponentsByCategory(categoryId: string): Promise<AvatarComponent[]> {
@@ -320,7 +367,8 @@ export async function getComponentsByCategory(categoryId: string): Promise<Avata
     .order('created_at', { ascending: false });
 
   if (error) throw error;
-  return (data || []).map(transformComponent);
+  const rawComponents = (data || []).map(transformComponent);
+  return refreshComponentsUrls(rawComponents);
 }
 
 export async function getComponentById(id: string): Promise<AvatarComponent | null> {
@@ -334,7 +382,9 @@ export async function getComponentById(id: string): Promise<AvatarComponent | nu
     if (error.code === 'PGRST116') return null; // Not found
     throw error;
   }
-  return data ? transformComponent(data) : null;
+  if (!data) return null;
+  const component = transformComponent(data);
+  return refreshComponentUrls(component);
 }
 
 export async function createComponent(

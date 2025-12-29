@@ -130,7 +130,8 @@ export async function POST(req: NextRequest) {
       component.id
     );
 
-    // Update component in database with new URLs
+    // Update component in database with R2 keys (not presigned URLs)
+    // The keys will be converted to fresh signed URLs when fetched
     const adminClient = getAdminSupabase();
     if (!adminClient) {
       return NextResponse.json(
@@ -139,25 +140,26 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Get fresh URLs (they may have cache-busting query params)
-    const newImageUrl = await getAvatarUrl(uploadResult.key);
-    const newThumbnailUrl = uploadResult.thumbnailKey
-      ? await getAvatarUrl(uploadResult.thumbnailKey)
-      : undefined;
-
     await adminClient
       .from('avatar_components')
       .update({
-        image_url: newImageUrl,
-        thumbnail_url: newThumbnailUrl,
+        image_url: uploadResult.key,
+        thumbnail_url: uploadResult.thumbnailKey,
+        r2_key: uploadResult.key,
         updated_at: new Date().toISOString(),
       })
       .eq('id', component.id);
 
+    // Return fresh signed URLs for immediate display
+    const displayImageUrl = await getAvatarUrl(uploadResult.key);
+    const displayThumbnailUrl = uploadResult.thumbnailKey
+      ? await getAvatarUrl(uploadResult.thumbnailKey)
+      : undefined;
+
     return NextResponse.json({
       success: true,
-      imageUrl: newImageUrl,
-      thumbnailUrl: newThumbnailUrl,
+      imageUrl: displayImageUrl,
+      thumbnailUrl: displayThumbnailUrl,
     });
   } catch (error) {
     console.error('Failed to reprocess image:', error);
