@@ -561,8 +561,6 @@ export class LyriaSession {
   }
 
   private handleJsonMessage(message: Record<string, unknown>): void {
-    console.log('[Lyria] Received message:', message);
-
     // Handle setup complete response
     if (message.setupComplete || message.setup_complete) {
       console.log('[Lyria] Setup complete!');
@@ -574,9 +572,18 @@ export class LyriaSession {
       return;
     }
 
-    // Handle server config acknowledgement
-    if (message.serverContent || message.server_content) {
-      // Server acknowledged our message
+    // Handle server content with audio chunks
+    const serverContent = (message.serverContent || message.server_content) as {
+      audioChunks?: Array<{ data: string }>;
+    } | undefined;
+
+    if (serverContent?.audioChunks) {
+      // Process audio chunks - base64 encoded 16-bit PCM
+      for (const chunk of serverContent.audioChunks) {
+        if (chunk.data) {
+          this.processAudioChunk(chunk.data);
+        }
+      }
       return;
     }
 
@@ -590,8 +597,49 @@ export class LyriaSession {
       return;
     }
 
-    // Handle other message types
-    console.log('[Lyria] Unhandled message type:', Object.keys(message));
+    // Log other message types for debugging
+    if (!message.serverContent && !message.server_content) {
+      console.log('[Lyria] Received message:', message);
+    }
+  }
+
+  /**
+   * Process base64-encoded 16-bit PCM audio chunk
+   * Lyria outputs 48kHz stereo 16-bit PCM
+   */
+  private processAudioChunk(base64Data: string): void {
+    if (!this.audioContext || this.state !== 'playing') return;
+
+    try {
+      // Decode base64 to binary
+      const binaryString = atob(base64Data);
+      const bytes = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+      }
+
+      // Convert to Int16Array (16-bit PCM)
+      const int16Data = new Int16Array(bytes.buffer);
+      const numSamples = int16Data.length / 2; // Stereo
+
+      if (numSamples === 0) return;
+
+      // Create audio buffer
+      const audioBuffer = this.audioContext.createBuffer(2, numSamples, 48000);
+      const leftChannel = audioBuffer.getChannelData(0);
+      const rightChannel = audioBuffer.getChannelData(1);
+
+      // Convert 16-bit PCM to Float32 and deinterleave stereo
+      for (let i = 0; i < numSamples; i++) {
+        // Normalize Int16 (-32768 to 32767) to Float32 (-1.0 to 1.0)
+        leftChannel[i] = int16Data[i * 2] / 32768;
+        rightChannel[i] = int16Data[i * 2 + 1] / 32768;
+      }
+
+      this.scheduleAudioBuffer(audioBuffer);
+    } catch (e) {
+      console.error('[Lyria] Failed to process audio chunk:', e);
+    }
   }
 
   private handleError(error: Error): void {
