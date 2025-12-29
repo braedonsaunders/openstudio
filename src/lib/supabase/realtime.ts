@@ -145,11 +145,32 @@ export class RealtimeRoomManager {
       this.emit('permissions:sync', payload);
     });
 
-    await this.channel.subscribe(async (status) => {
-      if (status === 'SUBSCRIBED') {
-        await this.channel?.track(user);
-        this.emit('connected', { roomId: this.roomId });
-      }
+    // Wrap subscription in a promise with timeout for iOS Safari reliability
+    const SUBSCRIPTION_TIMEOUT = 15000; // 15 seconds
+
+    await new Promise<void>((resolve, reject) => {
+      const timeoutId = setTimeout(() => {
+        reject(new Error(`Realtime subscription timed out after ${SUBSCRIPTION_TIMEOUT}ms`));
+      }, SUBSCRIPTION_TIMEOUT);
+
+      this.channel!.subscribe(async (status) => {
+        console.log('[Realtime] Subscription status:', status);
+
+        if (status === 'SUBSCRIBED') {
+          clearTimeout(timeoutId);
+          try {
+            await this.channel?.track(user);
+            this.emit('connected', { roomId: this.roomId });
+            resolve();
+          } catch (err) {
+            reject(err);
+          }
+        } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+          clearTimeout(timeoutId);
+          reject(new Error(`Realtime subscription failed with status: ${status}`));
+        }
+        // SUBSCRIBING status is transitional, just wait
+      });
     });
   }
 

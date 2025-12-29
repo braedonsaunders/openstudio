@@ -90,7 +90,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     setJoining(true);
     setError(null);
 
+    // Global join timeout - prevents hanging forever on iOS Safari
+    const JOIN_TIMEOUT = 45000; // 45 seconds max for entire join operation
+
     try {
+      // Wrap the entire join operation in a timeout
+      const joinPromise = (async () => {
       // Get fresh auth state in case user logged in after hook initialized
       const authUser = useAuthStore.getState().user;
 
@@ -693,11 +698,26 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       setRoom(roomData);
       return true;
+      })();
+
+      // Race the join operation against a timeout
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => {
+          reject(new Error(`Join operation timed out after ${JOIN_TIMEOUT / 1000} seconds. Please check your network connection and try again.`));
+        }, JOIN_TIMEOUT);
+      });
+
+      return await Promise.race([joinPromise, timeoutPromise]);
     } catch (err) {
-      setError((err as Error).message);
-      setJoining(false);
-      options.onError?.(err as Error);
+      const error = err as Error;
+      console.error('[useRoom] Join failed:', error.message);
+      setError(error.message);
+      options.onError?.(error);
       return false;
+    } finally {
+      // CRITICAL: Always clear joining state, even on failure
+      // This prevents the user from being stuck in "Joining..." forever
+      setJoining(false);
     }
   }, [roomId, initialize, startCapture, addRemoteStream, removeRemoteStream, updateFromStats, loadBackingTrack, playBackingTrack, pauseBackingTrack, seekTo, options]);
 
