@@ -29,11 +29,88 @@ interface CharacterState {
 }
 
 // Slow, casual lobby movement - characters meander around
-const WALK_SPEED = 0.008; // Much slower base speed for casual strolling
-const IDLE_DURATION_MIN = 1500; // Short idles - just pausing to look around
-const IDLE_DURATION_MAX = 4000; // Longer idles occasionally
+const WALK_SPEED = 0.005; // Very slow strolling pace
+const IDLE_DURATION_MIN = 3000; // Longer idles - characters hang around
+const IDLE_DURATION_MAX = 7000; // Can stand still quite a while
 const WALK_DURATION_MIN = 2000; // Short walks between stops
-const WALK_DURATION_MAX = 5000; // Longer walks occasionally
+const WALK_DURATION_MAX = 4000; // Not too long walks
+
+// Center UI exclusion zone (percentage of screen) - characters avoid this area
+// This is where the main "Play Together" UI panel sits
+const UI_EXCLUSION_ZONE = {
+  minX: 20, // Left boundary
+  maxX: 80, // Right boundary
+  minY: 15, // Top boundary (in ground-relative %)
+  maxY: 55, // Bottom boundary (in ground-relative %)
+};
+
+// Check if a position is inside the UI exclusion zone
+function isInExclusionZone(x: number, y: number): boolean {
+  return (
+    x >= UI_EXCLUSION_ZONE.minX &&
+    x <= UI_EXCLUSION_ZONE.maxX &&
+    y >= UI_EXCLUSION_ZONE.minY &&
+    y <= UI_EXCLUSION_ZONE.maxY
+  );
+}
+
+// Get a valid position that avoids the UI zone, biased towards the bottom
+function getValidPosition(
+  baseX: number,
+  baseY: number,
+  walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
+): { x: number; y: number } {
+  let x = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, baseX));
+  let y = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, baseY));
+
+  // If in exclusion zone, push to sides or bottom
+  if (isInExclusionZone(x, y)) {
+    // Decide: go left, right, or below
+    const goLeft = x < 50;
+    const goBelow = y > (UI_EXCLUSION_ZONE.minY + UI_EXCLUSION_ZONE.maxY) / 2;
+
+    if (goBelow) {
+      // Push below the UI
+      y = UI_EXCLUSION_ZONE.maxY + 5 + Math.random() * 20;
+    } else if (goLeft) {
+      // Push to left side
+      x = UI_EXCLUSION_ZONE.minX - 5 - Math.random() * 10;
+    } else {
+      // Push to right side
+      x = UI_EXCLUSION_ZONE.maxX + 5 + Math.random() * 10;
+    }
+
+    // Re-clamp to walkable area
+    x = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, x));
+    y = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, y));
+  }
+
+  return { x, y };
+}
+
+// Generate a position biased towards the bottom of the walkable area
+function getBiasedPosition(
+  walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
+): { x: number; y: number } {
+  // 70% chance to be in bottom half, 30% chance to be anywhere
+  const biasToBottom = Math.random() < 0.7;
+
+  let x: number;
+  let y: number;
+
+  if (biasToBottom) {
+    // Bottom 40% of walkable area
+    const bottomStart = walkableArea.minY + (walkableArea.maxY - walkableArea.minY) * 0.6;
+    x = walkableArea.minX + Math.random() * (walkableArea.maxX - walkableArea.minX);
+    y = bottomStart + Math.random() * (walkableArea.maxY - bottomStart);
+  } else {
+    // Anywhere in walkable area
+    x = walkableArea.minX + Math.random() * (walkableArea.maxX - walkableArea.minX);
+    y = walkableArea.minY + Math.random() * (walkableArea.maxY - walkableArea.minY);
+  }
+
+  return getValidPosition(x, y, walkableArea);
+}
 
 // Idle animation variants
 const idleAnimations: Record<IdleAnimation, {
@@ -65,7 +142,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   containerHeight,
 }: WalkingCharacterProps) {
   const [state, setState] = useState<CharacterState>(() => {
-    const initial = getRandomWalkablePosition(groundConfig);
+    // Start with a biased position (towards bottom, avoiding UI)
+    const initial = getBiasedPosition(groundConfig.walkableArea);
     return {
       x: initial.x,
       y: initial.y,
@@ -84,25 +162,28 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   // Start walking to a new target - short distances for casual strolling
   const startWalking = useCallback(() => {
     setState(prev => {
-      // Pick a nearby target instead of anywhere in the walkable area
+      // Pick a nearby target, biased towards bottom and avoiding UI
       const { walkableArea } = groundConfig;
-      const maxStepX = 15; // Maximum 15% of screen width per walk
-      const maxStepY = 12; // Maximum 12% of screen height per walk
+      const maxStepX = 12; // Maximum 12% of screen width per walk
+      const maxStepY = 10; // Maximum 10% of screen height per walk
 
-      // Random offset within step range
+      // Random offset within step range, with slight bias towards bottom
       const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
-      const offsetY = (Math.random() - 0.5) * 2 * maxStepY;
+      const offsetY = (Math.random() - 0.3) * 2 * maxStepY; // Bias downward
 
-      // Calculate new target, clamped to walkable area
-      const newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + offsetX));
-      const newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + offsetY));
+      // Calculate base target
+      const baseX = prev.x + offsetX;
+      const baseY = prev.y + offsetY;
+
+      // Get valid position that avoids UI zone
+      const validPos = getValidPosition(baseX, baseY, walkableArea);
 
       return {
         ...prev,
-        targetX: newX,
-        targetY: newY,
+        targetX: validPos.x,
+        targetY: validPos.y,
         isWalking: true,
-        facingRight: newX > prev.x,
+        facingRight: validPos.x > prev.x,
         walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
       };
     });
@@ -160,21 +241,24 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         } else {
           // Idle - count down timer
           if (prev.idleTimer <= 0) {
-            // Start walking to a nearby position (casual strolling)
+            // Start walking to a nearby position (casual strolling, biased bottom)
             const { walkableArea } = groundConfig;
-            const maxStepX = 15;
-            const maxStepY = 12;
+            const maxStepX = 12;
+            const maxStepY = 10;
             const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
-            const offsetY = (Math.random() - 0.5) * 2 * maxStepY;
-            const newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + offsetX));
-            const newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + offsetY));
+            const offsetY = (Math.random() - 0.3) * 2 * maxStepY; // Bias downward
+            const baseX = prev.x + offsetX;
+            const baseY = prev.y + offsetY;
+
+            // Get valid position that avoids UI zone
+            const validPos = getValidPosition(baseX, baseY, walkableArea);
 
             return {
               ...prev,
-              targetX: newX,
-              targetY: newY,
+              targetX: validPos.x,
+              targetY: validPos.y,
               isWalking: true,
-              facingRight: newX > prev.x,
+              facingRight: validPos.x > prev.x,
               walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
             };
           }
@@ -206,8 +290,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   const pixelX = (state.x / 100) * containerWidth;
   const pixelY = (state.y / 100) * containerHeight;
 
-  // Base size for avatar (will be scaled)
-  const baseSize = 80;
+  // Base size for avatar (will be scaled) - larger for lobby presence
+  const baseSize = 120;
 
   // Get idle animation config
   const idleConfig = idleAnimations[character.idleAnimation];
