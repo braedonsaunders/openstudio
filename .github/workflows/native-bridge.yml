@@ -21,29 +21,33 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # Windows x64 (with ASIO)
+          # Windows x64 with ASIO
           - os: windows-latest
             target: x86_64-pc-windows-msvc
             artifact: openstudio-bridge-windows.exe
             binary: openstudio-bridge.exe
+            features: asio
 
           # macOS x64 (Intel)
           - os: macos-13
             target: x86_64-apple-darwin
             artifact: openstudio-bridge-macos-x64
             binary: openstudio-bridge
+            features: default
 
           # macOS ARM64 (Apple Silicon)
           - os: macos-14
             target: aarch64-apple-darwin
             artifact: openstudio-bridge-macos-arm64
             binary: openstudio-bridge
+            features: default
 
           # Linux x64
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
             artifact: openstudio-bridge-linux
             binary: openstudio-bridge
+            features: default
 
     runs-on: ${{ matrix.os }}
 
@@ -61,16 +65,38 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libasound2-dev libjack-jackd2-dev
 
-      # Windows: Download ASIO SDK (optional - builds without it too)
-      - name: Setup ASIO SDK (Windows)
+      - name: Check ASIO SDK exists (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          # ASIO SDK requires manual download from Steinberg
-          # For CI, we build without ASIO - users can rebuild locally with ASIO
-          echo "Building without ASIO SDK (WASAPI only)"
-          echo "For ASIO support, build locally with --features asio"
+          $asioPath = "native-bridge/asio-sdk/common/asio.h"
+          if (Test-Path $asioPath) {
+            Write-Host "✓ ASIO SDK found - building with ASIO support"
+            echo "CPAL_ASIO_DIR=${{ github.workspace }}/native-bridge/asio-sdk" >> $env:GITHUB_ENV
+          } else {
+            Write-Host "⚠ ASIO SDK not found at $asioPath"
+            Write-Host "  Download from https://www.steinberg.net/developers/"
+            Write-Host "  Extract to native-bridge/asio-sdk/"
+            Write-Host "  Building without ASIO (WASAPI only)"
+            # Override features to not include ASIO
+            echo "BUILD_FEATURES=default" >> $env:GITHUB_ENV
+          }
 
-      - name: Build
+      - name: Build (Windows with ASIO)
+        if: runner.os == 'Windows' && env.BUILD_FEATURES != 'default'
+        working-directory: native-bridge
+        shell: pwsh
+        run: |
+          cargo build --release --target ${{ matrix.target }} --features asio
+
+      - name: Build (Windows without ASIO)
+        if: runner.os == 'Windows' && env.BUILD_FEATURES == 'default'
+        working-directory: native-bridge
+        run: |
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Build (Unix)
+        if: runner.os != 'Windows'
         working-directory: native-bridge
         run: |
           cargo build --release --target ${{ matrix.target }}
@@ -83,8 +109,9 @@ jobs:
 
       - name: Prepare artifact (Windows)
         if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          copy native-bridge\target\${{ matrix.target }}\release\${{ matrix.binary }} ${{ matrix.artifact }}
+          Copy-Item "native-bridge/target/${{ matrix.target }}/release/${{ matrix.binary }}" -Destination "${{ matrix.artifact }}"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
@@ -120,7 +147,6 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release
-          # Flatten artifacts
           find artifacts -type f -exec mv {} release/ \;
           ls -la release/
 
@@ -136,12 +162,12 @@ jobs:
 
             ### Downloads
 
-            | Platform | File | Notes |
-            |----------|------|-------|
-            | Windows | `openstudio-bridge-windows.exe` | WASAPI mode (for ASIO, build locally) |
-            | macOS Intel | `openstudio-bridge-macos-x64` | CoreAudio |
-            | macOS Apple Silicon | `openstudio-bridge-macos-arm64` | CoreAudio |
-            | Linux | `openstudio-bridge-linux` | ALSA/JACK |
+            | Platform | File | Latency |
+            |----------|------|---------|
+            | Windows | `openstudio-bridge-windows.exe` | ~5-10ms (ASIO) |
+            | macOS Intel | `openstudio-bridge-macos-x64` | ~5-10ms (CoreAudio) |
+            | macOS Apple Silicon | `openstudio-bridge-macos-arm64` | ~5-10ms (CoreAudio) |
+            | Linux | `openstudio-bridge-linux` | ~5-15ms (ALSA/JACK) |
 
             ### First Run
 
@@ -149,14 +175,12 @@ jobs:
             **macOS:** Right-click → Open → "Open anyway" (Gatekeeper)
             **Linux:** `chmod +x openstudio-bridge-linux && ./openstudio-bridge-linux`
 
-            ### Building with ASIO (Windows)
+            ### Usage
 
-            For true low-latency on Windows, build locally with ASIO:
-            ```bash
-            # Download ASIO SDK from Steinberg first
-            set CPAL_ASIO_DIR=C:\ASIOSDK
-            cargo build --release --features asio
-            ```
+            1. Download the file for your platform
+            2. Run it (dismiss security warnings)
+            3. In OpenStudio, click "⚡ Low Latency Mode"
+            4. The app auto-connects to the native bridge
           files: release/*
           draft: false
           prerelease: false
