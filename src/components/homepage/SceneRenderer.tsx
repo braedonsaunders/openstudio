@@ -1080,6 +1080,9 @@ const SCENE_GROUNDS: Record<HomepageSceneType, { day: string; night: string }> =
   },
 };
 
+// Scene order for determining slide direction
+const SCENE_ORDER: HomepageSceneType[] = ['beach', 'campfire', 'forest', 'studio', 'space', 'rooftop'];
+
 export function SceneRenderer({
   scene,
   onSceneChange,
@@ -1095,6 +1098,31 @@ export function SceneRenderer({
   const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
+
+  // Track previous values for transition direction
+  const prevSceneRef = useRef<HomepageSceneType>(currentScene);
+  const prevThemeRef = useRef<boolean>(isDark);
+  const [transitionType, setTransitionType] = useState<'scene' | 'theme' | 'initial'>('initial');
+  const [slideDirection, setSlideDirection] = useState<number>(1); // 1 = right/down, -1 = left/up
+
+  // Determine transition type and direction when scene or theme changes
+  useEffect(() => {
+    const sceneChanged = prevSceneRef.current !== currentScene;
+    const themeChanged = prevThemeRef.current !== isDark;
+
+    if (sceneChanged) {
+      const prevIndex = SCENE_ORDER.indexOf(prevSceneRef.current);
+      const currentIndex = SCENE_ORDER.indexOf(currentScene);
+      setSlideDirection(currentIndex > prevIndex ? 1 : -1);
+      setTransitionType('scene');
+      prevSceneRef.current = currentScene;
+    } else if (themeChanged) {
+      // Dark mode = down (night falling), Light mode = up (sun rising)
+      setSlideDirection(isDark ? 1 : -1);
+      setTransitionType('theme');
+      prevThemeRef.current = isDark;
+    }
+  }, [currentScene, isDark]);
 
   useEffect(() => {
     async function loadCharacters() {
@@ -1138,36 +1166,82 @@ export function SceneRenderer({
   const backdrop = isDark ? SCENE_BACKDROPS[currentScene].night : SCENE_BACKDROPS[currentScene].day;
   const ground = isDark ? SCENE_GROUNDS[currentScene].night : SCENE_GROUNDS[currentScene].day;
 
+  // Dynamic variants based on transition type
+  const getSceneVariants = () => {
+    if (transitionType === 'initial') {
+      return {
+        initial: { opacity: 0, scale: 0.95 },
+        animate: { opacity: 1, scale: 1, x: 0, y: 0 },
+        exit: { opacity: 0, scale: 0.95 },
+      };
+    }
+    if (transitionType === 'scene') {
+      // Horizontal slide for scene changes
+      return {
+        initial: { opacity: 0, x: `${slideDirection * 100}%`, scale: 0.9 },
+        animate: { opacity: 1, x: 0, scale: 1 },
+        exit: { opacity: 0, x: `${-slideDirection * 100}%`, scale: 0.9 },
+      };
+    }
+    // Vertical slide for theme changes (day/night)
+    return {
+      initial: { opacity: 0, y: `${slideDirection * 50}%`, scale: 0.95 },
+      animate: { opacity: 1, y: 0, scale: 1 },
+      exit: { opacity: 0, y: `${-slideDirection * 50}%`, scale: 0.95 },
+    };
+  };
+
+  const sceneVariants = getSceneVariants();
+
   return (
     <div ref={containerRef} className={`relative w-full h-full overflow-hidden ${className}`}>
-      {/* Backdrop/Sky */}
-      <motion.div
-        className="absolute inset-0"
-        style={{ background: backdrop }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8 }}
-        key={`backdrop-${currentScene}-${isDark}`}
-      />
-
-      {/* Ground plane */}
-      <motion.div
-        className="absolute left-0 right-0 bottom-0"
-        style={{ background: ground, top: `${sceneConfig.ground.horizonY}%` }}
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.8 }}
-        key={`ground-${currentScene}-${isDark}`}
-      />
-
-      {/* Scene decorations */}
-      <AnimatePresence mode="wait">
+      {/* Backdrop/Sky - crossfade with color shift */}
+      <AnimatePresence mode="sync">
         <motion.div
-          key={`${currentScene}-${isDark}`}
+          key={`backdrop-${currentScene}-${isDark}`}
+          className="absolute inset-0"
+          style={{ background: backdrop }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
-          transition={{ duration: 0.6 }}
+          transition={{ duration: 0.4, ease: 'easeInOut' }}
+        />
+      </AnimatePresence>
+
+      {/* Ground plane - slides with content */}
+      <AnimatePresence mode="sync">
+        <motion.div
+          key={`ground-${currentScene}-${isDark}`}
+          className="absolute left-0 right-0 bottom-0"
+          style={{ background: ground, top: `${sceneConfig.ground.horizonY}%` }}
+          initial={{
+            opacity: 0,
+            x: transitionType === 'scene' ? `${slideDirection * 30}%` : 0,
+            y: transitionType === 'theme' ? `${slideDirection * 20}%` : 0,
+          }}
+          animate={{ opacity: 1, x: 0, y: 0 }}
+          exit={{
+            opacity: 0,
+            x: transitionType === 'scene' ? `${-slideDirection * 30}%` : 0,
+            y: transitionType === 'theme' ? `${-slideDirection * 20}%` : 0,
+          }}
+          transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
+        />
+      </AnimatePresence>
+
+      {/* Scene decorations - main animated content */}
+      <AnimatePresence mode="popLayout" initial={false}>
+        <motion.div
+          key={`${currentScene}-${isDark}`}
+          variants={sceneVariants}
+          initial="initial"
+          animate="animate"
+          exit="exit"
+          transition={{
+            duration: 0.4,
+            ease: [0.4, 0, 0.2, 1],
+            opacity: { duration: 0.25 },
+          }}
           className="absolute inset-0"
         >
           <SceneComponent isDark={isDark} />
