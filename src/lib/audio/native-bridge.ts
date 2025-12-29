@@ -476,7 +476,7 @@ export async function isNativeBridgeAvailable(): Promise<boolean> {
 
 // R2 public URL - uses same bucket as tracks, files stored under bridge/ path
 // This should match CLOUDFLARE_R2_PUBLIC_URL env var
-const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://cdn.openstudio.live';
+const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://cdn.openstudio.cafe';
 
 /**
  * Get download URL for native bridge from Cloudflare R2
