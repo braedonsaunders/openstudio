@@ -64,13 +64,12 @@ export class RealtimeRoomManager {
     await new Promise(resolve => setTimeout(resolve, 100));
   }
 
-  async connect(user: User): Promise<void> {
-    // Clean up any existing channel first to prevent CLOSED status on retry
-    await RealtimeRoomManager.cleanupExistingChannel(this.roomId);
-
-    this.channel = getRealtimeChannel(this.roomId);
-    // Track this channel so it can be cleaned up on retry
-    activeChannels.set(this.roomId, this.channel);
+  /**
+   * Set up all channel event handlers (presence and broadcast)
+   * This is extracted into a helper so it can be called on initial connect AND on retry
+   */
+  private setupChannelHandlers(): void {
+    if (!this.channel) return;
 
     // Track presence
     this.channel.on('presence', { event: 'sync' }, () => {
@@ -206,6 +205,18 @@ export class RealtimeRoomManager {
     this.channel.on('broadcast', { event: 'permissions:sync' }, ({ payload }) => {
       this.emit('permissions:sync', payload);
     });
+  }
+
+  async connect(user: User): Promise<void> {
+    // Clean up any existing channel first to prevent CLOSED status on retry
+    await RealtimeRoomManager.cleanupExistingChannel(this.roomId);
+
+    this.channel = getRealtimeChannel(this.roomId);
+    // Track this channel so it can be cleaned up on retry
+    activeChannels.set(this.roomId, this.channel);
+
+    // Set up all event handlers (presence and broadcast)
+    this.setupChannelHandlers();
 
     // Subscription with retry logic for mobile reliability (especially iPad)
     // Mobile devices often need multiple attempts due to network transitions
@@ -225,18 +236,9 @@ export class RealtimeRoomManager {
         this.channel = getRealtimeChannel(this.roomId);
         activeChannels.set(this.roomId, this.channel);
 
-        // Re-attach event handlers for the new channel
-        this.channel.on('presence', { event: 'sync' }, () => {
-          const state = this.channel?.presenceState();
-          this.emit('presence:sync', state);
-        });
-        this.channel.on('presence', { event: 'join' }, ({ key, newPresences }) => {
-          this.emit('presence:join', { key, users: newPresences });
-        });
-        this.channel.on('presence', { event: 'leave' }, ({ key, leftPresences }) => {
-          this.emit('presence:leave', { key, users: leftPresences });
-        });
-        // Note: broadcast handlers are attached before this loop, they persist
+        // CRITICAL: Re-attach ALL event handlers (presence AND broadcast) for the new channel
+        // The previous channel object is gone, so we must set up handlers on the new one
+        this.setupChannelHandlers();
       }
 
       try {
