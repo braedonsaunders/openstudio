@@ -422,25 +422,27 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     for (const track of songTracks) {
       if (track.type === 'lyria' && track.ref.lyriaConfig) {
         console.log('[DAWLayout] Playing Lyria track:', track.name);
-        const lyriaStore = useLyriaStore.getState();
 
         // Set the active config from the track
-        lyriaStore.setActiveConfig(track.ref.lyriaConfig, currentSong.id, track.ref.id);
+        useLyriaStore.getState().setActiveConfig(track.ref.lyriaConfig, currentSong.id, track.ref.id);
 
         // Only connect if not already connected
-        const state = lyriaStore.sessionState;
-        if (state === 'disconnected' || state === 'error') {
+        const initialState = useLyriaStore.getState().sessionState;
+        if (initialState === 'disconnected' || initialState === 'error') {
           try {
-            await lyriaStore.connect();
+            await useLyriaStore.getState().connect();
           } catch (err) {
             console.error('[DAWLayout] Failed to connect Lyria:', err);
             break;
           }
         }
 
+        // Get fresh state after connect - Zustand snapshots are stale after async operations
+        const currentState = useLyriaStore.getState().sessionState;
+
         // Play (or resume) if connected - must await to ensure AudioContext is resumed
-        if (lyriaStore.sessionState === 'connected' || lyriaStore.sessionState === 'paused') {
-          await lyriaStore.play(track.ref.lyriaConfig);
+        if (currentState === 'connected' || currentState === 'paused') {
+          await useLyriaStore.getState().play(track.ref.lyriaConfig);
         }
         break; // Only one Lyria track per song
       }
