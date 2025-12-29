@@ -116,8 +116,9 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
     setIsSaving(true);
 
     try {
+      const newId = formId.toLowerCase().replace(/[^a-z0-9_]/g, '_');
       const payload: Record<string, unknown> = {
-        id: formId.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+        id: newId,
         displayName: formDisplayName,
         description: formDescription || null,
         unlockType: formType,
@@ -137,17 +138,43 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
         const response = await adminPatch(`/api/admin/avatar/unlock-rules?id=${editingRule.id}`, payload);
 
         if (response.ok) {
+          // Update local state instead of reloading
+          setRules(prev => prev.map(r =>
+            r.id === editingRule.id ? {
+              ...r,
+              displayName: formDisplayName,
+              description: formDescription || null,
+              unlockType: formType,
+              levelRequired: formType === 'level' && formConditionValue ? parseInt(formConditionValue) : null,
+              achievementId: formType === 'achievement' ? formConditionKey || null : null,
+              statisticKey: formType === 'statistic' ? formConditionKey || null : null,
+              statisticValue: formType === 'statistic' && formConditionValue ? parseFloat(formConditionValue) : null,
+              statisticOperator: formType === 'statistic' ? '>=' : null,
+            } : r
+          ));
           setIsModalOpen(false);
-          loadRules();
-          onRefresh();
         }
       } else {
         const response = await adminPost('/api/admin/avatar/unlock-rules', payload);
 
         if (response.ok) {
+          // Add to local state instead of reloading
+          const newRule: AvatarUnlockRule = {
+            id: newId,
+            displayName: formDisplayName,
+            description: formDescription || null,
+            unlockType: formType,
+            levelRequired: formType === 'level' && formConditionValue ? parseInt(formConditionValue) : null,
+            achievementId: formType === 'achievement' ? formConditionKey || null : null,
+            statisticKey: formType === 'statistic' ? formConditionKey || null : null,
+            statisticValue: formType === 'statistic' && formConditionValue ? parseFloat(formConditionValue) : null,
+            statisticOperator: formType === 'statistic' ? '>=' : null,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setRules(prev => [...prev, newRule]);
           setIsModalOpen(false);
-          loadRules();
-          onRefresh();
         }
       }
     } catch (error) {
@@ -165,9 +192,9 @@ export function UnlockRuleEditor({ onRefresh }: UnlockRuleEditorProps) {
       const response = await adminDelete(`/api/admin/avatar/unlock-rules?id=${deletingRule.id}`);
 
       if (response.ok) {
+        // Update local state instead of reloading
+        setRules(prev => prev.filter(r => r.id !== deletingRule.id));
         setDeletingRule(null);
-        loadRules();
-        onRefresh();
       }
     } catch (error) {
       console.error('Failed to delete rule:', error);

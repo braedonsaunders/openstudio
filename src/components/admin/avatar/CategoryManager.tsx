@@ -143,13 +143,29 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
         });
 
         if (response.ok) {
+          // Update local state instead of reloading
+          setOrderedCategories(prev => prev.map(c =>
+            c.id === editingCategory.id ? {
+              ...c,
+              displayName: formDisplayName,
+              isRequired: formIsRequired,
+              maxSelections: formMaxSelections,
+              supportsColorVariants: formSupportsColorVariants,
+              defaultColorPalette: formDefaultPalette || null,
+              promptAddition: formPromptAddition || null,
+              renderX: formRenderX,
+              renderY: formRenderY,
+              renderWidth: formRenderWidth,
+              renderHeight: formRenderHeight,
+            } : c
+          ));
           setIsModalOpen(false);
-          onRefresh();
         }
       } else {
         // Create new
+        const newId = formId.toLowerCase().replace(/[^a-z0-9_]/g, '_');
         const response = await adminPost('/api/admin/avatar/categories', {
-          id: formId.toLowerCase().replace(/[^a-z0-9_]/g, '_'),
+          id: newId,
           displayName: formDisplayName,
           layerOrder: orderedCategories.length,
           isRequired: formIsRequired,
@@ -164,8 +180,26 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
         });
 
         if (response.ok) {
+          // Add to local state instead of reloading
+          const newCategory: AvatarCategory = {
+            id: newId,
+            displayName: formDisplayName,
+            layerOrder: orderedCategories.length,
+            isRequired: formIsRequired,
+            maxSelections: formMaxSelections,
+            supportsColorVariants: formSupportsColorVariants,
+            defaultColorPalette: formDefaultPalette || null,
+            promptAddition: formPromptAddition || null,
+            renderX: formRenderX,
+            renderY: formRenderY,
+            renderWidth: formRenderWidth,
+            renderHeight: formRenderHeight,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setOrderedCategories(prev => [...prev, newCategory]);
           setIsModalOpen(false);
-          onRefresh();
         }
       }
     } catch (error) {
@@ -183,8 +217,9 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
       const response = await adminDelete(`/api/admin/avatar/categories?id=${deletingCategory.id}`);
 
       if (response.ok) {
+        // Update local state immediately to avoid reload
+        setOrderedCategories(prev => prev.filter(c => c.id !== deletingCategory.id));
         setDeletingCategory(null);
-        onRefresh();
       }
     } catch (error) {
       console.error('Failed to delete category:', error);

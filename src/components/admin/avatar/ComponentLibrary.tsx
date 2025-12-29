@@ -239,9 +239,17 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
       });
 
       if (response.ok) {
+        // Update local state instead of reloading all data
+        setComponents(prev => prev.map(c =>
+          c.id === editingComponent.id ? {
+            ...c,
+            id: newId !== editingComponent.id ? newId : c.id,
+            name: editName,
+            tags: editTags.split(',').map((t) => t.trim()).filter(Boolean),
+            rarity: editRarity,
+          } : c
+        ));
         handleCloseEdit();
-        loadComponents();
-        onRefresh();
         toast.success('Component updated successfully');
       } else {
         const error = await response.json();
@@ -261,7 +269,10 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
       });
 
       if (response.ok) {
-        loadComponents();
+        // Update local state instead of reloading all data
+        setComponents(prev => prev.map(c =>
+          c.id === component.id ? { ...c, isActive: !c.isActive } : c
+        ));
       }
     } catch (error) {
       console.error('Failed to toggle component:', error);
@@ -276,9 +287,9 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
       const response = await adminDelete(`/api/admin/avatar/components?id=${deletingComponent.id}`);
 
       if (response.ok) {
+        // Update local state instead of reloading all data
+        setComponents(prev => prev.filter(c => c.id !== deletingComponent.id));
         setDeletingComponent(null);
-        loadComponents();
-        onRefresh();
         toast.success('Component deleted');
       }
     } catch (error) {
@@ -378,11 +389,14 @@ export function ComponentLibrary({ categories, unlockRules, onRefresh }: Compone
         toast.success('Image updated successfully');
         setPreviewImage(null);
         setEraserMask(null);
-        loadComponents();
-        // Update the editing component with new image
+        // Update the editing component and local state with new image
         const updatedComponent = await response.json();
         if (updatedComponent.imageUrl) {
           setEditingComponent(prev => prev ? { ...prev, imageUrl: updatedComponent.imageUrl } : null);
+          // Update local state instead of reloading all data
+          setComponents(prev => prev.map(c =>
+            c.id === editingComponent.id ? { ...c, imageUrl: updatedComponent.imageUrl, thumbnailUrl: updatedComponent.thumbnailUrl || c.thumbnailUrl } : c
+          ));
         }
       } else {
         const error = await response.json();

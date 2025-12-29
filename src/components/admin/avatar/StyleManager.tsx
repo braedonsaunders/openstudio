@@ -105,17 +105,27 @@ export function StyleManager({ onRefresh }: StyleManagerProps) {
 
         if (response.ok) {
           toast.success('Style updated');
+          // Update local state instead of reloading
+          setPresets(prev => prev.map(p =>
+            p.id === editingPreset.id ? {
+              ...p,
+              name: formName,
+              promptTemplate: formPromptTemplate,
+              negativePrompt: formNegativePrompt || null,
+              styleSuffix: formStyleSuffix || null,
+              model: formModel || null,
+            } : p
+          ));
           setIsModalOpen(false);
-          loadPresets();
-          onRefresh();
         } else {
           const error = await response.json();
           toast.error(`Failed to update: ${error.error}`);
         }
       } else {
         // Create new
+        const newId = formId.toLowerCase().replace(/[^a-z0-9_-]/g, '_');
         const response = await adminPost('/api/admin/avatar/presets', {
-          id: formId.toLowerCase().replace(/[^a-z0-9_-]/g, '_'),
+          id: newId,
           name: formName,
           promptTemplate: formPromptTemplate,
           negativePrompt: formNegativePrompt || undefined,
@@ -125,9 +135,20 @@ export function StyleManager({ onRefresh }: StyleManagerProps) {
 
         if (response.ok) {
           toast.success('Style created');
+          // Add to local state instead of reloading
+          const newPreset: AvatarGenerationPreset = {
+            id: newId,
+            name: formName,
+            promptTemplate: formPromptTemplate,
+            negativePrompt: formNegativePrompt || null,
+            styleSuffix: formStyleSuffix || null,
+            model: formModel || null,
+            isActive: true,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
+          setPresets(prev => [...prev, newPreset]);
           setIsModalOpen(false);
-          loadPresets();
-          onRefresh();
         } else {
           const error = await response.json();
           toast.error(`Failed to create: ${error.error}`);
@@ -148,7 +169,10 @@ export function StyleManager({ onRefresh }: StyleManagerProps) {
       });
 
       if (response.ok) {
-        loadPresets();
+        // Update local state instead of reloading
+        setPresets(prev => prev.map(p =>
+          p.id === preset.id ? { ...p, isActive: !p.isActive } : p
+        ));
         toast.success(preset.isActive ? 'Style deactivated' : 'Style activated');
       }
     } catch (error) {
@@ -166,9 +190,9 @@ export function StyleManager({ onRefresh }: StyleManagerProps) {
 
       if (response.ok) {
         toast.success('Style deleted');
+        // Update local state instead of reloading
+        setPresets(prev => prev.filter(p => p.id !== deletingPreset.id));
         setDeletingPreset(null);
-        loadPresets();
-        onRefresh();
       } else {
         const error = await response.json();
         toast.error(`Failed to delete: ${error.error}`);
