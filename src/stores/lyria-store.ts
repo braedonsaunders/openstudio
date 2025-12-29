@@ -36,7 +36,7 @@ interface LyriaStoreState {
   volume: number;
 
   // Callbacks for external audio source management
-  onConnected?: (stream: MediaStream) => void;
+  onConnected?: (stream: MediaStream) => void | Promise<void>;
   onDisconnected?: () => void;
 
   // Actions
@@ -121,10 +121,10 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
       });
       currentSession.setVolume(volume);
 
-      // Notify external audio source manager
+      // Notify external audio source manager and wait for routing to complete
       const outputStream = currentSession.getOutputStream();
       if (outputStream && onConnected) {
-        onConnected(outputStream);
+        await onConnected(outputStream);
       }
     } catch (err) {
       set({ error: (err as Error).message });
