@@ -1,9 +1,8 @@
 'use client';
 
-import { useEffect, useCallback } from 'react';
+import { useEffect, useCallback, useRef } from 'react';
 import {
   nativeBridge,
-  isNativeBridgeAvailable,
   launchNativeBridge,
   getNativeBridgeDownloadUrl,
 } from '@/lib/audio/native-bridge';
@@ -22,43 +21,28 @@ interface BridgeDevice {
 
 export function useNativeBridge() {
   const store = useBridgeAudioStore();
+  const listenersSetup = useRef(false);
+  const hasRequestedDevices = useRef(false);
 
-  // Check availability on mount
-  useEffect(() => {
-    let mounted = true;
-
-    const checkAvailability = async () => {
-      const available = await isNativeBridgeAvailable();
-      if (mounted && available) {
-        store.setConnected(true);
-        store.setDriverType(nativeBridge.getDriverType());
-        // Request devices when connected
-        nativeBridge.getDevices();
-      }
-    };
-
-    checkAvailability();
-
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  // Subscribe to events
+  // Set up event listeners FIRST, before any connection attempts
   useEffect(() => {
     const handleConnected = (data: { version: string; driverType: string }) => {
+      console.log('[useNativeBridge] Connected event received:', data);
       store.setConnected(true);
       store.setDriverType(data.driverType);
       store.setError(null);
       // Request devices when connected
+      console.log('[useNativeBridge] Requesting devices...');
       nativeBridge.getDevices();
     };
 
     const handleDisconnected = () => {
+      console.log('[useNativeBridge] Disconnected');
       store.setConnected(false);
       store.setRunning(false);
       store.setDriverType(null);
       store.setDevices([], []);
+      hasRequestedDevices.current = false;
     };
 
     const handleAudioStatus = (data: {
@@ -67,6 +51,7 @@ export function useNativeBridge() {
       outputLatencyMs: number;
       totalLatencyMs: number;
     }) => {
+      console.log('[useNativeBridge] Audio status:', data);
       store.setRunning(data.isRunning);
       store.setLatency({
         input: data.inputLatencyMs,
@@ -80,18 +65,24 @@ export function useNativeBridge() {
     };
 
     const handleDevices = (data: { inputs: BridgeDevice[]; outputs: BridgeDevice[] }) => {
+      console.log('[useNativeBridge] Devices received:', data);
       store.setDevices(data.inputs, data.outputs);
     };
 
     const handleError = (data: { code: string; message: string }) => {
+      console.error('[useNativeBridge] Error:', data);
       store.setError(data);
     };
 
+    // Register all listeners
     nativeBridge.on('connected', handleConnected);
     nativeBridge.on('disconnected', handleDisconnected);
     nativeBridge.on('audioStatus', handleAudioStatus);
     nativeBridge.on('devices', handleDevices);
     nativeBridge.on('error', handleError);
+
+    listenersSetup.current = true;
+    console.log('[useNativeBridge] Event listeners registered');
 
     return () => {
       nativeBridge.off('connected', handleConnected);
@@ -99,27 +90,77 @@ export function useNativeBridge() {
       nativeBridge.off('audioStatus', handleAudioStatus);
       nativeBridge.off('devices', handleDevices);
       nativeBridge.off('error', handleError);
+      listenersSetup.current = false;
     };
-  }, []);
+  }, [store]);
+
+  // Check availability AFTER listeners are set up
+  useEffect(() => {
+    // Wait for listeners to be set up
+    if (!listenersSetup.current) return;
+
+    let mounted = true;
+
+    const checkAvailability = async () => {
+      console.log('[useNativeBridge] Checking bridge availability...');
+
+      try {
+        const connected = await nativeBridge.connect();
+        console.log('[useNativeBridge] Connection result:', connected);
+
+        if (mounted && connected) {
+          store.setConnected(true);
+          const driverType = nativeBridge.getDriverType();
+          console.log('[useNativeBridge] Driver type:', driverType);
+          store.setDriverType(driverType);
+
+          // Request devices if we haven't already
+          if (!hasRequestedDevices.current) {
+            console.log('[useNativeBridge] Requesting devices after connect...');
+            hasRequestedDevices.current = true;
+            nativeBridge.getDevices();
+          }
+        }
+      } catch (err) {
+        console.error('[useNativeBridge] Connection error:', err);
+      }
+    };
+
+    checkAvailability();
+
+    return () => {
+      mounted = false;
+    };
+  }, [store]);
 
   // Connect to bridge
   const connect = useCallback(async () => {
+    console.log('[useNativeBridge] Manual connect requested');
     const connected = await nativeBridge.connect();
-    store.setConnected(connected);
+    console.log('[useNativeBridge] Manual connect result:', connected);
+
     if (connected) {
+      store.setConnected(true);
       store.setDriverType(nativeBridge.getDriverType());
+      // Request devices
+      console.log('[useNativeBridge] Requesting devices after manual connect...');
       nativeBridge.getDevices();
+    } else {
+      store.setConnected(false);
     }
     return connected;
-  }, []);
+  }, [store]);
 
   // Disconnect from bridge
   const disconnect = useCallback(() => {
+    console.log('[useNativeBridge] Disconnecting...');
     nativeBridge.disconnect();
     store.setConnected(false);
     store.setRunning(false);
     store.setDriverType(null);
-  }, []);
+    store.setDevices([], []);
+    hasRequestedDevices.current = false;
+  }, [store]);
 
   // Launch native app with room context
   const launch = useCallback((roomId: string, userId: string, token: string) => {
@@ -138,80 +179,105 @@ export function useNativeBridge() {
 
   // Configure and start audio
   const startAudio = useCallback(() => {
-    if (!store.isConnected) return;
+    const state = useBridgeAudioStore.getState();
+    if (!state.isConnected) {
+      console.warn('[useNativeBridge] Cannot start audio - not connected');
+      return;
+    }
+
+    console.log('[useNativeBridge] Starting audio with config:', {
+      inputDevice: state.selectedInputDeviceId,
+      outputDevice: state.selectedOutputDeviceId,
+      bufferSize: state.bufferSize,
+      sampleRate: state.sampleRate,
+      channelConfig: state.inputChannelConfig,
+    });
 
     // Configure devices before starting
-    if (store.selectedInputDeviceId) {
-      nativeBridge.setInputDevice(store.selectedInputDeviceId);
+    if (state.selectedInputDeviceId) {
+      nativeBridge.setInputDevice(state.selectedInputDeviceId);
     }
-    if (store.selectedOutputDeviceId) {
-      nativeBridge.setOutputDevice(store.selectedOutputDeviceId);
+    if (state.selectedOutputDeviceId) {
+      nativeBridge.setOutputDevice(state.selectedOutputDeviceId);
     }
 
     // Configure buffer size and sample rate
-    nativeBridge.setBufferSize(store.bufferSize);
-    nativeBridge.setSampleRate(store.sampleRate);
+    nativeBridge.setBufferSize(state.bufferSize);
+    nativeBridge.setSampleRate(state.sampleRate);
 
     // Configure channel config
-    nativeBridge.setChannelConfig(store.inputChannelConfig);
+    nativeBridge.setChannelConfig(state.inputChannelConfig);
 
     // Now start audio
     nativeBridge.startAudio();
-  }, [store.isConnected, store.selectedInputDeviceId, store.selectedOutputDeviceId, store.bufferSize, store.sampleRate, store.inputChannelConfig]);
+  }, []);
 
   // Stop audio
   const stopAudio = useCallback(() => {
-    if (store.isConnected) {
+    const state = useBridgeAudioStore.getState();
+    if (state.isConnected) {
+      console.log('[useNativeBridge] Stopping audio');
       nativeBridge.stopAudio();
     }
-  }, [store.isConnected]);
+  }, []);
 
   // Refresh devices
   const refreshDevices = useCallback(() => {
-    if (store.isConnected) {
+    const state = useBridgeAudioStore.getState();
+    if (state.isConnected) {
+      console.log('[useNativeBridge] Refreshing devices');
       nativeBridge.getDevices();
+    } else {
+      console.warn('[useNativeBridge] Cannot refresh devices - not connected');
     }
-  }, [store.isConnected]);
+  }, []);
 
   // Set input device and send to bridge
   const setInputDevice = useCallback((deviceId: string) => {
+    console.log('[useNativeBridge] Setting input device:', deviceId);
     store.setSelectedInputDevice(deviceId);
-    if (store.isConnected) {
+    const state = useBridgeAudioStore.getState();
+    if (state.isConnected) {
       nativeBridge.setInputDevice(deviceId);
     }
-  }, [store.isConnected]);
+  }, [store]);
 
   // Set output device and send to bridge
   const setOutputDevice = useCallback((deviceId: string) => {
+    console.log('[useNativeBridge] Setting output device:', deviceId);
     store.setSelectedOutputDevice(deviceId);
-    if (store.isConnected) {
+    const state = useBridgeAudioStore.getState();
+    if (state.isConnected) {
       nativeBridge.setOutputDevice(deviceId);
     }
-  }, [store.isConnected]);
+  }, [store]);
 
   // Set buffer size
   const setBufferSize = useCallback((size: 32 | 64 | 128 | 256 | 512 | 1024) => {
     store.setBufferSize(size);
-    if (store.isConnected) {
+    const state = useBridgeAudioStore.getState();
+    if (state.isConnected) {
       nativeBridge.setBufferSize(size);
     }
-  }, [store.isConnected]);
+  }, [store]);
 
   // Set sample rate
   const setSampleRate = useCallback((rate: 44100 | 48000) => {
     store.setSampleRate(rate);
-    if (store.isConnected) {
+    const state = useBridgeAudioStore.getState();
+    if (state.isConnected) {
       nativeBridge.setSampleRate(rate);
     }
-  }, [store.isConnected]);
+  }, [store]);
 
   // Set channel config
   const setChannelConfig = useCallback((config: { channelCount: 1 | 2; leftChannel: number; rightChannel?: number }) => {
     store.setInputChannelConfig(config);
-    if (store.isConnected) {
+    const state = useBridgeAudioStore.getState();
+    if (state.isConnected) {
       nativeBridge.setChannelConfig(config);
     }
-  }, [store.isConnected]);
+  }, [store]);
 
   return {
     // Connection state
