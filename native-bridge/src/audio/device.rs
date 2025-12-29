@@ -159,12 +159,14 @@ impl AudioDevice {
         #[cfg(target_os = "windows")]
         {
             if let Ok(asio_host) = cpal::host_from_id(cpal::HostId::Asio) {
-                for device in asio_host.devices().unwrap_or_default() {
-                    if let Ok(name) = device.name() {
-                        let id = Self::generate_device_id(&name, DriverType::Asio);
-                        if id == device_id {
-                            if let Some(info) = Self::get_device_info(&device, DriverType::Asio) {
-                                return Ok(AudioDevice { device, info });
+                if let Ok(devices) = asio_host.devices() {
+                    for device in devices {
+                        if let Ok(name) = device.name() {
+                            let id = Self::generate_device_id(&name, DriverType::Asio);
+                            if id == device_id {
+                                if let Some(info) = Self::get_device_info(&device, DriverType::Asio) {
+                                    return Ok(AudioDevice { device, info });
+                                }
                             }
                         }
                     }
