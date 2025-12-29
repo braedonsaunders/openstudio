@@ -3,16 +3,17 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useNativeBridge } from '@/hooks/useNativeBridge';
 import type { UserTrack, TrackAudioSettings as TAS } from '@/types';
 import {
   Mic,
   Monitor,
-  Volume2,
   Settings2,
   X,
   ChevronDown,
   AlertCircle,
   Headphones,
+  Zap,
 } from 'lucide-react';
 
 interface TrackAudioSettingsProps {
@@ -22,13 +23,30 @@ interface TrackAudioSettingsProps {
 }
 
 export function TrackAudioSettingsPopover({ track, onClose, compact = false }: TrackAudioSettingsProps) {
-  const { inputDevices, outputDevices, devicesLoaded, loadDevices, updateTrackSettings } = useUserTracksStore();
+  const { inputDevices, devicesLoaded, loadDevices, updateTrackSettings } = useUserTracksStore();
+  const {
+    isConnected: bridgeConnected,
+    preferNativeBridge,
+    inputDevices: bridgeInputDevices,
+    selectedInputDeviceId: bridgeSelectedInputId,
+    setInputDevice: setBridgeInputDevice,
+    inputChannelConfig,
+    setChannelConfig,
+    getSelectedInputDevice,
+    refreshDevices: refreshBridgeDevices,
+  } = useNativeBridge();
+
   const [testingInput, setTestingInput] = useState(false);
   const [inputLevel, setInputLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [appCaptureSupported, setAppCaptureSupported] = useState(false);
   const testStreamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
+
+  // Determine if using native bridge for input
+  const usingNativeBridge = bridgeConnected && preferNativeBridge;
+  const selectedBridgeInput = getSelectedInputDevice();
+  const bridgeInputChannels = selectedBridgeInput?.channels || [];
 
   useEffect(() => {
     setAppCaptureSupported('getDisplayMedia' in navigator.mediaDevices);
@@ -176,91 +194,210 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
           </div>
         )}
 
-        {/* Input Mode Selection */}
-        <div className="space-y-2">
-          <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Source Type</label>
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => handleSettingChange({ inputMode: 'microphone' })}
-              className={cn(
-                'flex items-center gap-2 p-2.5 rounded-lg border transition-all text-left',
-                track.audioSettings.inputMode === 'microphone'
-                  ? 'border-indigo-500 bg-indigo-500/10'
-                  : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
-              )}
-            >
-              <Mic className={cn(
-                'w-4 h-4',
-                track.audioSettings.inputMode === 'microphone' ? 'text-indigo-400' : 'text-gray-500 dark:text-zinc-500'
-              )} />
-              <div>
-                <div className="text-xs font-medium text-gray-900 dark:text-white">Microphone</div>
-                <div className="text-[10px] text-gray-500 dark:text-zinc-500">Direct input</div>
-              </div>
-            </button>
+        {/* Native Bridge Input (when using native bridge) */}
+        {usingNativeBridge ? (
+          <div className="space-y-4">
+            {/* Native Bridge Status */}
+            <div className="flex items-center gap-2 p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
+              <Zap className="w-4 h-4 text-indigo-400" />
+              <span className="text-xs text-indigo-300">Using Native Audio Bridge</span>
+            </div>
 
-            <button
-              onClick={() => appCaptureSupported && handleSettingChange({ inputMode: 'application' })}
-              disabled={!appCaptureSupported}
-              className={cn(
-                'flex items-center gap-2 p-2.5 rounded-lg border transition-all text-left',
-                track.audioSettings.inputMode === 'application'
-                  ? 'border-indigo-500 bg-indigo-500/10'
-                  : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20',
-                !appCaptureSupported && 'opacity-50 cursor-not-allowed'
-              )}
-            >
-              <Monitor className={cn(
-                'w-4 h-4',
-                track.audioSettings.inputMode === 'application' ? 'text-indigo-400' : 'text-gray-500 dark:text-zinc-500'
-              )} />
-              <div>
-                <div className="text-xs font-medium text-gray-900 dark:text-white">Application</div>
-                <div className="text-[10px] text-gray-500 dark:text-zinc-500">
-                  {appCaptureSupported ? 'Capture audio' : 'Not supported'}
+            {/* Bridge Input Device */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Device</label>
+                <button
+                  onClick={refreshBridgeDevices}
+                  className="text-[10px] text-indigo-400 hover:text-indigo-300"
+                >
+                  Refresh
+                </button>
+              </div>
+              <div className="relative">
+                <select
+                  value={bridgeSelectedInputId || ''}
+                  onChange={(e) => setBridgeInputDevice(e.target.value)}
+                  className="w-full h-9 px-3 pr-8 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
+                >
+                  <option value="">Select input device...</option>
+                  {bridgeInputDevices.map((device) => (
+                    <option key={device.id} value={device.id}>
+                      {device.name} ({device.channels.length}ch)
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+              </div>
+            </div>
+
+            {/* Channel Selection */}
+            {bridgeInputChannels.length > 0 && (
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Channels</label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setChannelConfig({
+                      channelCount: 1,
+                      leftChannel: inputChannelConfig.leftChannel,
+                    })}
+                    className={cn(
+                      'p-2 rounded-lg border text-xs font-medium transition-all',
+                      inputChannelConfig.channelCount === 1
+                        ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                        : 'border-gray-200 dark:border-white/10 text-gray-500 dark:text-zinc-500'
+                    )}
+                  >
+                    Mono
+                  </button>
+                  <button
+                    onClick={() => setChannelConfig({
+                      channelCount: 2,
+                      leftChannel: inputChannelConfig.leftChannel,
+                      rightChannel: (inputChannelConfig.leftChannel + 1) % bridgeInputChannels.length,
+                    })}
+                    className={cn(
+                      'p-2 rounded-lg border text-xs font-medium transition-all',
+                      inputChannelConfig.channelCount === 2
+                        ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                        : 'border-gray-200 dark:border-white/10 text-gray-500 dark:text-zinc-500'
+                    )}
+                  >
+                    Stereo
+                  </button>
                 </div>
-              </div>
-            </button>
-          </div>
-        </div>
 
-        {/* Application Capture Info */}
-        {track.audioSettings.inputMode === 'application' && (
-          <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
-            <p className="text-[10px] text-amber-300/90 leading-relaxed">
-              Click &quot;Test Input&quot; to select an app or browser tab. Great for amp sims, DAWs, or any audio source.
-            </p>
-            {track.audioSettings.applicationName && (
-              <div className="mt-2 flex items-center gap-1.5">
-                <Headphones className="w-3 h-3 text-amber-400" />
-                <span className="text-[10px] text-amber-400 font-medium truncate">
-                  {track.audioSettings.applicationName}
-                </span>
+                {/* Channel select */}
+                <div className="relative">
+                  {inputChannelConfig.channelCount === 1 ? (
+                    <select
+                      value={inputChannelConfig.leftChannel}
+                      onChange={(e) => setChannelConfig({
+                        channelCount: 1,
+                        leftChannel: parseInt(e.target.value),
+                      })}
+                      className="w-full h-8 px-3 pr-8 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white appearance-none"
+                    >
+                      {bridgeInputChannels.map((ch) => (
+                        <option key={ch.index} value={ch.index}>
+                          {ch.name || `Channel ${ch.index + 1}`}
+                        </option>
+                      ))}
+                    </select>
+                  ) : (
+                    <select
+                      value={`${inputChannelConfig.leftChannel}-${inputChannelConfig.rightChannel ?? inputChannelConfig.leftChannel + 1}`}
+                      onChange={(e) => {
+                        const [left, right] = e.target.value.split('-').map(Number);
+                        setChannelConfig({
+                          channelCount: 2,
+                          leftChannel: left,
+                          rightChannel: right,
+                        });
+                      }}
+                      className="w-full h-8 px-3 pr-8 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg text-xs text-gray-900 dark:text-white appearance-none"
+                    >
+                      {bridgeInputChannels.filter((_, i) => i < bridgeInputChannels.length - 1).map((ch, i) => (
+                        <option key={`${i}-${i+1}`} value={`${i}-${i+1}`}>
+                          {ch.name || `Ch ${i+1}`} / {bridgeInputChannels[i+1]?.name || `Ch ${i+2}`}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 pointer-events-none" />
+                </div>
               </div>
             )}
           </div>
-        )}
+        ) : (
+          <>
+            {/* Input Mode Selection (Web Audio) */}
+            <div className="space-y-2">
+              <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Source Type</label>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => handleSettingChange({ inputMode: 'microphone' })}
+                  className={cn(
+                    'flex items-center gap-2 p-2.5 rounded-lg border transition-all text-left',
+                    track.audioSettings.inputMode === 'microphone'
+                      ? 'border-indigo-500 bg-indigo-500/10'
+                      : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                  )}
+                >
+                  <Mic className={cn(
+                    'w-4 h-4',
+                    track.audioSettings.inputMode === 'microphone' ? 'text-indigo-400' : 'text-gray-500 dark:text-zinc-500'
+                  )} />
+                  <div>
+                    <div className="text-xs font-medium text-gray-900 dark:text-white">Microphone</div>
+                    <div className="text-[10px] text-gray-500 dark:text-zinc-500">Direct input</div>
+                  </div>
+                </button>
 
-        {/* Device Selection (only for microphone) */}
-        {track.audioSettings.inputMode === 'microphone' && (
-          <div className="space-y-2">
-            <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Device</label>
-            <div className="relative">
-              <select
-                value={track.audioSettings.inputDeviceId}
-                onChange={(e) => handleSettingChange({ inputDeviceId: e.target.value })}
-                className="w-full h-9 px-3 pr-8 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50 [&>option]:bg-gray-100 dark:[&>option]:bg-[#1a1a24] [&>option]:text-gray-900 dark:[&>option]:text-white"
-              >
-                <option value="default">System Default</option>
-                {inputDevices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
-                  </option>
-                ))}
-              </select>
-              <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                <button
+                  onClick={() => appCaptureSupported && handleSettingChange({ inputMode: 'application' })}
+                  disabled={!appCaptureSupported}
+                  className={cn(
+                    'flex items-center gap-2 p-2.5 rounded-lg border transition-all text-left',
+                    track.audioSettings.inputMode === 'application'
+                      ? 'border-indigo-500 bg-indigo-500/10'
+                      : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20',
+                    !appCaptureSupported && 'opacity-50 cursor-not-allowed'
+                  )}
+                >
+                  <Monitor className={cn(
+                    'w-4 h-4',
+                    track.audioSettings.inputMode === 'application' ? 'text-indigo-400' : 'text-gray-500 dark:text-zinc-500'
+                  )} />
+                  <div>
+                    <div className="text-xs font-medium text-gray-900 dark:text-white">Application</div>
+                    <div className="text-[10px] text-gray-500 dark:text-zinc-500">
+                      {appCaptureSupported ? 'Capture audio' : 'Not supported'}
+                    </div>
+                  </div>
+                </button>
+              </div>
             </div>
-          </div>
+
+            {/* Application Capture Info */}
+            {track.audioSettings.inputMode === 'application' && (
+              <div className="p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+                <p className="text-[10px] text-amber-300/90 leading-relaxed">
+                  Click &quot;Test Input&quot; to select an app or browser tab. Great for amp sims, DAWs, or any audio source.
+                </p>
+                {track.audioSettings.applicationName && (
+                  <div className="mt-2 flex items-center gap-1.5">
+                    <Headphones className="w-3 h-3 text-amber-400" />
+                    <span className="text-[10px] text-amber-400 font-medium truncate">
+                      {track.audioSettings.applicationName}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Device Selection (only for microphone) */}
+            {track.audioSettings.inputMode === 'microphone' && (
+              <div className="space-y-2">
+                <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Device</label>
+                <div className="relative">
+                  <select
+                    value={track.audioSettings.inputDeviceId}
+                    onChange={(e) => handleSettingChange({ inputDeviceId: e.target.value })}
+                    className="w-full h-9 px-3 pr-8 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50 [&>option]:bg-gray-100 dark:[&>option]:bg-[#1a1a24] [&>option]:text-gray-900 dark:[&>option]:text-white"
+                  >
+                    <option value="default">System Default</option>
+                    {inputDevices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || `Microphone ${device.deviceId.slice(0, 8)}`}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                </div>
+              </div>
+            )}
+          </>
         )}
 
         {/* Input Level Test */}
@@ -291,14 +428,14 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
         </div>
 
 
-        {/* Advanced Settings */}
-        <details className="group">
-          <summary className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-zinc-500 cursor-pointer hover:text-gray-700 dark:hover:text-zinc-300">
-            <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
-            Advanced
-          </summary>
-          <div className="mt-3 space-y-3 pl-5">
-            <div className="grid grid-cols-2 gap-3">
+        {/* Advanced Settings - only show for web audio (native bridge has settings in output modal) */}
+        {!usingNativeBridge && (
+          <details className="group">
+            <summary className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-zinc-500 cursor-pointer hover:text-gray-700 dark:hover:text-zinc-300">
+              <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
+              Advanced
+            </summary>
+            <div className="mt-3 space-y-3 pl-5">
               <div className="space-y-1">
                 <label className="text-[10px] text-gray-500 dark:text-zinc-500">Sample Rate</label>
                 <select
@@ -310,24 +447,12 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
                   <option value={44100}>44.1 kHz</option>
                 </select>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-gray-500 dark:text-zinc-500">Buffer Size</label>
-                <select
-                  value={track.audioSettings.bufferSize}
-                  onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 32 | 64 | 128 | 256 | 512 | 1024 })}
-                  className="w-full h-7 px-2 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded text-[10px] text-gray-900 dark:text-white [&>option]:bg-gray-100 dark:[&>option]:bg-[#1a1a24] [&>option]:text-gray-900 dark:[&>option]:text-white"
-                >
-                  <option value={32}>32</option>
-                  <option value={64}>64</option>
-                  <option value={128}>128</option>
-                  <option value={256}>256</option>
-                  <option value={512}>512</option>
-                  <option value={1024}>1024</option>
-                </select>
-              </div>
+              <p className="text-[10px] text-gray-500 dark:text-zinc-500">
+                Web Audio uses a fixed 128-sample buffer. Use native bridge for lower latency.
+              </p>
             </div>
-          </div>
-        </details>
+          </details>
+        )}
       </div>
     </div>
   );
@@ -353,6 +478,41 @@ function CompactAudioSettings({
   inputLevel: number;
   onStopTesting: () => void;
 }) {
+  const {
+    isConnected: bridgeConnected,
+    preferNativeBridge,
+    inputDevices: bridgeInputDevices,
+    selectedInputDeviceId: bridgeSelectedInputId,
+    setInputDevice: setBridgeInputDevice,
+    inputChannelConfig,
+  } = useNativeBridge();
+
+  const usingNativeBridge = bridgeConnected && preferNativeBridge;
+
+  if (usingNativeBridge) {
+    // Compact native bridge version
+    return (
+      <div className="flex items-center gap-2 px-2 py-1.5 bg-indigo-500/10 rounded-lg">
+        <Zap className="w-3 h-3 text-indigo-400" />
+        <select
+          value={bridgeSelectedInputId || ''}
+          onChange={(e) => setBridgeInputDevice(e.target.value)}
+          className="h-6 px-1.5 bg-transparent border border-indigo-500/30 rounded text-[10px] text-indigo-300 max-w-[120px] truncate"
+        >
+          <option value="">Select device...</option>
+          {bridgeInputDevices.map((device) => (
+            <option key={device.id} value={device.id}>
+              {device.name}
+            </option>
+          ))}
+        </select>
+        <span className="text-[10px] text-indigo-400">
+          {inputChannelConfig.channelCount === 1 ? 'Mono' : 'Stereo'}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex items-center gap-2 px-2 py-1.5 bg-white/5 rounded-lg">
       {/* Input Mode Toggle */}
