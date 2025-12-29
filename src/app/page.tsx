@@ -8,7 +8,7 @@ import { UserMenu } from '@/components/auth/UserMenu';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { useAuthStore } from '@/stores/auth-store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus, AlertCircle, Sparkles } from 'lucide-react';
+import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus, AlertCircle } from 'lucide-react';
 import { CreateRoomModal } from '@/components/rooms';
 import { getRoom } from '@/lib/rooms/service';
 import { SceneRenderer } from '@/components/homepage';
@@ -1113,8 +1113,8 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
 
-  // Toggle between classic cartoon characters and new avatar-based scene
-  const [useAvatarScene, setUseAvatarScene] = useState(true);
+  // Always use the avatar-based scene with walking characters
+  const useAvatarScene = true;
 
   // State for characters coming and going
   const [visibleMusicians, setVisibleMusicians] = useState({
@@ -1279,28 +1279,6 @@ export default function HomePage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
-            {/* Scene mode toggle */}
-            <motion.button
-              onClick={() => setUseAvatarScene(!useAvatarScene)}
-              className={`relative p-2.5 rounded-xl transition-colors ${
-                isDark
-                  ? 'bg-white/10 hover:bg-white/20 text-white'
-                  : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
-              }`}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-              aria-label={useAvatarScene ? 'Switch to classic scene' : 'Switch to avatar scene'}
-              title={useAvatarScene ? 'Classic Scene' : 'Avatar Scene'}
-            >
-              <Sparkles className="w-5 h-5" />
-              {useAvatarScene && (
-                <motion.div
-                  className="absolute -top-0.5 -right-0.5 w-2 h-2 bg-green-500 rounded-full"
-                  animate={{ scale: [1, 1.2, 1] }}
-                  transition={{ duration: 1.5, repeat: Infinity }}
-                />
-              )}
-            </motion.button>
             <ThemeToggle />
             <UserMenu />
           </motion.div>

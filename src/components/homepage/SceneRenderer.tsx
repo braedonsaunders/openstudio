@@ -422,7 +422,7 @@ export function SceneRenderer({
   showSceneSelector = true,
   className = '',
 }: SceneRendererProps) {
-  const [currentScene, setCurrentScene] = useState<HomepageSceneType>('forest');
+  const [currentScene, setCurrentScene] = useState<HomepageSceneType>('beach');
   const [characters, setCharacters] = useState<HomepageCharacter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -540,9 +540,9 @@ export function SceneRenderer({
         ))}
       </AnimatePresence>
 
-      {/* Scene Selector */}
+      {/* Scene Selector - positioned at bottom-left to avoid overlap with header */}
       {showSceneSelector && (
-        <div className="absolute top-4 left-4 z-50">
+        <div className="absolute bottom-20 left-4 z-50">
           <SceneSelector
             currentScene={currentScene}
             onSceneChange={handleSceneChange}
