@@ -269,21 +269,31 @@ export class WahProcessor extends BaseEffect {
     const now = this.audioContext.currentTime;
 
     if (!enabled) {
+      // CRITICAL: Zero the gains IMMEDIATELY before disconnecting
+      // This prevents any residual modulation from causing instability during disconnect
+      this.zeroGainImmediate(this.lfoGain);
+      this.zeroGainImmediate(this.envelopeGain);
+      this.zeroGainImmediate(this.baseFrequencyGain);
+
       // CRITICAL: Disconnect ALL modulation sources from filter.frequency
       this.disconnectModulation();
 
-      // Zero the gains for safety
-      this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
-      this.envelopeGain.gain.setTargetAtTime(0, now, 0.01);
-      this.baseFrequencyGain.gain.setTargetAtTime(0, now, 0.01);
-
-      // Reset filter to a safe, stable state
+      // Reset filter to a safe, stable state (now uses smooth transition)
       this.resetFilter(this.wahFilter);
     } else {
-      // Reconnect modulation sources to filter
+      // CRITICAL: Zero all modulation gains BEFORE connecting
+      // This prevents stale gain values from pushing the filter to unstable frequencies
+      this.zeroGainImmediate(this.lfoGain);
+      this.zeroGainImmediate(this.envelopeGain);
+      this.zeroGainImmediate(this.baseFrequencyGain);
+
+      // Prepare filter for modulation
+      this.prepareFilterForModulation(this.wahFilter);
+
+      // Reconnect modulation sources to filter (gains are zeroed, so this is safe)
       this.connectModulation();
 
-      // Restore modulation based on current mode
+      // Now restore modulation - gains will ramp up smoothly via setTargetAtTime
       this.updateMode();
     }
   }
