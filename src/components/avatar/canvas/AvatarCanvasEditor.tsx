@@ -392,9 +392,9 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
       )}
 
       {/* Main Editor Layout */}
-      <div className="flex flex-col lg:flex-row gap-4">
+      <div className="flex flex-col lg:flex-row gap-4 w-full">
         {/* Asset Library */}
-        <div className="w-full lg:w-64 h-[300px] lg:h-[520px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <div className="w-full lg:w-80 lg:flex-1 lg:max-w-sm h-[300px] lg:h-[520px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
           <AssetLibraryPanel
             categories={libraryData.categories}
             components={libraryData.components}
@@ -420,7 +420,7 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
         </div>
 
         {/* Right Panel: Layers + Transform */}
-        <div className="w-full lg:w-72 flex flex-col h-[400px] lg:h-[520px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
+        <div className="w-full lg:w-80 lg:flex-1 lg:max-w-sm flex flex-col h-[400px] lg:h-[520px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900">
           <div className="flex-1 overflow-hidden">
             <LayerPanel
               layers={layers}
