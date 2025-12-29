@@ -64,6 +64,33 @@ export function SetlistPanel({
   // Calculate total setlist duration
   const totalDuration = songs.reduce((acc, song) => acc + (song.duration || 0), 0);
 
+  // Handle song selection with auto-play for Lyria songs
+  const handleSelectSong = useCallback((song: Song) => {
+    const isLyriaSong = song.tracks.some(t => t.type === 'lyria');
+    const currentIsLyria = currentSong?.tracks.some(t => t.type === 'lyria');
+    const isSwitchingLyriaSongs = isLyriaSong && currentIsLyria && song.id !== currentSong?.id;
+
+    // If switching between Lyria songs, do a clean break
+    if (isSwitchingLyriaSongs) {
+      const lyriaStore = useLyriaStore.getState();
+      // Disconnect completely to get a fresh start
+      if (lyriaStore.sessionState !== 'disconnected') {
+        lyriaStore.disconnect();
+      }
+    }
+
+    // Select the song
+    selectSong(song.id);
+
+    // Auto-play Lyria songs when clicked
+    if (isLyriaSong && onPlaySong) {
+      // Small delay to allow store update to propagate
+      setTimeout(() => {
+        onPlaySong(song.id);
+      }, 50);
+    }
+  }, [currentSong, selectSong, onPlaySong]);
+
   // Start editing a song name
   const handleStartEdit = useCallback((song: Song) => {
     setEditingSongId(song.id);
@@ -305,7 +332,7 @@ export function SetlistPanel({
                   draggedSongId === song.id && 'opacity-50',
                   dragOverIndex === index && 'border-t-2 border-t-indigo-500'
                 )}
-                onClick={() => selectSong(song.id)}
+                onClick={() => handleSelectSong(song)}
               >
                 <div className="flex items-center gap-2">
                   {/* Drag Handle */}
