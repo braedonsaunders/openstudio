@@ -7,8 +7,6 @@ import { useSavedTracksStore } from '@/stores/saved-tracks-store';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
-import { AvatarEditor } from '@/components/avatar/AvatarEditor';
-import { SpriteAvatarEditor } from '@/components/avatar/SpriteAvatarEditor';
 import dynamic from 'next/dynamic';
 
 // Dynamically import canvas editor to avoid SSR issues with Konva
@@ -68,7 +66,6 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [avatarEditorType, setAvatarEditorType] = useState<'canvas' | 'classic' | 'sprite'>('canvas');
 
   // Profile form state
   const [displayName, setDisplayName] = useState(profile?.displayName || '');
@@ -282,65 +279,14 @@ export default function SettingsPage() {
 
             {activeTab === 'avatar' && (
               <Card className="p-6">
-                <div className="flex items-center justify-between mb-6">
-                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Customize Avatar</h2>
-                  <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
-                    <button
-                      onClick={() => setAvatarEditorType('canvas')}
-                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                        avatarEditorType === 'canvas'
-                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                      }`}
-                    >
-                      Canvas
-                    </button>
-                    <button
-                      onClick={() => setAvatarEditorType('sprite')}
-                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                        avatarEditorType === 'sprite'
-                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                      }`}
-                    >
-                      Simple
-                    </button>
-                    <button
-                      onClick={() => setAvatarEditorType('classic')}
-                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
-                        avatarEditorType === 'classic'
-                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
-                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
-                      }`}
-                    >
-                      Classic
-                    </button>
-                  </div>
-                </div>
-                {avatarEditorType === 'canvas' ? (
-                  <AvatarCanvasEditor
-                    userId={profile.id}
-                    onSave={() => {
-                      setSaveSuccess(true);
-                      setTimeout(() => setSaveSuccess(false), 2000);
-                    }}
-                  />
-                ) : avatarEditorType === 'sprite' ? (
-                  <SpriteAvatarEditor
-                    userId={profile.id}
-                    onSave={() => {
-                      setSaveSuccess(true);
-                      setTimeout(() => setSaveSuccess(false), 2000);
-                    }}
-                  />
-                ) : (
-                  <AvatarEditor
-                    onSave={() => {
-                      setSaveSuccess(true);
-                      setTimeout(() => setSaveSuccess(false), 2000);
-                    }}
-                  />
-                )}
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Customize Avatar</h2>
+                <AvatarCanvasEditor
+                  userId={profile.id}
+                  onSave={() => {
+                    setSaveSuccess(true);
+                    setTimeout(() => setSaveSuccess(false), 2000);
+                  }}
+                />
               </Card>
             )}
 

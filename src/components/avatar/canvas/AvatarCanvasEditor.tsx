@@ -126,9 +126,27 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
         }
 
         const library = await libraryResponse.json();
-        setLibraryData(library);
 
-        // Try to load existing canvas data (optional - may not exist yet or user not authenticated)
+        // Library API returns componentUnlocks (rules), but we need user's unlocked components
+        // Get user's unlocked components from config endpoint
+        let unlockedComponentIds: string[] = [];
+        try {
+          const configResponse = await fetch('/api/avatar/config');
+          if (configResponse.ok) {
+            const configResult = await configResponse.json();
+            unlockedComponentIds = configResult.unlockedComponentIds || [];
+          }
+        } catch {
+          // Config fetch failed, continue with empty unlocked list
+        }
+
+        // Merge library data with unlocked components
+        setLibraryData({
+          ...library,
+          unlockedComponentIds,
+        });
+
+        // Try to load existing canvas data (optional - may not exist yet)
         try {
           const canvasResponse = await fetch('/api/avatar/canvas');
           if (canvasResponse.ok) {
