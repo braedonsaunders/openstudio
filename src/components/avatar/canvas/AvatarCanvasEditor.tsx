@@ -73,7 +73,7 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
   const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
 
   // Canvas export - use stageRef from export hook directly
-  const { stageRef, exportFromStage, exportFromCanvasData } = useCanvasExport();
+  const { stageRef, exportFromStage } = useCanvasExport();
 
   // Canvas state management
   const {
@@ -211,8 +211,8 @@ export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) 
     setError(null);
 
     try {
-      // Always use canvas data export for proper centering and transparent background
-      const exported = await exportFromCanvasData(canvasData, componentsMap);
+      // Use Konva's native export - it handles all transforms correctly
+      const exported = await exportFromStage();
 
       if (!exported) {
         throw new Error('Failed to generate avatar images');
