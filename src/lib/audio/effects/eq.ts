@@ -44,10 +44,20 @@ export class EQProcessor extends BaseEffect {
   }
 
   private updateFilter(filter: BiquadFilterNode, band: EQBand): void {
-    filter.type = band.type;
-    filter.frequency.value = band.frequency;
-    filter.gain.value = band.gain;
-    filter.Q.value = band.q;
+    try {
+      filter.type = band.type;
+      // Clamp values to safe ranges
+      const safeFreq = Math.max(20, Math.min(20000, band.frequency));
+      const safeGain = Math.max(-40, Math.min(40, band.gain));
+      const safeQ = Math.max(0.0001, Math.min(30, band.q));
+
+      filter.frequency.value = safeFreq;
+      filter.gain.value = safeGain;
+      filter.Q.value = safeQ;
+    } catch (e) {
+      console.warn('[EQ] Error updating filter:', e);
+      this.resetFilter(filter);
+    }
   }
 
   updateSettings(settings: Partial<EQSettings>): void {
@@ -111,17 +121,21 @@ export class EQProcessor extends BaseEffect {
 
     if (index < this.filters.length) {
       const filter = this.filters[index];
-      const now = this.audioContext.currentTime;
 
-      if (updates.type) filter.type = updates.type;
-      if (updates.frequency !== undefined) {
-        filter.frequency.setTargetAtTime(updates.frequency, now, 0.01);
-      }
-      if (updates.gain !== undefined) {
-        filter.gain.setTargetAtTime(updates.gain, now, 0.01);
-      }
-      if (updates.q !== undefined) {
-        filter.Q.setTargetAtTime(updates.q, now, 0.01);
+      try {
+        if (updates.type) filter.type = updates.type;
+        if (updates.frequency !== undefined) {
+          this.safeSetFilterFrequency(filter, updates.frequency);
+        }
+        if (updates.gain !== undefined) {
+          this.safeSetFilterGain(filter, updates.gain);
+        }
+        if (updates.q !== undefined) {
+          this.safeSetFilterQ(filter, updates.q);
+        }
+      } catch (e) {
+        console.warn('[EQ] Error updating band:', e);
+        this.resetFilter(filter);
       }
     }
   }

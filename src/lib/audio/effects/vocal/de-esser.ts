@@ -26,6 +26,8 @@ export class DeEsserProcessor extends BaseEffect {
   private gainReduction: number = 0;
   private animationFrameId: number | null = null;
   private analysisData: Float32Array<ArrayBuffer>;
+  private lastUpdateTime: number = 0;
+  private updateIntervalMs: number = 33; // ~30fps instead of 60fps
 
   constructor(audioContext: AudioContext, settings?: Partial<DeEsserSettings>) {
     super(audioContext);
@@ -95,35 +97,47 @@ export class DeEsserProcessor extends BaseEffect {
     if (this.animationFrameId !== null) return;
 
     const monitor = () => {
-      this.analyser.getFloatTimeDomainData(this.analysisData);
-
-      // Calculate RMS of sibilance band
-      let rms = 0;
-      for (let i = 0; i < this.analysisData.length; i++) {
-        rms += this.analysisData[i] * this.analysisData[i];
+      // Throttle updates to prevent filter instability
+      const now = performance.now();
+      if (now - this.lastUpdateTime < this.updateIntervalMs) {
+        this.animationFrameId = requestAnimationFrame(monitor);
+        return;
       }
-      rms = Math.sqrt(rms / this.analysisData.length);
+      this.lastUpdateTime = now;
 
-      // Convert to dB
-      const levelDb = 20 * Math.log10(Math.max(rms, 0.0001));
+      try {
+        this.analyser.getFloatTimeDomainData(this.analysisData);
 
-      // Calculate gain reduction
-      if (levelDb > this.settings.threshold) {
-        const overThreshold = levelDb - this.settings.threshold;
-        this.gainReduction = Math.min(overThreshold, this.settings.range);
+        // Calculate RMS of sibilance band
+        let rms = 0;
+        for (let i = 0; i < this.analysisData.length; i++) {
+          rms += this.analysisData[i] * this.analysisData[i];
+        }
+        rms = Math.sqrt(rms / this.analysisData.length);
 
-        // Apply reduction to high shelf
-        const now = this.audioContext.currentTime;
-        this.highShelf.gain.setTargetAtTime(
-          -this.gainReduction * (this.settings.reduction / 12),
-          now,
-          this.settings.attack / 1000
-        );
-      } else {
-        // Release
-        const now = this.audioContext.currentTime;
-        this.highShelf.gain.setTargetAtTime(0, now, this.settings.release / 1000);
-        this.gainReduction = Math.max(0, this.gainReduction - 0.5);
+        // Convert to dB - check for valid values
+        if (!this.isSafeValue(rms)) {
+          this.animationFrameId = requestAnimationFrame(monitor);
+          return;
+        }
+
+        const levelDb = 20 * Math.log10(Math.max(rms, 0.0001));
+
+        // Calculate gain reduction
+        if (levelDb > this.settings.threshold) {
+          const overThreshold = levelDb - this.settings.threshold;
+          this.gainReduction = Math.min(overThreshold, this.settings.range);
+
+          // Apply reduction to high shelf using safe method
+          const reductionGain = -this.gainReduction * (this.settings.reduction / 12);
+          this.safeSetFilterGain(this.highShelf, reductionGain, Math.max(0.001, this.settings.attack / 1000));
+        } else {
+          // Release
+          this.safeSetFilterGain(this.highShelf, 0, Math.max(0.01, this.settings.release / 1000));
+          this.gainReduction = Math.max(0, this.gainReduction - 0.5);
+        }
+      } catch (e) {
+        console.warn('[De-Esser] Monitoring error:', e);
       }
 
       this.animationFrameId = requestAnimationFrame(monitor);
@@ -139,10 +153,8 @@ export class DeEsserProcessor extends BaseEffect {
   }
 
   private updateFrequency(): void {
-    const now = this.audioContext.currentTime;
-
-    this.detectionFilter.frequency.setTargetAtTime(this.settings.frequency, now, 0.01);
-    this.highShelf.frequency.setTargetAtTime(this.settings.frequency * 0.8, now, 0.01);
+    this.safeSetFilterFrequency(this.detectionFilter, this.settings.frequency);
+    this.safeSetFilterFrequency(this.highShelf, this.settings.frequency * 0.8);
   }
 
   private updateDynamics(): void {
