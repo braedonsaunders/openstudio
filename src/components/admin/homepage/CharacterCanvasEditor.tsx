@@ -327,9 +327,10 @@ export function CharacterCanvasEditor({ initialCanvasData, onChange }: Character
       {selectedLayer && (
         <div className="p-3 border-t border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-900">
           <TransformControls
-            layer={selectedLayer}
-            component={componentsMap.get(selectedLayer.componentId)}
-            onUpdateTransform={(transform) => updateTransform(selectedLayer.id, transform)}
+            selectedLayer={selectedLayer}
+            onUpdateTransform={updateTransform}
+            onRemoveLayer={removeLayer}
+            onDuplicateLayer={duplicateLayer}
           />
         </div>
       )}
