@@ -146,7 +146,7 @@ export function CharacterCanvasEditor({ initialCanvasData, onChange }: Character
 
   // Handle adding asset from library (from AssetLibraryPanel)
   const handleAddAssetFromLibrary = useCallback(
-    (component: AvatarComponent) => {
+    (component: AvatarComponent, _category: AvatarCategory) => {
       addLayer(component);
     },
     [addLayer]
@@ -276,7 +276,8 @@ export function CharacterCanvasEditor({ initialCanvasData, onChange }: Character
             categories={libraryData.categories}
             components={libraryData.components}
             unlockedComponentIds={unlockedSet}
-            onAddComponent={handleAddAssetFromLibrary}
+            colorPalettes={colorPalettesRecord}
+            onAddAsset={handleAddAssetFromLibrary}
           />
         </div>
 
