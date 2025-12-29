@@ -191,9 +191,8 @@ export class PhaserProcessor extends BaseEffect {
   }
 
   private updateQ(): void {
-    const now = this.audioContext.currentTime;
     for (const filter of this.allpassFilters) {
-      filter.Q.setTargetAtTime(this.settings.q, now, 0.01);
+      this.safeSetFilterQ(filter, this.settings.q);
     }
   }
 

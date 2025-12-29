@@ -160,8 +160,7 @@ export class DistortionProcessor extends BaseEffect {
   private updateTone(): void {
     // Map tone 0-1 to frequency 1000Hz - 10000Hz
     const frequency = 1000 + this.settings.tone * 9000;
-    const now = this.audioContext.currentTime;
-    this.toneFilter.frequency.setTargetAtTime(frequency, now, 0.01);
+    this.safeSetFilterFrequency(this.toneFilter, frequency);
   }
 
   private updateLevel(): void {

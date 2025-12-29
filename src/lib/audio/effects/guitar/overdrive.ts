@@ -88,8 +88,7 @@ export class OverdriveProcessor extends BaseEffect {
   private updateTone(): void {
     // Map tone 0-1 to frequency 800Hz - 8000Hz
     const frequency = 800 + this.settings.tone * 7200;
-    const now = this.audioContext.currentTime;
-    this.toneFilter.frequency.setTargetAtTime(frequency, now, 0.01);
+    this.safeSetFilterFrequency(this.toneFilter, frequency);
   }
 
   private updateLevel(): void {
