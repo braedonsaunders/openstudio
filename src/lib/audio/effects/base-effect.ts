@@ -107,6 +107,15 @@ export abstract class BaseEffect implements EffectProcessor {
   protected static readonly SAFE_GAIN_MIN = -40;
   protected static readonly SAFE_GAIN_MAX = 40;
 
+  // Get filter info string for logging
+  private getFilterInfo(filter: BiquadFilterNode): string {
+    try {
+      return `type=${filter.type}, freq=${filter.frequency.value.toFixed(1)}Hz, Q=${filter.Q.value.toFixed(2)}, gain=${filter.gain.value.toFixed(1)}dB`;
+    } catch {
+      return 'type=unknown';
+    }
+  }
+
   // Safely set a filter frequency with clamping and error handling
   protected safeSetFilterFrequency(
     filter: BiquadFilterNode,
@@ -121,8 +130,8 @@ export abstract class BaseEffect implements EffectProcessor {
       const now = this.audioContext.currentTime;
       filter.frequency.setTargetAtTime(safeFreq, now, timeConstant);
     } catch (e) {
-      console.warn(`[${this.name}] Filter frequency error, resetting:`, e);
-      this.resetFilter(filter);
+      console.warn(`[${this.name}] Filter FREQUENCY error (${this.getFilterInfo(filter)}, attempted=${frequency}):`, e);
+      this.resetFilter(filter, 'frequency');
     }
   }
 
@@ -140,8 +149,8 @@ export abstract class BaseEffect implements EffectProcessor {
       const now = this.audioContext.currentTime;
       filter.Q.setTargetAtTime(safeQ, now, timeConstant);
     } catch (e) {
-      console.warn(`[${this.name}] Filter Q error, resetting:`, e);
-      this.resetFilter(filter);
+      console.warn(`[${this.name}] Filter Q error (${this.getFilterInfo(filter)}, attempted=${q}):`, e);
+      this.resetFilter(filter, 'Q');
     }
   }
 
@@ -158,21 +167,24 @@ export abstract class BaseEffect implements EffectProcessor {
       );
       // Check for NaN/Infinity
       if (!Number.isFinite(safeGain)) {
-        console.warn(`[${this.name}] Invalid gain value: ${gain}, using 0`);
+        console.warn(`[${this.name}] Invalid gain value: ${gain}, using 0 (${this.getFilterInfo(filter)})`);
         filter.gain.setTargetAtTime(0, this.audioContext.currentTime, timeConstant);
         return;
       }
       const now = this.audioContext.currentTime;
       filter.gain.setTargetAtTime(safeGain, now, timeConstant);
     } catch (e) {
-      console.warn(`[${this.name}] Filter gain error, resetting:`, e);
-      this.resetFilter(filter);
+      console.warn(`[${this.name}] Filter GAIN error (${this.getFilterInfo(filter)}, attempted=${gain}):`, e);
+      this.resetFilter(filter, 'gain');
     }
   }
 
   // Reset a filter to safe default state
-  protected resetFilter(filter: BiquadFilterNode): void {
+  protected resetFilter(filter: BiquadFilterNode, reason?: string): void {
     try {
+      const filterInfo = this.getFilterInfo(filter);
+      console.warn(`[${this.name}] Resetting filter (${filterInfo})${reason ? ` - reason: ${reason}` : ''}`);
+
       const now = this.audioContext.currentTime;
       // Use cancelScheduledValues to clear any pending automation
       filter.frequency.cancelScheduledValues(now);
@@ -183,6 +195,8 @@ export abstract class BaseEffect implements EffectProcessor {
       filter.frequency.setValueAtTime(1000, now);
       filter.Q.setValueAtTime(1, now);
       filter.gain.setValueAtTime(0, now);
+
+      console.log(`[${this.name}] Filter reset complete`);
     } catch (e) {
       console.error(`[${this.name}] Failed to reset filter:`, e);
     }
@@ -203,12 +217,14 @@ export abstract class BaseEffect implements EffectProcessor {
 
   // Recover from an error state - resets all filters and re-enables bypass
   public recoverFromError(): void {
-    console.warn(`[${this.name}] Attempting recovery from error state`);
+    console.warn(`[${this.name}] Attempting recovery from error state (${this.registeredFilters.length} filters registered)`);
 
     try {
       // Reset all registered filters to safe values
-      for (const filter of this.registeredFilters) {
-        this.resetFilter(filter);
+      for (let i = 0; i < this.registeredFilters.length; i++) {
+        const filter = this.registeredFilters[i];
+        console.log(`[${this.name}] Recovering filter ${i + 1}/${this.registeredFilters.length}: ${this.getFilterInfo(filter)}`);
+        this.resetFilter(filter, 'error recovery');
       }
 
       // Force bypass mode to ensure audio passes through
