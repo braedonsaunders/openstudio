@@ -1,5 +1,6 @@
 'use client';
 
+import { memo } from 'react';
 import { cn } from '@/lib/utils';
 import { DynamicWaveform } from './dynamic-waveform';
 import type { User } from '@/types';
@@ -14,7 +15,7 @@ interface LiveTrackLaneProps {
   isGlobalMuted?: boolean;
 }
 
-export function LiveTrackLane({
+function LiveTrackLaneInner({
   user,
   isLocal,
   audioLevel,
@@ -81,3 +82,6 @@ export function LiveTrackLane({
     </div>
   );
 }
+
+// Memoize to prevent re-renders when parent updates with new audioLevels Map
+export const LiveTrackLane = memo(LiveTrackLaneInner);
