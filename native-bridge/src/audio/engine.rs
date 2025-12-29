@@ -249,17 +249,19 @@ impl AudioEngine {
         info!("Input device config: {:?}", input_default_config);
         info!("Output device config: {:?}", output_default_config);
 
-        // Use default config but request our preferred sample rate if supported
+        // Use default config but request our preferred buffer size and sample rate
+        let buffer_size_samples = self.config.buffer_size as u32;
+
         let input_config = cpal::StreamConfig {
             channels: input_default_config.channels(),
-            sample_rate: input_default_config.sample_rate(),
-            buffer_size: cpal::BufferSize::Default, // Let the driver choose
+            sample_rate: cpal::SampleRate(self.config.sample_rate as u32),
+            buffer_size: cpal::BufferSize::Fixed(buffer_size_samples),
         };
 
         let output_config = cpal::StreamConfig {
             channels: output_default_config.channels().min(2), // Limit to stereo
-            sample_rate: output_default_config.sample_rate(),
-            buffer_size: cpal::BufferSize::Default,
+            sample_rate: cpal::SampleRate(self.config.sample_rate as u32),
+            buffer_size: cpal::BufferSize::Fixed(buffer_size_samples),
         };
 
         // Store actual sample rate for latency calculation

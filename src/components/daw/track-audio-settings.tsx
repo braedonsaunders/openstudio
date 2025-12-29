@@ -27,13 +27,9 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
   const {
     isConnected: bridgeConnected,
     preferNativeBridge,
-    inputDevices: bridgeInputDevices,
-    selectedInputDeviceId: bridgeSelectedInputId,
-    setInputDevice: setBridgeInputDevice,
     inputChannelConfig,
     setChannelConfig,
     getSelectedInputDevice,
-    refreshDevices: refreshBridgeDevices,
   } = useNativeBridge();
 
   const [testingInput, setTestingInput] = useState(false);
@@ -200,34 +196,13 @@ export function TrackAudioSettingsPopover({ track, onClose, compact = false }: T
             {/* Native Bridge Status */}
             <div className="flex items-center gap-2 p-2.5 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
               <Zap className="w-4 h-4 text-indigo-400" />
-              <span className="text-xs text-indigo-300">Using Native Audio Bridge</span>
-            </div>
-
-            {/* Bridge Input Device */}
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Device</label>
-                <button
-                  onClick={refreshBridgeDevices}
-                  className="text-[10px] text-indigo-400 hover:text-indigo-300"
-                >
-                  Refresh
-                </button>
-              </div>
-              <div className="relative">
-                <select
-                  value={bridgeSelectedInputId || ''}
-                  onChange={(e) => setBridgeInputDevice(e.target.value)}
-                  className="w-full h-9 px-3 pr-8 bg-gray-100 dark:bg-[#1a1a24] border border-gray-200 dark:border-white/10 rounded-lg text-sm text-gray-900 dark:text-white appearance-none focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                >
-                  <option value="">Select input device...</option>
-                  {bridgeInputDevices.map((device) => (
-                    <option key={device.id} value={device.id}>
-                      {device.name} ({device.channels.length}ch)
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+              <div>
+                <span className="text-xs text-indigo-300">Using Native Audio Bridge</span>
+                {selectedBridgeInput && (
+                  <div className="text-[10px] text-indigo-400/70 mt-0.5">
+                    {selectedBridgeInput.name}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -481,33 +456,19 @@ function CompactAudioSettings({
   const {
     isConnected: bridgeConnected,
     preferNativeBridge,
-    inputDevices: bridgeInputDevices,
-    selectedInputDeviceId: bridgeSelectedInputId,
-    setInputDevice: setBridgeInputDevice,
     inputChannelConfig,
   } = useNativeBridge();
 
   const usingNativeBridge = bridgeConnected && preferNativeBridge;
 
   if (usingNativeBridge) {
-    // Compact native bridge version
+    // Compact native bridge version - only shows channel config, device is set globally
     return (
       <div className="flex items-center gap-2 px-2 py-1.5 bg-indigo-500/10 rounded-lg">
         <Zap className="w-3 h-3 text-indigo-400" />
-        <select
-          value={bridgeSelectedInputId || ''}
-          onChange={(e) => setBridgeInputDevice(e.target.value)}
-          className="h-6 px-1.5 bg-transparent border border-indigo-500/30 rounded text-[10px] text-indigo-300 max-w-[120px] truncate"
-        >
-          <option value="">Select device...</option>
-          {bridgeInputDevices.map((device) => (
-            <option key={device.id} value={device.id}>
-              {device.name}
-            </option>
-          ))}
-        </select>
         <span className="text-[10px] text-indigo-400">
-          {inputChannelConfig.channelCount === 1 ? 'Mono' : 'Stereo'}
+          {inputChannelConfig.channelCount === 1 ? 'Mono' : 'Stereo'} Ch {inputChannelConfig.leftChannel + 1}
+          {inputChannelConfig.channelCount === 2 && `/${(inputChannelConfig.rightChannel ?? inputChannelConfig.leftChannel + 1) + 1}`}
         </span>
       </div>
     );
