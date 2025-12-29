@@ -474,21 +474,51 @@ export async function isNativeBridgeAvailable(): Promise<boolean> {
   return connected;
 }
 
+// GitHub repo for releases
+const GITHUB_REPO = 'braedonsaunders/openstudio';
+const BRIDGE_VERSION = '0.1.0';
+
 /**
- * Get download URL for native bridge
+ * Get download URL for native bridge from GitHub Releases
  */
 export function getNativeBridgeDownloadUrl(): string {
+  const baseUrl = `https://github.com/${GITHUB_REPO}/releases/download/bridge-v${BRIDGE_VERSION}`;
   const platform = navigator.platform.toLowerCase();
+  const userAgent = navigator.userAgent.toLowerCase();
 
   if (platform.includes('win')) {
-    return '/downloads/openstudio-bridge-windows.exe';
+    return `${baseUrl}/openstudio-bridge-windows.exe`;
   } else if (platform.includes('mac')) {
-    return '/downloads/openstudio-bridge-macos.dmg';
+    // Detect Apple Silicon vs Intel
+    // Chrome/Safari expose this, Firefox doesn't reliably
+    const isAppleSilicon = userAgent.includes('arm') ||
+      (platform.includes('mac') && !userAgent.includes('intel'));
+
+    if (isAppleSilicon) {
+      return `${baseUrl}/openstudio-bridge-macos-arm64`;
+    }
+    return `${baseUrl}/openstudio-bridge-macos-x64`;
   } else if (platform.includes('linux')) {
-    return '/downloads/openstudio-bridge-linux.AppImage';
+    return `${baseUrl}/openstudio-bridge-linux`;
   }
 
-  return '/downloads';
+  // Fallback to releases page
+  return `https://github.com/${GITHUB_REPO}/releases/latest`;
+}
+
+/**
+ * Get all download URLs for all platforms
+ */
+export function getAllDownloadUrls(): Record<string, string> {
+  const baseUrl = `https://github.com/${GITHUB_REPO}/releases/download/bridge-v${BRIDGE_VERSION}`;
+
+  return {
+    windows: `${baseUrl}/openstudio-bridge-windows.exe`,
+    macosIntel: `${baseUrl}/openstudio-bridge-macos-x64`,
+    macosArm: `${baseUrl}/openstudio-bridge-macos-arm64`,
+    linux: `${baseUrl}/openstudio-bridge-linux`,
+    releasePage: `https://github.com/${GITHUB_REPO}/releases/latest`,
+  };
 }
 
 // Export singleton
