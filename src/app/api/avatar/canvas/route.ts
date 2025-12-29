@@ -1,8 +1,71 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '@/lib/supabase/server';
-import { getUserAvatarCanvas, saveUserAvatarCanvas, getUserUnlockedComponents } from '@/lib/avatar/supabase';
+import { getUserAvatarCanvas, saveUserAvatarCanvas, getUserUnlockedComponents, getAvatarLibrary } from '@/lib/avatar/supabase';
 import { uploadAvatarImage } from '@/lib/avatar/storage';
+import { getUserProfile, getUserStats, getUserAchievements } from '@/lib/supabase/auth';
+import { getUnlockedComponentIds, type UnlockContext } from '@/lib/avatar/unlocks';
 import type { CanvasData } from '@/types/avatar';
+
+// Helper to build unlock context and get unlocked component IDs
+async function getEvaluatedUnlockedIds(userId: string): Promise<Set<string>> {
+  const [manuallyUnlockedIds, library, profile, stats, achievements] = await Promise.all([
+    getUserUnlockedComponents(userId),
+    getAvatarLibrary(),
+    getUserProfile(userId),
+    getUserStats(userId),
+    getUserAchievements(userId),
+  ]);
+
+  // Build unlock context for proper evaluation
+  // Components are UNLOCKED BY DEFAULT if they have no rules
+  const unlockContext: UnlockContext = {
+    profile: profile || {
+      id: userId,
+      username: '',
+      displayName: '',
+      bio: '',
+      accountType: 'free',
+      isVerified: false,
+      isBanned: false,
+      totalXp: 0,
+      level: 1,
+      currentDailyStreak: 0,
+      longestDailyStreak: 0,
+      streakFreezes: 0,
+      links: {},
+      privacy: {
+        profileVisibility: 'public',
+        showStats: true,
+        showActivity: true,
+        allowFriendRequests: true,
+        allowRoomInvites: true,
+      },
+      preferences: {
+        defaultSampleRate: 48000,
+        defaultBufferSize: 256,
+        autoJitterBuffer: true,
+        theme: 'dark',
+        accentColor: '#6366f1',
+        compactMode: false,
+        showTutorialTips: true,
+        emailNotifications: true,
+        soundNotifications: true,
+      },
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    },
+    stats: stats,
+    achievements: achievements,
+    manuallyUnlockedIds: manuallyUnlockedIds,
+  };
+
+  return getUnlockedComponentIds(
+    library.components,
+    library.componentUnlocks,
+    library.unlockRules,
+    unlockContext
+  );
+}
 
 // GET /api/avatar/canvas - Get current user's canvas data
 export async function GET(req: NextRequest) {
@@ -14,7 +77,7 @@ export async function GET(req: NextRequest) {
 
     const [canvas, unlockedIds] = await Promise.all([
       getUserAvatarCanvas(user.id),
-      getUserUnlockedComponents(user.id),
+      getEvaluatedUnlockedIds(user.id),
     ]);
 
     return NextResponse.json({
@@ -70,7 +133,8 @@ export async function PUT(req: NextRequest) {
     }
 
     // Validate that user owns/has unlocked the components they're using
-    const unlockedIds = await getUserUnlockedComponents(user.id);
+    // Uses proper unlock evaluation (components unlocked by default unless they have rules)
+    const unlockedIds = await getEvaluatedUnlockedIds(user.id);
     for (const layer of canvasData.layers) {
       if (!unlockedIds.has(layer.componentId)) {
         return NextResponse.json(
