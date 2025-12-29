@@ -7,7 +7,7 @@ import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { useRoomStore } from '@/stores/room-store';
 import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { useMetronomeStore } from '@/stores/metronome-store';
-import { useAnalysisStore } from '@/stores/analysis-store';
+import { getEssentiaAnalyzer } from '@/lib/audio/essentia-analyzer';
 import type { User } from '@/types';
 import {
   Music, Mic, Guitar, Users2, Flame, TreePine, Building2,
@@ -1051,9 +1051,8 @@ function BeatIndicator({ beat, beatsPerBar, isPlaying }: { beat: number; beatsPe
 // Stunning Real-Time Waveform Visualizer
 // ============================================
 
-function LiveWaveformVisualizer({ keyColor, spectrumData, audioLevel }: {
+function LiveWaveformVisualizer({ keyColor, audioLevel }: {
   keyColor: string;
-  spectrumData: Float32Array | null;
   audioLevel: number;
 }) {
   const BAR_COUNT = 64;
@@ -1061,8 +1060,9 @@ function LiveWaveformVisualizer({ keyColor, spectrumData, audioLevel }: {
   const animationRef = useRef<number | null>(null);
   const lastFrameRef = useRef(0);
   const smoothedLevelsRef = useRef<number[]>(Array(BAR_COUNT).fill(0));
+  const analyzerRef = useRef(getEssentiaAnalyzer());
 
-  // Real-time animation loop at ~45fps using actual spectrum data
+  // Real-time animation loop at ~45fps - directly reads from analyzer
   useEffect(() => {
     const animate = (time: number) => {
       if (time - lastFrameRef.current < 22) {
@@ -1070,6 +1070,9 @@ function LiveWaveformVisualizer({ keyColor, spectrumData, audioLevel }: {
         return;
       }
       lastFrameRef.current = time;
+
+      // Get spectrum data directly from the analyzer
+      const spectrumData = analyzerRef.current.getSpectrumData();
 
       setBars(() => {
         const newBars: number[] = [];
@@ -1086,26 +1089,28 @@ function LiveWaveformVisualizer({ keyColor, spectrumData, audioLevel }: {
             const logScale = Math.pow(i / BAR_COUNT, 1.5);
             const binIndex = Math.floor(logScale * (spectrumLength - 1));
 
-            // Get the spectrum value (typically in dB, normalize to 0-1)
-            const rawValue = spectrumData[binIndex] || 0;
-            // Spectrum values are often in dB (-100 to 0), normalize them
-            const normalized = Math.max(0, Math.min(1, (rawValue + 100) / 100));
+            // Get the spectrum value - getFloatFrequencyData returns dB values (typically -100 to 0)
+            const rawValue = spectrumData[binIndex] || -100;
+            // Normalize from dB to 0-1 range
+            // Values typically range from -100 (silence) to around -30 (loud)
+            const normalized = Math.max(0, Math.min(1, (rawValue + 100) / 70));
 
-            // Add some variation based on neighboring bins
+            // Average with neighbors for smoother look
             const neighbor1 = spectrumData[Math.max(0, binIndex - 1)] || rawValue;
             const neighbor2 = spectrumData[Math.min(spectrumLength - 1, binIndex + 1)] || rawValue;
-            const avgNormalized = Math.max(0, Math.min(1, ((rawValue + neighbor1 + neighbor2) / 3 + 100) / 100));
+            const avgRaw = (rawValue + neighbor1 + neighbor2) / 3;
+            const avgNormalized = Math.max(0, Math.min(1, (avgRaw + 100) / 70));
 
-            target = avgNormalized * 0.9 + 0.05; // Base floor + scaled spectrum
+            target = avgNormalized * 0.95 + 0.03; // Base floor + scaled spectrum
           } else {
             // Fallback: minimal movement when no spectrum data
-            target = 0.03 + audioLevel * 0.1;
+            target = 0.03 + audioLevel * 0.15;
           }
 
           // Smooth interpolation (fast attack, slower decay)
           const current = smoothed[i];
-          const attackSpeed = 0.5;
-          const decaySpeed = 0.12;
+          const attackSpeed = 0.6;
+          const decaySpeed = 0.15;
           const speed = target > current ? attackSpeed : decaySpeed;
           smoothed[i] = current + (target - current) * speed;
 
@@ -1123,7 +1128,7 @@ function LiveWaveformVisualizer({ keyColor, spectrumData, audioLevel }: {
     return () => {
       if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
     };
-  }, [spectrumData, audioLevel]);
+  }, [audioLevel]);
 
   return (
     <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[90%] max-w-[900px] z-[150] pointer-events-none">
@@ -1188,9 +1193,6 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
   const musicalKey = useSessionTempoStore(state => state.key);
   const keyScale = useSessionTempoStore(state => state.keyScale);
   const { beat, beatsPerBar, isPlaying } = useBeatPulse();
-
-  // Spectrum data from essentia analyzer
-  const spectrumData = useAnalysisStore(state => state.spectrumData);
 
   // Scene state
   const [currentScene, setCurrentScene] = useState<SceneType>('campfire');
@@ -1283,7 +1285,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
         <RoomVibeIndicator userCount={allUsers.length} audioLevel={totalAudioLevel} />
         <MusicInfoDisplay tempo={tempo} musicalKey={musicalKey} keyScale={keyScale} keyColor={keyColor} />
         <BeatIndicator beat={beat} beatsPerBar={beatsPerBar} isPlaying={isPlaying} />
-        <LiveWaveformVisualizer keyColor={keyColor} spectrumData={spectrumData} audioLevel={totalAudioLevel} />
+        <LiveWaveformVisualizer keyColor={keyColor} audioLevel={totalAudioLevel} />
         <SceneSelector currentScene={currentScene} onSceneChange={handleSceneChange} keyColor={keyColor} />
       </div>
     </div>
