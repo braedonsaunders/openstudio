@@ -100,8 +100,21 @@ export class LyriaSession {
   private connectResolve: (() => void) | null = null;
   private connectReject: ((error: Error) => void) | null = null;
 
+  // When true, audio is only sent to streamDestination (for external routing via AudioEngine)
+  private useExternalRouting = false;
+
   constructor(apiKey: string) {
     this.apiKey = apiKey;
+  }
+
+  /**
+   * Set whether to use external audio routing.
+   * When enabled, audio is NOT played through Lyria's local destination,
+   * but only sent to the output stream for routing through AudioEngine's master bus.
+   * Must be called before connect().
+   */
+  setUseExternalRouting(enabled: boolean): void {
+    this.useExternalRouting = enabled;
   }
 
   /**
@@ -150,13 +163,20 @@ export class LyriaSession {
       this.audioContext = new AudioContext({ sampleRate: 48000 });
       this.gainNode = this.audioContext.createGain();
 
-      // Create MediaStream destination for WebRTC sharing
+      // Create MediaStream destination for WebRTC sharing and external routing
       // This allows Lyria audio to be shared with other room participants
       this.streamDestination = this.audioContext.createMediaStreamDestination();
 
-      // Route audio to both local speakers and the stream destination
-      this.gainNode.connect(this.audioContext.destination);
-      this.gainNode.connect(this.streamDestination);
+      // Route audio based on routing mode
+      if (this.useExternalRouting) {
+        // External routing: only connect to stream destination (AudioEngine will handle output)
+        this.gainNode.connect(this.streamDestination);
+        console.log('[Lyria] Using external audio routing (via AudioEngine master)');
+      } else {
+        // Local routing: connect to both local speakers and the stream destination
+        this.gainNode.connect(this.audioContext.destination);
+        this.gainNode.connect(this.streamDestination);
+      }
 
       // Connect WebSocket with API key
       const wsUrl = `${LYRIA_WS_ENDPOINT}?key=${this.apiKey}`;

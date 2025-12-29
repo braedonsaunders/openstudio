@@ -332,6 +332,23 @@ export function useAudioEngine() {
     return globalEngine?.hasBackingTrackAudio() || false;
   }, []);
 
+  // External audio sources (like Lyria AI music)
+  const addExternalAudioSource = useCallback((id: string, stream: MediaStream, volume: number = 1) => {
+    globalEngine?.addExternalAudioSource(id, stream, volume);
+  }, []);
+
+  const removeExternalAudioSource = useCallback((id: string) => {
+    globalEngine?.removeExternalAudioSource(id);
+  }, []);
+
+  const setExternalAudioVolume = useCallback((id: string, volume: number) => {
+    globalEngine?.setExternalAudioVolume(id, volume);
+  }, []);
+
+  const hasExternalAudioSource = useCallback((id: string): boolean => {
+    return globalEngine?.hasExternalAudioSource(id) || false;
+  }, []);
+
   // Load and play backing track
   // Returns true if loading was successful, false otherwise
   const loadBackingTrack = useCallback(async (track: BackingTrack): Promise<boolean> => {
@@ -591,6 +608,11 @@ export function useAudioEngine() {
     backingTrackAnalyser,
     masterAnalyser,
     hasBackingTrackAudio,
+    // External audio sources (Lyria AI music, etc.)
+    addExternalAudioSource,
+    removeExternalAudioSource,
+    setExternalAudioVolume,
+    hasExternalAudioSource,
     loadBackingTrack,
     playBackingTrack,
     pauseBackingTrack,
