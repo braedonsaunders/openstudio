@@ -107,6 +107,12 @@ export class WahProcessor extends BaseEffect {
     this.updateDepth();
     this.updateQ();
     this.updateEnvelopeSettings();
+
+    // If starting disabled, zero out all modulation to prevent filter issues
+    if (!this.settings.enabled) {
+      this.lfoGain.gain.value = 0;
+      this.envelopeGain.gain.value = 0;
+    }
   }
 
   private createRectifierCurve(): Float32Array<ArrayBuffer> {
@@ -226,6 +232,21 @@ export class WahProcessor extends BaseEffect {
     // We use a compromise based on release time
     const smootherFreq = Math.max(0.1, 1 / Math.max(0.01, this.settings.release));
     this.safeSetFilterFrequency(this.envelopeSmoother, smootherFreq);
+  }
+
+  // Override setEnabled to control LFO modulation
+  setEnabled(enabled: boolean): void {
+    super.setEnabled(enabled);
+    const now = this.audioContext.currentTime;
+
+    if (!enabled) {
+      // Stop all modulation to prevent filter instability when disabled
+      this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
+      this.envelopeGain.gain.setTargetAtTime(0, now, 0.01);
+    } else {
+      // Restore modulation based on current mode
+      this.updateMode();
+    }
   }
 
   /**
