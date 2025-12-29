@@ -8,6 +8,7 @@ import { WalkingCharacter } from './WalkingCharacter';
 import type { HomepageCharacter, HomepageSceneType } from '@/types/avatar';
 
 interface SceneRendererProps {
+  scene?: HomepageSceneType;
   onSceneChange?: (scene: HomepageSceneType) => void;
   showSceneSelector?: boolean;
   className?: string;
@@ -418,11 +419,14 @@ const SCENE_COMPONENTS: Record<HomepageSceneType, React.FC> = {
 };
 
 export function SceneRenderer({
+  scene,
   onSceneChange,
   showSceneSelector = true,
   className = '',
 }: SceneRendererProps) {
-  const [currentScene, setCurrentScene] = useState<HomepageSceneType>('beach');
+  const [internalScene, setInternalScene] = useState<HomepageSceneType>('beach');
+  // Use external scene prop if provided, otherwise use internal state
+  const currentScene = scene ?? internalScene;
   const [characters, setCharacters] = useState<HomepageCharacter[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -465,9 +469,9 @@ export function SceneRenderer({
     return () => window.removeEventListener('resize', updateSize);
   }, []);
 
-  const handleSceneChange = (scene: HomepageSceneType) => {
-    setCurrentScene(scene);
-    onSceneChange?.(scene);
+  const handleSceneChange = (newScene: HomepageSceneType) => {
+    setInternalScene(newScene);
+    onSceneChange?.(newScene);
   };
 
   const sceneConfig = SCENE_CONFIGS[currentScene];
