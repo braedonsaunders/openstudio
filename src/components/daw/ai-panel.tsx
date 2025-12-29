@@ -3,6 +3,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-tempo-store';
+import { useShallow } from 'zustand/shallow';
 import { useAIPermissions } from '@/hooks/usePermissions';
 import { Slider } from '../ui/slider';
 import {
@@ -50,8 +51,9 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   cloudflareRefGetter.current = getCloudflareRef;
 
   // Use session tempo store as single source of truth for BPM/key
+  // IMPORTANT: Use useShallow for object selectors to avoid infinite loops
   const roomBpm = useSessionTempoStore(selectTempo);
-  const { key: roomKey, scale: roomKeyScale } = useSessionTempoStore(selectKey);
+  const { key: roomKey, scale: roomKeyScale } = useSessionTempoStore(useShallow(selectKey));
 
   // Lyria session
   const sessionRef = useRef<LyriaSession | null>(null);
