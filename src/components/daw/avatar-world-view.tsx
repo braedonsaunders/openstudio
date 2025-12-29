@@ -7,7 +7,6 @@ import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { useRoomStore } from '@/stores/room-store';
 import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { useMetronomeStore } from '@/stores/metronome-store';
-import { getEssentiaAnalyzer } from '@/lib/audio/essentia-analyzer';
 import type { User } from '@/types';
 import {
   Music, Mic, Guitar, Users2, Flame, TreePine, Building2,
@@ -1048,136 +1047,6 @@ function BeatIndicator({ beat, beatsPerBar, isPlaying }: { beat: number; beatsPe
 }
 
 // ============================================
-// Stunning Real-Time Waveform Visualizer
-// ============================================
-
-function LiveWaveformVisualizer({ keyColor, audioLevel }: {
-  keyColor: string;
-  audioLevel: number;
-}) {
-  const BAR_COUNT = 64;
-  const [bars, setBars] = useState<number[]>(() => Array(BAR_COUNT).fill(0));
-  const animationRef = useRef<number | null>(null);
-  const lastFrameRef = useRef(0);
-  const smoothedLevelsRef = useRef<number[]>(Array(BAR_COUNT).fill(0));
-  const analyzerRef = useRef(getEssentiaAnalyzer());
-
-  // Real-time animation loop at ~45fps - directly reads from analyzer
-  useEffect(() => {
-    const animate = (time: number) => {
-      if (time - lastFrameRef.current < 22) {
-        animationRef.current = requestAnimationFrame(animate);
-        return;
-      }
-      lastFrameRef.current = time;
-
-      // Get spectrum data directly from the analyzer
-      const spectrumData = analyzerRef.current.getSpectrumData();
-
-      setBars(() => {
-        const newBars: number[] = [];
-        const smoothed = smoothedLevelsRef.current;
-        const hasSpectrum = spectrumData && spectrumData.length > 0;
-
-        for (let i = 0; i < BAR_COUNT; i++) {
-          let target: number;
-
-          if (hasSpectrum) {
-            // Map bar index to spectrum bin (logarithmic scaling for better frequency representation)
-            const spectrumLength = spectrumData.length;
-            // Use logarithmic scaling: lower bars = lower frequencies (more resolution)
-            const logScale = Math.pow(i / BAR_COUNT, 1.5);
-            const binIndex = Math.floor(logScale * (spectrumLength - 1));
-
-            // Get the spectrum value - getFloatFrequencyData returns dB values (typically -100 to 0)
-            const rawValue = spectrumData[binIndex] || -100;
-            // Normalize from dB to 0-1 range
-            // Values typically range from -100 (silence) to around -30 (loud)
-            const normalized = Math.max(0, Math.min(1, (rawValue + 100) / 70));
-
-            // Average with neighbors for smoother look
-            const neighbor1 = spectrumData[Math.max(0, binIndex - 1)] || rawValue;
-            const neighbor2 = spectrumData[Math.min(spectrumLength - 1, binIndex + 1)] || rawValue;
-            const avgRaw = (rawValue + neighbor1 + neighbor2) / 3;
-            const avgNormalized = Math.max(0, Math.min(1, (avgRaw + 100) / 70));
-
-            target = avgNormalized * 0.95 + 0.03; // Base floor + scaled spectrum
-          } else {
-            // Fallback: minimal movement when no spectrum data
-            target = 0.03 + audioLevel * 0.15;
-          }
-
-          // Smooth interpolation (fast attack, slower decay)
-          const current = smoothed[i];
-          const attackSpeed = 0.6;
-          const decaySpeed = 0.15;
-          const speed = target > current ? attackSpeed : decaySpeed;
-          smoothed[i] = current + (target - current) * speed;
-
-          newBars.push(Math.max(0.03, Math.min(1, smoothed[i])));
-        }
-
-        smoothedLevelsRef.current = smoothed;
-        return newBars;
-      });
-
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-    return () => {
-      if (animationRef.current !== null) cancelAnimationFrame(animationRef.current);
-    };
-  }, [audioLevel]);
-
-  return (
-    <div className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[90%] max-w-[900px] z-[150] pointer-events-none">
-      {/* Ambient glow */}
-      <div
-        className="absolute inset-x-0 bottom-0 h-48 opacity-40 blur-3xl"
-        style={{
-          background: `radial-gradient(ellipse at 50% 100%, ${keyColor} 0%, transparent 70%)`,
-        }}
-      />
-
-      {/* Bars container - 280px tall (3.5x original) */}
-      <div className="relative flex items-end justify-center gap-[3px] h-72 pb-4">
-        {bars.map((height, i) => {
-          const hue = (i / BAR_COUNT) * 60 - 30;
-          const saturation = 80 + height * 20;
-          const lightness = 50 + height * 30;
-
-          return (
-            <div
-              key={i}
-              className="w-[8px] rounded-full transition-[height] duration-[50ms]"
-              style={{
-                height: `${Math.max(height * 100, 3)}%`,
-                background: `linear-gradient(to top, ${keyColor}, hsl(${hue + 280}, ${saturation}%, ${lightness}%), rgba(255,255,255,0.9))`,
-                boxShadow: height > 0.2
-                  ? `0 0 ${6 + height * 16}px ${keyColor}, 0 0 ${3 + height * 8}px rgba(255,255,255,0.4), inset 0 0 ${2 + height * 4}px rgba(255,255,255,0.3)`
-                  : `0 0 4px ${keyColor}40`,
-                opacity: 0.75 + height * 0.25,
-              }}
-            />
-          );
-        })}
-      </div>
-
-      {/* Reflection effect at bottom */}
-      <div
-        className="absolute bottom-0 left-0 right-0 h-16 opacity-20 pointer-events-none"
-        style={{
-          background: `linear-gradient(to top, ${keyColor}30, transparent)`,
-          maskImage: 'linear-gradient(to top, black 0%, transparent 100%)',
-          WebkitMaskImage: 'linear-gradient(to top, black 0%, transparent 100%)',
-        }}
-      />
-    </div>
-  );
-}
-
-// ============================================
 // Main Component
 // ============================================
 
@@ -1285,7 +1154,6 @@ export function AvatarWorldView({ users, currentUser, audioLevels }: AvatarWorld
         <RoomVibeIndicator userCount={allUsers.length} audioLevel={totalAudioLevel} />
         <MusicInfoDisplay tempo={tempo} musicalKey={musicalKey} keyScale={keyScale} keyColor={keyColor} />
         <BeatIndicator beat={beat} beatsPerBar={beatsPerBar} isPlaying={isPlaying} />
-        <LiveWaveformVisualizer keyColor={keyColor} audioLevel={totalAudioLevel} />
         <SceneSelector currentScene={currentScene} onSceneChange={handleSceneChange} keyColor={keyColor} />
       </div>
     </div>
