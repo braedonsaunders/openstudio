@@ -125,14 +125,21 @@ export function EnhancedRoomUsersPanel({
   const currentLowLatencyMode = activePreset === 'ultra-low-latency' || activePreset === 'low-latency';
 
   // Get member data for a user
-  const getMemberData = useCallback((user: User): RoomMember => {
+  const getMemberData = useCallback((user: User, isThisUserMaster: boolean): RoomMember => {
     const memberData = members.find((m: RoomMember) => m.oduserId === user.id);
-    return memberData || {
+    if (memberData) {
+      // If this user is master but stored role isn't owner, override it
+      if (isThisUserMaster && memberData.role !== 'owner') {
+        return { ...memberData, role: 'owner' };
+      }
+      return memberData;
+    }
+    return {
       id: user.id,
       oduserId: user.id,
       userName: user.name,
       userAvatar: user.avatar,
-      role: (user.isMaster ? 'owner' : defaultRole) as RoomRole,
+      role: (isThisUserMaster ? 'owner' : defaultRole) as RoomRole,
       joinedAt: new Date().toISOString(),
       lastActiveAt: new Date().toISOString(),
     };
@@ -302,9 +309,11 @@ export function EnhancedRoomUsersPanel({
                 {sortedUsers.map((user) => {
                   const performance = participantPerformance.get(user.id) ||
                     (user.id === currentUser?.id ? localPerformance : undefined);
-                  const member = getMemberData(user);
-                  const roleInfo = ROLE_INFO[member.role];
                   const isCurrentUserCard = user.id === currentUser?.id;
+                  // Determine if this user is master: use prop for current user, user.isMaster for others
+                  const isThisUserMaster = isCurrentUserCard ? isMaster : (user.isMaster || false);
+                  const member = getMemberData(user, isThisUserMaster);
+                  const roleInfo = ROLE_INFO[member.role];
                   const canModify = canManageRoom && !isCurrentUserCard && (isOwner || member.role !== 'owner');
 
                   return (

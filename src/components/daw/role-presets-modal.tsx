@@ -1,6 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   RoomRole,
   ROLE_INFO,
@@ -23,6 +24,12 @@ interface RolePresetsModalProps {
 
 export function RolePresetsModal({ onClose }: RolePresetsModalProps) {
   const [selectedRole, setSelectedRole] = useState<RoomRole | null>(null);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const roles: RoomRole[] = ['owner', 'co-host', 'performer', 'member', 'listener'];
 
@@ -40,8 +47,11 @@ export function RolePresetsModal({ onClose }: RolePresetsModalProps) {
     return { enabled, total };
   };
 
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+  // Don't render on server
+  if (!mounted) return null;
+
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-[#1a1a24] rounded-xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col border border-gray-200 dark:border-white/10">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-white/10">
@@ -199,4 +209,6 @@ export function RolePresetsModal({ onClose }: RolePresetsModalProps) {
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }

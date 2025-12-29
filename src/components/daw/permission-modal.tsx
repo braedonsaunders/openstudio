@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import {
   RoomMember,
   RoomPermissions,
@@ -54,6 +55,12 @@ export function PermissionModal({ member, onClose, onSave }: PermissionModalProp
     member.customPermissions || {}
   );
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+    return () => setMounted(false);
+  }, []);
 
   const rolePermissions = ROLE_PERMISSIONS[selectedRole];
   const effectivePermissions = useMemo(
@@ -120,6 +127,9 @@ export function PermissionModal({ member, onClose, onSave }: PermissionModalProp
     onSave(customPermissions);
   };
 
+  // Don't render on server
+  if (!mounted) return null;
+
   const countCategoryOverrides = (category: keyof RoomPermissions): number => {
     const categoryCustom = customPermissions[category] as unknown as Record<string, boolean> | undefined;
     if (!categoryCustom) return 0;
@@ -135,8 +145,8 @@ export function PermissionModal({ member, onClose, onSave }: PermissionModalProp
     };
   };
 
-  return (
-    <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/50 backdrop-blur-sm">
+  const modalContent = (
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 backdrop-blur-sm">
       <div className="bg-white dark:bg-[#1a1a24] rounded-xl shadow-2xl w-full max-w-lg max-h-[85vh] flex flex-col border border-gray-200 dark:border-white/10">
         {/* Header */}
         <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 dark:border-white/10">
@@ -332,4 +342,6 @@ export function PermissionModal({ member, onClose, onSave }: PermissionModalProp
       </div>
     </div>
   );
+
+  return createPortal(modalContent, document.body);
 }
