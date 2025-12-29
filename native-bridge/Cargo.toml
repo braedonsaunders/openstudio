@@ -1,0 +1,76 @@
+[package]
+name = "openstudio-bridge"
+version = "0.1.0"
+edition = "2021"
+description = "Native audio bridge for OpenStudio - ASIO/CoreAudio low-latency audio"
+authors = ["OpenStudio"]
+license = "MIT"
+
+[features]
+default = ["asio"]
+asio = ["cpal/asio"]
+
+[dependencies]
+# Audio I/O - CPAL with ASIO support on Windows
+cpal = { version = "0.15", features = ["jack"] }
+
+# Async runtime
+tokio = { version = "1.35", features = ["full"] }
+
+# WebSocket server
+tokio-tungstenite = "0.21"
+futures-util = "0.3"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# System tray (cross-platform)
+tray-icon = "0.11"
+
+# Custom protocol registration
+# Windows: registry, macOS: plist
+[target.'cfg(windows)'.dependencies]
+winreg = "0.52"
+
+[target.'cfg(target_os = "macos")'.dependencies]
+plist = "1.6"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Ring buffer for lock-free audio
+ringbuf = "0.3"
+
+# DSP primitives
+dasp = { version = "0.11", features = ["all"] }
+
+# FFT for effects
+rustfft = "6.1"
+
+# URL parsing for protocol handler
+url = "2.5"
+
+# Unique IDs
+uuid = { version = "1.6", features = ["v4"] }
+
+# Cross-platform directories
+dirs = "5.0"
+
+# Error handling
+thiserror = "1.0"
+anyhow = "1.0"
+
+[build-dependencies]
+# Windows: embed icon and manifest
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"
+
+# Result: ~2-3MB binary
