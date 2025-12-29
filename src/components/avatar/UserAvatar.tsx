@@ -78,9 +78,12 @@ export function UserAvatar({
       return;
     }
 
+    // Capture userId for use in async function (TypeScript narrowing)
+    const uid = userId;
+
     // Check cache first
-    if (avatarCache.has(userId)) {
-      setAvatarUrls(avatarCache.get(userId) || null);
+    if (avatarCache.has(uid)) {
+      setAvatarUrls(avatarCache.get(uid) || null);
       setHasFetched(true);
       return;
     }
@@ -88,16 +91,16 @@ export function UserAvatar({
     async function fetchAvatar() {
       setIsLoading(true);
       try {
-        const response = await fetch(`/api/avatar/public/${userId}`);
+        const response = await fetch(`/api/avatar/public/${uid}`);
         if (response.ok) {
           const data = await response.json();
-          avatarCache.set(userId, data);
+          avatarCache.set(uid, data);
           setAvatarUrls(data);
         } else {
-          avatarCache.set(userId, null);
+          avatarCache.set(uid, null);
         }
       } catch {
-        avatarCache.set(userId, null);
+        avatarCache.set(uid, null);
       } finally {
         setIsLoading(false);
         setHasFetched(true);
