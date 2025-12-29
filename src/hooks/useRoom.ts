@@ -371,6 +371,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           cloudflareRef.current?.setAsMaster(true);
           usePerformanceSyncStore.getState().setIsMaster(true);
           usePerformanceSyncStore.getState().setMasterId(user.id);
+          // Also set permissions to owner
+          usePermissionsStore.getState().setMyPermissions('owner');
         }
       });
 
@@ -419,6 +421,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             if (newMaster.id === user.id) {
               setIsMaster(true);
               cloudflareRef.current?.setAsMaster(true);
+              usePermissionsStore.getState().setMyPermissions('owner');
               console.log('[useRoom] We are now the room master');
             }
           }
