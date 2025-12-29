@@ -219,15 +219,18 @@ export class NativeBridge {
   private handleMessage(data: string): void {
     try {
       const msg = JSON.parse(data) as NativeMessage;
+      console.log('[NativeBridge] Received message:', msg.type, msg);
 
       switch (msg.type) {
         case 'welcome':
           this.version = msg.version;
           this.driverType = msg.driverType;
+          console.log('[NativeBridge] Welcome received, driver:', msg.driverType);
           this.emit('connected', { version: msg.version, driverType: msg.driverType });
           break;
 
         case 'devices':
+          console.log('[NativeBridge] Devices received:', msg.inputs?.length, 'inputs,', msg.outputs?.length, 'outputs');
           this.emit('devices', { inputs: msg.inputs, outputs: msg.outputs });
           break;
 
@@ -279,7 +282,10 @@ export class NativeBridge {
 
   private send(message: object): void {
     if (this.ws && this.isConnected) {
+      console.log('[NativeBridge] Sending message:', message);
       this.ws.send(JSON.stringify(message));
+    } else {
+      console.warn('[NativeBridge] Cannot send - not connected. Message:', message);
     }
   }
 
