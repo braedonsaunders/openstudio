@@ -187,7 +187,7 @@ export class DelayProcessor extends BaseEffect {
 
     // Adjust feedback filter based on delay type
     const filterFreq = this.getTypeFilterFrequency();
-    this.feedbackFilter.frequency.setTargetAtTime(filterFreq, now, 0.01);
+    this.safeSetFilterFrequency(this.feedbackFilter, filterFreq);
   }
 
   private getTypeFilterFrequency(): number {
@@ -215,10 +215,9 @@ export class DelayProcessor extends BaseEffect {
   }
 
   private updateTone(): void {
-    const now = this.audioContext.currentTime;
     // Map tone 0-1 to frequency 2000Hz - 16000Hz
     const frequency = 2000 + this.settings.tone * 14000;
-    this.toneFilter.frequency.setTargetAtTime(frequency, now, 0.01);
+    this.safeSetFilterFrequency(this.toneFilter, frequency);
   }
 
   private updateModulation(): void {

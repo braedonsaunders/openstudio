@@ -186,17 +186,16 @@ export class AmpSimulatorProcessor extends BaseEffect {
 
   private updateAmpType(): void {
     const params = TONESTACK_PARAMS[this.settings.type];
-    const now = this.audioContext.currentTime;
 
-    // Update tonestack frequencies
-    this.bassFilter.frequency.setTargetAtTime(params.bassFreq, now, 0.01);
-    this.midFilter.frequency.setTargetAtTime(params.midFreq, now, 0.01);
-    this.trebleFilter.frequency.setTargetAtTime(params.trebleFreq, now, 0.01);
-    this.presenceFilter.frequency.setTargetAtTime(params.presence, now, 0.01);
+    // Update tonestack frequencies with safe methods
+    this.safeSetFilterFrequency(this.bassFilter, params.bassFreq);
+    this.safeSetFilterFrequency(this.midFilter, params.midFreq);
+    this.safeSetFilterFrequency(this.trebleFilter, params.trebleFreq);
+    this.safeSetFilterFrequency(this.presenceFilter, params.presence);
 
     // Adjust mid Q based on amp type
     const midQ = this.settings.type === 'modern' ? 1.5 : 1.0;
-    this.midFilter.Q.setTargetAtTime(midQ, now, 0.01);
+    this.safeSetFilterQ(this.midFilter, midQ);
   }
 
   private updateGain(): void {
