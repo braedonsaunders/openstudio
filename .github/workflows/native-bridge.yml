@@ -29,7 +29,7 @@ jobs:
             features: asio
 
           # macOS x64 (Intel)
-          - os: macos-13-large
+          - os: macos-15-large
             target: x86_64-apple-darwin
             artifact: openstudio-bridge-macos-x64
             binary: openstudio-bridge

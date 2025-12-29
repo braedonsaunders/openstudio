@@ -3,7 +3,7 @@
 mod mixer;
 mod track;
 
-pub use mixer::{Mixer, BackingTrackState};
+pub use mixer::Mixer;
 pub use track::{Track, TrackState, RemoteUser};
 
 use serde::{Deserialize, Serialize};
