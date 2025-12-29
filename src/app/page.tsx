@@ -11,7 +11,8 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus, AlertCircle } from 'lucide-react';
 import { CreateRoomModal } from '@/components/rooms';
 import { getRoom } from '@/lib/rooms/service';
-import { SceneRenderer } from '@/components/homepage';
+import { SceneRenderer, SceneSelector } from '@/components/homepage';
+import type { HomepageSceneType } from '@/types/avatar';
 
 // Theme toggle button
 function ThemeToggle() {
@@ -1112,6 +1113,7 @@ export default function HomePage() {
   const [isHovering, setIsHovering] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [currentScene, setCurrentScene] = useState<HomepageSceneType>('beach');
 
   // Always use the avatar-based scene with walking characters
   const useAvatarScene = true;
@@ -1218,7 +1220,8 @@ export default function HomePage() {
       {useAvatarScene ? (
         // New avatar-based scene with perspective ground and walking characters
         <SceneRenderer
-          showSceneSelector={true}
+          scene={currentScene}
+          showSceneSelector={false}
           className="absolute inset-0"
         />
       ) : (
@@ -1279,6 +1282,10 @@ export default function HomePage() {
             animate={{ opacity: 1, x: 0 }}
             transition={{ duration: 0.6 }}
           >
+            <SceneSelector
+              currentScene={currentScene}
+              onSceneChange={setCurrentScene}
+            />
             <ThemeToggle />
             <UserMenu />
           </motion.div>
