@@ -336,14 +336,14 @@ export class NativeBridge {
    * Set input device
    */
   setInputDevice(deviceId: string): void {
-    this.send({ type: 'setInputDevice', device_id: deviceId });
+    this.send({ type: 'setInputDevice', deviceId: deviceId });
   }
 
   /**
    * Set output device
    */
   setOutputDevice(deviceId: string): void {
-    this.send({ type: 'setOutputDevice', device_id: deviceId });
+    this.send({ type: 'setOutputDevice', deviceId: deviceId });
   }
 
   /**
@@ -401,17 +401,17 @@ export class NativeBridge {
       monitoringVolume?: number;
     }
   ): void {
-    // Convert camelCase to snake_case for Rust serde
+    // Rust serde uses rename_all = "camelCase" so we send camelCase
     this.send({
       type: 'updateTrackState',
-      track_id: trackId,
-      is_armed: state.isArmed,
-      is_muted: state.isMuted,
-      is_solo: state.isSolo,
+      trackId: trackId,
+      isArmed: state.isArmed,
+      isMuted: state.isMuted,
+      isSolo: state.isSolo,
       volume: state.volume,
-      input_gain_db: state.inputGainDb,
-      monitoring_enabled: state.monitoringEnabled,
-      monitoring_volume: state.monitoringVolume,
+      inputGainDb: state.inputGainDb,
+      monitoringEnabled: state.monitoringEnabled,
+      monitoringVolume: state.monitoringVolume,
     });
   }
 
@@ -419,7 +419,7 @@ export class NativeBridge {
    * Update effects
    */
   updateEffects(trackId: string, effects: Partial<UnifiedEffectsChain>): void {
-    this.send({ type: 'updateEffects', track_id: trackId, effects });
+    this.send({ type: 'updateEffects', trackId: trackId, effects });
   }
 
   /**

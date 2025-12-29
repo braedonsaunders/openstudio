@@ -55,11 +55,18 @@ pub enum DriverType {
 #[serde(rename_all = "camelCase")]
 pub struct ChannelConfig {
     /// Number of channels (1 = mono, 2 = stereo)
+    #[serde(default = "default_channel_count")]
     pub channel_count: u32,
     /// Left channel index (0-based)
+    #[serde(default)]
     pub left_channel: u32,
     /// Right channel index (0-based, only for stereo)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub right_channel: Option<u32>,
+}
+
+fn default_channel_count() -> u32 {
+    2
 }
 
 impl Default for ChannelConfig {
