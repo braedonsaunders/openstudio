@@ -377,6 +377,8 @@ export interface CreateHomepageCharacterRequest {
   name: string;
   description?: string;
   canvasData: CanvasData;
+  fullBodyUrl?: string;
+  thumbnailUrl?: string;
   personality?: CharacterPersonality;
   preferredScenes?: HomepageSceneType[];
   walkSpeed?: number;
