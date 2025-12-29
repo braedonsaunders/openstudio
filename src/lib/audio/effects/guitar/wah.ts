@@ -139,21 +139,22 @@ export class WahProcessor extends BaseEffect {
   }
 
   private wireUpSignalChain(): void {
-    // Main audio path
-    this.inputGain.connect(this.wahFilter);
+    // Main audio path - start from wetPathGate to allow disabling
+    // When effect is disabled, wetPathGate blocks audio from entering filter chain
+    this.getWetPathInput().connect(this.wahFilter);
     this.wahFilter.connect(this.wetGain);
     this.wetGain.connect(this.outputGain);
 
-    // Bypass path (using base class)
-    this.inputGain.connect(this.bypassGain);
-    this.bypassGain.connect(this.outputGain);
+    // Bypass path (using base class - already connected in base constructor)
+    // this.inputGain.connect(this.bypassGain) is done in base class
+    // this.bypassGain.connect(this.outputGain) is done in base class
 
     // Frequency control sources (internal connections only)
     this.baseFrequencySource.connect(this.baseFrequencyGain);
     this.lfo.connect(this.lfoGain);
 
-    // Envelope follower path (internal connections only)
-    this.inputGain.connect(this.envelopeInput);
+    // Envelope follower path (internal connections only) - also gated
+    this.getWetPathInput().connect(this.envelopeInput);
     this.envelopeInput.connect(this.envelopeRectifier);
     this.envelopeRectifier.connect(this.envelopeSmoother);
     this.envelopeSmoother.connect(this.envelopeGain);

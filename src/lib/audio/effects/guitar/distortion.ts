@@ -49,8 +49,9 @@ export class DistortionProcessor extends BaseEffect {
     // Use 4x oversampling to reduce aliasing
     this.waveshaper.oversample = '4x';
 
-    // Wire up: input -> highPass -> preGain -> waveshaper -> toneFilter -> postGain -> wetGain
-    this.inputGain.connect(this.highPassFilter);
+    // Wire up: wetPathGate -> highPass -> preGain -> waveshaper -> toneFilter -> postGain -> wetGain
+    // Using wetPathGate ensures filters don't process audio when effect is disabled
+    this.getWetPathInput().connect(this.highPassFilter);
     this.highPassFilter.connect(this.preGain);
     this.preGain.connect(this.waveshaper);
     this.waveshaper.connect(this.toneFilter);

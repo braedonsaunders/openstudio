@@ -29,6 +29,10 @@ export abstract class BaseEffect implements EffectProcessor {
   protected outputGain: GainNode;
   protected bypassGain: GainNode;
   protected wetGain: GainNode;
+  // Gate node that controls audio flow into the wet (filter) path
+  // When disabled, this is set to 0 to prevent audio from flowing through filters
+  // This prevents BiquadFilterNode instability from accumulating even when wetGain=0
+  protected wetPathGate: GainNode;
 
   constructor(audioContext: AudioContext) {
     this.audioContext = audioContext;
@@ -38,14 +42,31 @@ export abstract class BaseEffect implements EffectProcessor {
     this.outputGain = audioContext.createGain();
     this.bypassGain = audioContext.createGain();
     this.wetGain = audioContext.createGain();
+    this.wetPathGate = audioContext.createGain();
 
-    // Default to bypassed
+    // Default to bypassed - both wetGain AND wetPathGate are 0
+    // wetPathGate prevents audio from entering filter chain entirely
+    // This is critical for stability with many disabled effects in series
     this.bypassGain.gain.value = 1;
     this.wetGain.gain.value = 0;
+    this.wetPathGate.gain.value = 0;
 
     // Connect bypass path
     this.inputGain.connect(this.bypassGain);
     this.bypassGain.connect(this.outputGain);
+
+    // Connect wet path gate (effects will use getWetPathInput() to connect their chains)
+    this.inputGain.connect(this.wetPathGate);
+  }
+
+  /**
+   * Get the input node for the wet (effect) path.
+   * Effects should connect their filter chains starting from this node,
+   * NOT directly from inputGain. This allows the wetPathGate to block
+   * audio from flowing through filters when the effect is disabled.
+   */
+  protected getWetPathInput(): GainNode {
+    return this.wetPathGate;
   }
 
   get enabled(): boolean {
@@ -65,9 +86,14 @@ export abstract class BaseEffect implements EffectProcessor {
 
     // Smooth crossfade between bypass and wet signal
     if (enabled) {
+      // Enable: open the wet path gate FIRST, then crossfade
+      this.wetPathGate.gain.setTargetAtTime(1, now, 0.01);
       this.bypassGain.gain.setTargetAtTime(0, now, 0.01);
       this.wetGain.gain.setTargetAtTime(1, now, 0.01);
     } else {
+      // Disable: crossfade to bypass, then close the wet path gate
+      // Close the gate to prevent any audio from entering filter chain
+      this.wetPathGate.gain.setTargetAtTime(0, now, 0.01);
       this.bypassGain.gain.setTargetAtTime(1, now, 0.01);
       this.wetGain.gain.setTargetAtTime(0, now, 0.01);
     }
@@ -140,6 +166,7 @@ export abstract class BaseEffect implements EffectProcessor {
     this.inputGain.disconnect();
     this.bypassGain.disconnect();
     this.wetGain.disconnect();
+    this.wetPathGate.disconnect();
   }
 
   // Helper to convert dB to linear gain
