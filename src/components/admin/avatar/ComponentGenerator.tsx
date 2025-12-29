@@ -246,7 +246,7 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
     }
   };
 
-  // Batch generation handlers
+  // Batch generation handlers - uses streaming to avoid timeouts
   const handleBatchGenerate = async () => {
     if (!batchCategory || !batchTheme || !selectedModel) return;
 
@@ -258,28 +258,114 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
     setBatchProgress('Generating varied prompts with AI...');
 
     try {
-      const response = await adminPost('/api/admin/avatar/generate/batch', {
-        theme: batchTheme,
-        categoryId: batchCategory,
-        categoryName: category.displayName,
-        count: batchCount,
-        model: selectedModel,
-        presetId: selectedPreset || undefined,
+      // Use fetch with streaming for SSE
+      const response = await fetch('/api/admin/avatar/generate/batch', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          theme: batchTheme,
+          categoryId: batchCategory,
+          categoryName: category.displayName,
+          count: batchCount,
+          model: selectedModel,
+          presetId: selectedPreset || undefined,
+        }),
       });
 
-      if (response.ok) {
-        const result = await response.json();
-        setBatchResults(
-          result.results.map((r: Omit<BatchResult, 'selected'>) => ({
-            ...r,
-            selected: true, // Select all by default
-          }))
-        );
-        setBatchProgress(`Generated ${result.generatedCount} of ${result.requestedCount} images`);
-      } else {
+      if (!response.ok) {
         const error = await response.json();
         toast.error(`Batch generation failed: ${error.error}`);
         setBatchProgress('');
+        setIsGenerating(false);
+        return;
+      }
+
+      // Handle SSE stream
+      const reader = response.body?.getReader();
+      if (!reader) {
+        toast.error('Streaming not supported');
+        setIsGenerating(false);
+        return;
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+      let totalPrompts = 0;
+      let generatedCount = 0;
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+
+        // Parse SSE events from buffer
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+
+        let eventType = '';
+        let eventData = '';
+
+        for (const line of lines) {
+          if (line.startsWith('event: ')) {
+            eventType = line.slice(7);
+          } else if (line.startsWith('data: ')) {
+            eventData = line.slice(6);
+
+            if (eventType && eventData) {
+              try {
+                const data = JSON.parse(eventData);
+
+                switch (eventType) {
+                  case 'status':
+                    setBatchProgress(data.message);
+                    break;
+
+                  case 'prompts':
+                    totalPrompts = data.total;
+                    break;
+
+                  case 'result':
+                    generatedCount = data.generatedCount;
+                    // Add result as it streams in
+                    setBatchResults((prev) => [
+                      ...prev,
+                      {
+                        prompt: data.prompt,
+                        image: data.image,
+                        componentIdBase: data.componentIdBase,
+                        suggestedName: data.suggestedName,
+                        selected: true, // Select by default
+                      },
+                    ]);
+                    setBatchProgress(`Generated ${generatedCount} of ${totalPrompts} images`);
+                    break;
+
+                  case 'image_error':
+                    console.warn(`Failed to generate image ${data.index + 1}: ${data.error}`);
+                    break;
+
+                  case 'complete':
+                    setBatchProgress(`Completed: ${data.generatedCount} of ${data.requestedCount} images`);
+                    break;
+
+                  case 'error':
+                    toast.error(`Batch generation failed: ${data.error}`);
+                    setBatchProgress('');
+                    break;
+                }
+              } catch (e) {
+                console.warn('Failed to parse SSE data:', eventData, e);
+              }
+
+              eventType = '';
+              eventData = '';
+            }
+          }
+        }
       }
     } catch (error) {
       console.error('Batch generation failed:', error);
