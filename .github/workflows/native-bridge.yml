@@ -29,14 +29,14 @@ jobs:
             features: asio
 
           # macOS x64 (Intel)
-          - os: macos-13
+          - os: macos-13-large
             target: x86_64-apple-darwin
             artifact: openstudio-bridge-macos-x64
             binary: openstudio-bridge
             features: default
 
           # macOS ARM64 (Apple Silicon)
-          - os: macos-14
+          - os: macos-latest
             target: aarch64-apple-darwin
             artifact: openstudio-bridge-macos-arm64
             binary: openstudio-bridge
@@ -55,7 +55,7 @@ jobs:
       - uses: actions/checkout@v4
 
       - name: Install Rust
-        uses: dtolnay/rust-action@stable
+        uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
