@@ -3,6 +3,7 @@
 import { useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { useSongsStore } from '@/stores/songs-store';
+import { useLyriaStore } from '@/stores/lyria-store';
 import { useTrackPermissions } from '@/hooks/usePermissions';
 import {
   Music2,
@@ -159,6 +160,15 @@ export function SetlistPanel({
   const handleDeleteSong = useCallback(async (songId: string) => {
     if (!confirm('Delete this song? This cannot be undone.')) return;
 
+    // Check if this song has a Lyria track and stop it if playing
+    const songToDelete = songs.find(s => s.id === songId);
+    if (songToDelete?.tracks.some(t => t.type === 'lyria')) {
+      const lyriaStore = useLyriaStore.getState();
+      if (lyriaStore.sessionState === 'playing' || lyriaStore.sessionState === 'connected') {
+        lyriaStore.pause();
+      }
+    }
+
     deleteSong(songId);
 
     try {
@@ -168,7 +178,7 @@ export function SetlistPanel({
     } catch (err) {
       console.error('Failed to delete song:', err);
     }
-  }, [roomId, deleteSong]);
+  }, [roomId, deleteSong, songs]);
 
   // Drag and drop handlers
   const handleDragStart = useCallback((e: React.DragEvent, songId: string) => {
