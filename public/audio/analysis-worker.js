@@ -320,14 +320,19 @@ async function initialize(rate) {
 function analyzeFrame(audioData, frameSize) {
   if (!essentia || !isInitialized) return null;
 
+  // Track vectors that need cleanup
+  let essentiaFrame = null;
+  let spectrum = null;
+  let hpcpFreqVector = null;
+
   try {
-    const essentiaFrame = essentia.arrayToVector(audioData);
+    essentiaFrame = essentia.arrayToVector(audioData);
 
     // RMS (fast)
     const rms = essentia.RMS(essentiaFrame).rms;
 
     // Spectrum for HPCP (moderate cost)
-    const spectrum = essentia.Spectrum(essentiaFrame, frameSize);
+    spectrum = essentia.Spectrum(essentiaFrame, frameSize);
 
     // Spectral centroid (fast)
     let spectralCentroid = 0;
@@ -380,9 +385,10 @@ function analyzeFrame(audioData, frameSize) {
     let chordConfidence = 0;
 
     try {
+      hpcpFreqVector = essentia.arrayToVector(new Float32Array(spectrum.spectrum.length));
       const hpcp = essentia.HPCP(
         spectrum.spectrum,
-        essentia.arrayToVector(new Float32Array(spectrum.spectrum.length)),
+        hpcpFreqVector,
         true, 500, 0, 4000, false, 0.5, true, sampleRate
       );
       const hpcpArray = essentia.vectorToArray(hpcp.hpcp);
@@ -439,6 +445,19 @@ function analyzeFrame(audioData, frameSize) {
   } catch (error) {
     console.error('[Worker] Frame analysis error:', error);
     return null;
+  } finally {
+    // CRITICAL: Clean up WASM vectors to prevent memory leaks
+    try {
+      if (essentiaFrame && essentia.deleteVector) {
+        essentia.deleteVector(essentiaFrame);
+      }
+    } catch (e) {}
+    try {
+      if (hpcpFreqVector && essentia.deleteVector) {
+        essentia.deleteVector(hpcpFreqVector);
+      }
+    } catch (e) {}
+    // Note: spectrum result objects don't need deleteVector, only arrayToVector results do
   }
 }
 
@@ -446,8 +465,12 @@ function analyzeFrame(audioData, frameSize) {
 function analyzeLongTerm(combinedAudio) {
   if (!essentia || !isInitialized) return;
 
+  // Track vectors that need cleanup
+  let essentiaAudio = null;
+  let freqVector = null;
+
   try {
-    const essentiaAudio = essentia.arrayToVector(combinedAudio);
+    essentiaAudio = essentia.arrayToVector(combinedAudio);
 
     // Key detection using essentia's KeyExtractor with multiple profiles
     // KeyExtractor computes HPCP internally and uses the Key algorithm
@@ -460,16 +483,12 @@ function analyzeLongTerm(combinedAudio) {
       if (essentia.KeyExtractor) {
         try {
           const keyResult = essentia.KeyExtractor(essentiaAudio);
-          console.log('[Worker] KeyExtractor raw result:', keyResult ? Object.keys(keyResult) : 'null');
 
           if (keyResult && keyResult.key && keyResult.scale) {
             const keyId = `${keyResult.key}_${keyResult.scale}`;
             keyVotes[keyId] = { count: 1, totalStrength: keyResult.strength || 0.5, strengths: [keyResult.strength || 0.5] };
-            console.log(`[Worker] KeyExtractor: ${keyResult.key} ${keyResult.scale} (strength: ${(keyResult.strength || 0).toFixed(2)})`);
           }
         } catch (extractorError) {
-          console.log('[Worker] KeyExtractor with defaults failed:', extractorError.message);
-
           // Try HPCP + Key as fallback
           try {
             const frameSize = 4096;
@@ -482,31 +501,35 @@ function analyzeLongTerm(combinedAudio) {
               for (let i = 0; i < numBins; i++) {
                 frequencies[i] = (i * sampleRate) / fftSize;
               }
-              const freqVector = essentia.arrayToVector(frequencies);
+              freqVector = essentia.arrayToVector(frequencies);
               const hpcpResult = essentia.HPCP(spectrum.spectrum, freqVector);
 
               if (hpcpResult && hpcpResult.hpcp) {
                 // Try Key algorithm with HPCP - use defaults
                 try {
                   const keyResult = essentia.Key(hpcpResult.hpcp);
-                  console.log('[Worker] Key raw result:', keyResult ? Object.keys(keyResult) : 'null');
 
                   if (keyResult && keyResult.key && keyResult.scale) {
                     const keyId = `${keyResult.key}_${keyResult.scale}`;
                     keyVotes[keyId] = { count: 1, totalStrength: keyResult.strength || 0.5, strengths: [keyResult.strength || 0.5] };
-                    console.log(`[Worker] Key: ${keyResult.key} ${keyResult.scale} (strength: ${(keyResult.strength || 0).toFixed(2)})`);
                   }
                 } catch (keyError) {
-                  console.log('[Worker] Key algorithm failed:', keyError.message);
+                  // Key algorithm failed
                 }
               }
+
+              // Clean up freqVector immediately after use
+              try {
+                if (freqVector && essentia.deleteVector) {
+                  essentia.deleteVector(freqVector);
+                  freqVector = null;
+                }
+              } catch (e) {}
             }
           } catch (hpcpError) {
-            console.log('[Worker] HPCP fallback failed:', hpcpError.message);
+            // HPCP fallback failed
           }
         }
-      } else {
-        console.log('[Worker] KeyExtractor not available in essentia');
       }
 
       // Find best consensus key
@@ -514,11 +537,6 @@ function analyzeLongTerm(combinedAudio) {
       let bestScore = 0;
 
       const voteEntries = Object.entries(keyVotes);
-      if (voteEntries.length === 0) {
-        console.log('[Worker] No key votes collected');
-      } else {
-        console.log(`[Worker] Key votes: ${voteEntries.map(([k, v]) => `${k.replace('_', ' ')}(${v.count})`).join(', ')}`);
-      }
 
       for (const [keyId, data] of voteEntries) {
         const avgStrength = data.totalStrength / data.count;
@@ -529,7 +547,7 @@ function analyzeLongTerm(combinedAudio) {
         }
       }
 
-      if (bestKeyId && keyVotes[bestKeyId].count >= 1) {  // Lowered threshold to 1 for debugging
+      if (bestKeyId && keyVotes[bestKeyId].count >= 1) {
         const [detectedKey, detectedScale] = bestKeyId.split('_');
         const avgStrength = keyVotes[bestKeyId].totalStrength / keyVotes[bestKeyId].count;
 
@@ -582,12 +600,6 @@ function analyzeLongTerm(combinedAudio) {
                 lastKey = key;
                 lastKeyScale = scale;
                 lastKeyStrength = Math.min(avgStrength, 1);
-
-                const sortedKeys = Object.entries(keyCounts)
-                  .map(([k, d]) => ({ key: k, score: d.count * (d.totalStrength / d.count) }))
-                  .sort((a, b) => b.score - a.score)
-                  .slice(0, 3);
-                console.log(`[Worker] Key: ${lastKey} ${lastKeyScale} (strength: ${lastKeyStrength.toFixed(2)}) | Top 3: ${sortedKeys.map(k => k.key.replace('_', ' ')).join(', ')}`);
               }
             }
           }
@@ -601,7 +613,6 @@ function analyzeLongTerm(combinedAudio) {
           lastKey = keyResult.key;
           lastKeyScale = keyResult.scale;
           lastKeyStrength = keyResult.strength;
-          console.log(`[Worker] Key detected (fallback): ${lastKey} ${lastKeyScale}`);
         }
       } catch (e2) {
         // Key detection failed
@@ -613,9 +624,6 @@ function analyzeLongTerm(combinedAudio) {
       const tuningResult = essentia.TuningFrequency(essentiaAudio);
       if (tuningResult && tuningResult.tuningFrequency && tuningResult.tuningFrequency > 400 && tuningResult.tuningFrequency < 480) {
         lastTuningFrequency = tuningResult.tuningFrequency;
-        if (Math.abs(lastTuningFrequency - 440) > 2) {
-          console.log(`[Worker] Tuning: ${lastTuningFrequency.toFixed(1)} Hz`);
-        }
       }
     } catch (e) {
       // Tuning detection not critical
@@ -675,23 +683,27 @@ function analyzeLongTerm(combinedAudio) {
             const newBPM = Math.round(medianBPM);
             if (newBPM !== lastBPM) {
               lastBPM = newBPM;
-              console.log(`[Worker] BPM detected: ${lastBPM} (stdDev: ${stdDev.toFixed(1)})`);
             }
           }
         }
       }
     } catch (e) {
-      console.error('[Worker] BPM detection error:', e.message || e);
-    }
-
-    // Memory cleanup - delete the vector to prevent WASM memory leaks
-    try {
-      essentia.deleteVector(essentiaAudio);
-    } catch (e) {
-      // deleteVector might not exist in all versions
+      // BPM detection error - not critical
     }
   } catch (error) {
     console.error('[Worker] Long-term analysis error:', error);
+  } finally {
+    // CRITICAL: Clean up WASM vectors to prevent memory leaks
+    try {
+      if (essentiaAudio && essentia.deleteVector) {
+        essentia.deleteVector(essentiaAudio);
+      }
+    } catch (e) {}
+    try {
+      if (freqVector && essentia.deleteVector) {
+        essentia.deleteVector(freqVector);
+      }
+    } catch (e) {}
   }
 }
 
