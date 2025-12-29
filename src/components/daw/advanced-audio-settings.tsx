@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
+import { useNativeBridge } from '@/hooks/useNativeBridge';
 import type { UserTrack, TrackAudioSettings, InputChannelConfig } from '@/types';
 import {
   Mic,
@@ -15,6 +16,8 @@ import {
   Volume2,
   Sliders,
   Share2,
+  Zap,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface AdvancedAudioSettingsProps {
@@ -39,6 +42,18 @@ function getChannelOptions(channelCount: number): { mono: number[]; stereo: [num
   return { mono, stereo };
 }
 
+// Generate channel options from bridge device channels
+function getBridgeChannelOptions(channels: { index: number; name: string }[]): { mono: number[]; stereo: [number, number][] } {
+  const mono: number[] = channels.map(ch => ch.index);
+  const stereo: [number, number][] = [];
+
+  for (let i = 0; i < channels.length - 1; i += 2) {
+    stereo.push([channels[i].index, channels[i + 1].index]);
+  }
+
+  return { mono, stereo };
+}
+
 // Format channel number for display (1-indexed for users)
 function formatChannel(index: number): string {
   return `Ch ${index + 1}`;
@@ -46,6 +61,17 @@ function formatChannel(index: number): string {
 
 function formatStereoPair(left: number, right: number): string {
   return `Ch ${left + 1}/${right + 1}`;
+}
+
+function formatBridgeChannel(index: number, channels: { index: number; name: string }[]): string {
+  const channel = channels.find(ch => ch.index === index);
+  return channel?.name || `Ch ${index + 1}`;
+}
+
+function formatBridgeStereoPair(left: number, right: number, channels: { index: number; name: string }[]): string {
+  const leftCh = channels.find(ch => ch.index === left);
+  const rightCh = channels.find(ch => ch.index === right);
+  return `${leftCh?.name || `Ch ${left + 1}`} / ${rightCh?.name || `Ch ${right + 1}`}`;
 }
 
 // Custom select styles to fix dark mode dropdown options
@@ -67,6 +93,18 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
 
   const { recaptureWithSettings, isInitialized, setLocalInputGainDb } = useAudioEngine();
 
+  // Native bridge integration
+  const {
+    isConnected: bridgeConnected,
+    isRunning: bridgeRunning,
+    inputDevices: bridgeInputDevices,
+    selectedInputDeviceId: bridgeSelectedInputId,
+    inputChannelConfig: bridgeChannelConfig,
+    setInputDevice: setBridgeInputDevice,
+    setChannelConfig: setBridgeChannelConfig,
+    getSelectedInputDevice: getBridgeSelectedInput,
+  } = useNativeBridge();
+
   const [testingInput, setTestingInput] = useState(false);
   const [inputLevel, setInputLevel] = useState(0);
   const [error, setError] = useState<string | null>(null);
@@ -80,6 +118,11 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
   const currentDevice = inputDevices.find((d) => d.deviceId === track.audioSettings.inputDeviceId);
   const channelCount = currentDevice?.channelCount || getDeviceChannelCount(track.audioSettings.inputDeviceId) || 2;
   const channelOptions = getChannelOptions(channelCount);
+
+  // Bridge device channel options
+  const bridgeSelectedDevice = getBridgeSelectedInput();
+  const bridgeChannels = bridgeSelectedDevice?.channels || [];
+  const bridgeChannelOptions = getBridgeChannelOptions(bridgeChannels);
 
   useEffect(() => {
     setAppCaptureSupported('getDisplayMedia' in navigator.mediaDevices);
@@ -142,6 +185,14 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
       }
     },
     [track.id, track.audioSettings, updateTrackChannelConfig, isInitialized, recaptureWithSettings]
+  );
+
+  // Handle bridge channel config change
+  const handleBridgeChannelConfigChange = useCallback(
+    (config: { channelCount: 1 | 2; leftChannel: number; rightChannel?: number }) => {
+      setBridgeChannelConfig(config);
+    },
+    [setBridgeChannelConfig]
   );
 
   // Select application source (for app capture mode)
@@ -269,6 +320,9 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     setInputLevel(0);
   }, [track.audioSettings.inputMode]);
 
+  // Check if bridge is active and should be used for input
+  const useBridgeForInput = bridgeConnected && bridgeRunning;
+
   return (
     <div className="w-80 bg-white dark:bg-[#16161f] border border-gray-200 dark:border-white/10 rounded-xl shadow-2xl overflow-hidden">
       {/* Header */}
@@ -292,6 +346,22 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
           <div className="flex items-center gap-2 p-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs text-red-400">
             <AlertCircle className="w-4 h-4 shrink-0" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* Bridge Status Indicator */}
+        {bridgeConnected && (
+          <div className={cn(
+            "flex items-center gap-2 p-2 rounded-lg border text-xs",
+            bridgeRunning
+              ? "bg-emerald-500/10 border-emerald-500/20 text-emerald-400"
+              : "bg-amber-500/10 border-amber-500/20 text-amber-400"
+          )}>
+            <Zap className="w-3.5 h-3.5" />
+            <span className="font-medium">
+              {bridgeRunning ? 'Low-Latency Bridge Active' : 'Bridge Connected - Start audio in settings'}
+            </span>
+            {bridgeRunning && <CheckCircle2 className="w-3.5 h-3.5 ml-auto" />}
           </div>
         )}
 
@@ -368,112 +438,223 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
         {/* Device Selection (only for direct input) */}
         {track.audioSettings.inputMode === 'microphone' && (
           <>
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Device</label>
-              <div className="relative">
-                <select
-                  value={track.audioSettings.inputDeviceId}
-                  onChange={(e) => handleSettingChange({ inputDeviceId: e.target.value })}
-                  className={selectClassName}
-                >
-                  <option value="default">System Default</option>
-                  {inputDevices.map((device) => (
-                    <option key={device.deviceId} value={device.deviceId}>
-                      {device.label || `Input ${device.deviceId.slice(0, 8)}`}
-                      {device.channelCount && device.channelCount > 2 ? ` (${device.channelCount}ch)` : ''}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
-              </div>
-              {channelCount > 2 && (
-                <p className="text-[10px] text-indigo-400">
-                  Multi-channel interface detected: {channelCount} channels available
-                </p>
-              )}
-            </div>
-
-            {/* Channel Selection */}
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Channels</label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => handleChannelConfigChange({
-                    channelCount: 1,
-                    leftChannel: track.audioSettings.channelConfig.leftChannel,
-                  })}
-                  className={cn(
-                    'p-2 rounded-lg border text-xs font-medium transition-all',
-                    track.audioSettings.channelConfig.channelCount === 1
-                      ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
-                      : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-zinc-400 hover:border-gray-300 dark:hover:border-white/20'
-                  )}
-                >
-                  Mono
-                </button>
-                <button
-                  onClick={() => handleChannelConfigChange({
-                    channelCount: 2,
-                    leftChannel: track.audioSettings.channelConfig.leftChannel,
-                    rightChannel: (track.audioSettings.channelConfig.leftChannel + 1) % channelCount,
-                  })}
-                  className={cn(
-                    'p-2 rounded-lg border text-xs font-medium transition-all',
-                    track.audioSettings.channelConfig.channelCount === 2
-                      ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
-                      : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-zinc-400 hover:border-gray-300 dark:hover:border-white/20'
-                  )}
-                >
-                  Stereo
-                </button>
-              </div>
-
-              {/* Mono Channel Select */}
-              {track.audioSettings.channelConfig.channelCount === 1 && (
-                <div className="relative">
-                  <select
-                    value={track.audioSettings.channelConfig.leftChannel}
-                    onChange={(e) => handleChannelConfigChange({
-                      channelCount: 1,
-                      leftChannel: parseInt(e.target.value),
-                    })}
-                    className={selectSmallClassName}
-                  >
-                    {channelOptions.mono.map((ch) => (
-                      <option key={ch} value={ch}>
-                        {formatChannel(ch)}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+            {/* Bridge Device Selection (when bridge is active) */}
+            {useBridgeForInput ? (
+              <>
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-500 dark:text-zinc-400 flex items-center gap-1.5">
+                    <Zap className="w-3 h-3 text-indigo-400" />
+                    Bridge Input Device
+                  </label>
+                  <div className="relative">
+                    <select
+                      value={bridgeSelectedInputId || ''}
+                      onChange={(e) => setBridgeInputDevice(e.target.value)}
+                      className={selectClassName}
+                    >
+                      <option value="">Select bridge input...</option>
+                      {bridgeInputDevices.map((device) => (
+                        <option key={device.id} value={device.id}>
+                          {device.name} ({device.channels.length}ch)
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                  </div>
                 </div>
-              )}
 
-              {/* Stereo Pair Select */}
-              {track.audioSettings.channelConfig.channelCount === 2 && (
-                <div className="relative">
-                  <select
-                    value={`${track.audioSettings.channelConfig.leftChannel}-${track.audioSettings.channelConfig.rightChannel ?? track.audioSettings.channelConfig.leftChannel + 1}`}
-                    onChange={(e) => {
-                      const [left, right] = e.target.value.split('-').map(Number);
-                      handleChannelConfigChange({
+                {/* Bridge Channel Selection */}
+                {bridgeSelectedDevice && bridgeChannels.length > 0 && (
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Channels</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => handleBridgeChannelConfigChange({
+                          channelCount: 1,
+                          leftChannel: bridgeChannelConfig.leftChannel,
+                        })}
+                        className={cn(
+                          'p-2 rounded-lg border text-xs font-medium transition-all',
+                          bridgeChannelConfig.channelCount === 1
+                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                            : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-zinc-400 hover:border-gray-300 dark:hover:border-white/20'
+                        )}
+                      >
+                        Mono
+                      </button>
+                      <button
+                        onClick={() => handleBridgeChannelConfigChange({
+                          channelCount: 2,
+                          leftChannel: bridgeChannelConfig.leftChannel,
+                          rightChannel: (bridgeChannelConfig.leftChannel + 1) % bridgeChannels.length,
+                        })}
+                        className={cn(
+                          'p-2 rounded-lg border text-xs font-medium transition-all',
+                          bridgeChannelConfig.channelCount === 2
+                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                            : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-zinc-400 hover:border-gray-300 dark:hover:border-white/20'
+                        )}
+                      >
+                        Stereo
+                      </button>
+                    </div>
+
+                    {/* Bridge Channel Select */}
+                    {bridgeChannelConfig.channelCount === 1 ? (
+                      <div className="relative">
+                        <select
+                          value={bridgeChannelConfig.leftChannel}
+                          onChange={(e) => handleBridgeChannelConfigChange({
+                            channelCount: 1,
+                            leftChannel: parseInt(e.target.value),
+                          })}
+                          className={selectSmallClassName}
+                        >
+                          {bridgeChannelOptions.mono.map((ch) => (
+                            <option key={ch} value={ch}>
+                              {formatBridgeChannel(ch, bridgeChannels)}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                      </div>
+                    ) : (
+                      <div className="relative">
+                        <select
+                          value={`${bridgeChannelConfig.leftChannel}-${bridgeChannelConfig.rightChannel ?? bridgeChannelConfig.leftChannel + 1}`}
+                          onChange={(e) => {
+                            const [left, right] = e.target.value.split('-').map(Number);
+                            handleBridgeChannelConfigChange({
+                              channelCount: 2,
+                              leftChannel: left,
+                              rightChannel: right,
+                            });
+                          }}
+                          className={selectSmallClassName}
+                        >
+                          {bridgeChannelOptions.stereo.map(([left, right]) => (
+                            <option key={`${left}-${right}`} value={`${left}-${right}`}>
+                              {formatBridgeStereoPair(left, right, bridgeChannels)}
+                            </option>
+                          ))}
+                        </select>
+                        <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </>
+            ) : (
+              <>
+                {/* Browser Device Selection (fallback) */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Device</label>
+                  <div className="relative">
+                    <select
+                      value={track.audioSettings.inputDeviceId}
+                      onChange={(e) => handleSettingChange({ inputDeviceId: e.target.value })}
+                      className={selectClassName}
+                    >
+                      <option value="default">System Default</option>
+                      {inputDevices.map((device) => (
+                        <option key={device.deviceId} value={device.deviceId}>
+                          {device.label || `Input ${device.deviceId.slice(0, 8)}`}
+                          {device.channelCount && device.channelCount > 2 ? ` (${device.channelCount}ch)` : ''}
+                        </option>
+                      ))}
+                    </select>
+                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                  </div>
+                  {channelCount > 2 && (
+                    <p className="text-[10px] text-indigo-400">
+                      Multi-channel interface detected: {channelCount} channels available
+                    </p>
+                  )}
+                </div>
+
+                {/* Channel Selection */}
+                <div className="space-y-2">
+                  <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Channels</label>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={() => handleChannelConfigChange({
+                        channelCount: 1,
+                        leftChannel: track.audioSettings.channelConfig.leftChannel,
+                      })}
+                      className={cn(
+                        'p-2 rounded-lg border text-xs font-medium transition-all',
+                        track.audioSettings.channelConfig.channelCount === 1
+                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                          : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-zinc-400 hover:border-gray-300 dark:hover:border-white/20'
+                      )}
+                    >
+                      Mono
+                    </button>
+                    <button
+                      onClick={() => handleChannelConfigChange({
                         channelCount: 2,
-                        leftChannel: left,
-                        rightChannel: right,
-                      });
-                    }}
-                    className={selectSmallClassName}
-                  >
-                    {channelOptions.stereo.map(([left, right]) => (
-                      <option key={`${left}-${right}`} value={`${left}-${right}`}>
-                        {formatStereoPair(left, right)}
-                      </option>
-                    ))}
-                  </select>
-                  <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                        leftChannel: track.audioSettings.channelConfig.leftChannel,
+                        rightChannel: (track.audioSettings.channelConfig.leftChannel + 1) % channelCount,
+                      })}
+                      className={cn(
+                        'p-2 rounded-lg border text-xs font-medium transition-all',
+                        track.audioSettings.channelConfig.channelCount === 2
+                          ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400'
+                          : 'border-gray-200 dark:border-white/10 text-gray-600 dark:text-zinc-400 hover:border-gray-300 dark:hover:border-white/20'
+                      )}
+                    >
+                      Stereo
+                    </button>
+                  </div>
+
+                  {/* Mono Channel Select */}
+                  {track.audioSettings.channelConfig.channelCount === 1 && (
+                    <div className="relative">
+                      <select
+                        value={track.audioSettings.channelConfig.leftChannel}
+                        onChange={(e) => handleChannelConfigChange({
+                          channelCount: 1,
+                          leftChannel: parseInt(e.target.value),
+                        })}
+                        className={selectSmallClassName}
+                      >
+                        {channelOptions.mono.map((ch) => (
+                          <option key={ch} value={ch}>
+                            {formatChannel(ch)}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                    </div>
+                  )}
+
+                  {/* Stereo Pair Select */}
+                  {track.audioSettings.channelConfig.channelCount === 2 && (
+                    <div className="relative">
+                      <select
+                        value={`${track.audioSettings.channelConfig.leftChannel}-${track.audioSettings.channelConfig.rightChannel ?? track.audioSettings.channelConfig.leftChannel + 1}`}
+                        onChange={(e) => {
+                          const [left, right] = e.target.value.split('-').map(Number);
+                          handleChannelConfigChange({
+                            channelCount: 2,
+                            leftChannel: left,
+                            rightChannel: right,
+                          });
+                        }}
+                        className={selectSmallClassName}
+                      >
+                        {channelOptions.stereo.map(([left, right]) => (
+                          <option key={`${left}-${right}`} value={`${left}-${right}`}>
+                            {formatStereoPair(left, right)}
+                          </option>
+                        ))}
+                      </select>
+                      <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-500 dark:text-zinc-500 pointer-events-none" />
+                    </div>
+                  )}
                 </div>
-              )}
-            </div>
+              </>
+            )}
           </>
         )}
 
@@ -507,31 +688,33 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
         </div>
 
         {/* Input Level Test */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Level</label>
-            <button
-              onClick={testingInput ? stopTesting : testInput}
-              className={cn(
-                'px-2 py-1 text-[10px] font-medium rounded transition-colors',
-                testingInput
-                  ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
-                  : 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'
-              )}
-            >
-              {testingInput ? 'Stop' : 'Test Input'}
-            </button>
+        {!useBridgeForInput && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Level</label>
+              <button
+                onClick={testingInput ? stopTesting : testInput}
+                className={cn(
+                  'px-2 py-1 text-[10px] font-medium rounded transition-colors',
+                  testingInput
+                    ? 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
+                    : 'bg-indigo-500/20 text-indigo-400 hover:bg-indigo-500/30'
+                )}
+              >
+                {testingInput ? 'Stop' : 'Test Input'}
+              </button>
+            </div>
+            <div className="h-3 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
+              <div
+                className={cn(
+                  'h-full transition-all duration-75 rounded-full',
+                  inputLevel > 0.8 ? 'bg-red-500' : inputLevel > 0.5 ? 'bg-amber-500' : 'bg-emerald-500'
+                )}
+                style={{ width: `${inputLevel * 100}%` }}
+              />
+            </div>
           </div>
-          <div className="h-3 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
-            <div
-              className={cn(
-                'h-full transition-all duration-75 rounded-full',
-                inputLevel > 0.8 ? 'bg-red-500' : inputLevel > 0.5 ? 'bg-amber-500' : 'bg-emerald-500'
-              )}
-              style={{ width: `${inputLevel * 100}%` }}
-            />
-          </div>
-        </div>
+        )}
 
         {/* Direct Monitoring */}
         <div className="space-y-2">
@@ -569,46 +752,48 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
         </div>
 
 
-        {/* Advanced Settings */}
-        <details className="group">
-          <summary className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-zinc-500 cursor-pointer hover:text-gray-700 dark:hover:text-zinc-300">
-            <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
-            Advanced
-          </summary>
-          <div className="mt-3 space-y-3 pl-5">
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <label className="text-[10px] text-gray-500 dark:text-zinc-500">Sample Rate</label>
-                <select
-                  value={track.audioSettings.sampleRate}
-                  onChange={(e) => handleSettingChange({ sampleRate: parseInt(e.target.value) as 48000 | 44100 })}
-                  className={selectTinyClassName}
-                >
-                  <option value={48000}>48 kHz</option>
-                  <option value={44100}>44.1 kHz</option>
-                </select>
+        {/* Advanced Settings - only show when not using bridge */}
+        {!useBridgeForInput && (
+          <details className="group">
+            <summary className="flex items-center gap-2 text-xs font-medium text-gray-500 dark:text-zinc-500 cursor-pointer hover:text-gray-700 dark:hover:text-zinc-300">
+              <ChevronDown className="w-3 h-3 transition-transform group-open:rotate-180" />
+              Advanced
+            </summary>
+            <div className="mt-3 space-y-3 pl-5">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <label className="text-[10px] text-gray-500 dark:text-zinc-500">Sample Rate</label>
+                  <select
+                    value={track.audioSettings.sampleRate}
+                    onChange={(e) => handleSettingChange({ sampleRate: parseInt(e.target.value) as 48000 | 44100 })}
+                    className={selectTinyClassName}
+                  >
+                    <option value={48000}>48 kHz</option>
+                    <option value={44100}>44.1 kHz</option>
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] text-gray-500 dark:text-zinc-500">Buffer Size</label>
+                  <select
+                    value={track.audioSettings.bufferSize}
+                    onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 32 | 64 | 128 | 256 | 512 | 1024 })}
+                    className={selectTinyClassName}
+                  >
+                    <option value={32}>32 (ultra low)</option>
+                    <option value={64}>64 (very low)</option>
+                    <option value={128}>128 (low latency)</option>
+                    <option value={256}>256</option>
+                    <option value={512}>512</option>
+                    <option value={1024}>1024 (most stable)</option>
+                  </select>
+                </div>
               </div>
-              <div className="space-y-1">
-                <label className="text-[10px] text-gray-500 dark:text-zinc-500">Buffer Size</label>
-                <select
-                  value={track.audioSettings.bufferSize}
-                  onChange={(e) => handleSettingChange({ bufferSize: parseInt(e.target.value) as 32 | 64 | 128 | 256 | 512 | 1024 })}
-                  className={selectTinyClassName}
-                >
-                  <option value={32}>32 (ultra low)</option>
-                  <option value={64}>64 (very low)</option>
-                  <option value={128}>128 (low latency)</option>
-                  <option value={256}>256</option>
-                  <option value={512}>512</option>
-                  <option value={1024}>1024 (most stable)</option>
-                </select>
-              </div>
+              <p className="text-[10px] text-gray-500 dark:text-zinc-600">
+                Lower buffer = lower latency but may cause audio glitches
+              </p>
             </div>
-            <p className="text-[10px] text-gray-500 dark:text-zinc-600">
-              Lower buffer = lower latency but may cause audio glitches
-            </p>
-          </div>
-        </details>
+          </details>
+        )}
       </div>
     </div>
   );
