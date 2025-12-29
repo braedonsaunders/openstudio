@@ -26,12 +26,18 @@ interface LoopCategoryManagerProps {
 const EMOJI_OPTIONS = ['🥁', '🎸', '🎹', '🎵', '🎤', '🎺', '🎻', '🎧', '🔊', '⚡', '✨', '🎶'];
 
 export function LoopCategoryManager({ categories, onRefresh }: LoopCategoryManagerProps) {
+  const [localCategories, setLocalCategories] = useState<LoopCategoryInfo[]>(categories);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set(categories.map(c => c.id)));
   const [editingCategory, setEditingCategory] = useState<LoopCategoryInfo | null>(null);
   const [editingSubcategory, setEditingSubcategory] = useState<{ categoryId: string; subcategory: LoopSubcategory | null } | null>(null);
   const [showCategoryModal, setShowCategoryModal] = useState(false);
   const [showSubcategoryModal, setShowSubcategoryModal] = useState(false);
   const [showDeleteModal, setShowDeleteModal] = useState<{ type: 'category' | 'subcategory'; id: string; parentId?: string } | null>(null);
+
+  // Sync local state when props change (initial load)
+  useEffect(() => {
+    setLocalCategories(categories);
+  }, [categories]);
 
   // Category form state
   const [categoryId, setCategoryId] = useState('');
@@ -89,6 +95,10 @@ export function LoopCategoryManager({ categories, onRefresh }: LoopCategoryManag
           name: categoryName,
           icon: categoryIcon,
         });
+        // Update local state instead of reloading
+        setLocalCategories(prev => prev.map(c =>
+          c.id === editingCategory.id ? { ...c, name: categoryName, icon: categoryIcon } : c
+        ));
       } else {
         const id = categoryId || categoryName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
         await adminPost('/api/admin/loops/categories', {
@@ -96,9 +106,16 @@ export function LoopCategoryManager({ categories, onRefresh }: LoopCategoryManag
           name: categoryName,
           icon: categoryIcon,
         });
+        // Add to local state instead of reloading
+        const newCategory: LoopCategoryInfo = {
+          id,
+          name: categoryName,
+          icon: categoryIcon,
+          subcategories: [],
+        };
+        setLocalCategories(prev => [...prev, newCategory]);
       }
       setShowCategoryModal(false);
-      onRefresh();
     } catch (error) {
       console.error('Failed to save category:', error);
     }
@@ -112,6 +129,15 @@ export function LoopCategoryManager({ categories, onRefresh }: LoopCategoryManag
         await adminPatch(`/api/admin/loops/subcategories?id=${editingSubcategory.subcategory.id}`, {
           name: subcategoryName,
         });
+        // Update local state instead of reloading
+        setLocalCategories(prev => prev.map(c =>
+          c.id === editingSubcategory.categoryId ? {
+            ...c,
+            subcategories: c.subcategories.map(s =>
+              s.id === editingSubcategory.subcategory!.id ? { ...s, name: subcategoryName } : s
+            ),
+          } : c
+        ));
       } else {
         const id = subcategoryId || subcategoryName.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '');
         await adminPost('/api/admin/loops/subcategories', {
@@ -119,9 +145,20 @@ export function LoopCategoryManager({ categories, onRefresh }: LoopCategoryManag
           category_id: editingSubcategory.categoryId,
           name: subcategoryName,
         });
+        // Add to local state instead of reloading
+        const newSubcategory: LoopSubcategory = {
+          id,
+          name: subcategoryName,
+          loopCount: 0,
+        };
+        setLocalCategories(prev => prev.map(c =>
+          c.id === editingSubcategory.categoryId ? {
+            ...c,
+            subcategories: [...c.subcategories, newSubcategory],
+          } : c
+        ));
       }
       setShowSubcategoryModal(false);
-      onRefresh();
     } catch (error) {
       console.error('Failed to save subcategory:', error);
     }
@@ -133,11 +170,19 @@ export function LoopCategoryManager({ categories, onRefresh }: LoopCategoryManag
     try {
       if (showDeleteModal.type === 'category') {
         await adminDelete(`/api/admin/loops/categories?id=${showDeleteModal.id}`);
+        // Update local state instead of reloading
+        setLocalCategories(prev => prev.filter(c => c.id !== showDeleteModal.id));
       } else {
         await adminDelete(`/api/admin/loops/subcategories?id=${showDeleteModal.id}`);
+        // Update local state instead of reloading
+        setLocalCategories(prev => prev.map(c =>
+          c.id === showDeleteModal.parentId ? {
+            ...c,
+            subcategories: c.subcategories.filter(s => s.id !== showDeleteModal.id),
+          } : c
+        ));
       }
       setShowDeleteModal(null);
-      onRefresh();
     } catch (error) {
       console.error('Failed to delete:', error);
     }
@@ -158,7 +203,7 @@ export function LoopCategoryManager({ categories, onRefresh }: LoopCategoryManag
 
       {/* Category List */}
       <div className="space-y-4">
-        {categories.map((category, catIndex) => (
+        {localCategories.map((category, catIndex) => (
           <Card key={category.id} className="overflow-hidden">
             <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-800">
               <button

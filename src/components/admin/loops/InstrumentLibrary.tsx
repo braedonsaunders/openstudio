@@ -82,7 +82,9 @@ export function InstrumentLibrary({ categories, onRefresh }: InstrumentLibraryPr
       const newId = `${instrumentId}-copy-${Date.now()}`;
       const res = await adminPost(`/api/admin/instruments?action=duplicate&id=${instrumentId}&newId=${newId}`, {});
       if (res.ok) {
-        loadInstruments();
+        // Get the duplicated instrument from response and add to state
+        const duplicatedInstrument = await res.json();
+        setInstruments(prev => [...prev, duplicatedInstrument]);
       }
     } catch (error) {
       console.error('Failed to duplicate instrument:', error);
@@ -94,7 +96,8 @@ export function InstrumentLibrary({ categories, onRefresh }: InstrumentLibraryPr
     try {
       const res = await adminDelete(`/api/admin/instruments?id=${instrumentToDelete}`);
       if (res.ok) {
-        loadInstruments();
+        // Update local state instead of reloading
+        setInstruments(prev => prev.filter(i => i.id !== instrumentToDelete));
         setShowDeleteModal(false);
         setInstrumentToDelete(null);
       }
@@ -109,7 +112,10 @@ export function InstrumentLibrary({ categories, onRefresh }: InstrumentLibraryPr
         is_active: !instrument.is_active,
       });
       if (res.ok) {
-        loadInstruments();
+        // Update local state instead of reloading
+        setInstruments(prev => prev.map(i =>
+          i.id === instrument.id ? { ...i, is_active: !i.is_active } : i
+        ));
       }
     } catch (error) {
       console.error('Failed to toggle instrument active state:', error);
@@ -134,7 +140,22 @@ export function InstrumentLibrary({ categories, onRefresh }: InstrumentLibraryPr
           drum_map: instrumentData.drumMap,
         });
         if (res.ok) {
-          loadInstruments();
+          // Update local state instead of reloading
+          setInstruments(prev => prev.map(i =>
+            i.id === selectedInstrument.id ? {
+              ...i,
+              name: instrumentData.name || i.name,
+              category: instrumentData.category || i.category,
+              type: instrumentData.type || i.type,
+              icon: instrumentData.icon || i.icon,
+              description: instrumentData.description || i.description,
+              tags: instrumentData.tags || i.tags,
+              layout: instrumentData.layout || i.layout,
+              noteRange: instrumentData.noteRange || i.noteRange,
+              synthConfig: instrumentData.synthConfig || i.synthConfig,
+              drumMap: instrumentData.drumMap || i.drumMap,
+            } : i
+          ));
           setShowEditor(false);
         }
       } else {
@@ -155,9 +176,10 @@ export function InstrumentLibrary({ categories, onRefresh }: InstrumentLibraryPr
           drum_map: instrumentData.drumMap,
         });
         if (res.ok) {
-          loadInstruments();
+          // Add to local state instead of reloading
+          const newInstrument = await res.json();
+          setInstruments(prev => [...prev, newInstrument]);
           setShowEditor(false);
-          onRefresh();
         }
       }
     } catch (error) {
