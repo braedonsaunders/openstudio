@@ -96,6 +96,9 @@ export class AudioEngine {
       latencyHint: 0,
     });
 
+    // Install console warning interceptor to detect BiquadFilterNode errors
+    this.installFilterErrorDetection();
+
     // iOS Safari requires explicit resume after user interaction
     // The AudioContext starts in 'suspended' state on iOS and must be resumed
     if (this.audioContext.state === 'suspended') {
@@ -1266,6 +1269,61 @@ export class AudioEngine {
     this.recoverFromAudioError();
   }
 
+  // Original console.warn reference for cleanup
+  private originalConsoleWarn: typeof console.warn | null = null;
+  private filterErrorCount = 0;
+  private filterErrorDebounceTimeout: NodeJS.Timeout | null = null;
+
+  // Install console warning interceptor to detect BiquadFilterNode errors immediately
+  private installFilterErrorDetection(): void {
+    // Only install once
+    if (this.originalConsoleWarn) return;
+
+    this.originalConsoleWarn = console.warn.bind(console);
+    const self = this;
+
+    console.warn = function (...args: unknown[]) {
+      // Check if this is a BiquadFilterNode error
+      const message = args[0];
+      if (typeof message === 'string' && message.includes('BiquadFilterNode') && message.includes('state is bad')) {
+        self.filterErrorCount++;
+
+        // Debounce recovery - wait for errors to stop before recovering
+        if (self.filterErrorDebounceTimeout) {
+          clearTimeout(self.filterErrorDebounceTimeout);
+        }
+
+        self.filterErrorDebounceTimeout = setTimeout(() => {
+          console.log(`[AudioEngine] Detected ${self.filterErrorCount} BiquadFilterNode errors, triggering recovery...`);
+          self.filterErrorCount = 0;
+
+          const now = Date.now();
+          if (now - self.lastRecoveryTime > AudioEngine.RECOVERY_COOLDOWN_MS) {
+            self.recoverFromAudioError();
+            self.lastRecoveryTime = now;
+          }
+        }, 100); // Wait 100ms for errors to stop
+      }
+
+      // Call original console.warn
+      self.originalConsoleWarn!.apply(console, args);
+    };
+
+    console.log('[AudioEngine] BiquadFilterNode error detection installed');
+  }
+
+  // Uninstall console warning interceptor
+  private uninstallFilterErrorDetection(): void {
+    if (this.originalConsoleWarn) {
+      console.warn = this.originalConsoleWarn;
+      this.originalConsoleWarn = null;
+    }
+    if (this.filterErrorDebounceTimeout) {
+      clearTimeout(this.filterErrorDebounceTimeout);
+      this.filterErrorDebounceTimeout = null;
+    }
+  }
+
   async resume(): Promise<void> {
     if (this.audioContext?.state === 'suspended') {
       await this.audioContext.resume();
@@ -1273,6 +1331,9 @@ export class AudioEngine {
   }
 
   dispose(): void {
+    // Uninstall console warning interceptor
+    this.uninstallFilterErrorDetection();
+
     if (this.levelUpdateInterval) {
       clearInterval(this.levelUpdateInterval);
       this.levelUpdateInterval = null;
