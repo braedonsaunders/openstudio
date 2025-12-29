@@ -8,6 +8,17 @@ import {
   getNativeBridgeDownloadUrl,
 } from '@/lib/audio/native-bridge';
 
+interface BridgeDevice {
+  id: string;
+  name: string;
+  isInput: boolean;
+  isOutput: boolean;
+  channels: { index: number; name: string }[];
+  sampleRates: number[];
+  isDefault: boolean;
+  driverType: string;
+}
+
 interface NativeBridgeState {
   // Connection
   isAvailable: boolean | null; // null = checking
@@ -29,6 +40,10 @@ interface NativeBridgeState {
     output: number;
     outputPeak: number;
   };
+
+  // Devices
+  inputDevices: BridgeDevice[];
+  outputDevices: BridgeDevice[];
 }
 
 export function useNativeBridge() {
@@ -39,6 +54,8 @@ export function useNativeBridge() {
     isRunning: false,
     latency: { input: 0, output: 0, total: 0 },
     levels: { input: 0, inputPeak: 0, output: 0, outputPeak: 0 },
+    inputDevices: [],
+    outputDevices: [],
   });
 
   // Check availability on mount
@@ -72,6 +89,8 @@ export function useNativeBridge() {
         isConnected: true,
         driverType: data.driverType,
       }));
+      // Request devices when connected
+      nativeBridge.getDevices();
     };
 
     const handleDisconnected = () => {
@@ -80,6 +99,8 @@ export function useNativeBridge() {
         isConnected: false,
         isRunning: false,
         driverType: null,
+        inputDevices: [],
+        outputDevices: [],
       }));
     };
 
@@ -117,16 +138,26 @@ export function useNativeBridge() {
       }));
     };
 
+    const handleDevices = (data: { inputs: BridgeDevice[]; outputs: BridgeDevice[] }) => {
+      setState((prev) => ({
+        ...prev,
+        inputDevices: data.inputs,
+        outputDevices: data.outputs,
+      }));
+    };
+
     nativeBridge.on('connected', handleConnected);
     nativeBridge.on('disconnected', handleDisconnected);
     nativeBridge.on('audioStatus', handleAudioStatus);
     nativeBridge.on('levels', handleLevels);
+    nativeBridge.on('devices', handleDevices);
 
     return () => {
       nativeBridge.off('connected', handleConnected);
       nativeBridge.off('disconnected', handleDisconnected);
       nativeBridge.off('audioStatus', handleAudioStatus);
       nativeBridge.off('levels', handleLevels);
+      nativeBridge.off('devices', handleDevices);
     };
   }, []);
 
@@ -180,6 +211,27 @@ export function useNativeBridge() {
     }
   }, [state.isConnected]);
 
+  // Refresh devices
+  const refreshDevices = useCallback(() => {
+    if (state.isConnected) {
+      nativeBridge.getDevices();
+    }
+  }, [state.isConnected]);
+
+  // Set input device
+  const setInputDevice = useCallback((deviceId: string) => {
+    if (state.isConnected) {
+      nativeBridge.setInputDevice(deviceId);
+    }
+  }, [state.isConnected]);
+
+  // Set output device
+  const setOutputDevice = useCallback((deviceId: string) => {
+    if (state.isConnected) {
+      nativeBridge.setOutputDevice(deviceId);
+    }
+  }, [state.isConnected]);
+
   return {
     ...state,
     bridge: nativeBridge,
@@ -189,5 +241,8 @@ export function useNativeBridge() {
     getDownloadUrl,
     startAudio,
     stopAudio,
+    refreshDevices,
+    setInputDevice,
+    setOutputDevice,
   };
 }

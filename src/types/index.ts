@@ -242,7 +242,7 @@ export interface EffectPreset {
 
 // Per-track audio settings
 export interface TrackAudioSettings {
-  inputMode: 'microphone' | 'application';
+  inputMode: 'microphone' | 'application' | 'native';
   inputDeviceId: string;
   sampleRate: 48000 | 44100;
   bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
