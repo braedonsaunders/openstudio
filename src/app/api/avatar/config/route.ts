@@ -69,12 +69,20 @@ export async function GET(req: NextRequest) {
     // - Components with NO rules are unlocked by default
     // - Components with rules need at least one rule satisfied
     // - Manually unlocked components are always unlocked
+    console.log('[avatar/config] Library data:', {
+      components: library.components.length,
+      componentUnlocks: library.componentUnlocks.length,
+      unlockRules: library.unlockRules.length,
+    });
+
     const unlockedIds = getUnlockedComponentIds(
       library.components,
       library.componentUnlocks,
       library.unlockRules,
       unlockContext
     );
+
+    console.log('[avatar/config] Evaluated unlocked:', unlockedIds.size);
 
     return NextResponse.json({
       config,
