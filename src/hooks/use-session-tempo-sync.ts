@@ -6,6 +6,7 @@ import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-t
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useRoomStore } from '@/stores/room-store';
 import { useSongsStore } from '@/stores/songs-store';
+import { useAnalysisStore } from '@/stores/analysis-store';
 
 /**
  * Hook to synchronize session tempo across all stores and track sources.
@@ -56,8 +57,8 @@ export function useSessionTempoSync(): void {
   // Sync analyzer data to session tempo store
   // ==========================================================================
   useEffect(() => {
-    // Subscribe to room store synced analysis changes
-    const unsubscribe = useRoomStore.subscribe(
+    // Subscribe to analysis store synced analysis changes
+    const unsubscribe = useAnalysisStore.subscribe(
       (state) => state.syncedAnalysis,
       (syncedAnalysis) => {
         // Use getState() to avoid dependency on store functions
