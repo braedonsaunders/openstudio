@@ -501,3 +501,43 @@ export async function uploadAvatarFromUrl(
   const buffer = Buffer.from(await response.arrayBuffer());
   return uploadAvatarComponent(buffer, categoryId, componentId);
 }
+
+// ============================================
+// USER AVATAR IMAGE STORAGE
+// ============================================
+
+/**
+ * Upload a user's generated avatar image (full-body, headshot, or thumbnail)
+ * Takes a base64 data URL and uploads to R2
+ */
+export async function uploadUserAvatarImage(
+  userId: string,
+  dataUrl: string,
+  imageType: 'full-body' | 'headshot' | 'thumb-xs' | 'thumb-sm' | 'thumb-md' | 'thumb-lg'
+): Promise<{ key: string; url: string }> {
+  // Extract base64 data from data URL
+  const matches = dataUrl.match(/^data:image\/(\w+);base64,(.+)$/);
+  if (!matches) {
+    throw new Error('Invalid data URL format');
+  }
+
+  const [, , base64Data] = matches;
+  const buffer = Buffer.from(base64Data, 'base64');
+
+  const timestamp = Date.now();
+  const key = `avatars/users/${userId}/${imageType}-${timestamp}.png`;
+
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: R2_BUCKET_NAME,
+      Key: key,
+      Body: buffer,
+      ContentType: 'image/png',
+      CacheControl: 'public, max-age=86400', // Cache for 1 day
+    })
+  );
+
+  const url = await getAvatarUrl(key);
+
+  return { key, url };
+}

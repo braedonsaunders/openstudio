@@ -9,6 +9,13 @@ import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
 import { AvatarEditor } from '@/components/avatar/AvatarEditor';
 import { SpriteAvatarEditor } from '@/components/avatar/SpriteAvatarEditor';
+import dynamic from 'next/dynamic';
+
+// Dynamically import canvas editor to avoid SSR issues with Konva
+const AvatarCanvasEditor = dynamic(
+  () => import('@/components/avatar/canvas').then((mod) => mod.AvatarCanvasEditor),
+  { ssr: false }
+);
 import { SavedTrackCard } from '@/components/settings/SavedTrackCard';
 import { SavedTrackEditor } from '@/components/settings/SavedTrackEditor';
 import { InstrumentIcon } from '@/components/ui/instrument-icon';
@@ -61,7 +68,7 @@ export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<Tab>('profile');
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [avatarEditorType, setAvatarEditorType] = useState<'classic' | 'sprite'>('sprite');
+  const [avatarEditorType, setAvatarEditorType] = useState<'canvas' | 'classic' | 'sprite'>('canvas');
 
   // Profile form state
   const [displayName, setDisplayName] = useState(profile?.displayName || '');
@@ -279,6 +286,16 @@ export default function SettingsPage() {
                   <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Customize Avatar</h2>
                   <div className="flex items-center gap-2 bg-gray-100 dark:bg-gray-800 rounded-lg p-1">
                     <button
+                      onClick={() => setAvatarEditorType('canvas')}
+                      className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
+                        avatarEditorType === 'canvas'
+                          ? 'bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm'
+                          : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
+                      }`}
+                    >
+                      Canvas
+                    </button>
+                    <button
                       onClick={() => setAvatarEditorType('sprite')}
                       className={`px-3 py-1.5 rounded-md text-sm font-medium transition-colors ${
                         avatarEditorType === 'sprite'
@@ -286,7 +303,7 @@ export default function SettingsPage() {
                           : 'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300'
                       }`}
                     >
-                      Sprite
+                      Simple
                     </button>
                     <button
                       onClick={() => setAvatarEditorType('classic')}
@@ -300,7 +317,15 @@ export default function SettingsPage() {
                     </button>
                   </div>
                 </div>
-                {avatarEditorType === 'sprite' ? (
+                {avatarEditorType === 'canvas' ? (
+                  <AvatarCanvasEditor
+                    userId={profile.id}
+                    onSave={() => {
+                      setSaveSuccess(true);
+                      setTimeout(() => setSaveSuccess(false), 2000);
+                    }}
+                  />
+                ) : avatarEditorType === 'sprite' ? (
                   <SpriteAvatarEditor
                     userId={profile.id}
                     onSave={() => {
