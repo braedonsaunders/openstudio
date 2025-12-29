@@ -417,12 +417,20 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         // Set the active config from the track
         lyriaStore.setActiveConfig(track.ref.lyriaConfig, currentSong.id, track.ref.id);
 
-        // Connect and play
-        try {
-          await lyriaStore.connect();
+        // Only connect if not already connected
+        const state = lyriaStore.sessionState;
+        if (state === 'disconnected' || state === 'error') {
+          try {
+            await lyriaStore.connect();
+          } catch (err) {
+            console.error('[DAWLayout] Failed to connect Lyria:', err);
+            break;
+          }
+        }
+
+        // Play (or resume) if connected
+        if (lyriaStore.sessionState === 'connected' || lyriaStore.sessionState === 'paused') {
           lyriaStore.play(track.ref.lyriaConfig);
-        } catch (err) {
-          console.error('[DAWLayout] Failed to start Lyria:', err);
         }
         break; // Only one Lyria track per song
       }
