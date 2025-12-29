@@ -89,6 +89,19 @@ export class AudioEngine {
       latencyHint: 0,
     });
 
+    // iOS Safari requires explicit resume after user interaction
+    // The AudioContext starts in 'suspended' state on iOS and must be resumed
+    if (this.audioContext.state === 'suspended') {
+      console.log('[AudioEngine] AudioContext suspended, attempting resume...');
+      try {
+        await this.audioContext.resume();
+        console.log('[AudioEngine] AudioContext resumed successfully');
+      } catch (err) {
+        console.warn('[AudioEngine] Failed to resume AudioContext:', err);
+        // Continue anyway - will be resumed on user interaction (e.g., getUserMedia)
+      }
+    }
+
     // Create master gain node
     this.masterGain = this.audioContext.createGain();
 

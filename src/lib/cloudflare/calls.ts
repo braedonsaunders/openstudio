@@ -53,6 +53,36 @@ import { QUALITY_PRESETS, getRecommendedPreset } from '@/lib/audio/quality-prese
 import { useSessionTempoStore } from '@/stores/session-tempo-store';
 
 /**
+ * Fetch with timeout using AbortController
+ * Prevents hanging on slow/failed network requests (especially on iOS Safari)
+ */
+const DEFAULT_FETCH_TIMEOUT = 10000; // 10 seconds
+
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs: number = DEFAULT_FETCH_TIMEOUT
+): Promise<Response> {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      ...options,
+      signal: controller.signal,
+    });
+    return response;
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error(`Fetch timeout after ${timeoutMs}ms: ${url}`);
+    }
+    throw err;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+/**
  * Track type - can be any string identifier for the audio source.
  * Common examples: 'mic', 'guitar', 'bass', 'keys', 'drums', 'violin', 'sax', 'synth', 'loop', etc.
  * This is intentionally flexible to support any instrument or audio source.
@@ -362,7 +392,7 @@ export class CloudflareCalls {
    */
   async joinRoom(stream?: MediaStream, trackType: AudioTrackType = 'mic', trackLabel?: string): Promise<void> {
     // Create a new Cloudflare Calls session
-    const sessionResponse = await fetch('/api/cloudflare/session', {
+    const sessionResponse = await fetchWithTimeout('/api/cloudflare/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ action: 'create', roomId: this.roomId, userId: this.userId }),
@@ -423,7 +453,7 @@ export class CloudflareCalls {
       }
 
       // Push local track to Cloudflare via our backend
-      const pushResponse = await fetch('/api/cloudflare/session', {
+      const pushResponse = await fetchWithTimeout('/api/cloudflare/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -480,7 +510,7 @@ export class CloudflareCalls {
 
   private async pullRemoteTracks(): Promise<void> {
     // Get list of remote tracks in the room
-    const listResponse = await fetch('/api/cloudflare/session', {
+    const listResponse = await fetchWithTimeout('/api/cloudflare/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -538,7 +568,7 @@ export class CloudflareCalls {
       if (!localDescription) continue;
 
       try {
-        const pullResponse = await fetch('/api/cloudflare/session', {
+        const pullResponse = await fetchWithTimeout('/api/cloudflare/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -644,7 +674,7 @@ export class CloudflareCalls {
     }
 
     // Push track to Cloudflare
-    const pushResponse = await fetch('/api/cloudflare/session', {
+    const pushResponse = await fetchWithTimeout('/api/cloudflare/session', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -785,7 +815,7 @@ export class CloudflareCalls {
     try {
       const beforeTime = Date.now();
 
-      const response = await fetch('/api/cloudflare/session', {
+      const response = await fetchWithTimeout('/api/cloudflare/session', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -794,7 +824,7 @@ export class CloudflareCalls {
           roomId: this.roomId,
           clientTime: beforeTime,
         }),
-      });
+      }, 5000); // Shorter timeout for clock sync
 
       if (response.ok) {
         const data = await response.json();
