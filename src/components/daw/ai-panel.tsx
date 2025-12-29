@@ -50,11 +50,10 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   const { canGenerateMusic } = useAIPermissions();
 
   // Audio engine for routing Lyria through master channel
-  const {
-    addExternalAudioSource,
-    removeExternalAudioSource,
-    setExternalAudioVolume,
-  } = useAudioEngine();
+  // Use refs to store functions to avoid dependency issues in useEffect/useCallback
+  const audioEngine = useAudioEngine();
+  const audioEngineRef = useRef(audioEngine);
+  audioEngineRef.current = audioEngine;
 
   // Use session tempo store as single source of truth for BPM/key
   const roomBpm = useSessionTempoStore(selectTempo);
@@ -110,7 +109,7 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
 
     return () => {
       // Cleanup: remove from AudioEngine and stop sharing
-      removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
+      audioEngineRef.current.removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
 
       if (lyriaTrackIdRef.current && getCloudflareRef) {
         const cloudflare = getCloudflareRef();
@@ -119,7 +118,7 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
       }
       session.disconnect();
     };
-  }, [getCloudflareRef, removeExternalAudioSource]);
+  }, [getCloudflareRef]);
 
   // Update session when room BPM changes
   useEffect(() => {
@@ -226,7 +225,7 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
       // Connect Lyria audio to AudioEngine's master bus
       const outputStream = sessionRef.current.getOutputStream();
       if (outputStream) {
-        addExternalAudioSource(LYRIA_AUDIO_SOURCE_ID, outputStream, volume);
+        audioEngineRef.current.addExternalAudioSource(LYRIA_AUDIO_SOURCE_ID, outputStream, volume);
         console.log('[Lyria] Audio routed through AudioEngine master');
       }
 
@@ -235,16 +234,16 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [roomBpm, roomKey, roomKeyScale, density, brightness, drums, bass, temperature, volume, shareAudioWithRoom, addExternalAudioSource]);
+  }, [roomBpm, roomKey, roomKeyScale, density, brightness, drums, bass, temperature, volume, shareAudioWithRoom]);
 
   const handleDisconnect = useCallback(async () => {
     // Remove from AudioEngine
-    removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
+    audioEngineRef.current.removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
 
     // Stop sharing audio before disconnecting
     await stopSharingAudio();
     sessionRef.current?.disconnect();
-  }, [stopSharingAudio, removeExternalAudioSource]);
+  }, [stopSharingAudio]);
 
   const handlePlay = useCallback(() => {
     if (!sessionRef.current) return;
@@ -268,8 +267,8 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
     setVolume(value);
     sessionRef.current?.setVolume(value);
     // Also update AudioEngine external source volume
-    setExternalAudioVolume(LYRIA_AUDIO_SOURCE_ID, value);
-  }, [setExternalAudioVolume]);
+    audioEngineRef.current.setExternalAudioVolume(LYRIA_AUDIO_SOURCE_ID, value);
+  }, []);
 
   // Connection state helpers
   const isConnected = sessionState === 'connected' || sessionState === 'playing' || sessionState === 'paused';
