@@ -121,7 +121,7 @@ export function AIPanel() {
     const songName = `Lyria - ${styleName}`;
 
     // Create a new song
-    const song = createSong(roomId, songName, currentUser.id, currentUser.userName);
+    const song = createSong(roomId, songName, currentUser.id, currentUser.name);
 
     // Add a Lyria track to it
     addTrackToSong(song.id, {
