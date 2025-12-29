@@ -105,16 +105,9 @@ export function useCanvasExport() {
     });
   }, []);
 
-  // Export all avatar images from the Konva stage (with centering)
-  const exportFromStage = useCallback(async (
-    canvasData?: CanvasData,
-    components?: Map<string, AvatarComponent>
-  ): Promise<ExportedAvatars | null> => {
-    // If we have canvas data and components, use the canvas data export for proper centering
-    if (canvasData && components) {
-      return exportFromCanvasDataInternal(canvasData, components);
-    }
-
+  // Export all avatar images directly from the Konva stage
+  // This uses Konva's native rendering which handles all transforms correctly
+  const exportFromStage = useCallback(async (): Promise<ExportedAvatars | null> => {
     const stage = stageRef.current;
     if (!stage) {
       console.error('Stage ref not set');
@@ -122,8 +115,7 @@ export function useCanvasExport() {
     }
 
     try {
-      // Generate full body at 512x512 (transparent background)
-      // Note: This path doesn't center - use exportFromCanvasData for proper centering
+      // Use Konva's native export - it handles all transforms correctly
       const fullBodyDataUrl = stage.toDataURL({
         pixelRatio: 1,
         mimeType: 'image/png',
