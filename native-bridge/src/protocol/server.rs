@@ -1,31 +1,31 @@
 //! WebSocket server for browser communication
 
-use super::{BrowserMessage, NativeMessage};
+use super::{BrowserMessage, NativeMessage, AudioMessageHeader};
 use crate::AppState;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{info, warn, error};
 
 pub struct BridgeServer {
-    state: Arc<RwLock<AppState>>,
+    state: Arc<Mutex<AppState>>,
 }
 
 impl BridgeServer {
-    pub fn new(state: Arc<RwLock<AppState>>) -> Self {
+    pub fn new(state: Arc<Mutex<AppState>>) -> Self {
         Self { state }
     }
 
     pub async fn run(&self, addr: &str) -> Result<()> {
         let listener = TcpListener::bind(addr).await?;
-        info!("🌐 WebSocket server listening on ws://{}", addr);
+        info!("WebSocket server listening on ws://{}", addr);
 
         while let Ok((stream, peer)) = listener.accept().await {
-            info!("📱 Browser connected from {}", peer);
+            info!("Browser connected from {}", peer);
             let state = self.state.clone();
 
             tokio::spawn(async move {
@@ -39,7 +39,7 @@ impl BridgeServer {
     }
 }
 
-async fn handle_connection(stream: TcpStream, state: Arc<RwLock<AppState>>) -> Result<()> {
+async fn handle_connection(stream: TcpStream, state: Arc<Mutex<AppState>>) -> Result<()> {
     let ws_stream = accept_async(stream).await?;
     let (mut write, mut read) = ws_stream.split();
 
@@ -59,9 +59,8 @@ async fn handle_connection(stream: TcpStream, state: Arc<RwLock<AppState>>) -> R
             tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
 
             let levels = {
-                let app = state_clone.read().await;
-                let engine = app.audio_engine.read().await;
-                let audio_levels = engine.get_levels().await;
+                let app = state_clone.lock().await;
+                let audio_levels = app.audio_engine.get_levels();
 
                 NativeMessage::Levels {
                     input_level: audio_levels.input_level,
@@ -132,22 +131,21 @@ async fn handle_connection(stream: TcpStream, state: Arc<RwLock<AppState>>) -> R
 
     // Cleanup
     {
-        let app = state.read().await;
-        let mut engine = app.audio_engine.write().await;
-        let _ = engine.stop().await;
+        let mut app = state.lock().await;
+        let _ = app.audio_engine.stop();
     }
 
     Ok(())
 }
 
-async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> Option<NativeMessage> {
+async fn handle_message(msg: BrowserMessage, state: &Arc<Mutex<AppState>>) -> Option<NativeMessage> {
     match msg {
         BrowserMessage::Hello { version, room_id, user_id } => {
             info!("Browser hello: v{}, room={:?}, user={:?}", version, room_id, user_id);
 
             // Update state with room/user info
             {
-                let mut app = state.write().await;
+                let mut app = state.lock().await;
                 app.connected_room = room_id;
                 app.user_id = user_id;
             }
@@ -168,20 +166,18 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
         }
 
         BrowserMessage::GetDevices => {
-            let app = state.read().await;
-            let engine = app.audio_engine.read().await;
+            let app = state.lock().await;
 
-            let inputs = engine.get_input_devices().unwrap_or_default();
-            let outputs = engine.get_output_devices().unwrap_or_default();
+            let inputs = app.audio_engine.get_input_devices().unwrap_or_default();
+            let outputs = app.audio_engine.get_output_devices().unwrap_or_default();
 
             Some(NativeMessage::Devices { inputs, outputs })
         }
 
         BrowserMessage::SetInputDevice { device_id } => {
-            let app = state.read().await;
-            let mut engine = app.audio_engine.write().await;
+            let mut app = state.lock().await;
 
-            match engine.set_input_device(&device_id).await {
+            match app.audio_engine.set_input_device(&device_id) {
                 Ok(_) => None,
                 Err(e) => Some(NativeMessage::Error {
                     code: "DEVICE_ERROR".to_string(),
@@ -191,10 +187,9 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
         }
 
         BrowserMessage::SetOutputDevice { device_id } => {
-            let app = state.read().await;
-            let mut engine = app.audio_engine.write().await;
+            let mut app = state.lock().await;
 
-            match engine.set_output_device(&device_id).await {
+            match app.audio_engine.set_output_device(&device_id) {
                 Ok(_) => None,
                 Err(e) => Some(NativeMessage::Error {
                     code: "DEVICE_ERROR".to_string(),
@@ -204,10 +199,9 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
         }
 
         BrowserMessage::SetChannelConfig { config } => {
-            let app = state.read().await;
-            let mut engine = app.audio_engine.write().await;
+            let mut app = state.lock().await;
 
-            match engine.set_channel_config(config).await {
+            match app.audio_engine.set_channel_config(config) {
                 Ok(_) => None,
                 Err(e) => Some(NativeMessage::Error {
                     code: "CONFIG_ERROR".to_string(),
@@ -217,12 +211,11 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
         }
 
         BrowserMessage::StartAudio => {
-            let app = state.read().await;
-            let mut engine = app.audio_engine.write().await;
+            let mut app = state.lock().await;
 
-            match engine.start().await {
+            match app.audio_engine.start() {
                 Ok(_) => {
-                    let latency = engine.get_latency_info();
+                    let latency = app.audio_engine.get_latency_info();
                     Some(NativeMessage::AudioStatus {
                         is_running: true,
                         input_latency_ms: latency.input_latency_ms,
@@ -238,10 +231,9 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
         }
 
         BrowserMessage::StopAudio => {
-            let app = state.read().await;
-            let mut engine = app.audio_engine.write().await;
+            let mut app = state.lock().await;
 
-            let _ = engine.stop().await;
+            let _ = app.audio_engine.stop();
 
             Some(NativeMessage::AudioStatus {
                 is_running: false,
@@ -252,8 +244,7 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
         }
 
         BrowserMessage::SetBufferSize { size } => {
-            let app = state.read().await;
-            let mut engine = app.audio_engine.write().await;
+            let mut app = state.lock().await;
 
             let buffer_size = match size {
                 32 => crate::audio::BufferSize::Samples32,
@@ -265,7 +256,7 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
                 _ => crate::audio::BufferSize::Samples128,
             };
 
-            match engine.set_buffer_size(buffer_size).await {
+            match app.audio_engine.set_buffer_size(buffer_size) {
                 Ok(_) => None,
                 Err(e) => Some(NativeMessage::Error {
                     code: "CONFIG_ERROR".to_string(),
@@ -274,32 +265,28 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
             }
         }
 
-        BrowserMessage::UpdateTrackState { track_id, state: track_state } => {
-            let app = state.read().await;
-            let engine = app.audio_engine.read().await;
-            engine.update_track_state(track_state).await;
+        BrowserMessage::UpdateTrackState { track_id: _, state: track_state } => {
+            let app = state.lock().await;
+            app.audio_engine.update_track_state(track_state);
             None
         }
 
-        BrowserMessage::UpdateEffects { track_id, effects } => {
-            let app = state.read().await;
-            let engine = app.audio_engine.read().await;
-            engine.update_effects(effects).await;
+        BrowserMessage::UpdateEffects { track_id: _, effects } => {
+            let app = state.lock().await;
+            app.audio_engine.update_effects(effects);
             None
         }
 
         BrowserMessage::SetMonitoring { enabled, volume } => {
-            let app = state.read().await;
-            let engine = app.audio_engine.read().await;
-            engine.set_monitoring(enabled);
-            engine.set_monitoring_volume(volume);
+            let app = state.lock().await;
+            app.audio_engine.set_monitoring(enabled);
+            app.audio_engine.set_monitoring_volume(volume);
             None
         }
 
         BrowserMessage::SetMasterVolume { volume } => {
-            let app = state.read().await;
-            let mut mixer = app.mixer.write().await;
-            mixer.set_master_volume(volume);
+            let mut app = state.lock().await;
+            app.mixer.set_master_volume(volume);
             None
         }
 
@@ -311,17 +298,16 @@ async fn handle_message(msg: BrowserMessage, state: &Arc<RwLock<AppState>>) -> O
     }
 }
 
-async fn handle_audio_data(data: &[u8], state: &Arc<RwLock<AppState>>) {
+async fn handle_audio_data(data: &[u8], _state: &Arc<Mutex<AppState>>) {
     // Parse binary audio data and route to appropriate destination
     // Format: [header][samples as f32 little-endian]
-    use super::AudioMessageHeader;
 
     if let Some(header) = AudioMessageHeader::from_bytes(data) {
         let samples_offset = AudioMessageHeader::SIZE;
         let sample_bytes = &data[samples_offset..];
 
         // Convert bytes to f32 samples
-        let samples: Vec<f32> = sample_bytes
+        let _samples: Vec<f32> = sample_bytes
             .chunks_exact(4)
             .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
             .collect();
@@ -342,17 +328,17 @@ fn detect_driver_type() -> String {
         if cpal::host_from_id(cpal::HostId::Asio).is_ok() {
             return "ASIO".to_string();
         }
-        "WASAPI".to_string()
+        return "WASAPI".to_string();
     }
 
     #[cfg(target_os = "macos")]
     {
-        "CoreAudio".to_string()
+        return "CoreAudio".to_string();
     }
 
     #[cfg(target_os = "linux")]
     {
-        "ALSA".to_string()
+        return "ALSA".to_string();
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]

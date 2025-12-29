@@ -9,16 +9,15 @@ mod mixing;
 mod protocol;
 
 use anyhow::Result;
-use protocol::{BridgeServer, LaunchParams};
+use protocol::LaunchParams;
 use std::sync::Arc;
-use tokio::sync::RwLock;
+use tokio::sync::Mutex;
 use tracing::{info, error, Level};
-use tracing_subscriber::FmtSubscriber;
 
 /// Application state shared across all components
 pub struct AppState {
-    pub audio_engine: Arc<RwLock<audio::AudioEngine>>,
-    pub mixer: Arc<RwLock<mixing::Mixer>>,
+    pub audio_engine: audio::AudioEngine,
+    pub mixer: mixing::Mixer,
     pub connected_room: Option<String>,
     pub user_id: Option<String>,
 }
@@ -26,67 +25,46 @@ pub struct AppState {
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
-    let subscriber = FmtSubscriber::builder()
+    tracing_subscriber::fmt()
         .with_max_level(Level::INFO)
         .with_target(false)
         .compact()
         .init();
 
-    info!("🎵 OpenStudio Bridge v{}", env!("CARGO_PKG_VERSION"));
+    info!("OpenStudio Bridge v{}", env!("CARGO_PKG_VERSION"));
 
     // Parse launch params (from custom protocol or CLI)
     let params = LaunchParams::from_args();
 
     if let Some(ref room) = params.room_id {
-        info!("📡 Auto-connecting to room: {}", room);
+        info!("Auto-connecting to room: {}", room);
     }
 
     // Initialize audio engine
-    let audio_engine = Arc::new(RwLock::new(
-        audio::AudioEngine::new().await?
-    ));
+    let audio_engine = audio::AudioEngine::new()?;
 
     // Initialize mixer
-    let mixer = Arc::new(RwLock::new(
-        mixing::Mixer::new()
-    ));
+    let mixer = mixing::Mixer::new();
 
     // Create shared state
-    let state = Arc::new(RwLock::new(AppState {
-        audio_engine: audio_engine.clone(),
-        mixer: mixer.clone(),
+    let state = Arc::new(Mutex::new(AppState {
+        audio_engine,
+        mixer,
         connected_room: params.room_id.clone(),
         user_id: params.user_id.clone(),
     }));
 
-    // Start WebSocket server
-    let server = BridgeServer::new(state.clone());
+    // Run WebSocket server (blocks)
+    info!("Bridge running on ws://localhost:9999");
+    info!("Press Ctrl+C to quit");
 
-    // Spawn server task
-    let server_handle = tokio::spawn(async move {
-        if let Err(e) = server.run("127.0.0.1:9999").await {
-            error!("WebSocket server error: {}", e);
-        }
-    });
-
-    // Start system tray (blocks on main thread for UI)
-    #[cfg(feature = "tray")]
-    {
-        start_tray(state.clone()).await?;
-    }
-
-    // Without tray, just wait for server
-    #[cfg(not(feature = "tray"))]
-    {
-        info!("🔊 Bridge running on ws://localhost:9999");
-        info!("   Press Ctrl+C to quit");
-        server_handle.await?;
-    }
+    protocol::run_server("127.0.0.1:9999", state).await?;
 
     Ok(())
 }
 
 /// Register custom protocol handler (openstudio://)
+#[allow(dead_code)]
 pub fn register_protocol_handler() -> Result<()> {
     #[cfg(target_os = "windows")]
     {
@@ -102,14 +80,12 @@ pub fn register_protocol_handler() -> Result<()> {
         let exe_path = std::env::current_exe()?;
         cmd_key.set_value("", &format!("\"{}\" \"%1\"", exe_path.display()))?;
 
-        info!("✓ Registered openstudio:// protocol handler");
+        info!("Registered openstudio:// protocol handler");
     }
 
-    #[cfg(target_os = "macos")]
+    #[cfg(not(target_os = "windows"))]
     {
-        // macOS requires modifying Info.plist in the .app bundle
-        // This is typically done during packaging, not at runtime
-        info!("ℹ Protocol handler must be set in Info.plist for macOS");
+        info!("Protocol handler registration not implemented for this platform");
     }
 
     Ok(())
