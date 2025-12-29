@@ -135,12 +135,17 @@ pub enum NativeMessage {
     #[serde(rename = "welcome")]
     Welcome {
         version: String,
+        #[serde(rename = "driverType")]
         driver_type: String,
     },
 
     /// Pong response
     #[serde(rename = "pong")]
-    Pong { timestamp: u64, native_time: u64 },
+    Pong {
+        timestamp: u64,
+        #[serde(rename = "nativeTime")]
+        native_time: u64,
+    },
 
     /// Error message
     #[serde(rename = "error")]
@@ -157,10 +162,15 @@ pub enum NativeMessage {
     /// Current device configuration
     #[serde(rename = "deviceConfig")]
     DeviceConfig {
+        #[serde(rename = "inputDevice")]
         input_device: Option<DeviceInfo>,
+        #[serde(rename = "outputDevice")]
         output_device: Option<DeviceInfo>,
+        #[serde(rename = "sampleRate")]
         sample_rate: u32,
+        #[serde(rename = "bufferSize")]
         buffer_size: u32,
+        #[serde(rename = "channelConfig")]
         channel_config: ChannelConfig,
     },
 
@@ -168,9 +178,13 @@ pub enum NativeMessage {
     /// Audio engine status
     #[serde(rename = "audioStatus")]
     AudioStatus {
+        #[serde(rename = "isRunning")]
         is_running: bool,
+        #[serde(rename = "inputLatencyMs")]
         input_latency_ms: f32,
+        #[serde(rename = "outputLatencyMs")]
         output_latency_ms: f32,
+        #[serde(rename = "totalLatencyMs")]
         total_latency_ms: f32,
     },
 
@@ -178,7 +192,9 @@ pub enum NativeMessage {
     #[serde(rename = "connectionQuality")]
     ConnectionQuality {
         quality: String, // "excellent" | "good" | "fair" | "poor"
+        #[serde(rename = "jitterMs")]
         jitter_ms: f32,
+        #[serde(rename = "packetLoss")]
         packet_loss: f32,
     },
 
@@ -186,19 +202,28 @@ pub enum NativeMessage {
     /// Audio levels (sent at ~50ms intervals)
     #[serde(rename = "levels")]
     Levels {
+        #[serde(rename = "inputLevel")]
         input_level: f32,
+        #[serde(rename = "inputPeak")]
         input_peak: f32,
+        #[serde(rename = "outputLevel")]
         output_level: f32,
+        #[serde(rename = "outputPeak")]
         output_peak: f32,
+        #[serde(rename = "remoteLevels")]
         remote_levels: Vec<(String, f32)>, // (user_id, level)
     },
 
     /// Effects metering
     #[serde(rename = "effectsMetering")]
     EffectsMetering {
+        #[serde(rename = "trackId")]
         track_id: String,
+        #[serde(rename = "noiseGateOpen")]
         noise_gate_open: bool,
+        #[serde(rename = "compressorReduction")]
         compressor_reduction: f32,
+        #[serde(rename = "limiterReduction")]
         limiter_reduction: f32,
     },
 
