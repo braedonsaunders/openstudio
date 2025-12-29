@@ -597,6 +597,16 @@ export class CloudflareCalls {
     }
   }
 
+  /**
+   * Refresh remote tracks - call this when a new user joins to discover their audio.
+   * This is CRITICAL: pullRemoteTracks only runs once on join, so existing users
+   * won't automatically discover new users without calling this.
+   */
+  async refreshRemoteTracks(): Promise<void> {
+    console.log('[CloudflareCalls] Refreshing remote tracks to discover new users...');
+    await this.pullRemoteTracks();
+  }
+
   private async waitForIceGathering(): Promise<void> {
     if (!this.peerConnection) return;
 
