@@ -4,7 +4,6 @@ import { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-tempo-store';
 import { useAIPermissions } from '@/hooks/usePermissions';
-import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { Slider } from '../ui/slider';
 import {
   Sparkles,
@@ -27,7 +26,6 @@ import {
   Lock,
 } from 'lucide-react';
 import {
-  LyriaSession,
   createLyriaSession,
   LYRIA_STYLES,
   LYRIA_MOODS,
@@ -35,6 +33,7 @@ import {
   keyToLyriaScale,
   type LyriaStyleId,
   type LyriaMoodId,
+  type LyriaSession,
 } from '@/lib/ai/lyria';
 import type { LyriaSessionState } from '@/types';
 import type { CloudflareCalls } from '@/lib/cloudflare/calls';
@@ -43,17 +42,12 @@ interface AIPanelProps {
   getCloudflareRef?: () => CloudflareCalls | null;
 }
 
-// Constant ID for Lyria external audio source in AudioEngine
-const LYRIA_AUDIO_SOURCE_ID = 'lyria-ai-music';
-
 export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   const { canGenerateMusic } = useAIPermissions();
 
-  // Audio engine for routing Lyria through master channel
-  // Use refs to store functions to avoid dependency issues in useEffect/useCallback
-  const audioEngine = useAudioEngine();
-  const audioEngineRef = useRef(audioEngine);
-  audioEngineRef.current = audioEngine;
+  // Store getCloudflareRef in a ref to avoid dependency issues
+  const cloudflareRefGetter = useRef(getCloudflareRef);
+  cloudflareRefGetter.current = getCloudflareRef;
 
   // Use session tempo store as single source of truth for BPM/key
   const roomBpm = useSessionTempoStore(selectTempo);
@@ -82,12 +76,12 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   const [bass, setBass] = useState(0.7);
   const [temperature, setTemperature] = useState(0.5);
 
-  // Initialize session on mount
+  // Initialize session on mount - use empty dependency array to run only once
   useEffect(() => {
     const session = createLyriaSession();
 
-    // Enable external routing so Lyria audio goes through AudioEngine's master bus
-    session.setUseExternalRouting(true);
+    // Note: Audio routing is handled by DAWLayout via lyria-store callbacks
+    // This panel only manages the Lyria session UI and WebRTC sharing
 
     session.setCallbacks({
       onStateChange: (state) => {
@@ -108,17 +102,15 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
     sessionRef.current = session;
 
     return () => {
-      // Cleanup: remove from AudioEngine and stop sharing
-      audioEngineRef.current.removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
-
-      if (lyriaTrackIdRef.current && getCloudflareRef) {
-        const cloudflare = getCloudflareRef();
+      // Cleanup: stop WebRTC sharing
+      if (lyriaTrackIdRef.current && cloudflareRefGetter.current) {
+        const cloudflare = cloudflareRefGetter.current();
         cloudflare?.removeTrack(lyriaTrackIdRef.current).catch(() => {});
         lyriaTrackIdRef.current = null;
       }
       session.disconnect();
     };
-  }, [getCloudflareRef]);
+  }, []); // Empty dependency array - run only once on mount
 
   // Update session when room BPM changes
   useEffect(() => {
@@ -150,12 +142,13 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
       return false;
     }
 
-    if (!getCloudflareRef) {
+    const getRef = cloudflareRefGetter.current;
+    if (!getRef) {
       console.warn('[Lyria] getCloudflareRef not provided');
       return false;
     }
 
-    const cloudflare = getCloudflareRef();
+    const cloudflare = getRef();
     if (!cloudflare) {
       // Retry up to 3 times with 500ms delay
       if (retryCount < 3) {
@@ -184,13 +177,16 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
       console.error('[Lyria] Failed to share audio:', err);
       return false;
     }
-  }, [getCloudflareRef]);
+  }, []); // No dependencies - uses refs
 
   // Remove Lyria audio from WebRTC
   const stopSharingAudio = useCallback(async () => {
-    if (!lyriaTrackIdRef.current || !getCloudflareRef) return;
+    if (!lyriaTrackIdRef.current) return;
 
-    const cloudflare = getCloudflareRef();
+    const getRef = cloudflareRefGetter.current;
+    if (!getRef) return;
+
+    const cloudflare = getRef();
     if (!cloudflare) return;
 
     try {
@@ -202,7 +198,7 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
 
     lyriaTrackIdRef.current = null;
     setIsSharingAudio(false);
-  }, [getCloudflareRef]);
+  }, []); // No dependencies - uses refs
 
   const handleConnect = useCallback(async () => {
     if (!sessionRef.current) return;
@@ -222,24 +218,14 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
         temperature: temperature * 3, // Scale to 0-3
       });
 
-      // Connect Lyria audio to AudioEngine's master bus
-      const outputStream = sessionRef.current.getOutputStream();
-      if (outputStream) {
-        audioEngineRef.current.addExternalAudioSource(LYRIA_AUDIO_SOURCE_ID, outputStream, volume);
-        console.log('[Lyria] Audio routed through AudioEngine master');
-      }
-
       // Share audio with room once connected
       await shareAudioWithRoom();
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [roomBpm, roomKey, roomKeyScale, density, brightness, drums, bass, temperature, volume, shareAudioWithRoom]);
+  }, [roomBpm, roomKey, roomKeyScale, density, brightness, drums, bass, temperature, shareAudioWithRoom]);
 
   const handleDisconnect = useCallback(async () => {
-    // Remove from AudioEngine
-    audioEngineRef.current.removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
-
     // Stop sharing audio before disconnecting
     await stopSharingAudio();
     sessionRef.current?.disconnect();
@@ -266,8 +252,6 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   const handleVolumeChange = useCallback((value: number) => {
     setVolume(value);
     sessionRef.current?.setVolume(value);
-    // Also update AudioEngine external source volume
-    audioEngineRef.current.setExternalAudioVolume(LYRIA_AUDIO_SOURCE_ID, value);
   }, []);
 
   // Connection state helpers
