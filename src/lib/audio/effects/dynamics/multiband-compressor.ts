@@ -141,8 +141,9 @@ export class MultibandCompressorProcessor extends BaseEffect {
     this.outputSum = audioContext.createGain();
     this.outputGainNode = audioContext.createGain();
 
-    // Wire up low band
-    this.inputGain.connect(this.lowCrossoverLP);
+    // Wire up low band - start from wetPathGate to allow disabling
+    // When effect is disabled, wetPathGate blocks audio from entering filter chain
+    this.getWetPathInput().connect(this.lowCrossoverLP);
     this.lowCrossoverLP.connect(this.lowCrossoverLP2);
     this.lowCrossoverLP2.connect(this.lowCompressor);
     this.lowCompressor.connect(this.lowGain);
@@ -150,7 +151,7 @@ export class MultibandCompressorProcessor extends BaseEffect {
     this.lowBypass.connect(this.outputSum);
 
     // Wire up mid band
-    this.inputGain.connect(this.midCrossoverHP);
+    this.getWetPathInput().connect(this.midCrossoverHP);
     this.midCrossoverHP.connect(this.midCrossoverHP2);
     this.midCrossoverHP2.connect(this.midCrossoverLP);
     this.midCrossoverLP.connect(this.midCrossoverLP2);
@@ -160,7 +161,7 @@ export class MultibandCompressorProcessor extends BaseEffect {
     this.midBypass.connect(this.outputSum);
 
     // Wire up high band
-    this.inputGain.connect(this.highCrossoverHP);
+    this.getWetPathInput().connect(this.highCrossoverHP);
     this.highCrossoverHP.connect(this.highCrossoverHP2);
     this.highCrossoverHP2.connect(this.highCompressor);
     this.highCompressor.connect(this.highGain);

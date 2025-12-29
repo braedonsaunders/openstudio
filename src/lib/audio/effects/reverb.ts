@@ -62,12 +62,13 @@ export class ReverbProcessor extends BaseEffect {
     this.preDelayNode.delayTime.value = this.settings.preDelay / 1000;
 
     // Wire up:
-    // input -> lowCut -> highCut -> preDelay -> convolver -> reverbWet -> wetGain -> output
+    // input -> wetPathGate -> lowCut -> highCut -> preDelay -> convolver -> reverbWet -> wetGain -> output
     //      \-> dryGain -> wetGain -> output
+    // Using wetPathGate ensures filters don't process audio when effect is disabled
     this.inputGain.connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
-    this.inputGain.connect(this.lowCutFilter);
+    this.getWetPathInput().connect(this.lowCutFilter);
     this.lowCutFilter.connect(this.highCutFilter);
     this.highCutFilter.connect(this.preDelayNode);
     this.preDelayNode.connect(this.convolver);

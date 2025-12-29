@@ -91,19 +91,20 @@ export class MultiFilterProcessor extends BaseEffect {
     this.filterGain = audioContext.createGain();
 
     // Wire up signal chain
-    // Dry path
+    // Dry path (always passes through for mix control)
     this.inputGain.connect(this.dryGain);
     this.dryGain.connect(this.wetGain);
 
-    // Filter path
-    this.inputGain.connect(this.driveWaveshaper);
+    // Filter path - start from wetPathGate to allow disabling
+    // When effect is disabled, wetPathGate blocks audio from entering filter chain
+    this.getWetPathInput().connect(this.driveWaveshaper);
     this.driveWaveshaper.connect(this.driveGain);
     this.driveGain.connect(this.filter);
     this.filter.connect(this.filterGain);
     this.filterGain.connect(this.wetGain);
 
-    // Envelope follower (parallel analysis path)
-    this.inputGain.connect(this.envelopeAnalyser);
+    // Envelope follower (parallel analysis path) - also gated
+    this.getWetPathInput().connect(this.envelopeAnalyser);
 
     // LFO -> filter frequency modulation
     // NOTE: We do NOT connect lfoGain to filter.frequency here.

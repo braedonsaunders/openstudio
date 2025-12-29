@@ -109,12 +109,13 @@ export class PhaserProcessor extends BaseEffect {
   }
 
   private wireUpSignalChain(): void {
-    // Dry path
+    // Dry path (always passes through)
     this.inputGain.connect(this.phaserDryGain);
     this.phaserDryGain.connect(this.outputGain);
 
-    // Wet path through allpass cascade
-    let currentNode: AudioNode = this.inputGain;
+    // Wet path through allpass cascade - start from wetPathGate
+    // When effect is disabled, wetPathGate blocks audio from entering filter chain
+    let currentNode: AudioNode = this.getWetPathInput();
 
     // Connect the active stages
     for (let i = 0; i < this.settings.stages; i++) {
@@ -153,8 +154,8 @@ export class PhaserProcessor extends BaseEffect {
       }
     }
 
-    // Reconnect based on current stage count
-    let currentNode: AudioNode = this.inputGain;
+    // Reconnect based on current stage count - start from wetPathGate
+    let currentNode: AudioNode = this.getWetPathInput();
 
     for (let i = 0; i < this.settings.stages; i++) {
       currentNode.connect(this.allpassFilters[i]);

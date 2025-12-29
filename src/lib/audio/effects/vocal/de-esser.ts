@@ -72,14 +72,16 @@ export class DeEsserProcessor extends BaseEffect {
     // Reduction gain (applied based on detection)
     this.reductionGain = audioContext.createGain();
 
-    // Wire up signal chain
+    // Wire up signal chain - start from wetPathGate to allow disabling
+    // When effect is disabled, wetPathGate blocks audio from entering filter chain
+
     // Detection path (parallel, doesn't affect output)
-    this.inputGain.connect(this.detectionFilter);
+    this.getWetPathInput().connect(this.detectionFilter);
     this.detectionFilter.connect(this.detectionGain);
     this.detectionGain.connect(this.analyser);
 
     // Main processing path
-    this.inputGain.connect(this.dynamicRange);
+    this.getWetPathInput().connect(this.dynamicRange);
     this.dynamicRange.connect(this.highShelf);
     this.highShelf.connect(this.reductionGain);
     this.reductionGain.connect(this.wetGain);

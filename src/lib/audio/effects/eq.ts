@@ -32,8 +32,9 @@ export class EQProcessor extends BaseEffect {
       return filter;
     });
 
-    // Chain filters together
-    let prevNode: AudioNode = this.inputGain;
+    // Chain filters together - start from wetPathGate to allow disabling
+    // When effect is disabled, wetPathGate blocks audio from entering filter chain
+    let prevNode: AudioNode = this.getWetPathInput();
     for (const filter of this.filters) {
       prevNode.connect(filter);
       prevNode = filter;
@@ -97,17 +98,18 @@ export class EQProcessor extends BaseEffect {
       filter.disconnect();
     }
 
-    // Disconnect inputGain from the first filter if it exists
+    // Disconnect wetPathGate from the first filter if it exists
+    const wetInput = this.getWetPathInput();
     if (this.filters.length > 0) {
       try {
-        this.inputGain.disconnect(this.filters[0]);
+        wetInput.disconnect(this.filters[0]);
       } catch {
         // Connection may not exist
       }
     }
 
-    // Reconnect in series
-    let prevNode: AudioNode = this.inputGain;
+    // Reconnect in series starting from wetPathGate
+    let prevNode: AudioNode = wetInput;
     for (let i = 0; i < this.settings.bands.length && i < this.filters.length; i++) {
       prevNode.connect(this.filters[i]);
       prevNode = this.filters[i];
