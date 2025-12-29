@@ -75,7 +75,7 @@ export function useCanvasExport() {
     stageRef.current = stage;
   }, []);
 
-  // Generate headshot by cropping upper portion of centered content
+  // Generate headshot by cropping a square from upper portion of centered content
   const generateHeadshot = useCallback(async (fullBodyDataUrl: string): Promise<string> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -84,18 +84,26 @@ export function useCanvasExport() {
         const canvas = document.createElement('canvas');
         canvas.width = HEADSHOT_SIZE;
         canvas.height = HEADSHOT_SIZE;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: true });
         if (!ctx) {
           reject(new Error('Could not get canvas context'));
           return;
         }
 
-        // Crop upper 60% of the full body (centered content)
-        const cropHeight = CANVAS_SIZE * 0.6;
+        // Clear to transparent
+        ctx.clearRect(0, 0, HEADSHOT_SIZE, HEADSHOT_SIZE);
+
+        // Crop a square from upper portion (top 65% centered)
+        // Source: 512x512, take upper square portion
+        const cropSize = CANVAS_SIZE; // Keep full width
+        const cropY = 0; // Start from top
+
+        // Draw maintaining aspect ratio - just scale down the full image
+        // This preserves the centered content
         ctx.drawImage(
           img,
-          0, 0, CANVAS_SIZE, cropHeight,      // Source: top 60%
-          0, 0, HEADSHOT_SIZE, HEADSHOT_SIZE  // Dest: fill headshot
+          0, cropY, CANVAS_SIZE, CANVAS_SIZE,  // Source: full square from top
+          0, 0, HEADSHOT_SIZE, HEADSHOT_SIZE   // Dest: fill headshot maintaining ratio
         );
 
         resolve(canvas.toDataURL('image/png'));
@@ -120,7 +128,7 @@ export function useCanvasExport() {
     return thumbnails as ThumbnailUrls;
   }, []);
 
-  // Helper to resize image
+  // Helper to resize image with transparency support
   const resizeImage = useCallback((dataUrl: string, size: number): Promise<string> => {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -129,12 +137,14 @@ export function useCanvasExport() {
         const canvas = document.createElement('canvas');
         canvas.width = size;
         canvas.height = size;
-        const ctx = canvas.getContext('2d');
+        const ctx = canvas.getContext('2d', { alpha: true });
         if (!ctx) {
           reject(new Error('Could not get canvas context'));
           return;
         }
 
+        // Clear to transparent before drawing
+        ctx.clearRect(0, 0, size, size);
         ctx.drawImage(img, 0, 0, size, size);
         resolve(canvas.toDataURL('image/png'));
       };
@@ -195,7 +205,7 @@ export function useCanvasExport() {
       const canvas = document.createElement('canvas');
       canvas.width = CANVAS_SIZE;
       canvas.height = CANVAS_SIZE;
-      const ctx = canvas.getContext('2d');
+      const ctx = canvas.getContext('2d', { alpha: true });
       if (!ctx) throw new Error('Could not get canvas context');
 
       // Always clear to transparent (no background fill)

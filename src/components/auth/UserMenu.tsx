@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
 import { Button } from '@/components/ui/button';
 import { AuthModal } from './AuthModal';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { getLevelTitle, xpProgress } from '@/types/user';
 import {
   User,
@@ -29,7 +29,7 @@ export function UserMenu() {
   const [initTimeout, setInitTimeout] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  const { user, profile, avatar, signOut, isLoading, isInitialized, isProfileLoading, profileError, refreshProfile, initialize } = useAuthStore();
+  const { user, profile, signOut, isLoading, isInitialized, isProfileLoading, profileError, refreshProfile, initialize } = useAuthStore();
 
   // Trigger initialization on mount as a backup
   // The auth-store also initializes itself, but this ensures it happens if component mounts first
@@ -158,7 +158,7 @@ export function UserMenu() {
           onClick={() => setShowDropdown(!showDropdown)}
           className="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
         >
-          <AvatarDisplay avatar={avatar} size="sm" username={profile.username} />
+          <UserAvatar userId={user.id} username={profile.username} size="sm" />
           <div className="hidden sm:block text-left">
             <p className="text-sm font-medium text-gray-900 dark:text-white">{profile.displayName}</p>
             <p className="text-xs text-gray-500 dark:text-gray-400">Level {profile.level}</p>
@@ -171,7 +171,7 @@ export function UserMenu() {
             {/* Header */}
             <div className="p-4 border-b border-gray-200 dark:border-gray-800">
               <div className="flex items-center gap-3">
-                <AvatarDisplay avatar={avatar} size="md" username={profile.username} />
+                <UserAvatar userId={user.id} username={profile.username} size="md" />
                 <div className="flex-1 min-w-0">
                   <p className="font-medium text-gray-900 dark:text-white truncate">{profile.displayName}</p>
                   <p className="text-sm text-gray-500 dark:text-gray-400">@{profile.username}</p>
