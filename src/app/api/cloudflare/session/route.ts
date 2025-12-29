@@ -153,7 +153,7 @@ async function callCloudflareAPI(endpoint: string, method: string, body?: object
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { action, roomId, userId, sessionId, trackName, sdp, mid } = body;
+    const { action, roomId, userId, sessionId, trackName, sdp, mid, metadata } = body;
 
     if (!CLOUDFLARE_CALLS_APP_ID || !CLOUDFLARE_CALLS_APP_SECRET) {
       return NextResponse.json(
@@ -167,9 +167,11 @@ export async function POST(request: NextRequest) {
         // Create a new session
         const result = await callCloudflareAPI('/sessions/new', 'POST');
 
-        // Store session in persistent storage (Supabase)
-        await storeRoomSession(roomId, userId, result.sessionId, `audio-${userId}`);
-        console.log(`[WebRTC Sessions] Created session ${result.sessionId} for user ${userId} in room ${roomId}`);
+        // NOTE: We intentionally do NOT store the session here anymore.
+        // Storing on create caused race conditions where other users would try
+        // to pull tracks from a session that wasn't fully connected yet (410 error).
+        // Sessions are now only stored after pushTrack succeeds.
+        console.log(`[WebRTC Sessions] Created session ${result.sessionId} for user ${userId} in room ${roomId} (not stored until track pushed)`);
 
         return NextResponse.json({
           sessionId: result.sessionId,
@@ -196,10 +198,11 @@ export async function POST(request: NextRequest) {
           }
         );
 
-        // Update room sessions in persistent storage
-        const userIdFromTrack = trackName.replace('audio-', '');
-        await storeRoomSession(roomId, userIdFromTrack, sessionId, trackName);
-        console.log(`[WebRTC Sessions] Pushed track ${trackName} for session ${sessionId}`);
+        // Store session in persistent storage now that track is pushed and session is active
+        // Use userId from metadata if available, otherwise extract from trackName
+        const actualUserId = metadata?.userId || trackName.replace('audio-', '');
+        await storeRoomSession(roomId, actualUserId, sessionId, trackName);
+        console.log(`[WebRTC Sessions] Pushed track ${trackName} for user ${actualUserId}, session ${sessionId}`);
 
         return NextResponse.json({
           sessionId: result.sessionId,
