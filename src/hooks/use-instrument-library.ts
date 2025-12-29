@@ -133,8 +133,3 @@ export function getInstrumentsByType(
   return instruments.filter((inst) => inst.type === type);
 }
 
-// Invalidate cache (call this after admin updates)
-export function invalidateInstrumentLibraryCache(): void {
-  cachedData = null;
-  cacheTimestamp = 0;
-}

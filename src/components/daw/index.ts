@@ -20,18 +20,15 @@ export { BackingTrackLane } from './backing-track-lane';
 // Live arrangement (River Flow design)
 export { LiveArrangementView } from './live-arrangement-view';
 export { LiveTrackLane } from './live-track-lane';
-export { SeekableBackingTrack } from './seekable-backing-track';
 export { NowLine } from './now-line';
 
-// Legacy arrangement (for reference)
-export { ArrangementView } from './arrangement-view';
+// Timeline
 export { Timeline } from './timeline';
 export { Playhead } from './playhead';
 
 // Panels
 export { PanelDock } from './panel-dock';
 export { StemMixerPanel } from './stem-mixer-panel';
-export { QueuePanel } from './queue-panel';
 export { AnalysisPanel } from './analysis-panel';
 export { ChatPanel } from './chat-panel';
 export { AIPanel } from './ai-panel';

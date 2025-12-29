@@ -1,19 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
-
-// Lazy initialization of Supabase client
-let supabaseClient: SupabaseClient | null = null;
-
-function getSupabase(): SupabaseClient | null {
-  if (!supabaseClient) {
-    const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-    const key = process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-    if (url && key) {
-      supabaseClient = createClient(url, key);
-    }
-  }
-  return supabaseClient;
-}
+import { getSupabase } from '@/lib/supabase/server';
 
 interface RouteContext {
   params: Promise<{ presetId: string }>;

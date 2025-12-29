@@ -756,10 +756,6 @@ export interface GuitarEffectPreset {
   effects: GuitarEffectsChain;
 }
 
-// Legacy type aliases for backwards compatibility
-/** @deprecated Use UnifiedEffectsChain instead */
-export type ExtendedTrackAudioSettings = TrackAudioSettings;
-
 // ============================================================================
 // Extended Effects Types (New Effects)
 // ============================================================================

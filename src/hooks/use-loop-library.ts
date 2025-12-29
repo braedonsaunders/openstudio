@@ -92,39 +92,6 @@ export function useLoopLibrary(): LoopLibrary {
   };
 }
 
-// Helper functions that work with the provided loop array
-export function filterLoopsFromArray(
-  loops: LoopDefinition[],
-  options: {
-    category?: string;
-    subcategory?: string;
-    bpmMin?: number;
-    bpmMax?: number;
-    key?: string;
-    intensity?: number;
-    complexity?: number;
-    searchQuery?: string;
-  }
-): LoopDefinition[] {
-  return loops.filter((loop) => {
-    if (options.category && loop.category !== options.category) return false;
-    if (options.subcategory && loop.subcategory !== options.subcategory) return false;
-    if (options.bpmMin && loop.bpm < options.bpmMin) return false;
-    if (options.bpmMax && loop.bpm > options.bpmMax) return false;
-    if (options.key && loop.key !== options.key) return false;
-    if (options.intensity && loop.intensity !== options.intensity) return false;
-    if (options.complexity && loop.complexity !== options.complexity) return false;
-    if (options.searchQuery) {
-      const q = options.searchQuery.toLowerCase();
-      return (
-        loop.name.toLowerCase().includes(q) ||
-        loop.tags.some((tag) => tag.toLowerCase().includes(q))
-      );
-    }
-    return true;
-  });
-}
-
 export function getLoopById(loops: LoopDefinition[], id: string): LoopDefinition | undefined {
   return loops.find((loop) => loop.id === id);
 }
@@ -135,12 +102,6 @@ export function getLoopsByCategory(loops: LoopDefinition[], category: string): L
 
 export function getLoopsBySubcategory(loops: LoopDefinition[], subcategory: string): LoopDefinition[] {
   return loops.filter((loop) => loop.subcategory === subcategory);
-}
-
-// Invalidate cache (call this after admin updates)
-export function invalidateLoopLibraryCache(): void {
-  cachedData = null;
-  cacheTimestamp = 0;
 }
 
 /**

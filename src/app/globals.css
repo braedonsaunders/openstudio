@@ -143,31 +143,12 @@ h1, h2, h3, h4, h5, h6 {
   animation: slideUp 0.4s ease-out;
 }
 
-/* Premium card styles */
-.card-premium {
-  background: var(--background);
-  border: 1px solid var(--border);
-  border-radius: 16px;
-  box-shadow: var(--card-shadow);
-  transition: box-shadow 0.2s ease, transform 0.2s ease;
-}
-
-.card-premium:hover {
-  box-shadow: var(--card-shadow-hover);
-}
-
 /* Glass effect for dark mode */
 .dark .glass {
   background: rgba(17, 17, 24, 0.8);
   backdrop-filter: blur(12px);
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
-
-/* Connection quality indicators */
-.quality-excellent { color: var(--success); }
-.quality-good { color: #84cc16; }
-.quality-fair { color: var(--warning); }
-.quality-poor { color: var(--error); }
 
 /* Range input styling */
 input[type="range"] {
@@ -219,12 +200,6 @@ input[type="range"]::-moz-range-thumb {
 .waveform-container {
   background: linear-gradient(to bottom, transparent, var(--accent-light));
   border-radius: 12px;
-}
-
-/* Audio level bars */
-.audio-bar {
-  background: linear-gradient(to top, var(--success), var(--warning), var(--error));
-  transition: height 50ms ease-out;
 }
 
 /* ============================================ */
@@ -328,19 +303,6 @@ input[type="range"]::-moz-range-thumb {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-/* Glass Button */
-.glass-button {
-  background: rgba(255, 255, 255, 0.06);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(8px);
-  transition: all 150ms ease;
-}
-
-.glass-button:hover {
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.15);
-}
-
 /* Neon Glow Button */
 .neon-button {
   position: relative;
@@ -395,32 +357,6 @@ input[type="range"]::-moz-range-thumb {
 
 .recording-dot {
   animation: recording-pulse 1s ease-in-out infinite;
-}
-
-/* Level Meter Gradient */
-.meter-gradient {
-  background: linear-gradient(
-    to top,
-    #22c55e 0%,
-    #22c55e 60%,
-    #eab308 60%,
-    #eab308 85%,
-    #ef4444 85%,
-    #ef4444 100%
-  );
-}
-
-/* VU Meter Style */
-.vu-meter {
-  background: linear-gradient(
-    to right,
-    #22c55e 0%,
-    #22c55e 70%,
-    #eab308 70%,
-    #eab308 90%,
-    #ef4444 90%,
-    #ef4444 100%
-  );
 }
 
 /* Fader Track */
@@ -534,11 +470,6 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
 }
 
-/* Badge glow effect */
-.badge-glow {
-  box-shadow: 0 0 8px currentColor;
-}
-
 /* Panel transitions */
 .panel-slide-left {
   animation: slideFromLeft 300ms var(--ease-out-expo);
@@ -615,17 +546,6 @@ input[type="range"]::-moz-range-thumb {
   100% {
     background-position: -200% 50%;
   }
-}
-
-.river-flow-bg {
-  background: linear-gradient(
-    90deg,
-    transparent 0%,
-    rgba(99, 102, 241, 0.05) 50%,
-    transparent 100%
-  );
-  background-size: 200% 100%;
-  animation: river-flow 3s linear infinite;
 }
 
 /* Live Session Recording Indicator */

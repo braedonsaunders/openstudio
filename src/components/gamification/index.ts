@@ -1,1 +1,1 @@
-export { XPNotification, queueXPNotification, setXPNotificationHandler } from './XPNotification';
+export { XPNotification, queueXPNotification } from './XPNotification';
