@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
@@ -97,6 +97,11 @@ export function TracksPanel({
   const songs = getSongsByRoom(roomId);
   const currentSong = getCurrentSong();
   const loopTracks = getTracksByRoom(roomId);
+
+  // Check if the current song is a Lyria song (uses AI generative music)
+  const isLyriaSong = useMemo(() => {
+    return currentSong?.tracks.some(t => t.type === 'lyria') ?? false;
+  }, [currentSong?.tracks]);
 
   // Load songs on mount
   useEffect(() => {
@@ -430,7 +435,26 @@ export function TracksPanel({
       </div>
 
       {/* Asset Library */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto relative">
+        {/* Lyria Overlay - shown when current song uses Lyria AI music */}
+        {isLyriaSong && (
+          <div className="absolute inset-0 z-10 bg-gray-100/80 dark:bg-[#0a0a0f]/90 backdrop-blur-[1px] flex flex-col items-center justify-center">
+            {/* Subtle gradient */}
+            <div className="absolute inset-0 bg-gradient-to-b from-purple-500/5 dark:from-purple-500/3 via-transparent to-purple-500/5 dark:to-purple-500/3" />
+
+            {/* Lyria indicator */}
+            <div className="relative flex flex-col items-center gap-2">
+              <div className="w-10 h-10 rounded-full bg-purple-500/10 dark:bg-purple-500/20 flex items-center justify-center">
+                <Sparkles className="w-5 h-5 text-purple-500 dark:text-purple-400" />
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-medium text-purple-600 dark:text-purple-400">Lyria AI</p>
+                <p className="text-[10px] text-gray-500 dark:text-zinc-500 mt-0.5">Generative music active</p>
+              </div>
+            </div>
+          </div>
+        )}
+
         {audioAssets.length === 0 && loopAssets.length === 0 ? (
           <div className="h-full flex items-center justify-center p-4">
             <div className="text-center">
