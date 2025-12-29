@@ -126,7 +126,7 @@ function BpmBadge() {
           <button
             onClick={() => setShowModeMenu(!showModeMenu)}
             className={cn(
-              'px-2 py-1 flex items-center rounded-l-lg border border-r-0 transition-all',
+              'px-2 py-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
               'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
               'hover:bg-gray-200 dark:hover:bg-white/10',
               showModeMenu && 'bg-gray-200 dark:bg-white/10'
@@ -147,7 +147,7 @@ function BpmBadge() {
           <div
             onClick={handleValueClick}
             className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all cursor-pointer',
+              'flex items-center gap-1.5 px-2 py-1.5 rounded-r-lg border border-l-0 transition-all cursor-pointer',
               'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
               'hover:bg-gray-200 dark:hover:bg-white/10'
             )}
@@ -303,7 +303,7 @@ function KeyBadge() {
           <button
             onClick={() => { setShowModeMenu(!showModeMenu); setShowKeyMenu(false); }}
             className={cn(
-              'px-2 py-1 flex items-center rounded-l-lg border border-r-0 transition-all',
+              'px-2 py-1.5 flex items-center rounded-l-lg border border-r-0 transition-all',
               'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
               'hover:bg-gray-200 dark:hover:bg-white/10',
               showModeMenu && 'bg-gray-200 dark:bg-white/10'
@@ -327,7 +327,7 @@ function KeyBadge() {
               setShowModeMenu(false);
             }}
             className={cn(
-              'flex items-center gap-1.5 px-2 py-1 rounded-r-lg border border-l-0 transition-all',
+              'flex items-center gap-1.5 px-2 py-1.5 rounded-r-lg border border-l-0 transition-all',
               'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/5',
               'hover:bg-gray-200 dark:hover:bg-white/10'
             )}
