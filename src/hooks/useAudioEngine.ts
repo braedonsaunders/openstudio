@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { AudioEngine, type CaptureAudioOptions } from '@/lib/audio/audio-engine';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
+import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import type { BackingTrack, TrackAudioSettings } from '@/types';
 import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
 
@@ -100,10 +101,25 @@ export function useAudioEngine() {
       if (!performanceIntervalRef.current) {
         performanceIntervalRef.current = setInterval(() => {
           if (globalEngine) {
-            // Get actual latency values from the audio context
-            const contextLatency = globalEngine.getContextLatency(); // baseLatency (processing)
-            const outputLatency = globalEngine.getOutputLatency(); // hardware output latency
-            const actualBufferSize = globalEngine.getActualBufferSize(); // buffer in samples
+            // Check if native bridge is active
+            const bridgeState = useBridgeAudioStore.getState();
+            const useNativeBridge = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
+
+            let contextLatency: number;
+            let outputLatency: number;
+            let actualBufferSize: number;
+
+            if (useNativeBridge) {
+              // Use native bridge latency (much lower than Web Audio)
+              contextLatency = bridgeState.latency.input;
+              outputLatency = bridgeState.latency.output;
+              actualBufferSize = bridgeState.bufferSize;
+            } else {
+              // Get actual latency values from the audio context
+              contextLatency = globalEngine.getContextLatency(); // baseLatency (processing)
+              outputLatency = globalEngine.getOutputLatency(); // hardware output latency
+              actualBufferSize = globalEngine.getActualBufferSize(); // buffer in samples
+            }
 
             // Get effects metering if effects processor exists
             const effectsMetering = globalEngine.getLocalEffectsMetering();
