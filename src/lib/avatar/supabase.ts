@@ -830,7 +830,10 @@ function transformUserAvatarCanvas(data: Record<string, unknown>): UserAvatarCan
 }
 
 export async function getUserAvatarCanvas(userId: string): Promise<UserAvatarCanvas | null> {
-  const { data, error } = await supabaseAuth
+  // Use admin client for server-side operations
+  const supabase = getAdminSupabase();
+  if (!supabase) throw new Error('Admin client not available');
+  const { data, error } = await supabase
     .from('user_avatar_canvas')
     .select('*')
     .eq('user_id', userId)
@@ -851,7 +854,10 @@ export async function saveUserAvatarCanvas(
   headshotUrl?: string,
   thumbnailUrls?: UserAvatarCanvas['thumbnailUrls']
 ): Promise<UserAvatarCanvas> {
-  const { data, error } = await supabaseAuth
+  // Use admin client to bypass RLS - API already validates auth
+  const supabase = getAdminSupabase();
+  if (!supabase) throw new Error('Admin client not available');
+  const { data, error } = await supabase
     .from('user_avatar_canvas')
     .upsert({
       user_id: userId,
@@ -873,7 +879,10 @@ export async function getPublicAvatarUrls(userId: string): Promise<{
   headshotUrl: string | null;
   thumbnailUrls: UserAvatarCanvas['thumbnailUrls'];
 } | null> {
-  const { data, error } = await supabaseAuth
+  // Use admin client for server-side operations
+  const supabase = getAdminSupabase();
+  if (!supabase) throw new Error('Admin client not available');
+  const { data, error } = await supabase
     .from('user_avatar_canvas')
     .select('full_body_url, headshot_url, thumbnail_urls')
     .eq('user_id', userId)
