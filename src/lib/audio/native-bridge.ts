@@ -474,14 +474,15 @@ export async function isNativeBridgeAvailable(): Promise<boolean> {
   return connected;
 }
 
-// R2 bucket URL for downloads (configure your custom domain or use R2 public URL)
-const DOWNLOADS_BASE_URL = 'https://releases.openstudio.live';
+// R2 public URL - uses same bucket as tracks, files stored under bridge/ path
+// This should match CLOUDFLARE_R2_PUBLIC_URL env var
+const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://cdn.openstudio.live';
 
 /**
  * Get download URL for native bridge from Cloudflare R2
  */
 export function getNativeBridgeDownloadUrl(): string {
-  const baseUrl = `${DOWNLOADS_BASE_URL}/latest`;
+  const baseUrl = `${R2_PUBLIC_URL}/bridge/latest`;
   const platform = navigator.platform.toLowerCase();
   const userAgent = navigator.userAgent.toLowerCase();
 
@@ -500,15 +501,15 @@ export function getNativeBridgeDownloadUrl(): string {
     return `${baseUrl}/openstudio-bridge-linux`;
   }
 
-  // Fallback to downloads page
-  return `${DOWNLOADS_BASE_URL}/latest`;
+  // Fallback to latest directory
+  return baseUrl;
 }
 
 /**
  * Get all download URLs for all platforms
  */
 export function getAllDownloadUrls(): Record<string, string> {
-  const baseUrl = `${DOWNLOADS_BASE_URL}/latest`;
+  const baseUrl = `${R2_PUBLIC_URL}/bridge/latest`;
 
   return {
     windows: `${baseUrl}/openstudio-bridge-windows.exe`,
@@ -523,7 +524,7 @@ export function getAllDownloadUrls(): Record<string, string> {
  */
 export async function getLatestBridgeVersion(): Promise<string | null> {
   try {
-    const res = await fetch(`${DOWNLOADS_BASE_URL}/latest/version.json`);
+    const res = await fetch(`${R2_PUBLIC_URL}/bridge/latest/version.json`);
     if (res.ok) {
       const data = await res.json();
       return data.version;

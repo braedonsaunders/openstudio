@@ -14,7 +14,6 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
-  R2_BUCKET: openstudio-releases
 
 jobs:
   build:
@@ -145,32 +144,39 @@ jobs:
           find artifacts -type f -exec mv {} release/ \;
           ls -la release/
 
-      - name: Install wrangler
-        run: npm install -g wrangler
-
       - name: Upload to Cloudflare R2
         env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLOUDFLARE_R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLOUDFLARE_R2_SECRET_ACCESS_KEY }}
+          AWS_REGION: auto
+          R2_ENDPOINT: https://${{ secrets.CLOUDFLARE_R2_ACCOUNT_ID }}.r2.cloudflarestorage.com
+          R2_BUCKET: ${{ secrets.CLOUDFLARE_R2_BUCKET_NAME }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
 
-          # Upload each file to R2
+          # Install AWS CLI (already on GitHub runners, but ensure latest)
+          pip install awscli --upgrade --quiet
+
+          # Upload each file to R2 using S3-compatible API
           for file in release/*; do
             filename=$(basename "$file")
             echo "Uploading $filename..."
 
             # Upload to versioned path
-            wrangler r2 object put "${{ env.R2_BUCKET }}/v${VERSION}/${filename}" --file="$file"
+            aws s3 cp "$file" "s3://${R2_BUCKET}/bridge/v${VERSION}/${filename}" \
+              --endpoint-url "$R2_ENDPOINT"
 
             # Also upload to "latest" for easy access
-            wrangler r2 object put "${{ env.R2_BUCKET }}/latest/${filename}" --file="$file"
+            aws s3 cp "$file" "s3://${R2_BUCKET}/bridge/latest/${filename}" \
+              --endpoint-url "$R2_ENDPOINT"
           done
 
           # Create version manifest
           echo "{\"version\": \"${VERSION}\", \"date\": \"$(date -u +%Y-%m-%dT%H:%M:%SZ)\"}" > version.json
-          wrangler r2 object put "${{ env.R2_BUCKET }}/latest/version.json" --file="version.json"
+          aws s3 cp version.json "s3://${R2_BUCKET}/bridge/latest/version.json" \
+            --endpoint-url "$R2_ENDPOINT" \
+            --content-type "application/json"
 
-          echo "✓ Uploaded to R2 bucket: ${{ env.R2_BUCKET }}"
-          echo "  - /v${VERSION}/"
-          echo "  - /latest/"
+          echo "✓ Uploaded to R2 bucket: ${R2_BUCKET}"
+          echo "  - bridge/v${VERSION}/"
+          echo "  - bridge/latest/"
