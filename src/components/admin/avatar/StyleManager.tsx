@@ -111,9 +111,9 @@ export function StyleManager({ onRefresh }: StyleManagerProps) {
               ...p,
               name: formName,
               promptTemplate: formPromptTemplate,
-              negativePrompt: formNegativePrompt || null,
-              styleSuffix: formStyleSuffix || null,
-              model: formModel || null,
+              negativePrompt: formNegativePrompt || undefined,
+              styleSuffix: formStyleSuffix || undefined,
+              model: formModel || p.model,
             } : p
           ));
           setIsModalOpen(false);
@@ -140,12 +140,11 @@ export function StyleManager({ onRefresh }: StyleManagerProps) {
             id: newId,
             name: formName,
             promptTemplate: formPromptTemplate,
-            negativePrompt: formNegativePrompt || null,
-            styleSuffix: formStyleSuffix || null,
-            model: formModel || null,
+            negativePrompt: formNegativePrompt || undefined,
+            styleSuffix: formStyleSuffix || undefined,
+            model: formModel || 'default',
             isActive: true,
             createdAt: new Date().toISOString(),
-            updatedAt: new Date().toISOString(),
           };
           setPresets(prev => [...prev, newPreset]);
           setIsModalOpen(false);

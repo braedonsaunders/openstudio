@@ -83,9 +83,7 @@ export function LoopLibrary({ categories, onRefresh }: LoopLibraryProps) {
       const newId = `${loopId}-copy-${Date.now()}`;
       const res = await adminPost(`/api/admin/loops?action=duplicate&id=${loopId}&newId=${newId}`, {});
       if (res.ok) {
-        // Get the duplicated loop from response and add to state
-        const duplicatedLoop = await res.json();
-        setLoops(prev => [...prev, duplicatedLoop]);
+        loadLoops();
       }
     } catch (error) {
       console.error('Failed to duplicate loop:', error);
@@ -97,8 +95,7 @@ export function LoopLibrary({ categories, onRefresh }: LoopLibraryProps) {
     try {
       const res = await adminDelete(`/api/admin/loops?id=${loopToDelete}`);
       if (res.ok) {
-        // Update local state instead of reloading
-        setLoops(prev => prev.filter(l => l.id !== loopToDelete));
+        loadLoops();
         setShowDeleteModal(false);
         setLoopToDelete(null);
       }
@@ -113,10 +110,7 @@ export function LoopLibrary({ categories, onRefresh }: LoopLibraryProps) {
         is_active: !loop.is_active,
       });
       if (res.ok) {
-        // Update local state instead of reloading
-        setLoops(prev => prev.map(l =>
-          l.id === loop.id ? { ...l, is_active: !l.is_active } : l
-        ));
+        loadLoops();
       }
     } catch (error) {
       console.error('Failed to toggle loop active state:', error);
@@ -142,24 +136,7 @@ export function LoopLibrary({ categories, onRefresh }: LoopLibraryProps) {
           complexity: loopData.complexity,
         });
         if (res.ok) {
-          // Update local state instead of reloading
-          setLoops(prev => prev.map(l =>
-            l.id === selectedLoop.id ? {
-              ...l,
-              name: loopData.name || l.name,
-              category: loopData.category || l.category,
-              subcategory: loopData.subcategory || null,
-              bpm: loopData.bpm || l.bpm,
-              bars: loopData.bars || l.bars,
-              timeSignature: loopData.timeSignature || l.timeSignature,
-              key: loopData.key || null,
-              midiData: loopData.midiData || l.midiData,
-              soundPreset: loopData.soundPreset || l.soundPreset,
-              tags: loopData.tags || l.tags,
-              intensity: loopData.intensity || l.intensity,
-              complexity: loopData.complexity || l.complexity,
-            } : l
-          ));
+          loadLoops();
           setShowEditor(false);
         }
       } else {
@@ -181,10 +158,9 @@ export function LoopLibrary({ categories, onRefresh }: LoopLibraryProps) {
           complexity: loopData.complexity || 2,
         });
         if (res.ok) {
-          // Add to local state instead of reloading
-          const newLoop = await res.json();
-          setLoops(prev => [...prev, newLoop]);
+          loadLoops();
           setShowEditor(false);
+          onRefresh();
         }
       }
     } catch (error) {
