@@ -853,14 +853,17 @@ export async function saveUserAvatarCanvas(
 ): Promise<UserAvatarCanvas> {
   const { data, error } = await supabaseAuth
     .from('user_avatar_canvas')
-    .upsert({
-      user_id: userId,
-      canvas_data: canvasData,
-      full_body_url: fullBodyUrl,
-      headshot_url: headshotUrl,
-      thumbnail_urls: thumbnailUrls,
-      updated_at: new Date().toISOString(),
-    })
+    .upsert(
+      {
+        user_id: userId,
+        canvas_data: canvasData,
+        full_body_url: fullBodyUrl,
+        headshot_url: headshotUrl,
+        thumbnail_urls: thumbnailUrls,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    )
     .select()
     .single();
 
