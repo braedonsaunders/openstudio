@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { SavedTrackPreset } from '@/types/user';
-import type { UserTrack, UnifiedEffectsChain } from '@/types';
-import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects/unified-effects-processor';
+import type { UserTrack, ExtendedEffectsChain } from '@/types';
+import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
 
 interface SavedTracksState {
   // All saved track presets
@@ -348,7 +348,7 @@ export function presetToTrackSettings(preset: SavedTrackPreset) {
         autoGainControl: preset.audioSettings.autoGainControl,
         channelConfig: preset.audioSettings.channelConfig,
         inputGain: preset.audioSettings.inputGain,
-        effects: (preset.effects as unknown as UnifiedEffectsChain) || DEFAULT_UNIFIED_EFFECTS,
+        effects: { ...DEFAULT_FULL_EFFECTS, ...(preset.effects as unknown as Partial<ExtendedEffectsChain>) },
         activePreset: preset.activeEffectPreset,
         directMonitoring: preset.audioSettings.directMonitoring,
         monitoringVolume: preset.audioSettings.monitoringVolume,
