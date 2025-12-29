@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getUserFromRequest } from '@/lib/supabase/server';
-import { getUserAvatarConfig, saveUserAvatarConfig, getUserUnlockedComponents } from '@/lib/avatar/supabase';
+import { getUserAvatarConfig, saveUserAvatarConfig, getUserUnlockedComponents, getAvatarLibrary } from '@/lib/avatar/supabase';
+import { getUserProfile, getUserStats, getUserAchievements } from '@/lib/supabase/auth';
+import { getUnlockedComponentIds, type UnlockContext } from '@/lib/avatar/unlocks';
 
 // GET /api/avatar/config - Get current user's avatar config
 export async function GET(req: NextRequest) {
@@ -10,10 +12,69 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const [config, unlockedIds] = await Promise.all([
+    // Fetch all required data in parallel
+    const [config, manuallyUnlockedIds, library, profile, stats, achievements] = await Promise.all([
       getUserAvatarConfig(user.id),
       getUserUnlockedComponents(user.id),
+      getAvatarLibrary(),
+      getUserProfile(user.id),
+      getUserStats(user.id),
+      getUserAchievements(user.id),
     ]);
+
+    // Build unlock context for proper evaluation
+    // Components are UNLOCKED BY DEFAULT if they have no rules
+    const unlockContext: UnlockContext = {
+      profile: profile || {
+        id: user.id,
+        username: '',
+        displayName: '',
+        bio: '',
+        accountType: 'free',
+        isVerified: false,
+        isBanned: false,
+        totalXp: 0,
+        level: 1,
+        currentDailyStreak: 0,
+        longestDailyStreak: 0,
+        streakFreezes: 0,
+        links: {},
+        privacy: {
+          profileVisibility: 'public',
+          showStats: true,
+          showActivity: true,
+          allowFriendRequests: true,
+          allowRoomInvites: true,
+        },
+        preferences: {
+          defaultSampleRate: 48000,
+          defaultBufferSize: 256,
+          autoJitterBuffer: true,
+          theme: 'dark',
+          accentColor: '#6366f1',
+          compactMode: false,
+          showTutorialTips: true,
+          emailNotifications: true,
+          soundNotifications: true,
+        },
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      stats: stats,
+      achievements: achievements,
+      manuallyUnlockedIds: manuallyUnlockedIds,
+    };
+
+    // Evaluate which components are unlocked using proper logic:
+    // - Components with NO rules are unlocked by default
+    // - Components with rules need at least one rule satisfied
+    // - Manually unlocked components are always unlocked
+    const unlockedIds = getUnlockedComponentIds(
+      library.components,
+      library.componentUnlocks,
+      library.unlockRules,
+      unlockContext
+    );
 
     return NextResponse.json({
       config,
