@@ -275,6 +275,7 @@ export function useNativeBridge() {
     bufferSize: storeState.bufferSize,
     sampleRate: storeState.sampleRate,
     inputChannelConfig: storeState.inputChannelConfig,
+    preferNativeBridge: storeState.preferNativeBridge,
 
     // Error
     lastError: storeState.lastError,
@@ -295,5 +296,6 @@ export function useNativeBridge() {
     setBufferSize,
     setSampleRate,
     setChannelConfig,
+    setPreferNativeBridge: storeState.setPreferNativeBridge,
   };
 }
