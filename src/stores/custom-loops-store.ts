@@ -292,7 +292,13 @@ export const useCustomLoopsStore = create<CustomLoopsState>()(
         // Check custom loops first
         let original: LoopDefinition | undefined = get().loops[id];
 
-        // If not found in custom loops, check built-in library
+        // If not found in custom loops, check cached database loops
+        if (!original) {
+          const { getCachedLoopById } = await import('@/hooks/use-loop-library');
+          original = getCachedLoopById(id);
+        }
+
+        // If still not found, check built-in library as last resort
         if (!original) {
           const { LOOP_LIBRARY } = await import('@/lib/audio/loop-library');
           original = LOOP_LIBRARY.find((l) => l.id === id);
