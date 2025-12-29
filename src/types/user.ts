@@ -742,7 +742,7 @@ export interface SavedTrackPreset {
 
   // Audio Settings (for audio tracks)
   audioSettings?: {
-    inputMode: 'microphone' | 'application';
+    inputMode: 'microphone' | 'application' | 'native';
     inputDeviceId?: string; // Optional - will use default if not set
     sampleRate: 48000 | 44100;
     bufferSize: 32 | 64 | 128 | 256 | 512 | 1024;
