@@ -1210,6 +1210,15 @@ export class CloudflareCalls {
   }
 
   /**
+   * Remove a participant's performance data when they leave the room.
+   * This updates the latency compensator and triggers jam compatibility recalculation.
+   */
+  removeParticipant(userId: string): void {
+    this.participantPerformanceData.delete(userId);
+    this.latencyCompensator.removeUser(userId);
+  }
+
+  /**
    * Get jam compatibility assessment
    */
   getJamCompatibility(): JamCompatibility {
