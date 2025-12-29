@@ -49,7 +49,7 @@ function ThemeToggle() {
 // Animated campfire for night scene
 function Campfire() {
   return (
-    <div className="absolute bottom-[12%] left-1/2 -translate-x-1/2 z-10">
+    <div className="absolute bottom-[22%] left-1/2 -translate-x-1/2 z-10">
       <svg width="120" height="100" viewBox="0 0 120 100">
         {/* Logs */}
         <rect x="25" y="75" width="70" height="12" rx="6" fill="#78350f" transform="rotate(-10 60 80)" />
@@ -1335,7 +1335,7 @@ export default function HomePage() {
             transition={{ duration: 0.5, delay: 0.7 }}
             className={`text-sm mb-4 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
           >
-            Real-time jamming worldwide • Sub-30ms latency • Zero downloads
+            Real-time jamming worldwide • Ultra-low latency • Lightweight native app
           </motion.p>
 
           {/* CTA Section - more compact */}
