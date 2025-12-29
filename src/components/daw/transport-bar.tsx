@@ -103,6 +103,16 @@ function BpmBadge() {
       handleSubmit();
     } else if (e.key === 'Escape') {
       setIsEditing(false);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      const current = parseInt(editValue) || Math.round(tempo);
+      const newVal = Math.min(240, current + 1);
+      setEditValue(newVal.toString());
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      const current = parseInt(editValue) || Math.round(tempo);
+      const newVal = Math.max(40, current - 1);
+      setEditValue(newVal.toString());
     }
   };
 
@@ -155,14 +165,18 @@ function BpmBadge() {
             {isEditing ? (
               <input
                 ref={inputRef}
-                type="number"
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
                 value={editValue}
-                onChange={(e) => setEditValue(e.target.value)}
+                onChange={(e) => {
+                  // Only allow numeric input
+                  const val = e.target.value.replace(/[^0-9]/g, '');
+                  setEditValue(val);
+                }}
                 onBlur={handleSubmit}
                 onKeyDown={handleKeyDown}
-                className="w-10 bg-transparent text-sm font-semibold text-gray-900 dark:text-white outline-none text-center"
-                min={40}
-                max={240}
+                className="w-12 bg-transparent text-sm font-semibold text-gray-900 dark:text-white outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
               />
             ) : (
               <span className={cn(

@@ -191,8 +191,8 @@ export function AIPanel() {
     console.log('[AIPanel] Added Lyria track to song:', currentSong.name);
   }, [currentSong, getCurrentConfig, addTrackToSong, lyriaVolume]);
 
-  // Save changes to existing Lyria track
-  const handleSaveChanges = useCallback(() => {
+  // Save changes to existing Lyria track and auto-play
+  const handleSaveChanges = useCallback(async () => {
     if (!currentSong || !currentLyriaTrack) return;
 
     const config = getCurrentConfig();
@@ -207,6 +207,25 @@ export function AIPanel() {
     }
 
     console.log('[AIPanel] Saved Lyria track changes');
+
+    // Auto-play if not already playing
+    const lyriaStore = useLyriaStore.getState();
+    if (lyriaStore.sessionState !== 'playing') {
+      // Connect if needed
+      if (lyriaStore.sessionState === 'disconnected' || lyriaStore.sessionState === 'error') {
+        try {
+          await lyriaStore.connect();
+        } catch (err) {
+          console.error('[AIPanel] Failed to connect Lyria:', err);
+          return;
+        }
+      }
+      // Play with the new config
+      const freshState = useLyriaStore.getState();
+      if (freshState.sessionState === 'connected' || freshState.sessionState === 'paused') {
+        await freshState.play(config);
+      }
+    }
   }, [currentSong, currentLyriaTrack, getCurrentConfig, updateTrackInSong, lyriaVolume, editingSongName, updateSong]);
 
   // Delete current Lyria song
