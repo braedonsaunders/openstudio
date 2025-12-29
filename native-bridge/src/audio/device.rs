@@ -18,6 +18,7 @@ pub enum DeviceError {
 
 /// Information about an audio device
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct DeviceInfo {
     pub id: String,
     pub name: String,
@@ -31,6 +32,7 @@ pub struct DeviceInfo {
 
 /// Information about a single channel
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelInfo {
     pub index: u32,
     pub name: String,
@@ -49,6 +51,7 @@ pub enum DriverType {
 
 /// Channel configuration for capture
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChannelConfig {
     /// Number of channels (1 = mono, 2 = stereo)
     pub channel_count: u32,
