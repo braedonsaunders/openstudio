@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest } from '@/lib/supabase/server';
+import { withAdminAuth } from '@/lib/supabase/server';
 import { uploadAvatarComponentWithThumbnail, uploadAvatarColorVariant } from '@/lib/storage/r2';
 import { processAvatarComponent, createThumbnail, validateAvatarImage } from '@/lib/avatar/image-processor';
 
@@ -61,13 +61,8 @@ async function processAndUpload(
 }
 
 // POST /api/admin/avatar/upload - Upload avatar component image
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const contentType = req.headers.get('content-type') || '';
 
     // Handle JSON body (URL or base64)
@@ -160,4 +155,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

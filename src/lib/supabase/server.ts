@@ -1,6 +1,7 @@
 // Server-side Supabase utilities for API routes
 // Uses service role key for admin operations and validates user tokens from headers
 
+import { NextRequest, NextResponse } from 'next/server';
 import { createClient, SupabaseClient, User } from '@supabase/supabase-js';
 
 let supabaseAdmin: SupabaseClient | null = null;
@@ -120,4 +121,20 @@ export async function verifyAdminRequest(request: Request): Promise<User | null>
   if (!isAdmin) return null;
 
   return user;
+}
+
+/**
+ * Higher-order function that wraps an API route handler with admin authentication
+ * Eliminates boilerplate auth checks in admin routes
+ */
+export function withAdminAuth(
+  handler: (req: NextRequest, user: User) => Promise<NextResponse>
+): (req: NextRequest) => Promise<NextResponse> {
+  return async (req: NextRequest) => {
+    const user = await verifyAdminRequest(req);
+    if (!user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return handler(req, user);
+  };
 }

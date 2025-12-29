@@ -1,15 +1,10 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest } from '@/lib/supabase/server';
+import { withAdminAuth } from '@/lib/supabase/server';
 import { uploadHomepageCharacterImage } from '@/lib/storage/r2';
 
 // POST /api/admin/homepage/characters/upload - Upload character image
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json() as {
       characterId: string;
       imageDataUrl: string;
@@ -37,4 +32,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

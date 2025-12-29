@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest } from '@/lib/supabase/server';
+import { withAdminAuth } from '@/lib/supabase/server';
 import { generateAvatarImages, getAvailableModels, buildPromptFromPreset, getConfiguredProviders } from '@/lib/avatar/generator';
 import { getGenerationPresets } from '@/lib/avatar/supabase';
 import type { GenerateImageRequest } from '@/types/avatar';
 
 // GET /api/admin/avatar/generate - Get available models and presets
-export async function GET(req: NextRequest) {
+export const GET = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     // Debug: log which env vars are present
     const envDebug = {
       hasAccountId: !!process.env.CLOUDFLARE_R2_ACCOUNT_ID,
@@ -50,16 +45,11 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // POST /api/admin/avatar/generate - Generate images
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json();
 
     // Check if using a preset
@@ -115,4 +105,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
