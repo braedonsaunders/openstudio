@@ -727,8 +727,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     const currentUserId = userIdRef.current;
 
     // Check if we're the last user before disconnecting
-    const userCount = realtimeRef.current?.getUserCount() ?? 0;
-    const isLastUser = userCount <= 1;
+    // Use getOtherUsersCount() to avoid race condition where our presence
+    // was already removed (e.g., network disconnect) - we only destroy
+    // the room if there are NO other users, not based on total count
+    const otherUsersCount = realtimeRef.current?.getOtherUsersCount() ?? 0;
+    const isLastUser = otherUsersCount === 0;
 
     // Mark this user's tracks as inactive (not deleted) so they persist
     const userTracksState = useUserTracksStore.getState();

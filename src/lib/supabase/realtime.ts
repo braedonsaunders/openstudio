@@ -416,6 +416,27 @@ export class RealtimeRoomManager {
     return Object.values(state).flat().length;
   }
 
+  /**
+   * Get count of OTHER users in the room (excluding the current user).
+   * This is more reliable for determining if we're the last user, because
+   * if our own presence has already been removed (e.g., network disconnect),
+   * we won't incorrectly think we're the last user.
+   */
+  getOtherUsersCount(): number {
+    const state = this.getPresenceState();
+    if (!state) return 0;
+
+    let count = 0;
+    for (const users of Object.values(state)) {
+      for (const user of users) {
+        if (user.id !== this.userId) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
   // Event listener management
   on(event: string, callback: (data: unknown) => void): () => void {
     if (!this.listeners.has(event)) {
