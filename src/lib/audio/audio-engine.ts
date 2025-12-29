@@ -31,6 +31,8 @@ export class AudioEngine {
   private config: AudioEngineConfig;
   private jitterBuffer: AdaptiveJitterBuffer;
   private masterGain: GainNode | null = null;
+  private songGain: GainNode | null = null;
+  private songAnalyser: AnalyserNode | null = null;
   private backingTrackGain: GainNode | null = null;
   private backingTrackAnalyser: AnalyserNode | null = null;
   private masterAnalyser: AnalyserNode | null = null;
@@ -121,9 +123,19 @@ export class AudioEngine {
     this.masterGain.connect(this.masterEffectsProcessor.getInputNode());
     this.masterEffectsProcessor.connect(this.audioContext.destination);
 
-    // Create backing track gain node
+    // Create song gain node (controls all song-related audio: backing tracks, stems, Lyria AI, etc.)
+    // Signal flow: backingTrackGain/externalSources → songGain → masterGain
+    this.songGain = this.audioContext.createGain();
+    this.songGain.connect(this.masterGain);
+
+    // Create song analyser for metering
+    this.songAnalyser = this.audioContext.createAnalyser();
+    this.songAnalyser.fftSize = 256;
+    this.songGain.connect(this.songAnalyser);
+
+    // Create backing track gain node (routes through song gain)
     this.backingTrackGain = this.audioContext.createGain();
-    this.backingTrackGain.connect(this.masterGain);
+    this.backingTrackGain.connect(this.songGain);
 
     // Create backing track analyser for audio analysis (key/BPM detection)
     this.backingTrackAnalyser = this.audioContext.createAnalyser();
@@ -484,15 +496,15 @@ export class AudioEngine {
   }
 
   /**
-   * Add an external audio source (like Lyria AI music) to the master bus.
-   * This routes external MediaStreams through the master gain and effects.
-   * The stream will go through the master effects chain to the output.
+   * Add an external audio source (like Lyria AI music) to the song bus.
+   * This routes external MediaStreams through the song gain, then master gain and effects.
+   * The stream will go through: songGain → masterGain → masterEffects → output
    * @param id Unique identifier for this source
    * @param stream MediaStream from the external source
    * @param volume Initial volume (0-1)
    */
   async addExternalAudioSource(id: string, stream: MediaStream, volume: number = 1): Promise<void> {
-    if (!this.audioContext || !this.masterGain) {
+    if (!this.audioContext || !this.songGain) {
       console.warn('[AudioEngine] Cannot add external source: not initialized');
       return;
     }
@@ -515,7 +527,7 @@ export class AudioEngine {
     gainNode.gain.value = Math.max(0, Math.min(1, volume));
 
     source.connect(gainNode);
-    gainNode.connect(this.masterGain);
+    gainNode.connect(this.songGain);
 
     this.externalSources.set(id, { source, gainNode, stream });
     console.log('[AudioEngine] External audio source added:', id);
@@ -565,6 +577,24 @@ export class AudioEngine {
     if (this.backingTrackGain) {
       this.backingTrackGain.gain.value = volume;
     }
+  }
+
+  /**
+   * Set the song bus volume (controls all song-related audio: backing tracks, stems, Lyria AI, etc.)
+   * @param volume Volume from 0-1
+   */
+  setSongVolume(volume: number): void {
+    if (this.songGain) {
+      this.songGain.gain.value = volume;
+    }
+  }
+
+  /**
+   * Get the current audio level for the song bus (0-1 normalized)
+   */
+  getSongLevel(): number {
+    if (!this.songAnalyser) return 0;
+    return this.calculateLevel(this.songAnalyser);
   }
 
   // Master effects chain controls
@@ -1305,6 +1335,11 @@ export class AudioEngine {
         levels.set('backingTrack', this.calculateLevel(this.backingTrackAnalyser));
       }
 
+      // Song bus level (all song-related audio: backing tracks + Lyria + stems)
+      if (this.songAnalyser) {
+        levels.set('song', this.calculateLevel(this.songAnalyser));
+      }
+
       // Master output level
       if (this.masterAnalyser) {
         const level = this.calculateLevel(this.masterAnalyser);
@@ -1491,6 +1526,8 @@ export class AudioEngine {
 
     this.workletNode?.disconnect();
     this.masterGain?.disconnect();
+    this.songGain?.disconnect();
+    this.songAnalyser?.disconnect();
     this.backingTrackGain?.disconnect();
     this.backingTrackAnalyser?.disconnect();
     this.masterAnalyser?.disconnect();

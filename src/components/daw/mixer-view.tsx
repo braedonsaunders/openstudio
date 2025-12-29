@@ -474,6 +474,146 @@ function UserChannelStrip({
   );
 }
 
+// Song Channel Strip (for all song audio: backing tracks, Lyria AI, etc.)
+function SongChannelStrip({
+  isMaster: isRoomMaster,
+  audioLevel,
+}: {
+  isMaster: boolean;
+  audioLevel: number;
+}) {
+  const { songVolume, setSongVolume } = useAudioStore();
+  const [isMuted, setIsMuted] = useState(false);
+  const [isSolo, setIsSolo] = useState(false);
+
+  // Use actual audio level from the engine
+  const level = isMuted ? 0 : audioLevel;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      className={cn(
+        'flex flex-col h-full rounded-xl overflow-hidden',
+        'bg-gradient-to-b from-emerald-200/40 to-gray-100/95 dark:from-emerald-900/40 dark:to-zinc-900/95',
+        'border border-emerald-400/30 dark:border-emerald-500/30',
+        'shadow-xl shadow-black/10 dark:shadow-black/30'
+      )}
+      style={{ width: '100px', minWidth: '100px' }}
+    >
+      {/* Channel Header */}
+      <div className="p-2 border-b border-emerald-300/50 dark:border-emerald-900/50 bg-emerald-100/30 dark:bg-emerald-950/30">
+        <div className="flex flex-col items-center gap-1.5">
+          {/* Song Icon */}
+          <div className="relative">
+            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-500/30 to-teal-500/30 border border-emerald-500/40 flex items-center justify-center">
+              <Music4 className="w-5 h-5 text-emerald-500 dark:text-emerald-400" />
+            </div>
+            {level > 0.05 && (
+              <motion.div
+                className="absolute -inset-0.5 rounded-lg border border-emerald-500/50"
+                animate={{ opacity: [0.2, 0.6, 0.2] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              />
+            )}
+          </div>
+
+          {/* Channel Name */}
+          <div className="w-full text-center">
+            <div className="text-[10px] font-bold text-emerald-700 dark:text-emerald-200 tracking-wide">
+              SONG
+            </div>
+          </div>
+
+          {/* Channel Type Badge */}
+          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-[8px] font-medium text-emerald-600 dark:text-emerald-300">
+            <Music className="w-2.5 h-2.5" />
+            <span>MIX</span>
+          </div>
+        </div>
+      </div>
+
+      {/* Pan Section */}
+      <div className="flex justify-center py-2 border-b border-emerald-300/30 dark:border-emerald-900/30">
+        <PanKnob disabled={!isRoomMaster} />
+      </div>
+
+      {/* Fader + Meter Section */}
+      <div className="flex-1 flex items-stretch gap-1 px-2 py-2 min-h-0">
+        {/* Left dB Scale */}
+        <div className="flex flex-col justify-between text-[6px] text-gray-500 dark:text-zinc-600 font-mono py-1">
+          {METER_DB_MARKS.map((mark) => (
+            <span key={mark}>{mark}</span>
+          ))}
+        </div>
+
+        {/* Meter */}
+        <StereoMeter
+          leftLevel={level}
+          rightLevel={level * 0.97}
+          color="#10b981"
+        />
+
+        {/* Fader */}
+        <div className="flex-1 flex justify-center">
+          <VerticalFader
+            value={songVolume}
+            onChange={setSongVolume}
+            disabled={!isRoomMaster}
+            color="#10b981"
+          />
+        </div>
+      </div>
+
+      {/* dB Display */}
+      <div className="px-2 pb-1">
+        <div className="flex justify-center">
+          <div className="px-2 py-0.5 rounded bg-white/60 dark:bg-black/60 border border-emerald-300/50 dark:border-emerald-800/50">
+            <span className="text-[9px] font-mono text-emerald-600 dark:text-emerald-300">
+              {formatDb(songVolume)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Mute/Solo */}
+      <div className="flex gap-1 p-2 border-t border-emerald-300/30 dark:border-emerald-900/30">
+        <button
+          onClick={() => isRoomMaster && setIsMuted(!isMuted)}
+          disabled={!isRoomMaster}
+          className={cn(
+            'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
+            isMuted
+              ? 'bg-red-600 text-white shadow-[0_0_8px_rgba(220,38,38,0.4)]'
+              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
+            !isRoomMaster && 'cursor-not-allowed opacity-50'
+          )}
+        >
+          M
+        </button>
+        <button
+          onClick={() => isRoomMaster && setIsSolo(!isSolo)}
+          disabled={!isRoomMaster}
+          className={cn(
+            'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
+            isSolo
+              ? 'bg-amber-500 text-black shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
+            !isRoomMaster && 'cursor-not-allowed opacity-50'
+          )}
+        >
+          S
+        </button>
+      </div>
+
+      {/* Bus Label */}
+      <div className="flex items-center justify-center py-1.5 border-t border-emerald-300/30 dark:border-emerald-900/30 bg-emerald-100/20 dark:bg-emerald-950/20">
+        <span className="text-[7px] text-emerald-500/60 dark:text-emerald-400/60 font-mono">SONG BUS</span>
+      </div>
+    </motion.div>
+  );
+}
+
 // Track Channel Strip (for backing track)
 function TrackChannelStrip({
   track,
@@ -1328,11 +1468,19 @@ export function MixerView({
 
           {/* Track Channel (if backing track exists) */}
           {currentTrack && (
+            <TrackChannelStrip
+              track={currentTrack}
+              isMaster={isMaster}
+              audioLevel={audioLevels.get('backingTrack') || 0}
+            />
+          )}
+
+          {/* Song Channel (if there's a song in the setlist) */}
+          {currentTrack && (
             <>
-              <TrackChannelStrip
-                track={currentTrack}
+              <SongChannelStrip
                 isMaster={isMaster}
-                audioLevel={audioLevels.get('backingTrack') || 0}
+                audioLevel={audioLevels.get('song') || 0}
               />
               <SectionDivider label="MASTER" />
             </>
