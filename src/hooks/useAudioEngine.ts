@@ -233,9 +233,9 @@ export function useAudioEngine() {
     useAudioStore.getState().setMuted(muted);
   }, []);
 
-  // Add remote stream
-  const addRemoteStream = useCallback((userId: string, stream: MediaStream) => {
-    globalEngine?.addRemoteStream(userId, stream);
+  // Add remote stream (async for iOS Safari AudioContext resume)
+  const addRemoteStream = useCallback(async (userId: string, stream: MediaStream) => {
+    await globalEngine?.addRemoteStream(userId, stream);
   }, []);
 
   // Remove remote stream

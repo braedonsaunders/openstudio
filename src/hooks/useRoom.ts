@@ -263,8 +263,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       const cloudflare = new CloudflareCalls(roomId, user.id);
       await cloudflare.initialize();
 
-      cloudflare.setOnRemoteStream((userId, remoteStream) => {
-        addRemoteStream(userId, remoteStream);
+      cloudflare.setOnRemoteStream(async (userId, remoteStream) => {
+        // Await to ensure AudioContext is resumed on iOS Safari before proceeding
+        await addRemoteStream(userId, remoteStream);
         options.onUserJoined?.(users.get(userId) || { id: userId, name: 'Unknown', volume: 1, latency: 0, jitterBuffer: 256, connectionQuality: 'good' });
       });
 
@@ -587,6 +588,34 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         if (payload.userId === user.id) return;
         const loopTracksStore = useLoopTracksStore.getState();
         loopTracksStore.loadTracks(payload.tracks);
+      });
+
+      // Tempo broadcast handlers - sync BPM/time signature across all clients
+      realtime.on('tempo:update', (data) => {
+        const payload = data as { tempo: number; source: string; userId: string };
+        if (payload.userId === user.id) return;
+        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
+        const tempoStore = useSessionTempoStore.getState();
+        // Only update if the remote user is setting manual tempo
+        if (payload.source === 'manual' || payload.source === 'tap') {
+          tempoStore.setManualTempo(payload.tempo);
+        }
+      });
+
+      realtime.on('tempo:source', (data) => {
+        const payload = data as { source: string; userId: string };
+        if (payload.userId === user.id) return;
+        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
+        const tempoStore = useSessionTempoStore.getState();
+        tempoStore.setSource(payload.source as 'manual' | 'track' | 'analyzer' | 'tap');
+      });
+
+      realtime.on('tempo:timesig', (data) => {
+        const payload = data as { beatsPerBar: number; beatUnit: number; userId: string };
+        if (payload.userId === user.id) return;
+        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
+        const tempoStore = useSessionTempoStore.getState();
+        tempoStore.setTimeSignature(payload.beatsPerBar, payload.beatUnit);
       });
 
       // Permission event handlers
@@ -1353,6 +1382,24 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastMemberBan(targetUserId, reason);
   }, [roomId]);
 
+  // Broadcast user track updates (for real-time sync of armed/muted/volume state)
+  const broadcastUserTrackUpdate = useCallback((trackId: string, updates: Partial<UserTrack>) => {
+    realtimeRef.current?.broadcastUserTrackUpdate(trackId, updates);
+  }, []);
+
+  // Broadcast tempo updates (for real-time sync of BPM/time signature)
+  const broadcastTempoUpdate = useCallback((tempo: number, source: string) => {
+    realtimeRef.current?.broadcastTempoUpdate(tempo, source);
+  }, []);
+
+  const broadcastTempoSource = useCallback((source: string) => {
+    realtimeRef.current?.broadcastTempoSource(source);
+  }, []);
+
+  const broadcastTimeSignature = useCallback((beatsPerBar: number, beatUnit: number) => {
+    realtimeRef.current?.broadcastTimeSignature(beatsPerBar, beatUnit);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -1397,5 +1444,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     updateUserPermissions,
     kickUser,
     banUser,
+    // Real-time broadcast functions
+    broadcastUserTrackUpdate,
+    broadcastTempoUpdate,
+    broadcastTempoSource,
+    broadcastTimeSignature,
   };
 }

@@ -317,33 +317,93 @@ export class AudioEngine {
     return this.localStream;
   }
 
-  addRemoteStream(userId: string, stream: MediaStream): void {
-    if (!this.audioContext || !this.masterGain) return;
+  async addRemoteStream(userId: string, stream: MediaStream): Promise<void> {
+    if (!this.audioContext || !this.masterGain) {
+      console.warn('[AudioEngine] Cannot add remote stream: AudioContext not initialized');
+      return;
+    }
 
-    const source = this.audioContext.createMediaStreamSource(stream);
-    const gainNode = this.audioContext.createGain();
-    const analyser = this.audioContext.createAnalyser();
-    analyser.fftSize = 256;
+    // iOS Safari: Ensure AudioContext is running before connecting remote stream
+    // Unlike local getUserMedia, remote WebRTC streams don't auto-resume the context
+    if (this.audioContext.state === 'suspended') {
+      try {
+        console.log('[AudioEngine] Resuming suspended AudioContext for remote stream');
+        await this.audioContext.resume();
+      } catch (err) {
+        console.error('[AudioEngine] Failed to resume AudioContext for remote stream:', err);
+        return;
+      }
+    }
 
-    // Create delay node for per-user latency compensation
-    // Max delay of 200ms to match LatencyCompensator's maxCompensation
-    const delayNode = this.audioContext.createDelay(0.2);
-    delayNode.delayTime.value = 0; // Initially no delay, will be set by compensation system
+    // Validate stream has active audio tracks
+    const audioTracks = stream.getAudioTracks();
+    if (!audioTracks.length) {
+      console.warn('[AudioEngine] Remote stream has no audio tracks:', userId);
+      return;
+    }
 
-    // Signal flow: source -> delayNode -> gainNode -> analyser & masterGain
-    source.connect(delayNode);
-    delayNode.connect(gainNode);
-    gainNode.connect(analyser);
-    gainNode.connect(this.masterGain);
+    // Log track state for debugging
+    const enabledTracks = audioTracks.filter(t => t.enabled && t.readyState === 'live');
+    if (enabledTracks.length === 0) {
+      console.warn('[AudioEngine] Remote stream has no live enabled audio tracks:', userId,
+        audioTracks.map(t => ({ enabled: t.enabled, readyState: t.readyState })));
+      // Continue anyway - track might become live shortly
+    }
 
-    this.remoteStreams.set(userId, {
-      userId,
-      stream,
-      analyser,
-      gainNode,
-      delayNode,
-      level: 0,
-    });
+    try {
+      const source = this.audioContext.createMediaStreamSource(stream);
+      const gainNode = this.audioContext.createGain();
+      const analyser = this.audioContext.createAnalyser();
+      analyser.fftSize = 256;
+
+      // Create delay node for per-user latency compensation
+      // Max delay of 200ms to match LatencyCompensator's maxCompensation
+      const delayNode = this.audioContext.createDelay(0.2);
+      delayNode.delayTime.value = 0; // Initially no delay, will be set by compensation system
+
+      // Signal flow: source -> delayNode -> gainNode -> analyser & masterGain
+      source.connect(delayNode);
+      delayNode.connect(gainNode);
+      gainNode.connect(analyser);
+      gainNode.connect(this.masterGain);
+
+      this.remoteStreams.set(userId, {
+        userId,
+        stream,
+        analyser,
+        gainNode,
+        delayNode,
+        level: 0,
+      });
+
+      console.log('[AudioEngine] Added remote stream for user:', userId,
+        'AudioContext state:', this.audioContext.state);
+    } catch (err) {
+      console.error('[AudioEngine] Failed to add remote stream:', userId, err);
+      // On iOS Safari, this can fail if the stream is invalid or context is in wrong state
+      // Try to resume and retry once
+      if (this.audioContext.state !== 'running') {
+        try {
+          await this.audioContext.resume();
+          console.log('[AudioEngine] Retrying remote stream connection after resume');
+          // Retry the connection
+          const source = this.audioContext.createMediaStreamSource(stream);
+          const gainNode = this.audioContext.createGain();
+          const analyser = this.audioContext.createAnalyser();
+          analyser.fftSize = 256;
+          const delayNode = this.audioContext.createDelay(0.2);
+          delayNode.delayTime.value = 0;
+          source.connect(delayNode);
+          delayNode.connect(gainNode);
+          gainNode.connect(analyser);
+          gainNode.connect(this.masterGain);
+          this.remoteStreams.set(userId, { userId, stream, analyser, gainNode, delayNode, level: 0 });
+          console.log('[AudioEngine] Remote stream connected after retry:', userId);
+        } catch (retryErr) {
+          console.error('[AudioEngine] Retry failed for remote stream:', userId, retryErr);
+        }
+      }
+    }
   }
 
   /**
