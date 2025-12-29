@@ -292,27 +292,34 @@ export class MultiFilterProcessor extends BaseEffect {
   // This prevents BiquadFilterNode instability from audio-rate parameter automation
   setEnabled(enabled: boolean): void {
     super.setEnabled(enabled);
-    const now = this.audioContext.currentTime;
 
     if (!enabled) {
+      // CRITICAL: Zero the gain IMMEDIATELY before disconnecting
+      // This prevents any residual modulation from causing instability during disconnect
+      this.zeroGainImmediate(this.lfoGain);
+
       // CRITICAL: Disconnect LFO from filter.frequency
       // Just zeroing the gain is not enough - the connected oscillator can still
       // cause filter instability even at very low amplitudes
       this.disconnectLFO();
 
-      // Zero the gain for safety
-      this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
-
       // Stop envelope follower
       this.stopEnvelopeFollower();
 
-      // Reset filter to a safe, stable state
+      // Reset filter to a safe, stable state (now uses smooth transition)
       this.resetFilter(this.filter);
     } else {
-      // Reconnect LFO to filter
+      // CRITICAL: Zero the LFO gain BEFORE connecting
+      // This prevents stale gain values from pushing the filter to unstable frequencies
+      this.zeroGainImmediate(this.lfoGain);
+
+      // Prepare filter for modulation
+      this.prepareFilterForModulation(this.filter);
+
+      // Reconnect LFO to filter (gain is zeroed, so this is safe)
       this.connectLFO();
 
-      // Restore LFO modulation
+      // Now restore LFO modulation - gain will ramp up smoothly via setTargetAtTime
       this.updateLFO();
 
       // Restart envelope follower if needed

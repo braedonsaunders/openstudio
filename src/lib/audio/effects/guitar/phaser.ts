@@ -269,9 +269,13 @@ export class PhaserProcessor extends BaseEffect {
   // This prevents BiquadFilterNode instability from audio-rate parameter automation
   setEnabled(enabled: boolean): void {
     super.setEnabled(enabled);
-    const now = this.audioContext.currentTime;
 
     if (!enabled) {
+      // CRITICAL: Zero the gains IMMEDIATELY before disconnecting
+      // This prevents any residual modulation from causing instability during disconnect
+      this.zeroGainImmediate(this.lfoGain);
+      this.zeroGainImmediate(this.baseFrequencyGain);
+
       // CRITICAL: Disconnect ALL modulation sources from filter.frequency
       // Just zeroing the gain is not enough - the connected oscillators can still
       // cause filter instability even at very low amplitudes
@@ -282,22 +286,28 @@ export class PhaserProcessor extends BaseEffect {
         // Ignore if already disconnected
       }
 
-      // Zero the gains for safety
-      this.lfoGain.gain.setTargetAtTime(0, now, 0.01);
-      this.baseFrequencyGain.gain.setTargetAtTime(0, now, 0.01);
-
-      // Reset all filters to a safe, stable state
+      // Reset all filters to a safe, stable state (now uses smooth transition)
       for (const filter of this.allpassFilters) {
         this.resetFilter(filter);
       }
     } else {
-      // Reconnect modulation sources to all filters
+      // CRITICAL: Zero all modulation gains BEFORE connecting
+      // This prevents stale gain values from pushing the filter to unstable frequencies
+      this.zeroGainImmediate(this.lfoGain);
+      this.zeroGainImmediate(this.baseFrequencyGain);
+
+      // Prepare all filters for modulation
+      for (const filter of this.allpassFilters) {
+        this.prepareFilterForModulation(filter);
+      }
+
+      // Reconnect modulation sources to all filters (gains are zeroed, so this is safe)
       for (const filter of this.allpassFilters) {
         this.baseFrequencyGain.connect(filter.frequency);
         this.lfoGain.connect(filter.frequency);
       }
 
-      // Restore modulation values
+      // Now restore modulation values - gains will ramp up smoothly via setTargetAtTime
       this.updateBaseFrequency();
       this.updateDepth();
     }

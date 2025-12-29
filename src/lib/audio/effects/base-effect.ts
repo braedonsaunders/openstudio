@@ -180,6 +180,7 @@ export abstract class BaseEffect implements EffectProcessor {
   }
 
   // Reset a filter to safe default state
+  // Uses smooth transitions to avoid coefficient discontinuities that cause instability
   protected resetFilter(filter: BiquadFilterNode, reason?: string): void {
     try {
       const filterInfo = this.getFilterInfo(filter);
@@ -191,14 +192,56 @@ export abstract class BaseEffect implements EffectProcessor {
       filter.Q.cancelScheduledValues(now);
       filter.gain.cancelScheduledValues(now);
 
-      // Set to safe values immediately
-      filter.frequency.setValueAtTime(1000, now);
-      filter.Q.setValueAtTime(1, now);
-      filter.gain.setValueAtTime(0, now);
+      // CRITICAL: Use setTargetAtTime with a small time constant instead of setValueAtTime
+      // Abrupt parameter changes via setValueAtTime can cause filter coefficient discontinuities
+      // that lead to "state is bad" instability errors, especially for allpass filters
+      const smoothingTime = 0.005; // 5ms smoothing to prevent discontinuities
+
+      // First, hold current values briefly to allow any pending automation to settle
+      filter.frequency.setValueAtTime(filter.frequency.value || 1000, now);
+      filter.Q.setValueAtTime(filter.Q.value || 1, now);
+      filter.gain.setValueAtTime(filter.gain.value || 0, now);
+
+      // Then smoothly transition to safe values
+      filter.frequency.setTargetAtTime(1000, now, smoothingTime);
+      filter.Q.setTargetAtTime(1, now, smoothingTime);
+      filter.gain.setTargetAtTime(0, now, smoothingTime);
 
       console.log(`[${this.name}] Filter reset complete`);
     } catch (e) {
       console.error(`[${this.name}] Failed to reset filter:`, e);
+    }
+  }
+
+  // Prepare a filter for modulation by ensuring it's in a stable state
+  // Call this BEFORE connecting any modulation sources
+  protected prepareFilterForModulation(filter: BiquadFilterNode): void {
+    try {
+      const now = this.audioContext.currentTime;
+      // Cancel any pending automation
+      filter.frequency.cancelScheduledValues(now);
+      filter.Q.cancelScheduledValues(now);
+      filter.gain.cancelScheduledValues(now);
+
+      // Hold current value to create a stable baseline
+      const currentFreq = Math.max(
+        BaseEffect.SAFE_FREQUENCY_MIN,
+        Math.min(BaseEffect.SAFE_FREQUENCY_MAX, filter.frequency.value || 1000)
+      );
+      filter.frequency.setValueAtTime(currentFreq, now);
+    } catch (e) {
+      console.warn(`[${this.name}] Error preparing filter for modulation:`, e);
+    }
+  }
+
+  // Safely zero a gain node before disconnecting/connecting modulation
+  protected zeroGainImmediate(gainNode: GainNode): void {
+    try {
+      const now = this.audioContext.currentTime;
+      gainNode.gain.cancelScheduledValues(now);
+      gainNode.gain.setValueAtTime(0, now);
+    } catch {
+      // Ignore errors
     }
   }
 
