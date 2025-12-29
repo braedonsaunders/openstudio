@@ -217,11 +217,14 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           const distance = Math.sqrt(dx * dx + dy * dy);
 
           if (distance < 1 || prev.walkTimer <= 0) {
-            // Reached target or timer expired
+            // Reached target or timer expired - clamp final position to bounds
+            const { walkableArea } = groundConfig;
+            const finalX = distance < 1 ? prev.targetX : prev.x;
+            const finalY = distance < 1 ? prev.targetY : prev.y;
             return {
               ...prev,
-              x: distance < 1 ? prev.targetX : prev.x,
-              y: distance < 1 ? prev.targetY : prev.y,
+              x: Math.max(walkableArea.minX, Math.min(walkableArea.maxX, finalX)),
+              y: Math.max(walkableArea.minY, Math.min(walkableArea.maxY, finalY)),
               isWalking: false,
               idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
             };
@@ -231,10 +234,15 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           const moveX = (dx / distance) * walkSpeed * deltaTime;
           const moveY = (dy / distance) * walkSpeed * deltaTime;
 
+          // Calculate new position and clamp to walkable area
+          const { walkableArea } = groundConfig;
+          const newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
+          const newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
+
           return {
             ...prev,
-            x: prev.x + moveX,
-            y: prev.y + moveY,
+            x: newX,
+            y: newY,
             walkTimer: prev.walkTimer - deltaTime,
             facingRight: dx > 0,
           };
