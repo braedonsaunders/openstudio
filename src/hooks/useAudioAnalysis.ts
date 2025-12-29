@@ -163,6 +163,10 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     analyzerRef.current.setOnAnalysis(handleAnalysisData);
   }, [handleAnalysisData]);
 
+  // Store current props in refs so store subscriptions can access them
+  const propsRef = useRef({ localStream, backingTrackAnalyser, masterAnalyser, isPlaying, isMaster, audioContext });
+  propsRef.current = { localStream, backingTrackAnalyser, masterAnalyser, isPlaying, isMaster, audioContext };
+
   // Start/stop analysis based on source and playback state
   // Analysis runs automatically when:
   // - User is master (only master analyzes, results are synced to others)
@@ -254,6 +258,67 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
     isMaster,
     audioContext,
   ]);
+
+  // Helper to start analysis based on current state
+  const tryStartAnalysis = useCallback(() => {
+    const { isWorkerReady, analysisSource, setIsAnalyzing, setAnalysisError } = useAnalysisStore.getState();
+    const { localStream: stream, backingTrackAnalyser: backing, masterAnalyser: master, isPlaying: playing, isMaster: isMasterUser, audioContext: ctx } = propsRef.current;
+
+    if (!isWorkerReady || !ctx) return false;
+
+    try {
+      if (analysisSource === 'local' && stream) {
+        analyzerRef.current.analyzeStream(stream);
+        setIsAnalyzing(true);
+        return true;
+      } else if (analysisSource === 'backing' && backing && playing && isMasterUser) {
+        analyzerRef.current.analyzeFromAnalyserNode(backing);
+        setIsAnalyzing(true);
+        return true;
+      } else if (analysisSource === 'mixed' && master && isMasterUser) {
+        analyzerRef.current.analyzeFromAnalyserNode(master);
+        setIsAnalyzing(true);
+        return true;
+      }
+    } catch (error) {
+      console.error('Failed to start analysis:', error);
+      setAnalysisError('Failed to start audio analysis');
+    }
+    return false;
+  }, []);
+
+  // Subscribe to analysisSource changes to restart analysis when source is switched
+  // This runs outside React's render cycle to avoid infinite loops
+  useEffect(() => {
+    const unsubscribe = useAnalysisStore.subscribe(
+      (state) => state.analysisSource,
+      (newSource) => {
+        console.log('Analysis source changed to:', newSource);
+
+        // Stop current analysis and restart with new source
+        analyzerRef.current.stopAnalysis();
+        useAnalysisStore.getState().setIsAnalyzing(false);
+        tryStartAnalysis();
+      }
+    );
+
+    return () => unsubscribe();
+  }, [tryStartAnalysis]);
+
+  // Subscribe to isWorkerReady to start analysis when worker becomes ready
+  useEffect(() => {
+    const unsubscribe = useAnalysisStore.subscribe(
+      (state) => state.isWorkerReady,
+      (isReady) => {
+        if (isReady) {
+          console.log('Worker ready - attempting to start analysis');
+          tryStartAnalysis();
+        }
+      }
+    );
+
+    return () => unsubscribe();
+  }, [tryStartAnalysis]);
 
   // Update visualization data
   // Use store subscription outside of React to avoid render cycles
