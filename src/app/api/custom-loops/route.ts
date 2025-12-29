@@ -4,6 +4,11 @@ import { getSupabase } from '@/lib/supabase/server';
 // GET - Fetch all custom loops for a user
 export async function GET(request: NextRequest) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('userId');
 
@@ -11,7 +16,7 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     }
 
-    const { data, error } = await getSupabase()
+    const { data, error } = await supabase
       .from('user_custom_loops')
       .select('*')
       .eq('user_id', userId)
@@ -35,6 +40,11 @@ export async function GET(request: NextRequest) {
 // POST - Create a new custom loop
 export async function POST(request: NextRequest) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
     const body = await request.json();
 
     if (!body.userId) {
@@ -43,7 +53,7 @@ export async function POST(request: NextRequest) {
 
     const dbRecord = transformToDb(body);
 
-    const { data, error } = await getSupabase()
+    const { data, error } = await supabase
       .from('user_custom_loops')
       .insert(dbRecord)
       .select()
@@ -64,6 +74,11 @@ export async function POST(request: NextRequest) {
 // PATCH - Update a custom loop
 export async function PATCH(request: NextRequest) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
     const body = await request.json();
     const { id, userId, ...updates } = body;
 
@@ -80,7 +95,7 @@ export async function PATCH(request: NextRequest) {
     delete dbUpdates.user_id;
     delete dbUpdates.created_at;
 
-    const { data, error } = await getSupabase()
+    const { data, error } = await supabase
       .from('user_custom_loops')
       .update(dbUpdates)
       .eq('id', id)
@@ -103,6 +118,11 @@ export async function PATCH(request: NextRequest) {
 // DELETE - Remove a custom loop
 export async function DELETE(request: NextRequest) {
   try {
+    const supabase = getSupabase();
+    if (!supabase) {
+      return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
+    }
+
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
     const userId = searchParams.get('userId');
@@ -115,7 +135,7 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     }
 
-    const { error } = await getSupabase()
+    const { error } = await supabase
       .from('user_custom_loops')
       .delete()
       .eq('id', id)
