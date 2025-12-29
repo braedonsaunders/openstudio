@@ -48,11 +48,13 @@ export class BitcrusherProcessor extends BaseEffect {
     this.preFilter = audioContext.createBiquadFilter();
     this.preFilter.type = 'lowpass';
     this.preFilter.Q.value = 0.5;
+    this.registerFilter(this.preFilter);
 
     // Post-filter to smooth harsh edges
     this.postFilter = audioContext.createBiquadFilter();
     this.postFilter.type = 'lowpass';
     this.postFilter.Q.value = 0.7;
+    this.registerFilter(this.postFilter);
 
     // Hold gain for sample rate reduction effect
     this.holdGain = audioContext.createGain();

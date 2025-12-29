@@ -78,40 +78,49 @@ export class MultibandCompressorProcessor extends BaseEffect {
     };
 
     // Create crossover filters (Linkwitz-Riley 24dB/oct)
+    // Register all filters for stability when toggling effect
     // Low band: LP @ lowCrossover
     this.lowCrossoverLP = audioContext.createBiquadFilter();
     this.lowCrossoverLP.type = 'lowpass';
     this.lowCrossoverLP.Q.value = 0.5; // Butterworth
+    this.registerFilter(this.lowCrossoverLP);
 
     this.lowCrossoverLP2 = audioContext.createBiquadFilter();
     this.lowCrossoverLP2.type = 'lowpass';
     this.lowCrossoverLP2.Q.value = 0.5;
+    this.registerFilter(this.lowCrossoverLP2);
 
     // Mid band: HP @ lowCrossover, LP @ highCrossover
     this.midCrossoverHP = audioContext.createBiquadFilter();
     this.midCrossoverHP.type = 'highpass';
     this.midCrossoverHP.Q.value = 0.5;
+    this.registerFilter(this.midCrossoverHP);
 
     this.midCrossoverHP2 = audioContext.createBiquadFilter();
     this.midCrossoverHP2.type = 'highpass';
     this.midCrossoverHP2.Q.value = 0.5;
+    this.registerFilter(this.midCrossoverHP2);
 
     this.midCrossoverLP = audioContext.createBiquadFilter();
     this.midCrossoverLP.type = 'lowpass';
     this.midCrossoverLP.Q.value = 0.5;
+    this.registerFilter(this.midCrossoverLP);
 
     this.midCrossoverLP2 = audioContext.createBiquadFilter();
     this.midCrossoverLP2.type = 'lowpass';
     this.midCrossoverLP2.Q.value = 0.5;
+    this.registerFilter(this.midCrossoverLP2);
 
     // High band: HP @ highCrossover
     this.highCrossoverHP = audioContext.createBiquadFilter();
     this.highCrossoverHP.type = 'highpass';
     this.highCrossoverHP.Q.value = 0.5;
+    this.registerFilter(this.highCrossoverHP);
 
     this.highCrossoverHP2 = audioContext.createBiquadFilter();
     this.highCrossoverHP2.type = 'highpass';
     this.highCrossoverHP2.Q.value = 0.5;
+    this.registerFilter(this.highCrossoverHP2);
 
     // Create compressors
     this.lowCompressor = audioContext.createDynamicsCompressor();

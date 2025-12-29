@@ -79,14 +79,19 @@ export class AmpSimulatorProcessor extends BaseEffect {
     // Create output
     this.masterGain = audioContext.createGain();
 
-    // Configure input stage
+    // Configure input stage and register filters for stability
     this.inputFilter.type = 'highpass';
     this.inputFilter.frequency.value = 60; // Remove sub-bass rumble
     this.inputFilter.Q.value = 0.7;
+    this.registerFilter(this.inputFilter);
     this.inputGainNode.gain.value = 1;
 
     // Configure tonestack filters
     this.bassFilter.type = 'lowshelf';
+    this.registerFilter(this.bassFilter);
+    this.registerFilter(this.midFilter);
+    this.registerFilter(this.trebleFilter);
+    this.registerFilter(this.presenceFilter);
     this.bassFilter.Q.value = 0.7;
 
     this.midFilter.type = 'peaking';

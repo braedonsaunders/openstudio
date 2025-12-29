@@ -53,6 +53,7 @@ export class TransientShaperProcessor extends BaseEffect {
     this.attackFilter.type = 'highshelf';
     this.attackFilter.frequency.value = 2000;
     this.attackFilter.gain.value = 0;
+    this.registerFilter(this.attackFilter);
 
     this.attackGain = audioContext.createGain();
 
@@ -61,6 +62,7 @@ export class TransientShaperProcessor extends BaseEffect {
     this.sustainFilter.type = 'lowshelf';
     this.sustainFilter.frequency.value = 500;
     this.sustainFilter.gain.value = 0;
+    this.registerFilter(this.sustainFilter);
 
     this.sustainGain = audioContext.createGain();
 

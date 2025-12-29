@@ -76,6 +76,7 @@ export class VocalDoublerProcessor extends BaseEffect {
     this.highPass.type = 'highpass';
     this.highPass.frequency.value = 80;
     this.highPass.Q.value = 0.7;
+    this.registerFilter(this.highPass);
 
     // Wire up signal chain
     // Dry path

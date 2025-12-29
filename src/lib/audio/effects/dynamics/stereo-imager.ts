@@ -63,6 +63,7 @@ export class StereoImagerProcessor extends BaseEffect {
     this.bassMonoFilter.type = 'lowpass';
     this.bassMonoFilter.frequency.value = this.settings.bassMonoFreq;
     this.bassMonoFilter.Q.value = 0.7;
+    this.registerFilter(this.bassMonoFilter);
 
     this.bassMonoGain = audioContext.createGain();
     this.bassMonoGain.gain.value = 0;
@@ -75,6 +76,7 @@ export class StereoImagerProcessor extends BaseEffect {
     this.sideFilter.type = 'highpass';
     this.sideFilter.frequency.value = 200;
     this.sideFilter.Q.value = 0.5;
+    this.registerFilter(this.sideFilter);
 
     // Wire up M/S processing
     // Input -> splitter

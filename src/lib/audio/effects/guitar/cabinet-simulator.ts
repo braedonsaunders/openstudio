@@ -82,23 +82,28 @@ export class CabinetSimulatorProcessor extends BaseEffect {
     this.dryGain = audioContext.createGain();
     this.algorithmicGain = audioContext.createGain();
 
-    // Configure filters
+    // Configure and register filters for stability
     this.lowCutFilter.type = 'highpass';
     this.lowCutFilter.Q.value = 0.7;
+    this.registerFilter(this.lowCutFilter);
 
     this.highCutFilter.type = 'lowpass';
     this.highCutFilter.Q.value = 0.7;
+    this.registerFilter(this.highCutFilter);
 
     this.resonanceFilter.type = 'peaking';
     this.resonanceFilter.Q.value = 2.0;
+    this.registerFilter(this.resonanceFilter);
 
     this.characterFilter.type = 'peaking';
     this.characterFilter.frequency.value = 2500;
     this.characterFilter.Q.value = 1.5;
+    this.registerFilter(this.characterFilter);
 
     this.presenceFilter.type = 'highshelf';
     this.presenceFilter.frequency.value = 4000;
     this.presenceFilter.Q.value = 0.7;
+    this.registerFilter(this.presenceFilter);
 
     // Wire up algorithmic path:
     // input -> lowCut -> highCut -> resonance -> character -> presence -> algorithmicGain

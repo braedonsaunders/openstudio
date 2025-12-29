@@ -109,21 +109,25 @@ export class ShimmerReverbProcessor extends BaseEffect {
     this.dampingFilter = audioContext.createBiquadFilter();
     this.dampingFilter.type = 'lowpass';
     this.dampingFilter.Q.value = 0.5;
+    this.registerFilter(this.dampingFilter);
 
     this.toneFilter = audioContext.createBiquadFilter();
     this.toneFilter.type = 'highshelf';
     this.toneFilter.frequency.value = 4000;
+    this.registerFilter(this.toneFilter);
 
-    // Allpass diffusers
+    // Allpass diffusers - CRITICAL: these must be registered for stability
     this.allpass1 = audioContext.createBiquadFilter();
     this.allpass1.type = 'allpass';
     this.allpass1.frequency.value = 1500;
     this.allpass1.Q.value = 0.5;
+    this.registerFilter(this.allpass1);
 
     this.allpass2 = audioContext.createBiquadFilter();
     this.allpass2.type = 'allpass';
     this.allpass2.frequency.value = 3000;
     this.allpass2.Q.value = 0.5;
+    this.registerFilter(this.allpass2);
 
     // Mixing
     this.dryGain = audioContext.createGain();
