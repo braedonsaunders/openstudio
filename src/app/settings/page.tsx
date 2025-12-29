@@ -35,7 +35,11 @@ import {
   Sliders,
   Loader2,
   Search,
+  Sun,
+  Moon,
+  Monitor,
 } from 'lucide-react';
+import { useTheme } from '@/components/theme/ThemeProvider';
 
 // Instrument category labels
 const INSTRUMENT_CATEGORY_LABELS: Record<InstrumentCategory, string> = {
@@ -49,10 +53,11 @@ const INSTRUMENT_CATEGORY_LABELS: Record<InstrumentCategory, string> = {
   other: 'Other',
 };
 
-type Tab = 'profile' | 'avatar' | 'instruments' | 'tracks' | 'privacy' | 'notifications';
+type Tab = 'profile' | 'avatar' | 'instruments' | 'tracks' | 'appearance' | 'privacy' | 'notifications';
 
 export default function SettingsPage() {
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
   const {
     profile,
     avatar,
@@ -166,6 +171,7 @@ export default function SettingsPage() {
     { id: 'avatar', icon: Palette, label: 'Avatar' },
     { id: 'instruments', icon: Music, label: 'Instruments' },
     { id: 'tracks', icon: Sliders, label: 'Saved Tracks' },
+    { id: 'appearance', icon: Sun, label: 'Appearance' },
     { id: 'privacy', icon: Shield, label: 'Privacy' },
     { id: 'notifications', icon: Bell, label: 'Notifications' },
   ];
@@ -423,6 +429,95 @@ export default function SettingsPage() {
 
             {activeTab === 'tracks' && (
               <TracksTab userId={profile.id} />
+            )}
+
+            {activeTab === 'appearance' && (
+              <Card className="p-6">
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Appearance</h2>
+                <div className="space-y-6">
+                  <div>
+                    <label className="block text-sm text-gray-500 dark:text-gray-400 mb-3">Theme</label>
+                    <div className="grid grid-cols-3 gap-3">
+                      <button
+                        onClick={() => setTheme('light')}
+                        className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                          theme === 'light'
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                          theme === 'light'
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                        }`}>
+                          <Sun className="w-6 h-6" />
+                        </div>
+                        <span className={`text-sm font-medium ${
+                          theme === 'light'
+                            ? 'text-indigo-600 dark:text-indigo-400'
+                            : 'text-gray-700 dark:text-gray-300'
+                        }`}>
+                          Light
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setTheme('dark')}
+                        className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                          theme === 'dark'
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                          theme === 'dark'
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                        }`}>
+                          <Moon className="w-6 h-6" />
+                        </div>
+                        <span className={`text-sm font-medium ${
+                          theme === 'dark'
+                            ? 'text-indigo-600 dark:text-indigo-400'
+                            : 'text-gray-700 dark:text-gray-300'
+                        }`}>
+                          Dark
+                        </span>
+                      </button>
+                      <button
+                        onClick={() => setTheme('system')}
+                        className={`flex flex-col items-center gap-3 p-4 rounded-xl border-2 transition-all ${
+                          theme === 'system'
+                            ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 hover:bg-gray-50 dark:hover:bg-gray-800'
+                        }`}
+                      >
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center ${
+                          theme === 'system'
+                            ? 'bg-indigo-500 text-white'
+                            : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400'
+                        }`}>
+                          <Monitor className="w-6 h-6" />
+                        </div>
+                        <span className={`text-sm font-medium ${
+                          theme === 'system'
+                            ? 'text-indigo-600 dark:text-indigo-400'
+                            : 'text-gray-700 dark:text-gray-300'
+                        }`}>
+                          System
+                        </span>
+                      </button>
+                    </div>
+                    <p className="mt-3 text-sm text-gray-500 dark:text-gray-400">
+                      {theme === 'system'
+                        ? 'Automatically switches based on your device settings'
+                        : theme === 'light'
+                        ? 'Always use light mode'
+                        : 'Always use dark mode'}
+                    </p>
+                  </div>
+                </div>
+              </Card>
             )}
 
             {activeTab === 'privacy' && (
