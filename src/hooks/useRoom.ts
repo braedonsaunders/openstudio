@@ -382,14 +382,29 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       });
 
-      realtime.on('presence:join', (data) => {
+      realtime.on('presence:join', async (data) => {
         const { users: newUsers } = data as { users: User[] };
+        let hasNewUsers = false;
+
         newUsers.forEach((u) => {
           if (u.id !== user.id) {
             addUser(u);
             options.onUserJoined?.(u);
+            hasNewUsers = true;
           }
         });
+
+        // CRITICAL: When new users join, we need to pull their WebRTC audio tracks
+        // pullRemoteTracks only runs once during our initial join, so we need to
+        // refresh to discover newly joined users' audio streams
+        if (hasNewUsers && cloudflareRef.current) {
+          console.log('[useRoom] New user joined, refreshing remote tracks...');
+          try {
+            await cloudflareRef.current.refreshRemoteTracks();
+          } catch (err) {
+            console.error('[useRoom] Failed to refresh remote tracks:', err);
+          }
+        }
       });
 
       realtime.on('presence:leave', (data) => {
