@@ -859,14 +859,17 @@ export async function saveUserAvatarCanvas(
   if (!supabase) throw new Error('Admin client not available');
   const { data, error } = await supabase
     .from('user_avatar_canvas')
-    .upsert({
-      user_id: userId,
-      canvas_data: canvasData,
-      full_body_url: fullBodyUrl,
-      headshot_url: headshotUrl,
-      thumbnail_urls: thumbnailUrls,
-      updated_at: new Date().toISOString(),
-    })
+    .upsert(
+      {
+        user_id: userId,
+        canvas_data: canvasData,
+        full_body_url: fullBodyUrl,
+        headshot_url: headshotUrl,
+        thumbnail_urls: thumbnailUrls,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: 'user_id' }
+    )
     .select()
     .single();
 
