@@ -119,897 +119,989 @@ const Particles = memo(function Particles({ color = '#fbbf24', count = 20 }: { c
 });
 
 // ============================================
-// BEACH SCENE - Day & Night
+// BEACH SCENE - Day & Night (Ground-dominant pseudo-3D)
 // ============================================
 function BeachScene({ isDark }: { isDark: boolean }) {
+  const config = SCENE_CONFIGS.beach.ground;
+
   return (
-    <>
-      {/* Sky gradient is handled by backdrop */}
+    <div className="absolute inset-0 overflow-hidden">
+      {/* Sky - compact at top */}
+      <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-orange-400 via-pink-500 to-purple-600'
+            : 'bg-gradient-to-b from-sky-300 via-cyan-200 to-blue-300'
+        }`} />
 
-      {/* Celestial body - Sun or Moon */}
-      <motion.div
-        className="absolute"
-        style={{ right: '15%', top: '8%' }}
-        animate={{ y: [0, -5, 0] }}
-        transition={{ duration: 6, repeat: Infinity, ease: 'easeInOut' }}
-      >
-        {isDark ? (
-          <div className="relative">
-            <div className="w-16 h-16 rounded-full bg-gradient-to-br from-gray-100 via-gray-200 to-gray-300"
-              style={{ boxShadow: '0 0 60px 20px rgba(255,255,255,0.15)' }} />
-            <div className="absolute top-3 left-4 w-3 h-3 rounded-full bg-gray-300/50" />
-            <div className="absolute top-7 left-8 w-2 h-2 rounded-full bg-gray-300/40" />
-          </div>
-        ) : (
-          <motion.div
-            className="w-24 h-24 rounded-full"
-            style={{
-              background: 'radial-gradient(circle at 30% 30%, #fff9c4, #ffeb3b, #ff9800)',
-              boxShadow: '0 0 80px 30px rgba(255,183,77,0.4), 0 0 120px 60px rgba(255,152,0,0.2)',
-            }}
-            animate={{ scale: [1, 1.03, 1] }}
-            transition={{ duration: 4, repeat: Infinity }}
+        {/* Sun/Moon at horizon */}
+        <motion.div
+          className={`absolute bottom-[15%] left-1/2 -translate-x-1/2 w-14 h-14 rounded-full ${
+            isDark
+              ? 'bg-gradient-to-b from-yellow-300 to-orange-500'
+              : 'bg-gradient-to-b from-yellow-200 to-yellow-400'
+          }`}
+          style={{
+            boxShadow: isDark
+              ? '0 0 40px 15px rgba(255, 180, 100, 0.5)'
+              : '0 0 50px 20px rgba(255, 220, 100, 0.6)',
+          }}
+          animate={{ y: [0, -3, 0] }}
+          transition={{ duration: 6, repeat: Infinity }}
+        />
+
+        {/* Ocean strip at horizon */}
+        <div className={`absolute bottom-0 left-0 right-0 h-[30%] ${
+          isDark
+            ? 'bg-gradient-to-b from-purple-700 via-blue-700 to-cyan-600'
+            : 'bg-gradient-to-b from-blue-400 via-cyan-400 to-cyan-300'
+        }`} />
+
+        {/* Waves at waterline */}
+        <svg className="absolute bottom-0 left-0 right-0 w-full h-[20%]" viewBox="0 0 1440 50" preserveAspectRatio="none">
+          <motion.path
+            d="M0 25 Q90 15 180 25 Q270 35 360 25 Q450 15 540 25 Q630 35 720 25 Q810 15 900 25 Q990 35 1080 25 Q1170 15 1260 25 Q1350 35 1440 25 L1440 50 L0 50 Z"
+            fill={isDark ? 'rgba(6, 182, 212, 0.4)' : 'rgba(34, 211, 238, 0.5)'}
+            animate={{ d: [
+              'M0 25 Q90 15 180 25 Q270 35 360 25 Q450 15 540 25 Q630 35 720 25 Q810 15 900 25 Q990 35 1080 25 Q1170 15 1260 25 Q1350 35 1440 25 L1440 50 L0 50 Z',
+              'M0 25 Q90 35 180 25 Q270 15 360 25 Q450 35 540 25 Q630 15 720 25 Q810 35 900 25 Q990 15 1080 25 Q1170 35 1260 25 Q1350 15 1440 25 L1440 50 L0 50 Z',
+            ] }}
+            transition={{ duration: 4, repeat: Infinity, ease: 'easeInOut' }}
           />
-        )}
-      </motion.div>
+        </svg>
+      </div>
 
-      {/* Stars (night only) */}
-      {isDark && <StarField count={60} maxTop={35} />}
+      {/* Sandy beach - large walkable area */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
+        {/* Sand gradient with perspective */}
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-amber-500 via-amber-400 to-amber-300'
+            : 'bg-gradient-to-b from-amber-300 via-amber-200 to-amber-100'
+        }`} />
 
-      {/* Clouds */}
-      {!isDark && <CloudLayer isDark={isDark} />}
+        {/* Wet sand near water */}
+        <div className={`absolute top-0 left-0 right-0 h-[12%] ${isDark ? 'bg-amber-600/40' : 'bg-amber-400/30'}`} />
 
-      {/* Ocean with multiple wave layers */}
-      <div className="absolute bottom-[30%] left-0 right-0 h-[40%] overflow-hidden">
-        {/* Deep water */}
-        <div className={`absolute inset-0 ${isDark ? 'bg-gradient-to-b from-blue-900/80 to-slate-900/90' : 'bg-gradient-to-b from-cyan-400/60 to-blue-500/70'}`} />
+        {/* Beach items at different depths */}
+        {useMemo(() => [
+          { x: 8, y: 8, type: 'shell', scale: 0.4 },
+          { x: 92, y: 12, type: 'shell', scale: 0.45 },
+          { x: 18, y: 35, type: 'towel', scale: 0.55 },
+          { x: 78, y: 40, type: 'umbrella', scale: 0.6 },
+          { x: 12, y: 65, type: 'bucket', scale: 0.75 },
+          { x: 88, y: 70, type: 'shell', scale: 0.8 },
+        ].map((item, i) => (
+          <div
+            key={i}
+            className="absolute"
+            style={{
+              left: `${item.x}%`,
+              top: `${item.y}%`,
+              transform: `scale(${item.scale})`,
+              opacity: 0.5 + item.scale * 0.4,
+            }}
+          >
+            {item.type === 'shell' && <div className="w-4 h-3 rounded-full bg-pink-200/70" />}
+            {item.type === 'towel' && <div className="w-16 h-8 rounded bg-red-400/60" />}
+            {item.type === 'umbrella' && (
+              <div className="relative">
+                <div className="w-20 h-10 rounded-t-full bg-yellow-400/70" />
+                <div className="absolute top-8 left-1/2 w-1 h-8 bg-amber-800/60" />
+              </div>
+            )}
+            {item.type === 'bucket' && <div className="w-6 h-5 rounded-b bg-blue-400/60" />}
+          </div>
+        )), [])}
 
-        {/* Wave layers */}
-        {[0, 1, 2].map((i) => (
+        {/* Palm trees at back corners */}
+        <svg className="absolute top-[5%] left-[3%]" width="50" height="80" viewBox="0 0 80 160" style={{ opacity: 0.7 }}>
+          <path d="M38 160 Q40 120 42 80 Q44 40 42 20" stroke={isDark ? '#5d4037' : '#8B4513'} strokeWidth="8" fill="none" />
+          <path d="M42 25 Q25 15 8 30" stroke={isDark ? '#1b5e20' : '#228B22'} strokeWidth="3" fill="none" />
+          <path d="M42 25 Q55 10 75 25" stroke={isDark ? '#1b5e20' : '#228B22'} strokeWidth="3" fill="none" />
+          <path d="M42 22 Q30 5 15 15" stroke={isDark ? '#2e7d32' : '#2E8B57'} strokeWidth="2" fill="none" />
+        </svg>
+        <svg className="absolute top-[8%] right-[5%]" width="45" height="70" viewBox="0 0 80 160" style={{ opacity: 0.6 }}>
+          <path d="M38 160 Q40 120 42 80 Q44 40 42 20" stroke={isDark ? '#5d4037' : '#8B4513'} strokeWidth="8" fill="none" />
+          <path d="M42 25 Q25 15 8 30" stroke={isDark ? '#1b5e20' : '#228B22'} strokeWidth="3" fill="none" />
+          <path d="M42 25 Q55 10 75 25" stroke={isDark ? '#1b5e20' : '#228B22'} strokeWidth="3" fill="none" />
+        </svg>
+
+        {/* Footprints at various depths */}
+        {useMemo(() => Array.from({ length: 6 }, (_, i) => (
+          <div
+            key={i}
+            className="absolute opacity-20"
+            style={{ left: `${30 + i * 8}%`, top: `${45 + (i % 2) * 3}%` }}
+          >
+            <div className={`w-2 h-3 rounded-full ${isDark ? 'bg-amber-700' : 'bg-amber-500'}`} />
+          </div>
+        )), [isDark])}
+
+        {/* Seagulls */}
+        {!isDark && useMemo(() => [
+          { x: 20, y: -15, scale: 0.6 },
+          { x: 70, y: -20, scale: 0.5 },
+        ].map((bird, i) => (
+          <motion.svg
+            key={i}
+            className="absolute"
+            style={{ left: `${bird.x}%`, top: `${bird.y}%`, transform: `scale(${bird.scale})` }}
+            width="20" height="10" viewBox="0 0 20 10"
+            animate={{ y: [0, -5, 0], x: [0, 10, 0] }}
+            transition={{ duration: 8 + i * 2, repeat: Infinity }}
+          >
+            <path d="M0 5 Q5 0 10 5 Q15 0 20 5" stroke="#64748b" strokeWidth="2" fill="none" />
+          </motion.svg>
+        )), [])}
+      </div>
+
+      {/* Fireflies (night) */}
+      {isDark && <Particles color="#fef08a" count={12} />}
+    </div>
+  );
+}
+
+// ============================================
+// CAMPFIRE SCENE - Day & Night (Ground-dominant pseudo-3D)
+// ============================================
+function CampfireScene({ isDark }: { isDark: boolean }) {
+  const config = SCENE_CONFIGS.campfire.ground;
+
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {/* Sky - compact at top */}
+      <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-indigo-950 via-purple-900 to-violet-800'
+            : 'bg-gradient-to-b from-amber-200 via-orange-300 to-rose-400'
+        }`} />
+
+        {/* Stars (dark mode) */}
+        {isDark && <StarField count={25} />}
+
+        {/* Moon/Sun */}
+        <motion.div
+          className={`absolute top-[20%] left-[15%] w-10 h-10 rounded-full ${
+            isDark
+              ? 'bg-gradient-to-br from-gray-100 to-gray-300'
+              : 'bg-gradient-to-br from-yellow-300 to-orange-400'
+          }`}
+          style={{
+            boxShadow: isDark
+              ? '0 0 30px 10px rgba(255, 255, 255, 0.15)'
+              : '0 0 40px 15px rgba(255, 180, 100, 0.4)',
+          }}
+          animate={{ y: [0, -3, 0] }}
+          transition={{ duration: 6, repeat: Infinity }}
+        />
+
+        {/* Distant treeline silhouette at horizon */}
+        <svg className="absolute bottom-0 left-0 right-0 w-full h-[50%]" viewBox="0 0 1440 100" preserveAspectRatio="none">
+          <path
+            d="M0 100 L0 60 Q50 30 100 50 Q150 20 200 45 Q250 15 300 40 Q350 25 400 55 Q450 20 500 45 Q550 30 600 50 Q650 15 700 40 Q750 25 800 55 Q850 20 900 45 Q950 30 1000 50 Q1050 15 1100 40 Q1150 25 1200 55 Q1250 20 1300 45 Q1350 30 1400 50 L1440 60 L1440 100 Z"
+            fill={isDark ? 'rgba(15, 10, 40, 0.9)' : 'rgba(60, 40, 30, 0.6)'}
+          />
+        </svg>
+      </div>
+
+      {/* Ground surface - large walkable area */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
+        {/* Base ground gradient */}
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-violet-900/90 via-indigo-950 to-slate-950'
+            : 'bg-gradient-to-b from-amber-600/70 via-amber-700/80 to-amber-800/90'
+        }`} />
+
+        {/* Ground texture overlay */}
+        <div className={`absolute inset-0 ${isDark ? 'opacity-5' : 'opacity-8'}`}
+          style={{
+            backgroundImage: `radial-gradient(circle at 20% 30%, ${isDark ? 'rgba(139,92,246,0.3)' : 'rgba(180,120,60,0.4)'} 0%, transparent 50%)`,
+          }}
+        />
+
+        {/* Scattered rocks at different depths */}
+        {useMemo(() => [
+          { x: 8, y: 15, size: 12, opacity: 0.3 },
+          { x: 92, y: 20, size: 10, opacity: 0.35 },
+          { x: 15, y: 55, size: 18, opacity: 0.5 },
+          { x: 85, y: 60, size: 16, opacity: 0.5 },
+          { x: 5, y: 80, size: 24, opacity: 0.6 },
+          { x: 95, y: 85, size: 20, opacity: 0.55 },
+        ].map((rock, i) => (
+          <div
+            key={i}
+            className={`absolute rounded-full ${isDark ? 'bg-slate-700' : 'bg-stone-500'}`}
+            style={{
+              left: `${rock.x}%`,
+              top: `${rock.y}%`,
+              width: rock.size,
+              height: rock.size * 0.6,
+              opacity: rock.opacity,
+            }}
+          />
+        )), [isDark])}
+
+        {/* Grass tufts at various depths */}
+        {useMemo(() => [
+          { x: 12, y: 25, scale: 0.5 },
+          { x: 88, y: 30, scale: 0.55 },
+          { x: 20, y: 50, scale: 0.7 },
+          { x: 80, y: 55, scale: 0.75 },
+          { x: 8, y: 75, scale: 0.9 },
+          { x: 92, y: 80, scale: 0.85 },
+        ].map((grass, i) => (
+          <svg
+            key={i}
+            className="absolute"
+            style={{
+              left: `${grass.x}%`,
+              top: `${grass.y}%`,
+              transform: `scale(${grass.scale})`,
+              opacity: 0.4 + grass.scale * 0.3,
+            }}
+            width="30" height="20" viewBox="0 0 30 20"
+          >
+            <path d="M5 20 Q6 10 8 5 Q7 12 5 20" fill={isDark ? '#4ade80' : '#65a30d'} />
+            <path d="M12 20 Q14 8 15 2 Q14 10 12 20" fill={isDark ? '#22c55e' : '#84cc16'} />
+            <path d="M20 20 Q22 12 25 8 Q23 14 20 20" fill={isDark ? '#4ade80' : '#65a30d'} />
+          </svg>
+        )), [isDark])}
+
+        {/* Campfire - positioned in mid-ground */}
+        <div className="absolute left-1/2 -translate-x-1/2" style={{ top: '25%' }}>
+          <svg width="100" height="80" viewBox="0 0 120 100">
+            {/* Log base */}
+            <rect x="25" y="75" width="70" height="12" rx="6" fill="#78350f" transform="rotate(-6 60 80)" />
+            <rect x="25" y="75" width="70" height="12" rx="6" fill="#92400e" transform="rotate(6 60 80)" />
+            {/* Fire glow */}
+            <motion.ellipse
+              cx="60" cy="70" rx="35" ry="20"
+              fill={isDark ? '#f97316' : '#fbbf24'}
+              opacity={0.25}
+              animate={{ opacity: [0.2, 0.35, 0.2] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+            />
+            {/* Flames */}
+            <motion.g
+              style={{ transformOrigin: '60px 75px' }}
+              animate={{ scaleY: [1, 1.05, 0.95, 1], scaleX: [1, 0.98, 1.02, 1] }}
+              transition={{ duration: 0.5, repeat: Infinity }}
+            >
+              <ellipse cx="60" cy="50" rx="14" ry="28" fill="url(#flameGrad)" />
+              <ellipse cx="48" cy="56" rx="8" ry="18" fill="url(#flameGrad2)" />
+              <ellipse cx="72" cy="56" rx="8" ry="18" fill="url(#flameGrad2)" />
+            </motion.g>
+            <defs>
+              <linearGradient id="flameGrad" x1="0%" y1="100%" x2="0%" y2="0%">
+                <stop offset="0%" stopColor="#dc2626" />
+                <stop offset="50%" stopColor="#f97316" />
+                <stop offset="100%" stopColor="#fef08a" />
+              </linearGradient>
+              <linearGradient id="flameGrad2" x1="0%" y1="100%" x2="0%" y2="0%">
+                <stop offset="0%" stopColor="#ea580c" />
+                <stop offset="100%" stopColor="#fcd34d" />
+              </linearGradient>
+            </defs>
+          </svg>
+        </div>
+
+        {/* Sitting logs around campfire */}
+        {useMemo(() => [
+          { x: 30, y: 35, rotation: -15, scale: 0.6 },
+          { x: 62, y: 38, rotation: 20, scale: 0.55 },
+        ].map((log, i) => (
+          <div
+            key={i}
+            className="absolute"
+            style={{
+              left: `${log.x}%`,
+              top: `${log.y}%`,
+              transform: `rotate(${log.rotation}deg) scale(${log.scale})`,
+            }}
+          >
+            <div className={`w-16 h-5 rounded-full ${isDark ? 'bg-amber-900' : 'bg-amber-800'}`} />
+          </div>
+        )), [isDark])}
+      </div>
+
+      {/* Fireflies/Particles floating over ground */}
+      {isDark && <Particles color="#fef08a" count={15} />}
+      {!isDark && useMemo(() => [0, 1, 2].map((i) => (
+        <motion.div
+          key={i}
+          className="absolute text-xl"
+          style={{ left: `${20 + i * 25}%`, top: `${40 + i * 5}%` }}
+          animate={{ x: [0, 30, -20, 0], y: [0, -20, 10, 0] }}
+          transition={{ duration: 8 + i * 2, repeat: Infinity, delay: i }}
+        >
+          🦋
+        </motion.div>
+      )), [])}
+    </div>
+  );
+}
+
+// ============================================
+// FOREST SCENE - Day & Night (Ground-dominant pseudo-3D)
+// ============================================
+function ForestScene({ isDark }: { isDark: boolean }) {
+  const config = SCENE_CONFIGS.forest.ground;
+
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {/* Forest canopy at horizon */}
+      <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-emerald-950 via-green-900 to-emerald-800'
+            : 'bg-gradient-to-b from-emerald-400 via-green-300 to-emerald-300'
+        }`} />
+
+        {/* Light rays through canopy (day) */}
+        {!isDark && useMemo(() => Array.from({ length: 5 }, (_, i) => (
           <motion.div
             key={i}
-            className="absolute left-0 w-[200%] h-full"
-            style={{ bottom: `${i * 8}%` }}
-            animate={{ x: i % 2 === 0 ? [0, '-50%'] : ['-50%', 0] }}
-            transition={{ duration: 8 + i * 3, repeat: Infinity, ease: 'linear' }}
+            className="absolute"
+            style={{
+              left: `${15 + i * 18}%`,
+              top: 0,
+              width: 30 + i * 5,
+              height: '100%',
+              background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 80%)',
+              transform: `skewX(${-10 + i * 5}deg)`,
+            }}
+            animate={{ opacity: [0.2, 0.4, 0.2] }}
+            transition={{ duration: 4, repeat: Infinity, delay: i * 0.5 }}
+          />
+        )), [])}
+
+        {/* Stars (night) */}
+        {isDark && <StarField count={20} />}
+
+        {/* Distant tree silhouettes at horizon */}
+        <svg className="absolute bottom-0 left-0 right-0 w-full h-[70%]" viewBox="0 0 1440 200" preserveAspectRatio="none">
+          <g fill={isDark ? 'rgba(5, 46, 22, 0.9)' : 'rgba(22, 101, 52, 0.6)'}>
+            {useMemo(() => [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400].map((x, i) => (
+              <path key={i} d={`M${x + 40} 200 L${x + 40} ${140 - (i % 3) * 20} L${x + 20} ${170 - (i % 3) * 15} L${x + 60} ${170 - (i % 3) * 15} Z`} />
+            )), [])}
+          </g>
+        </svg>
+      </div>
+
+      {/* Forest floor - large magical glade */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
+        {/* Ground gradient with moss/grass feel */}
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-emerald-900 via-green-950 to-emerald-950'
+            : 'bg-gradient-to-b from-emerald-300 via-green-400 to-emerald-500'
+        }`} />
+
+        {/* Grass texture hints */}
+        <div
+          className={`absolute inset-0 ${isDark ? 'opacity-10' : 'opacity-15'}`}
+          style={{
+            backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent 8px, ${isDark ? '#22c55e' : '#16a34a'} 8px, ${isDark ? '#22c55e' : '#16a34a'} 9px)`,
+          }}
+        />
+
+        {/* Glowing mushrooms at different depths */}
+        {useMemo(() => [
+          { x: 8, y: 20, scale: 0.4, hue: 280 },
+          { x: 92, y: 25, scale: 0.45, hue: 200 },
+          { x: 15, y: 50, scale: 0.6, hue: 320 },
+          { x: 85, y: 55, scale: 0.65, hue: 180 },
+          { x: 5, y: 75, scale: 0.8, hue: 260 },
+          { x: 95, y: 80, scale: 0.75, hue: 220 },
+        ].map((shroom, i) => (
+          <div
+            key={i}
+            className="absolute"
+            style={{
+              left: `${shroom.x}%`,
+              top: `${shroom.y}%`,
+              transform: `scale(${shroom.scale})`,
+            }}
           >
-            <svg viewBox="0 0 1200 100" className="w-full h-8" preserveAspectRatio="none">
-              <path
-                d={`M0 ${50 + i * 5} Q150 ${20 + i * 10} 300 ${50 + i * 5} Q450 ${80 - i * 5} 600 ${50 + i * 5} Q750 ${20 + i * 10} 900 ${50 + i * 5} Q1050 ${80 - i * 5} 1200 ${50 + i * 5} L1200 100 L0 100 Z`}
-                fill={isDark
-                  ? `rgba(30, 58, 138, ${0.4 - i * 0.1})`
-                  : `rgba(6, 182, 212, ${0.5 - i * 0.1})`
-                }
-              />
-            </svg>
+            {/* Stem */}
+            <div className="w-2 h-4 mx-auto rounded-b bg-amber-100/60" />
+            {/* Cap */}
+            <motion.div
+              className="w-6 h-3 -mt-1 rounded-t-full"
+              style={{
+                backgroundColor: `hsl(${shroom.hue}, 70%, ${isDark ? '50%' : '60%'})`,
+                boxShadow: isDark ? `0 0 8px hsl(${shroom.hue}, 70%, 50%)` : 'none',
+              }}
+              animate={isDark ? { boxShadow: [`0 0 8px hsl(${shroom.hue}, 70%, 50%)`, `0 0 15px hsl(${shroom.hue}, 70%, 60%)`, `0 0 8px hsl(${shroom.hue}, 70%, 50%)`] } : {}}
+              transition={{ duration: 2, repeat: Infinity }}
+            />
+          </div>
+        )), [isDark])}
+
+        {/* Flowers/plants at various depths */}
+        {useMemo(() => [
+          { x: 20, y: 35, scale: 0.5 },
+          { x: 80, y: 40, scale: 0.55 },
+          { x: 25, y: 65, scale: 0.75 },
+          { x: 75, y: 70, scale: 0.8 },
+        ].map((plant, i) => (
+          <svg
+            key={i}
+            className="absolute"
+            style={{
+              left: `${plant.x}%`,
+              top: `${plant.y}%`,
+              transform: `scale(${plant.scale})`,
+              opacity: 0.5 + plant.scale * 0.3,
+            }}
+            width="20" height="16" viewBox="0 0 20 16"
+          >
+            <path d="M10 16 L10 8" stroke={isDark ? '#22c55e' : '#16a34a'} strokeWidth="1.5" />
+            <circle cx="10" cy="5" r="4" fill={i % 2 === 0 ? '#f472b6' : '#a78bfa'} opacity="0.7" />
+          </svg>
+        )), [isDark])}
+
+        {/* Deer (day) */}
+        {!isDark && (
+          <motion.div
+            className="absolute text-3xl"
+            style={{ top: '45%', right: '25%', transform: 'scale(0.7)' }}
+            animate={{ x: [-5, 5, -5] }}
+            transition={{ duration: 6, repeat: Infinity }}
+          >
+            🦌
           </motion.div>
+        )}
+
+        {/* Owl (night) */}
+        {isDark && (
+          <motion.div
+            className="absolute text-2xl"
+            style={{ top: '15%', left: '20%', transform: 'scale(0.6)' }}
+            animate={{ rotate: [-3, 3, -3] }}
+            transition={{ duration: 4, repeat: Infinity }}
+          >
+            🦉
+          </motion.div>
+        )}
+      </div>
+
+      {/* Fireflies floating everywhere */}
+      {isDark && <Particles color="#fef08a" count={18} />}
+      {!isDark && useMemo(() => [0, 1, 2, 3].map((i) => (
+        <motion.div
+          key={i}
+          className="absolute text-lg"
+          style={{ left: `${15 + i * 20}%`, top: `${35 + (i % 2) * 10}%` }}
+          animate={{ x: [0, 30, -15, 0], y: [0, -20, 10, 0] }}
+          transition={{ duration: 7 + i, repeat: Infinity, delay: i * 0.8 }}
+        >
+          🦋
+        </motion.div>
+      )), [])}
+    </div>
+  );
+}
+
+// ============================================
+// STUDIO SCENE - Day & Night (Ground-dominant pseudo-3D)
+// ============================================
+function StudioScene({ isDark }: { isDark: boolean }) {
+  const config = SCENE_CONFIGS.studio.ground;
+
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {/* Stage back wall */}
+      <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-zinc-900 via-zinc-800 to-zinc-700'
+            : 'bg-gradient-to-b from-slate-300 via-slate-400 to-slate-500'
+        }`} />
+
+        {/* Acoustic panel pattern on back wall */}
+        <div className={`absolute inset-0 ${isDark ? 'opacity-10' : 'opacity-8'}`} style={{
+          backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 25px, ${isDark ? '#3f3f46' : '#94a3b8'} 25px, ${isDark ? '#3f3f46' : '#94a3b8'} 27px)`,
+        }} />
+
+        {/* LED strip at top */}
+        <motion.div
+          className="absolute top-0 left-0 right-0 h-1"
+          style={{ background: `linear-gradient(90deg, #8b5cf6, #ec4899, #8b5cf6)` }}
+          animate={{ boxShadow: ['0 0 10px #8b5cf6', '0 0 20px #ec4899', '0 0 10px #8b5cf6'] }}
+          transition={{ duration: 2, repeat: Infinity }}
+        />
+
+        {/* Stage monitors at back */}
+        {[-1, 1].map((side) => (
+          <div
+            key={side}
+            className={`absolute bottom-[10%] w-8 h-14 rounded border flex flex-col items-center justify-center gap-1 ${
+              isDark ? 'bg-zinc-800 border-zinc-600' : 'bg-slate-600 border-slate-500'
+            }`}
+            style={{ [side < 0 ? 'left' : 'right']: '15%' }}
+          >
+            <div className={`w-3 h-3 rounded-full ${isDark ? 'bg-zinc-700' : 'bg-slate-500'}`} />
+            <div className={`w-5 h-5 rounded-full ${isDark ? 'bg-zinc-700' : 'bg-slate-500'}`} />
+          </div>
         ))}
 
-        {/* Sun/Moon reflection on water */}
+        {/* VU meters on back wall */}
+        <div className="absolute bottom-[25%] left-1/2 -translate-x-1/2 flex gap-3">
+          {[0, 1].map((ch) => (
+            <div key={ch} className="flex gap-0.5">
+              {Array.from({ length: 8 }).map((_, i) => (
+                <motion.div
+                  key={i}
+                  className="w-1.5 h-2 rounded-sm"
+                  style={{
+                    backgroundColor: '#27272a',
+                  }}
+                  animate={{ backgroundColor: i < 5 ? ['#27272a', '#22c55e', '#27272a'] : i < 7 ? ['#27272a', '#eab308', '#27272a'] : ['#27272a', '#ef4444', '#27272a'] }}
+                  transition={{ duration: 0.3, repeat: Infinity, delay: (ch * 8 + i) * 0.05 }}
+                />
+              ))}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Stage floor - large performance area */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
+        {/* Stage floor with perspective */}
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-900'
+            : 'bg-gradient-to-b from-slate-400 via-slate-500 to-slate-600'
+        }`} />
+
+        {/* Floor plank lines */}
+        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          {[0.08, 0.18, 0.32, 0.50, 0.72].map((y, i) => (
+            <line
+              key={`h-${i}`}
+              x1="0%"
+              x2="100%"
+              y1={`${y * 100}%`}
+              y2={`${y * 100}%`}
+              stroke={isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)'}
+              strokeWidth="1"
+            />
+          ))}
+          {[-45, -25, -10, 0, 10, 25, 45].map((offset, i) => (
+            <line
+              key={`v-${i}`}
+              x1="50%"
+              y1="0%"
+              x2={`${50 + offset}%`}
+              y2="100%"
+              stroke={isDark ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.08)'}
+              strokeWidth="1"
+            />
+          ))}
+        </svg>
+
+        {/* Stage edge lights */}
+        <div className="absolute top-0 left-0 right-0 h-1 flex justify-around px-[10%]">
+          {Array.from({ length: 8 }).map((_, i) => (
+            <motion.div
+              key={i}
+              className="w-2 h-2 rounded-full"
+              style={{
+                backgroundColor: i % 2 === 0 ? '#8b5cf6' : '#fbbf24',
+              }}
+              animate={{ boxShadow: [`0 0 6px ${i % 2 === 0 ? '#8b5cf6' : '#fbbf24'}`, `0 0 12px ${i % 2 === 0 ? '#8b5cf6' : '#fbbf24'}`, `0 0 6px ${i % 2 === 0 ? '#8b5cf6' : '#fbbf24'}`] }}
+              transition={{ duration: 2 + (i % 3) * 0.5, repeat: Infinity, delay: i * 0.2 }}
+            />
+          ))}
+        </div>
+
+        {/* Mic stands at different depths */}
+        {useMemo(() => [
+          { x: 25, y: 30, scale: 0.5 },
+          { x: 75, y: 35, scale: 0.55 },
+        ].map((stand, i) => (
+          <div
+            key={i}
+            className="absolute"
+            style={{
+              left: `${stand.x}%`,
+              top: `${stand.y}%`,
+              transform: `scale(${stand.scale})`,
+              opacity: 0.4,
+            }}
+          >
+            <div className={`w-1 h-16 ${isDark ? 'bg-zinc-600' : 'bg-slate-500'}`} />
+            <div className={`w-4 h-3 -mt-1 -ml-1.5 rounded ${isDark ? 'bg-zinc-500' : 'bg-slate-400'}`} />
+          </div>
+        )), [isDark])}
+
+        {/* Cable runs on floor */}
+        <svg className="absolute inset-0 w-full h-full opacity-20" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M10 60 Q30 55 50 65 Q70 75 90 70" stroke={isDark ? '#52525b' : '#64748b'} strokeWidth="0.5" fill="none" />
+        </svg>
+      </div>
+
+      {/* Recording light */}
+      <div className={`absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-full border ${
+        isDark ? 'bg-red-900/40 border-red-500/40' : 'bg-red-100 border-red-300'
+      }`}>
         <motion.div
-          className="absolute left-[60%] top-0 w-20 h-full"
+          className="w-2 h-2 rounded-full bg-red-500"
+          animate={{ opacity: [0.4, 1, 0.4] }}
+          transition={{ duration: 1, repeat: Infinity }}
+        />
+        <span className={`text-[10px] font-bold ${isDark ? 'text-red-400' : 'text-red-600'}`}>LIVE</span>
+      </div>
+    </div>
+  );
+}
+
+// ============================================
+// SPACE SCENE - Day (nebula) & Night (deep space) (Ground-dominant pseudo-3D)
+// ============================================
+function SpaceScene({ isDark }: { isDark: boolean }) {
+  const config = SCENE_CONFIGS.space.ground;
+
+  return (
+    <div className="absolute inset-0 overflow-hidden">
+      {/* Deep space background */}
+      <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-black via-indigo-950 to-purple-900'
+            : 'bg-gradient-to-b from-indigo-300 via-purple-200 to-pink-300'
+        }`} />
+
+        <StarField count={isDark ? 50 : 15} />
+
+        {/* Nebula clouds */}
+        <motion.div
+          className={`absolute top-[10%] left-[5%] w-[40%] h-[60%] ${isDark ? 'opacity-20' : 'opacity-30'}`}
+          style={{ background: `radial-gradient(ellipse at 40% 40%, #8b5cf650 0%, transparent 60%)` }}
+          animate={{ opacity: isDark ? [0.15, 0.25, 0.15] : [0.25, 0.35, 0.25] }}
+          transition={{ duration: 6, repeat: Infinity }}
+        />
+
+        {/* Planet at horizon */}
+        <div className="absolute bottom-[5%] right-[12%]">
+          <div
+            className={`w-10 h-10 rounded-full ${
+              isDark
+                ? 'bg-gradient-to-br from-orange-400 via-red-500 to-purple-700'
+                : 'bg-gradient-to-br from-pink-300 via-purple-400 to-indigo-400'
+            }`}
+            style={{ boxShadow: isDark ? '0 0 20px 5px rgba(249, 115, 22, 0.2)' : '0 0 20px 5px rgba(167, 139, 250, 0.3)' }}
+          />
+          {/* Planet ring */}
+          <div
+            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-3 rounded-full border opacity-40"
+            style={{ borderColor: isDark ? '#f97316' : '#a78bfa', transform: 'translate(-50%, -50%) rotateX(70deg)' }}
+          />
+        </div>
+      </div>
+
+      {/* Platform surface - floating in space */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
+        {/* Platform base with glow */}
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-slate-800 via-slate-900 to-black'
+            : 'bg-gradient-to-b from-slate-300 via-slate-400 to-slate-500'
+        }`} />
+
+        {/* Hexagonal grid pattern */}
+        <div
+          className={`absolute inset-0 ${isDark ? 'opacity-15' : 'opacity-10'}`}
           style={{
-            background: isDark
-              ? 'linear-gradient(to bottom, rgba(255,255,255,0.1), transparent)'
-              : 'linear-gradient(to bottom, rgba(255,215,0,0.3), transparent)',
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cpath fill='${isDark ? '%2364748b' : '%2394a3b8'}' d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9z'/%3E%3C/svg%3E")`,
           }}
-          animate={{ opacity: [0.5, 0.8, 0.5] }}
+        />
+
+        {/* Energy rings at platform center */}
+        <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[60%]">
+          {[0, 1, 2].map((ring) => (
+            <motion.div
+              key={ring}
+              className="absolute left-1/2 -translate-x-1/2 rounded-full border-2"
+              style={{
+                width: `${100 + ring * 40}%`,
+                height: 20 + ring * 8,
+                top: -ring * 5,
+                borderColor: '#8b5cf6',
+                opacity: 0.2 - ring * 0.05,
+              }}
+              animate={{ boxShadow: ['0 0 10px #8b5cf6', '0 0 20px #8b5cf6', '0 0 10px #8b5cf6'] }}
+              transition={{ duration: 3 + ring, repeat: Infinity, delay: ring * 0.3 }}
+            />
+          ))}
+        </div>
+
+        {/* Holographic data displays at different depths */}
+        {useMemo(() => [
+          { x: 10, y: 25, scale: 0.5 },
+          { x: 88, y: 30, scale: 0.55 },
+        ].map((holo, i) => (
+          <div
+            key={i}
+            className="absolute"
+            style={{
+              left: `${holo.x}%`,
+              top: `${holo.y}%`,
+              transform: `scale(${holo.scale})`,
+            }}
+          >
+            <div
+              className="w-16 h-12 rounded border"
+              style={{
+                borderColor: '#8b5cf660',
+                background: 'linear-gradient(180deg, #8b5cf620 0%, transparent 100%)',
+              }}
+            >
+              {/* Fake waveform lines */}
+              <div className="flex items-end justify-around h-full p-1">
+                {[0.3, 0.6, 0.8, 0.5, 0.7, 0.4].map((h, j) => (
+                  <motion.div
+                    key={j}
+                    className="w-1 rounded-t"
+                    style={{
+                      height: `${h * 100}%`,
+                      backgroundColor: '#8b5cf6',
+                      opacity: 0.6,
+                    }}
+                    animate={{ height: [`${h * 100}%`, `${h * 60}%`, `${h * 100}%`] }}
+                    transition={{ duration: 1.5 + j * 0.2, repeat: Infinity, delay: j * 0.1 }}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        )), [])}
+
+        {/* Platform edge lights */}
+        <motion.div
+          className="absolute top-0 left-0 right-0 h-1"
+          style={{
+            background: 'linear-gradient(90deg, transparent 5%, #8b5cf6 20%, #22d3ee 50%, #8b5cf6 80%, transparent 95%)',
+            opacity: 0.4,
+          }}
+          animate={{ boxShadow: ['0 0 15px #8b5cf6', '0 0 25px #22d3ee', '0 0 15px #8b5cf6'] }}
           transition={{ duration: 3, repeat: Infinity }}
         />
       </div>
 
-      {/* Palm trees */}
-      {[
-        { left: '3%', scale: 1, flip: false },
-        { left: '8%', scale: 0.7, flip: false },
-        { left: '88%', scale: 0.9, flip: true },
-      ].map((palm, i) => (
-        <motion.div
-          key={i}
-          className="absolute bottom-[28%]"
-          style={{ left: palm.left, transform: `scaleX(${palm.flip ? -1 : 1})` }}
-          animate={{ rotate: [-2, 2, -2] }}
-          transition={{ duration: 4, repeat: Infinity, delay: i * 0.5 }}
-        >
-          <svg width={100 * palm.scale} height={160 * palm.scale} viewBox="0 0 100 160">
-            {/* Trunk */}
-            <path d="M50 160 Q48 120 52 80 Q50 60 50 40" stroke={isDark ? '#4a3728' : '#8B4513'} strokeWidth="8" fill="none" />
-            {/* Fronds */}
-            {[-40, -20, 0, 20, 40].map((angle, j) => (
-              <motion.ellipse
-                key={j}
-                cx="50" cy="35"
-                rx="35" ry="8"
-                fill={isDark ? '#1e4620' : '#228B22'}
-                style={{ transformOrigin: '50px 35px', transform: `rotate(${angle}deg)` }}
-                animate={{ rotate: [angle - 3, angle + 3, angle - 3] }}
-                transition={{ duration: 3, repeat: Infinity, delay: j * 0.2 }}
-              />
-            ))}
-            {/* Coconuts */}
-            <circle cx="48" cy="50" r="4" fill={isDark ? '#3d2914' : '#8B4513'} />
-            <circle cx="55" cy="48" r="3" fill={isDark ? '#3d2914' : '#8B4513'} />
-          </svg>
-        </motion.div>
-      ))}
-
-      {/* Beach details - shells, starfish */}
-      <div className="absolute bottom-[5%] left-0 right-0 flex justify-around opacity-60 pointer-events-none">
-        {['🐚', '⭐', '🐚', '🦀', '🐚'].map((emoji, i) => (
-          <span key={i} className="text-lg" style={{ opacity: 0.5 + Math.random() * 0.5 }}>{emoji}</span>
-        ))}
-      </div>
-
-      {/* Seagulls (day only) */}
-      {!isDark && (
-        <div className="absolute top-[15%] left-0 right-0 pointer-events-none">
-          {[0, 1, 2].map((i) => (
-            <motion.div
-              key={i}
-              className="absolute"
-              style={{ left: `${20 + i * 25}%`, top: `${i * 5}%` }}
-              animate={{ x: [0, 100, 200], y: [0, -10, 5] }}
-              transition={{ duration: 15 + i * 5, repeat: Infinity, delay: i * 3 }}
-            >
-              <svg width="24" height="12" viewBox="0 0 24 12">
-                <motion.path
-                  d="M0 6 Q6 0 12 6 Q18 0 24 6"
-                  stroke="#374151"
-                  strokeWidth="2"
-                  fill="none"
-                  animate={{ d: ['M0 6 Q6 0 12 6 Q18 0 24 6', 'M0 6 Q6 3 12 6 Q18 3 24 6'] }}
-                  transition={{ duration: 0.3, repeat: Infinity, repeatType: 'reverse' }}
-                />
-              </svg>
-            </motion.div>
-          ))}
-        </div>
-      )}
-
-      {/* Fireflies (night only) */}
-      {isDark && <Particles color="#fef08a" count={15} />}
-    </>
-  );
-}
-
-// ============================================
-// CAMPFIRE SCENE - Day & Night
-// ============================================
-function CampfireScene({ isDark }: { isDark: boolean }) {
-  return (
-    <>
-      {/* Celestial body */}
-      {isDark ? (
-        <>
-          <StarField count={80} maxTop={40} />
-          <motion.div
-            className="absolute top-[8%] left-[15%] w-14 h-14 rounded-full"
-            style={{
-              background: 'radial-gradient(circle at 40% 40%, #fefce8, #fef9c3, #d4d4d4)',
-              boxShadow: '0 0 40px 15px rgba(255,255,255,0.1)',
-            }}
-            animate={{ scale: [1, 1.02, 1] }}
-            transition={{ duration: 5, repeat: Infinity }}
-          />
-        </>
-      ) : (
-        <>
-          <CloudLayer isDark={false} />
-          <motion.div
-            className="absolute top-[10%] right-[20%] w-20 h-20 rounded-full"
-            style={{
-              background: 'radial-gradient(circle at 30% 30%, #fffde7, #ffeb3b, #ffa000)',
-              boxShadow: '0 0 60px 25px rgba(255,193,7,0.3)',
-            }}
-            animate={{ scale: [1, 1.03, 1] }}
-            transition={{ duration: 4, repeat: Infinity }}
-          />
-        </>
-      )}
-
-      {/* Mountains */}
-      <svg className="absolute bottom-[30%] left-0 w-full h-[35%]" preserveAspectRatio="none" viewBox="0 0 1440 300">
-        <defs>
-          <linearGradient id="mountainGrad1" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={isDark ? '#1e293b' : '#6b7280'} />
-            <stop offset="100%" stopColor={isDark ? '#0f172a' : '#374151'} />
-          </linearGradient>
-          <linearGradient id="mountainGrad2" x1="0%" y1="0%" x2="0%" y2="100%">
-            <stop offset="0%" stopColor={isDark ? '#334155' : '#9ca3af'} />
-            <stop offset="100%" stopColor={isDark ? '#1e293b' : '#6b7280'} />
-          </linearGradient>
-        </defs>
-        {/* Far mountains */}
-        <path d="M0 300 L0 200 L200 100 L400 180 L600 60 L800 150 L1000 80 L1200 160 L1440 120 L1440 300 Z" fill="url(#mountainGrad2)" opacity="0.6" />
-        {/* Near mountains */}
-        <path d="M0 300 L0 220 L150 140 L350 200 L500 100 L700 170 L850 90 L1050 160 L1250 110 L1440 180 L1440 300 Z" fill="url(#mountainGrad1)" />
-        {/* Snow caps */}
-        {!isDark && (
-          <>
-            <path d="M500 100 L520 115 L480 115 Z" fill="white" opacity="0.8" />
-            <path d="M850 90 L870 108 L830 108 Z" fill="white" opacity="0.8" />
-          </>
-        )}
-      </svg>
-
-      {/* Pine trees */}
-      {[10, 18, 82, 90].map((left, i) => (
-        <motion.div
-          key={i}
-          className="absolute bottom-[28%]"
-          style={{ left: `${left}%` }}
-          animate={{ rotate: [-1, 1, -1] }}
-          transition={{ duration: 5, repeat: Infinity, delay: i * 0.5 }}
-        >
-          <svg width={30 + (i % 2) * 10} height={60 + (i % 2) * 15} viewBox="0 0 40 80">
-            <rect x="18" y="60" width="4" height="20" fill={isDark ? '#3d2914' : '#5D4037'} />
-            <polygon points="20,0 5,30 35,30" fill={isDark ? '#1a3a1a' : '#2E7D32'} />
-            <polygon points="20,15 3,45 37,45" fill={isDark ? '#1a3a1a' : '#388E3C'} />
-            <polygon points="20,30 0,60 40,60" fill={isDark ? '#1a3a1a' : '#43A047'} />
-          </svg>
-        </motion.div>
-      ))}
-
-      {/* Campfire */}
-      <div className="absolute left-1/2 bottom-[15%] -translate-x-1/2 z-10">
-        <svg width="120" height="140" viewBox="0 0 120 140">
-          {/* Fire glow */}
-          <motion.ellipse
-            cx="60" cy="110" rx="50" ry="20"
-            fill={isDark ? 'rgba(255,100,0,0.4)' : 'rgba(255,150,50,0.3)'}
-            animate={{ rx: [50, 55, 50], opacity: [0.4, 0.6, 0.4] }}
-            transition={{ duration: 0.5, repeat: Infinity }}
-          />
-
-          {/* Logs */}
-          <rect x="20" y="105" width="80" height="15" rx="7" fill="#4a2c0a" transform="rotate(-8 60 110)" />
-          <rect x="15" y="110" width="90" height="12" rx="6" fill="#3d2108" transform="rotate(8 60 115)" />
-          <rect x="35" y="115" width="50" height="10" rx="5" fill="#2d1f05" />
-
-          {/* Flames - outer */}
-          <motion.path
-            fill="url(#flameOuter)"
-            animate={{
-              d: [
-                'M60 110 Q35 80 45 50 Q55 25 60 15 Q65 25 75 50 Q85 80 60 110',
-                'M60 110 Q30 85 43 55 Q52 28 60 10 Q68 28 77 55 Q90 85 60 110',
-                'M60 110 Q35 80 45 50 Q55 25 60 15 Q65 25 75 50 Q85 80 60 110',
-              ],
-            }}
-            transition={{ duration: 0.4, repeat: Infinity }}
-          />
-
-          {/* Flames - middle */}
-          <motion.path
-            fill="url(#flameMiddle)"
-            animate={{
-              d: [
-                'M60 110 Q40 85 48 60 Q55 40 60 30 Q65 40 72 60 Q80 85 60 110',
-                'M60 110 Q38 88 46 62 Q53 42 60 25 Q67 42 74 62 Q82 88 60 110',
-                'M60 110 Q40 85 48 60 Q55 40 60 30 Q65 40 72 60 Q80 85 60 110',
-              ],
-            }}
-            transition={{ duration: 0.35, repeat: Infinity, delay: 0.1 }}
-          />
-
-          {/* Flames - inner */}
-          <motion.path
-            fill="url(#flameInner)"
-            animate={{
-              d: [
-                'M60 110 Q48 90 52 70 Q57 55 60 45 Q63 55 68 70 Q72 90 60 110',
-                'M60 110 Q46 92 50 72 Q55 57 60 40 Q65 57 70 72 Q74 92 60 110',
-                'M60 110 Q48 90 52 70 Q57 55 60 45 Q63 55 68 70 Q72 90 60 110',
-              ],
-            }}
-            transition={{ duration: 0.3, repeat: Infinity, delay: 0.15 }}
-          />
-
-          {/* Sparks */}
-          {[0, 1, 2, 3, 4].map((i) => (
-            <motion.circle
-              key={i}
-              cx={55 + i * 3}
-              cy="50"
-              r="2"
-              fill="#fcd34d"
-              animate={{
-                y: [0, -40, -60],
-                x: [0, (i % 2 === 0 ? 15 : -15), (i % 2 === 0 ? 20 : -20)],
-                opacity: [1, 0.6, 0],
-                scale: [1, 0.6, 0.2],
-              }}
-              transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.3 }}
-            />
-          ))}
-
-          <defs>
-            <linearGradient id="flameOuter" x1="0%" y1="100%" x2="0%" y2="0%">
-              <stop offset="0%" stopColor="#dc2626" />
-              <stop offset="50%" stopColor="#ea580c" />
-              <stop offset="100%" stopColor="#f97316" />
-            </linearGradient>
-            <linearGradient id="flameMiddle" x1="0%" y1="100%" x2="0%" y2="0%">
-              <stop offset="0%" stopColor="#f97316" />
-              <stop offset="50%" stopColor="#fb923c" />
-              <stop offset="100%" stopColor="#fbbf24" />
-            </linearGradient>
-            <linearGradient id="flameInner" x1="0%" y1="100%" x2="0%" y2="0%">
-              <stop offset="0%" stopColor="#fbbf24" />
-              <stop offset="50%" stopColor="#fcd34d" />
-              <stop offset="100%" stopColor="#fef08a" />
-            </linearGradient>
-          </defs>
-        </svg>
-      </div>
-
-      {/* Fireflies (night) / Butterflies (day) */}
-      {isDark ? (
-        <Particles color="#fef08a" count={25} />
-      ) : (
-        <div className="absolute inset-0 pointer-events-none">
-          {[0, 1, 2].map((i) => (
-            <motion.div
-              key={i}
-              className="absolute text-2xl"
-              style={{ left: `${20 + i * 25}%`, top: `${40 + i * 5}%` }}
-              animate={{ x: [0, 50, -30, 0], y: [0, -30, 20, 0], rotate: [0, 10, -10, 0] }}
-              transition={{ duration: 8 + i * 2, repeat: Infinity, delay: i }}
-            >
-              🦋
-            </motion.div>
-          ))}
-        </div>
-      )}
-    </>
-  );
-}
-
-// ============================================
-// FOREST SCENE - Day & Night
-// ============================================
-function ForestScene({ isDark }: { isDark: boolean }) {
-  return (
-    <>
-      {/* Sky elements */}
-      {isDark ? (
-        <>
-          <StarField count={40} maxTop={35} />
-          <motion.div
-            className="absolute top-[5%] right-[25%] w-10 h-10 rounded-full"
-            style={{
-              background: 'radial-gradient(circle at 40% 40%, #fefce8, #e5e5e5)',
-              boxShadow: '0 0 30px 10px rgba(255,255,255,0.08)',
-            }}
-          />
-        </>
-      ) : (
-        <>
-          <CloudLayer isDark={false} />
-          {/* Sun rays through trees */}
-          <div className="absolute top-0 right-[15%] w-48 h-64 overflow-hidden opacity-60">
-            {Array.from({ length: 8 }).map((_, i) => (
-              <motion.div
-                key={i}
-                className="absolute top-0 left-1/2 w-2 h-full origin-top"
-                style={{
-                  background: 'linear-gradient(to bottom, rgba(255,236,179,0.6), transparent 70%)',
-                  transform: `rotate(${-35 + i * 10}deg)`,
-                }}
-                animate={{ opacity: [0.3, 0.6, 0.3] }}
-                transition={{ duration: 3, repeat: Infinity, delay: i * 0.3 }}
-              />
-            ))}
-          </div>
-        </>
-      )}
-
-      {/* Layered trees - far */}
-      <div className="absolute bottom-[30%] left-0 right-0 h-[25%]">
-        <svg className="w-full h-full" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          {Array.from({ length: 25 }).map((_, i) => (
-            <g key={i} transform={`translate(${i * 60 + 20}, ${30 + (i % 3) * 15})`}>
-              <polygon points="25,0 0,70 50,70" fill={isDark ? '#132a13' : '#2d5a2d'} opacity={0.6 + (i % 3) * 0.1} />
-              <rect x="22" y="70" width="6" height="20" fill={isDark ? '#2d1f0f' : '#5d4037'} opacity="0.5" />
-            </g>
-          ))}
-        </svg>
-      </div>
-
-      {/* Layered trees - mid */}
-      <div className="absolute bottom-[25%] left-0 right-0 h-[20%]">
-        <svg className="w-full h-full" viewBox="0 0 1440 160" preserveAspectRatio="none">
-          {Array.from({ length: 18 }).map((_, i) => (
-            <g key={i} transform={`translate(${i * 85 + 10}, ${15 + (i % 2) * 20})`}>
-              <polygon points="35,0 0,90 70,90" fill={isDark ? '#1a4a1a' : '#388e3c'} opacity={0.7 + (i % 2) * 0.15} />
-              <polygon points="35,30 5,100 65,100" fill={isDark ? '#1a4a1a' : '#43a047'} opacity={0.6 + (i % 2) * 0.15} />
-              <rect x="30" y="100" width="10" height="30" fill={isDark ? '#3d2914' : '#6d4c41'} opacity="0.7" />
-            </g>
-          ))}
-        </svg>
-      </div>
-
-      {/* Foreground trees - close */}
-      {[3, 92].map((left, i) => (
-        <motion.div
-          key={i}
-          className="absolute bottom-[20%]"
-          style={{ left: `${left}%`, transform: `scaleX(${i === 1 ? -1 : 1})` }}
-          animate={{ rotate: [-0.5, 0.5, -0.5] }}
-          transition={{ duration: 6, repeat: Infinity }}
-        >
-          <svg width="80" height="180" viewBox="0 0 80 180">
-            <rect x="35" y="120" width="10" height="60" fill={isDark ? '#4a3520' : '#795548'} />
-            <polygon points="40,0 0,60 80,60" fill={isDark ? '#1a4a1a' : '#2e7d32'} />
-            <polygon points="40,25 5,90 75,90" fill={isDark ? '#1a4a1a' : '#388e3c'} />
-            <polygon points="40,50 0,120 80,120" fill={isDark ? '#1a4a1a' : '#43a047'} />
-          </svg>
-        </motion.div>
-      ))}
-
-      {/* Forest floor details */}
-      <div className="absolute bottom-[3%] left-0 right-0 flex justify-around pointer-events-none">
-        {Array.from({ length: 15 }).map((_, i) => (
-          <motion.div
-            key={i}
-            animate={{ y: [0, -2, 0], rotate: [-3, 3, -3] }}
-            transition={{ duration: 2.5, repeat: Infinity, delay: i * 0.15 }}
-          >
-            {i % 4 === 0 ? '🍄' : i % 4 === 1 ? '🌿' : i % 4 === 2 ? '🌱' : '🍂'}
-          </motion.div>
-        ))}
-      </div>
-
-      {/* Animated creatures */}
-      {isDark ? (
-        <>
-          <Particles color="#a5f3fc" count={20} />
-          {/* Owl */}
-          <motion.div
-            className="absolute text-3xl"
-            style={{ top: '35%', left: '15%' }}
-            animate={{ rotate: [-5, 5, -5] }}
-            transition={{ duration: 3, repeat: Infinity }}
-          >
-            🦉
-          </motion.div>
-        </>
-      ) : (
-        <>
-          {/* Butterflies */}
-          {[0, 1, 2, 3].map((i) => (
-            <motion.div
-              key={i}
-              className="absolute text-xl"
-              style={{ left: `${15 + i * 20}%`, top: `${35 + (i % 2) * 10}%` }}
-              animate={{ x: [0, 40, -20, 0], y: [0, -25, 15, 0] }}
-              transition={{ duration: 7 + i, repeat: Infinity, delay: i * 0.8 }}
-            >
-              🦋
-            </motion.div>
-          ))}
-          {/* Deer */}
-          <motion.div
-            className="absolute text-4xl"
-            style={{ bottom: '25%', right: '20%' }}
-            animate={{ x: [-10, 10, -10] }}
-            transition={{ duration: 8, repeat: Infinity }}
-          >
-            🦌
-          </motion.div>
-        </>
-      )}
-    </>
-  );
-}
-
-// ============================================
-// STUDIO SCENE - Day & Night (always dark vibe)
-// ============================================
-function StudioScene({ isDark }: { isDark: boolean }) {
-  const ledColors = useMemo(() =>
-    Array.from({ length: 24 }, (_, i) => `hsl(${(i * 15 + (isDark ? 240 : 0)) % 360}, 80%, 55%)`),
-  [isDark]);
-
-  return (
-    <>
-      {/* Ambient lighting effects */}
-      <motion.div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          background: isDark
-            ? 'radial-gradient(ellipse at 50% 80%, rgba(139,92,246,0.15), transparent 60%)'
-            : 'radial-gradient(ellipse at 50% 80%, rgba(59,130,246,0.1), transparent 60%)',
-        }}
-        animate={{ opacity: [0.5, 0.8, 0.5] }}
-        transition={{ duration: 3, repeat: Infinity }}
-      />
-
-      {/* LED Strip lighting - top */}
-      <div className="absolute top-[8%] left-[5%] right-[5%] h-3 flex gap-0.5 rounded-full overflow-hidden">
-        {ledColors.map((color, i) => (
-          <motion.div
-            key={i}
-            className="flex-1"
-            style={{ background: color, boxShadow: `0 0 8px ${color}` }}
-            animate={{ opacity: [0.4, 1, 0.4] }}
-            transition={{ duration: 0.5, repeat: Infinity, delay: i * 0.05 }}
-          />
-        ))}
-      </div>
-
-      {/* Monitor speakers with glow */}
-      {[12, 82].map((left, i) => (
-        <div key={i} className="absolute top-[12%]" style={{ left: `${left}%` }}>
-          <div className="w-12 h-20 bg-gradient-to-b from-gray-700 to-gray-900 rounded-lg border border-gray-600">
-            <motion.div
-              className="w-8 h-8 mx-auto mt-2 rounded-full bg-gray-800 border-2 border-gray-600"
-              animate={{ boxShadow: isDark
-                ? ['0 0 10px rgba(139,92,246,0.3)', '0 0 20px rgba(139,92,246,0.5)', '0 0 10px rgba(139,92,246,0.3)']
-                : ['0 0 10px rgba(59,130,246,0.2)', '0 0 15px rgba(59,130,246,0.4)', '0 0 10px rgba(59,130,246,0.2)']
-              }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-            <div className="w-4 h-4 mx-auto mt-1 rounded-full bg-gray-800 border border-gray-600" />
-          </div>
-        </div>
-      ))}
-
-      {/* VU Meters */}
-      <div className="absolute top-[14%] left-1/2 -translate-x-1/2 flex gap-1">
-        {Array.from({ length: 16 }).map((_, i) => (
-          <motion.div
-            key={i}
-            className="w-2 rounded-sm"
-            style={{
-              background: 'linear-gradient(to top, #22c55e 0%, #22c55e 60%, #eab308 60%, #eab308 85%, #ef4444 85%, #ef4444 100%)',
-            }}
-            animate={{ height: [15 + Math.random() * 25, 25 + Math.random() * 35, 15 + Math.random() * 25] }}
-            transition={{ duration: 0.15 + Math.random() * 0.2, repeat: Infinity }}
-          />
-        ))}
-      </div>
-
-      {/* Mixing console */}
-      <div className="absolute top-[22%] left-[15%] right-[15%] h-16 perspective-1000">
-        <div
-          className="w-full h-full bg-gradient-to-b from-gray-800 to-gray-900 rounded-t-lg border-t border-l border-r border-gray-600"
-          style={{ transform: 'rotateX(30deg)', transformOrigin: 'bottom' }}
-        >
-          <div className="flex justify-around pt-2 px-4">
-            {Array.from({ length: 16 }).map((_, i) => (
-              <div key={i} className="flex flex-col items-center gap-1">
-                <motion.div
-                  className="w-1.5 h-6 rounded-full bg-gradient-to-t from-gray-600 to-gray-400"
-                  animate={{ height: [16, 24, 16] }}
-                  transition={{ duration: 2, repeat: Infinity, delay: i * 0.1 }}
-                />
-                <div className={`w-2 h-2 rounded-full ${i % 3 === 0 ? 'bg-green-500' : i % 3 === 1 ? 'bg-yellow-500' : 'bg-red-500'}`} />
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {/* Reflective floor grid */}
-      <div className="absolute bottom-0 left-0 right-0 h-[55%] overflow-hidden">
-        <div
-          className="w-full h-full"
-          style={{
-            backgroundImage: `
-              linear-gradient(to right, ${isDark ? 'rgba(139,92,246,0.1)' : 'rgba(59,130,246,0.08)'} 1px, transparent 1px),
-              linear-gradient(to bottom, ${isDark ? 'rgba(139,92,246,0.1)' : 'rgba(59,130,246,0.08)'} 1px, transparent 1px)
-            `,
-            backgroundSize: '50px 50px',
-            transform: 'perspective(400px) rotateX(65deg)',
-            transformOrigin: 'top',
-            maskImage: 'linear-gradient(to bottom, transparent, black 20%)',
-          }}
-        />
-      </div>
-
-      {/* Floating music notes */}
-      {['♪', '♫', '♬', '♩'].map((note, i) => (
-        <motion.div
-          key={i}
-          className="absolute text-2xl pointer-events-none"
-          style={{ left: `${20 + i * 20}%`, bottom: '40%', color: isDark ? '#a78bfa' : '#60a5fa' }}
-          animate={{ y: [0, -100, -150], x: [0, 20, -10], opacity: [0, 1, 0], rotate: [0, 15, -10] }}
-          transition={{ duration: 4, repeat: Infinity, delay: i * 1.5, ease: 'easeOut' }}
-        >
-          {note}
-        </motion.div>
-      ))}
-    </>
-  );
-}
-
-// ============================================
-// SPACE SCENE - Day (nebula) & Night (deep space)
-// ============================================
-function SpaceScene({ isDark }: { isDark: boolean }) {
-  return (
-    <>
-      {/* Star field - always visible, more in dark mode */}
-      <StarField count={isDark ? 100 : 60} maxTop={50} />
-
-      {/* Nebula clouds */}
-      <motion.div
-        className="absolute"
-        style={{
-          top: '5%', left: '10%', width: '40%', height: '30%',
-          background: isDark
-            ? 'radial-gradient(ellipse, rgba(139,92,246,0.25), rgba(236,72,153,0.15), transparent 70%)'
-            : 'radial-gradient(ellipse, rgba(236,72,153,0.2), rgba(251,146,60,0.15), transparent 70%)',
-          filter: 'blur(40px)',
-        }}
-        animate={{ scale: [1, 1.1, 1], opacity: [0.6, 0.8, 0.6] }}
-        transition={{ duration: 8, repeat: Infinity }}
-      />
-      <motion.div
-        className="absolute"
-        style={{
-          top: '15%', right: '15%', width: '30%', height: '25%',
-          background: isDark
-            ? 'radial-gradient(ellipse, rgba(59,130,246,0.2), rgba(139,92,246,0.1), transparent 70%)'
-            : 'radial-gradient(ellipse, rgba(6,182,212,0.2), rgba(59,130,246,0.15), transparent 70%)',
-          filter: 'blur(30px)',
-        }}
-        animate={{ scale: [1, 1.15, 1], opacity: [0.5, 0.7, 0.5] }}
-        transition={{ duration: 10, repeat: Infinity, delay: 2 }}
-      />
-
-      {/* Planet with rings */}
-      <motion.div
-        className="absolute top-[8%] right-[12%]"
-        animate={{ rotate: 360 }}
-        transition={{ duration: 120, repeat: Infinity, ease: 'linear' }}
-      >
-        <div className="relative">
-          <div
-            className="w-20 h-20 rounded-full"
-            style={{
-              background: isDark
-                ? 'linear-gradient(135deg, #7c3aed 0%, #4c1d95 50%, #1e1b4b 100%)'
-                : 'linear-gradient(135deg, #f97316 0%, #dc2626 50%, #7f1d1d 100%)',
-              boxShadow: `inset -8px -8px 20px rgba(0,0,0,0.5), ${isDark ? '0 0 30px rgba(139,92,246,0.3)' : '0 0 30px rgba(249,115,22,0.3)'}`,
-            }}
-          />
-          {/* Ring */}
-          <div
-            className="absolute top-1/2 left-1/2 w-32 h-6 rounded-full border-2"
-            style={{
-              transform: 'translate(-50%, -50%) rotateX(75deg)',
-              borderColor: isDark ? 'rgba(167,139,250,0.4)' : 'rgba(251,146,60,0.5)',
-              background: isDark
-                ? 'linear-gradient(90deg, transparent, rgba(167,139,250,0.1), transparent)'
-                : 'linear-gradient(90deg, transparent, rgba(251,146,60,0.15), transparent)',
-            }}
-          />
-        </div>
-      </motion.div>
-
-      {/* Distant planet/moon */}
-      <motion.div
-        className="absolute top-[20%] left-[20%] w-8 h-8 rounded-full"
-        style={{
-          background: isDark
-            ? 'radial-gradient(circle at 30% 30%, #94a3b8, #475569)'
-            : 'radial-gradient(circle at 30% 30%, #fef08a, #eab308)',
-          boxShadow: isDark ? '0 0 15px rgba(148,163,184,0.2)' : '0 0 20px rgba(234,179,8,0.3)',
-        }}
-        animate={{ y: [0, -5, 0] }}
-        transition={{ duration: 6, repeat: Infinity }}
-      />
+      {/* Floating particles */}
+      <Particles color={isDark ? '#a5b4fc' : '#fcd34d'} count={12} />
 
       {/* Shooting stars */}
-      {[0, 1, 2].map((i) => (
+      {useMemo(() => [0, 1].map((i) => (
         <motion.div
           key={i}
           className="absolute w-1 h-1 bg-white rounded-full"
-          style={{ left: `${15 + i * 30}%`, top: '10%' }}
+          style={{ left: `${15 + i * 40}%`, top: '5%' }}
           animate={{
-            x: [0, 150, 250],
-            y: [0, 80, 120],
+            x: [0, 100, 150],
+            y: [0, 50, 80],
             opacity: [0, 1, 0],
           }}
           transition={{
             duration: 1.5,
-            delay: 5 + i * 8,
+            delay: 5 + i * 10,
             repeat: Infinity,
-            repeatDelay: 15,
+            repeatDelay: 20,
           }}
         >
-          <div className="w-12 h-0.5 bg-gradient-to-l from-white to-transparent -translate-x-12" />
+          <div className="w-8 h-0.5 bg-gradient-to-l from-white to-transparent -translate-x-8" />
         </motion.div>
-      ))}
-
-      {/* Space station/platform */}
-      <div className="absolute bottom-[25%] left-1/2 -translate-x-1/2 w-[70%]">
-        <div className="relative">
-          {/* Main platform */}
-          <div className="h-6 bg-gradient-to-b from-gray-500 to-gray-700 rounded-lg border-t border-gray-400">
-            <div className="flex justify-around pt-1.5">
-              {Array.from({ length: 12 }).map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="w-2 h-2 rounded-full"
-                  style={{ background: isDark ? '#06b6d4' : '#22d3ee' }}
-                  animate={{ opacity: [0.4, 1, 0.4], boxShadow: [`0 0 5px ${isDark ? '#06b6d4' : '#22d3ee'}`, `0 0 10px ${isDark ? '#06b6d4' : '#22d3ee'}`, `0 0 5px ${isDark ? '#06b6d4' : '#22d3ee'}`] }}
-                  transition={{ duration: 1.5, repeat: Infinity, delay: i * 0.15 }}
-                />
-              ))}
-            </div>
-          </div>
-          {/* Support structures */}
-          <div className="absolute -left-4 top-0 w-3 h-12 bg-gradient-to-b from-gray-600 to-gray-800 rounded" />
-          <div className="absolute -right-4 top-0 w-3 h-12 bg-gradient-to-b from-gray-600 to-gray-800 rounded" />
-        </div>
-      </div>
-
-      {/* Floating particles */}
-      <Particles color={isDark ? '#a5b4fc' : '#fcd34d'} count={15} />
-    </>
+      )), [])}
+    </div>
   );
 }
 
 // ============================================
-// ROOFTOP SCENE - Day & Night
+// ROOFTOP SCENE - Day & Night (Ground-dominant pseudo-3D)
 // ============================================
 function RooftopScene({ isDark }: { isDark: boolean }) {
-  const buildings = useMemo(() => [
-    { height: 55, width: 8, windows: 5 },
-    { height: 80, width: 7, windows: 8 },
-    { height: 65, width: 9, windows: 6 },
-    { height: 95, width: 6, windows: 9 },
-    { height: 70, width: 8, windows: 7 },
-    { height: 60, width: 7, windows: 5 },
-    { height: 85, width: 8, windows: 8 },
-    { height: 50, width: 6, windows: 4 },
-    { height: 75, width: 9, windows: 7 },
-    { height: 90, width: 7, windows: 9 },
-  ], []);
+  const config = SCENE_CONFIGS.rooftop.ground;
 
   return (
-    <>
-      {/* Sky elements */}
-      {isDark ? (
-        <>
-          <StarField count={35} maxTop={25} />
-          {/* Moon */}
-          <motion.div
-            className="absolute top-[6%] right-[18%]"
-            animate={{ y: [0, -3, 0] }}
-            transition={{ duration: 8, repeat: Infinity }}
-          >
-            <div
-              className="w-14 h-14 rounded-full"
-              style={{
-                background: 'radial-gradient(circle at 35% 35%, #fefce8, #d4d4d4)',
-                boxShadow: '0 0 40px 10px rgba(255,255,255,0.1)',
-              }}
-            />
-          </motion.div>
-        </>
-      ) : (
-        <>
-          <CloudLayer isDark={false} />
-          {/* Sun */}
-          <motion.div
-            className="absolute top-[8%] right-[15%] w-16 h-16 rounded-full"
-            style={{
-              background: 'radial-gradient(circle at 30% 30%, #fffde7, #ffeb3b)',
-              boxShadow: '0 0 50px 15px rgba(255,235,59,0.3)',
-            }}
-            animate={{ scale: [1, 1.05, 1] }}
-            transition={{ duration: 4, repeat: Infinity }}
-          />
-        </>
-      )}
+    <div className="absolute inset-0 overflow-hidden">
+      {/* City skyline background */}
+      <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-slate-900 via-indigo-950 to-violet-900'
+            : 'bg-gradient-to-b from-sky-400 via-sky-300 to-orange-200'
+        }`} />
 
-      {/* City skyline */}
-      <div className="absolute bottom-[30%] left-0 right-0 flex items-end justify-around px-2">
-        {buildings.map((building, i) => (
+        {/* Stars (night) */}
+        {isDark && <StarField count={20} />}
+
+        {/* Sun/Moon */}
+        <motion.div
+          className={`absolute top-[20%] right-[15%] w-8 h-8 rounded-full ${
+            isDark
+              ? 'bg-gradient-to-br from-gray-100 to-gray-300'
+              : 'bg-gradient-to-br from-yellow-200 to-orange-400'
+          }`}
+          style={{
+            boxShadow: isDark
+              ? '0 0 25px 8px rgba(255, 255, 255, 0.15)'
+              : '0 0 35px 12px rgba(255, 180, 100, 0.4)',
+          }}
+        />
+
+        {/* City skyline silhouette at horizon */}
+        <svg className="absolute bottom-0 left-0 right-0 w-full h-[70%]" viewBox="0 0 1440 200" preserveAspectRatio="none">
+          <defs>
+            <linearGradient id="buildingGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor={isDark ? '#1e293b' : '#64748b'} />
+              <stop offset="100%" stopColor={isDark ? '#0f172a' : '#334155'} />
+            </linearGradient>
+          </defs>
+          {/* Skyline path */}
+          <path
+            d="M0 200 L0 160 L60 160 L60 120 L100 120 L100 80 L130 80 L130 140 L180 140 L180 100 L220 100 L220 60 L260 60 L260 130 L310 130 L310 90 L350 90 L350 150 L400 150 L400 70 L440 70 L440 110 L490 110 L490 50 L540 50 L540 120 L590 120 L590 80 L640 80 L640 140 L700 140 L700 60 L750 60 L750 100 L800 100 L800 130 L860 130 L860 70 L910 70 L910 110 L960 110 L960 50 L1010 50 L1010 90 L1060 90 L1060 130 L1110 130 L1110 80 L1160 80 L1160 140 L1210 140 L1210 100 L1270 100 L1270 60 L1320 60 L1320 120 L1370 120 L1370 80 L1420 80 L1420 160 L1440 160 L1440 200 Z"
+            fill="url(#buildingGrad)"
+          />
+          {/* Windows - rows of lit squares */}
+          {isDark && useMemo(() => Array.from({ length: 80 }).map((_, i) => (
+            <motion.rect
+              key={i}
+              x={50 + (i % 20) * 70 + Math.random() * 30}
+              y={70 + Math.floor(i / 20) * 30 + Math.random() * 20}
+              width="4"
+              height="6"
+              fill="#fef08a"
+              opacity={Math.random() > 0.4 ? 0.8 : 0.2}
+              animate={{ opacity: Math.random() > 0.7 ? [0.3, 0.9, 0.3] : undefined }}
+              transition={{ duration: 2 + Math.random() * 3, repeat: Infinity, delay: Math.random() * 5 }}
+            />
+          )), [])}
+        </svg>
+      </div>
+
+      {/* Rooftop surface - walkable area */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
+        {/* Rooftop floor */}
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-stone-700 via-stone-800 to-stone-900'
+            : 'bg-gradient-to-b from-stone-400 via-stone-500 to-stone-600'
+        }`} />
+
+        {/* Rooftop tiles/texture */}
+        <div
+          className={`absolute inset-0 ${isDark ? 'opacity-8' : 'opacity-10'}`}
+          style={{
+            backgroundImage: `linear-gradient(90deg, ${isDark ? '#57534e' : '#78716c'} 1px, transparent 1px), linear-gradient(180deg, ${isDark ? '#57534e' : '#78716c'} 1px, transparent 1px)`,
+            backgroundSize: '40px 30px',
+          }}
+        />
+
+        {/* AC units at different depths */}
+        {useMemo(() => [
+          { x: 8, y: 15, scale: 0.4, width: 30 },
+          { x: 88, y: 20, scale: 0.45, width: 25 },
+          { x: 85, y: 55, scale: 0.6, width: 35 },
+        ].map((ac, i) => (
           <div
             key={i}
-            className="relative"
+            className="absolute"
             style={{
-              width: `${building.width}%`,
-              height: `${building.height}px`,
-              background: isDark
-                ? 'linear-gradient(to bottom, #1e293b, #0f172a)'
-                : 'linear-gradient(to bottom, #64748b, #334155)',
+              left: `${ac.x}%`,
+              top: `${ac.y}%`,
+              transform: `scale(${ac.scale})`,
             }}
           >
-            {/* Windows */}
-            <div className="absolute inset-1 grid grid-cols-3 gap-0.5">
-              {Array.from({ length: building.windows * 3 }).map((_, j) => (
-                <motion.div
-                  key={j}
-                  className="rounded-sm"
-                  style={{
-                    background: isDark
-                      ? Math.random() > 0.3 ? '#fef08a' : '#1e293b'
-                      : Math.random() > 0.5 ? 'rgba(255,255,255,0.3)' : 'rgba(59,130,246,0.2)',
-                  }}
-                  animate={isDark && Math.random() > 0.7 ? { opacity: [0.3, 1, 0.3] } : {}}
-                  transition={{ duration: 2 + Math.random() * 3, repeat: Infinity, delay: Math.random() * 5 }}
-                />
-              ))}
+            <div
+              className={`h-8 rounded ${isDark ? 'bg-zinc-600' : 'bg-zinc-400'}`}
+              style={{ width: ac.width }}
+            >
+              <motion.div
+                className={`w-2/3 h-1 mx-auto mt-1 rounded ${isDark ? 'bg-zinc-500' : 'bg-zinc-300'}`}
+                animate={{ opacity: [0.4, 0.8, 0.4] }}
+                transition={{ duration: 2, repeat: Infinity }}
+              />
             </div>
-            {/* Rooftop details */}
-            {i % 3 === 0 && (
-              <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-2 h-4 bg-red-500 rounded-full">
-                <motion.div
-                  className="w-full h-full rounded-full bg-red-400"
-                  animate={{ opacity: [0.5, 1, 0.5] }}
-                  transition={{ duration: 1, repeat: Infinity }}
-                />
-              </div>
-            )}
           </div>
-        ))}
-      </div>
+        )), [isDark])}
 
-      {/* Neon signs (night) / Billboards (day) */}
-      {isDark ? (
-        <>
+        {/* Antenna/pole at back */}
+        <div
+          className="absolute"
+          style={{ left: '50%', top: '8%', transform: 'translateX(-50%)' }}
+        >
+          <div className={`w-1 h-14 ${isDark ? 'bg-zinc-600' : 'bg-zinc-500'}`} />
           <motion.div
-            className="absolute top-[25%] left-[12%] text-lg font-bold"
-            style={{ color: '#ec4899', textShadow: '0 0 20px #ec4899, 0 0 40px #ec4899' }}
-            animate={{ opacity: [0.7, 1, 0.7] }}
+            className="absolute -top-1 left-1/2 -translate-x-1/2 w-2 h-2 rounded-full bg-red-500"
+            animate={{ opacity: [0.3, 1, 0.3] }}
             transition={{ duration: 1.5, repeat: Infinity }}
-          >
-            OPEN 24/7
-          </motion.div>
-          <motion.div
-            className="absolute top-[28%] right-[15%] text-sm font-bold"
-            style={{ color: '#22d3ee', textShadow: '0 0 15px #22d3ee, 0 0 30px #22d3ee' }}
-            animate={{ opacity: [0.6, 1, 0.6] }}
-            transition={{ duration: 2, repeat: Infinity, delay: 0.5 }}
-          >
-            MUSIC LIVE
-          </motion.div>
-        </>
-      ) : (
-        <>
-          <div className="absolute top-[22%] left-[10%] w-16 h-10 bg-gradient-to-r from-blue-500 to-purple-500 rounded flex items-center justify-center">
-            <span className="text-white text-xs font-bold">ADS</span>
-          </div>
-        </>
-      )}
-
-      {/* Rooftop elements */}
-      <div className="absolute bottom-[5%] left-0 right-0">
-        {/* AC Units */}
-        <div className="absolute right-[10%] bottom-[60%] w-10 h-7 bg-gradient-to-b from-gray-500 to-gray-600 rounded">
-          <motion.div
-            className="w-6 h-1 mx-auto mt-1 bg-gray-400 rounded"
-            animate={{ opacity: [0.5, 1, 0.5] }}
-            transition={{ duration: 2, repeat: Infinity }}
           />
         </div>
-        <div className="absolute right-[18%] bottom-[55%] w-8 h-6 bg-gradient-to-b from-gray-500 to-gray-600 rounded" />
 
-        {/* Water tower */}
-        <div className="absolute left-[8%] bottom-[50%]">
-          <div className="w-12 h-10 bg-gradient-to-b from-amber-700 to-amber-900 rounded-t-full" />
-          <div className="w-2 h-8 mx-auto bg-gray-600" />
-        </div>
+        {/* Pipes running across roof */}
+        <svg className="absolute inset-0 w-full h-full opacity-25" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M5 30 L45 25 L50 35 L95 30" stroke={isDark ? '#78716c' : '#a8a29e'} strokeWidth="0.8" fill="none" />
+          <path d="M10 70 L90 65" stroke={isDark ? '#78716c' : '#a8a29e'} strokeWidth="0.5" fill="none" />
+        </svg>
+
+        {/* Puddles (rain remnants) */}
+        {!isDark && useMemo(() => [
+          { x: 25, y: 60, w: 30, h: 8 },
+          { x: 65, y: 75, w: 20, h: 6 },
+        ].map((puddle, i) => (
+          <motion.div
+            key={i}
+            className="absolute rounded-full bg-sky-400/15"
+            style={{
+              left: `${puddle.x}%`,
+              top: `${puddle.y}%`,
+              width: puddle.w,
+              height: puddle.h,
+            }}
+            animate={{ opacity: [0.15, 0.25, 0.15] }}
+            transition={{ duration: 4, repeat: Infinity, delay: i }}
+          />
+        )), [])}
       </div>
 
-      {/* City ambient lights (night) */}
-      {isDark && (
+      {/* Neon signs floating above skyline (night) */}
+      {isDark && useMemo(() => [
+        { x: 15, y: 18, text: '♪', color: '#ec4899' },
+        { x: 80, y: 22, text: '♫', color: '#22d3ee' },
+      ].map((sign, i) => (
         <motion.div
-          className="absolute bottom-[30%] left-0 right-0 h-20 pointer-events-none"
+          key={i}
+          className="absolute text-lg font-bold"
           style={{
-            background: 'linear-gradient(to top, rgba(251,191,36,0.1), transparent)',
+            left: `${sign.x}%`,
+            top: `${sign.y}%`,
+            color: sign.color,
+            textShadow: `0 0 10px ${sign.color}, 0 0 20px ${sign.color}`,
           }}
-          animate={{ opacity: [0.3, 0.5, 0.3] }}
-          transition={{ duration: 3, repeat: Infinity }}
+          animate={{ opacity: [0.5, 1, 0.5] }}
+          transition={{ duration: 2 + i, repeat: Infinity }}
+        >
+          {sign.text}
+        </motion.div>
+      )), [])}
+
+      {/* City glow (night) */}
+      {isDark && (
+        <div
+          className="absolute left-0 right-0 pointer-events-none"
+          style={{
+            top: `${config.horizonY - 5}%`,
+            height: '15%',
+            background: 'linear-gradient(to top, rgba(251, 191, 36, 0.08), transparent)',
+          }}
         />
       )}
-    </>
+    </div>
   );
 }
 
