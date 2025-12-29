@@ -808,8 +808,8 @@ export function TransportBar({
 
         <div className="h-5 w-px bg-white/10" />
 
-        {/* User Menu - force dark mode styling in DAW with proper background for contrast in light mode */}
-        <div className="dark bg-gray-800 dark:bg-transparent rounded-lg">
+        {/* User Menu - force dark mode styling in DAW with dark background for text contrast */}
+        <div className="dark bg-[#12121a] rounded-lg">
           <UserMenu />
         </div>
 
