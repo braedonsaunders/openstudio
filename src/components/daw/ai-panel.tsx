@@ -201,7 +201,7 @@ export function AIPanel() {
 
     // Stop Lyria if playing
     const lyriaStore = useLyriaStore.getState();
-    if (lyriaStore.sessionState !== 'idle') {
+    if (lyriaStore.sessionState === 'playing' || lyriaStore.sessionState === 'connected') {
       lyriaStore.pause();
     }
 
