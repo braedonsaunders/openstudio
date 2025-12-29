@@ -14,7 +14,6 @@ import {
   Volume2,
   VolumeX,
   Crown,
-  Radio,
   Disc3,
   Music2,
   Music4,
@@ -32,7 +31,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
-import type { User, BackingTrack } from '@/types';
+import type { User } from '@/types';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
@@ -609,159 +608,6 @@ function SongChannelStrip({
       {/* Bus Label */}
       <div className="flex items-center justify-center py-1.5 border-t border-emerald-300/30 dark:border-emerald-900/30 bg-emerald-100/20 dark:bg-emerald-950/20">
         <span className="text-[7px] text-emerald-500/60 dark:text-emerald-400/60 font-mono">SONG BUS</span>
-      </div>
-    </motion.div>
-  );
-}
-
-// Track Channel Strip (for backing track)
-function TrackChannelStrip({
-  track,
-  isMaster,
-  audioLevel,
-}: {
-  track: BackingTrack;
-  isMaster: boolean;
-  audioLevel: number;
-}) {
-  const { backingTrackVolume, setBackingTrackVolume } = useAudioStore();
-  const [isMuted, setIsMuted] = useState(false);
-  const [isSolo, setIsSolo] = useState(false);
-
-  // Use actual audio level from the engine
-  const level = audioLevel;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, scale: 0.9 }}
-      animate={{ opacity: 1, scale: 1 }}
-      className={cn(
-        'flex flex-col h-full rounded-xl overflow-hidden',
-        'bg-gradient-to-b from-indigo-200/40 to-gray-100/95 dark:from-indigo-900/40 dark:to-zinc-900/95',
-        'border border-indigo-400/30 dark:border-indigo-500/30',
-        'shadow-xl shadow-black/10 dark:shadow-black/30'
-      )}
-      style={{ width: '100px', minWidth: '100px' }}
-    >
-      {/* Channel Header */}
-      <div className="p-2 border-b border-indigo-300/50 dark:border-indigo-900/50 bg-indigo-100/30 dark:bg-indigo-950/30">
-        <div className="flex flex-col items-center gap-1.5">
-          {/* Track Icon */}
-          <div className="relative">
-            <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-indigo-500/30 to-purple-500/30 border border-indigo-500/40 flex items-center justify-center">
-              {track.thumbnail ? (
-                <img
-                  src={track.thumbnail}
-                  alt=""
-                  className="w-full h-full rounded-lg object-cover"
-                />
-              ) : (
-                <Disc3 className="w-5 h-5 text-indigo-500 dark:text-indigo-400" />
-              )}
-            </div>
-            <motion.div
-              className="absolute -inset-0.5 rounded-lg border border-indigo-500/50"
-              animate={{ opacity: [0.2, 0.6, 0.2] }}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-          </div>
-
-          {/* Track Name */}
-          <div className="w-full text-center">
-            <div className="text-[9px] font-semibold text-indigo-700 dark:text-indigo-200 truncate px-1">
-              {track.name}
-            </div>
-            {track.artist && (
-              <div className="text-[7px] text-indigo-500/70 dark:text-indigo-400/70 truncate px-1">
-                {track.artist}
-              </div>
-            )}
-          </div>
-
-          {/* Track Type Badge */}
-          <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-indigo-500/20 text-[8px] font-medium text-indigo-600 dark:text-indigo-300">
-            <Radio className="w-2.5 h-2.5" />
-            <span>TRACK</span>
-          </div>
-        </div>
-      </div>
-
-      {/* Pan Section */}
-      <div className="flex justify-center py-2 border-b border-indigo-300/30 dark:border-indigo-900/30">
-        <PanKnob disabled={!isMaster} />
-      </div>
-
-      {/* Fader + Meter Section */}
-      <div className="flex-1 flex items-stretch gap-1 px-2 py-2 min-h-0">
-        {/* Left dB Scale */}
-        <div className="flex flex-col justify-between text-[6px] text-gray-500 dark:text-zinc-600 font-mono py-1">
-          {METER_DB_MARKS.map((mark) => (
-            <span key={mark}>{mark}</span>
-          ))}
-        </div>
-
-        {/* Meter */}
-        <StereoMeter
-          leftLevel={isMuted ? 0 : level}
-          rightLevel={isMuted ? 0 : level * 0.95}
-          color="#818cf8"
-        />
-
-        {/* Fader */}
-        <div className="flex-1 flex justify-center">
-          <VerticalFader
-            value={backingTrackVolume}
-            onChange={setBackingTrackVolume}
-            disabled={!isMaster}
-            color="#818cf8"
-          />
-        </div>
-      </div>
-
-      {/* dB Display */}
-      <div className="px-2 pb-1">
-        <div className="flex justify-center">
-          <div className="px-2 py-0.5 rounded bg-white/60 dark:bg-black/60 border border-indigo-300/50 dark:border-indigo-800/50">
-            <span className="text-[9px] font-mono text-indigo-600 dark:text-indigo-300">
-              {formatDb(backingTrackVolume)}
-            </span>
-          </div>
-        </div>
-      </div>
-
-      {/* Mute/Solo */}
-      <div className="flex gap-1 p-2 border-t border-indigo-300/30 dark:border-indigo-900/30">
-        <button
-          onClick={() => isMaster && setIsMuted(!isMuted)}
-          disabled={!isMaster}
-          className={cn(
-            'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
-            isMuted
-              ? 'bg-red-600 text-white shadow-[0_0_8px_rgba(220,38,38,0.4)]'
-              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
-            !isMaster && 'cursor-not-allowed opacity-50'
-          )}
-        >
-          M
-        </button>
-        <button
-          onClick={() => isMaster && setIsSolo(!isSolo)}
-          disabled={!isMaster}
-          className={cn(
-            'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
-            isSolo
-              ? 'bg-amber-500 text-black shadow-[0_0_8px_rgba(245,158,11,0.4)]'
-              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
-            !isMaster && 'cursor-not-allowed opacity-50'
-          )}
-        >
-          S
-        </button>
-      </div>
-
-      {/* Stereo Label */}
-      <div className="flex items-center justify-center py-1.5 border-t border-indigo-300/30 dark:border-indigo-900/30 bg-indigo-100/20 dark:bg-indigo-950/20">
-        <span className="text-[7px] text-indigo-500/60 dark:text-indigo-400/60 font-mono">STEREO</span>
       </div>
     </motion.div>
   );
@@ -1463,16 +1309,7 @@ export function MixerView({
 
           {/* Divider */}
           {(allUsers.length > 0 || currentTrack) && (
-            <SectionDivider label={currentTrack ? 'TRACKS' : 'MASTER'} />
-          )}
-
-          {/* Track Channel (if backing track exists) */}
-          {currentTrack && (
-            <TrackChannelStrip
-              track={currentTrack}
-              isMaster={isMaster}
-              audioLevel={audioLevels.get('backingTrack') || 0}
-            />
+            <SectionDivider label={currentTrack ? 'SONG' : 'MASTER'} />
           )}
 
           {/* Song Channel (if there's a song in the setlist) */}
