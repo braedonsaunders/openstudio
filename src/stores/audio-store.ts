@@ -14,6 +14,7 @@ interface AudioState {
   isMuted: boolean;
   masterVolume: number;
   backingTrackVolume: number;
+  songVolume: number;
 
   // Monitoring
   localLevel: number;
@@ -48,6 +49,7 @@ interface AudioState {
   setMuted: (muted: boolean) => void;
   setMasterVolume: (volume: number) => void;
   setBackingTrackVolume: (volume: number) => void;
+  setSongVolume: (volume: number) => void;
   setLocalLevel: (level: number) => void;
   setJitterStats: (stats: JitterStats) => void;
   setWebRTCStats: (stats: WebRTCStats) => void;
@@ -106,6 +108,7 @@ export const useAudioStore = create<AudioState>()(
   isMuted: false,
   masterVolume: 1,
   backingTrackVolume: 0.7,
+  songVolume: 1,
   localLevel: 0,
   jitterStats: initialJitterStats,
   webrtcStats: null,
@@ -133,6 +136,7 @@ export const useAudioStore = create<AudioState>()(
   setMuted: (muted) => set({ isMuted: muted }),
   setMasterVolume: (volume) => set({ masterVolume: volume }),
   setBackingTrackVolume: (volume) => set({ backingTrackVolume: volume }),
+  setSongVolume: (volume) => set({ songVolume: volume }),
   setLocalLevel: (level) => set({ localLevel: level }),
   setJitterStats: (stats) => set({ jitterStats: stats }),
   setWebRTCStats: (stats) => set({ webrtcStats: stats }),
@@ -177,6 +181,7 @@ export const useAudioStore = create<AudioState>()(
       isMuted: false,
       masterVolume: 1,
       backingTrackVolume: 0.7,
+      songVolume: 1,
       localLevel: 0,
       jitterStats: initialJitterStats,
       webrtcStats: null,

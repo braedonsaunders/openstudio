@@ -270,6 +270,12 @@ export function useAudioEngine() {
     useAudioStore.getState().setBackingTrackVolume(volume);
   }, []);
 
+  // Set song volume (controls all song-related audio: backing tracks, stems, Lyria AI, etc.)
+  const setSongVolume = useCallback((volume: number) => {
+    globalEngine?.setSongVolume(volume);
+    useAudioStore.getState().setSongVolume(volume);
+  }, []);
+
   // Set output device
   const setOutputDevice = useCallback(async (deviceId: string) => {
     await globalEngine?.setOutputDevice(deviceId);
@@ -595,6 +601,7 @@ export function useAudioEngine() {
     setRemoteCompensationDelay,
     setMasterVolume,
     setBackingTrackVolume,
+    setSongVolume,
     setOutputDevice,
     setMonitoringEnabled,
     setMonitoringVolume,
