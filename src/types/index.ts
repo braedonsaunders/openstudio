@@ -426,19 +426,22 @@ export interface RoomSearchParams {
 /**
  * Musical scale options for Lyria
  * Each enum corresponds to relative major/minor keys
+ * Values must match Google Lyria API exactly
  */
 export type LyriaScale =
-  | 'C_MAJOR_A_MINOR'      // All white keys
-  | 'G_MAJOR_E_MINOR'      // F#
-  | 'D_MAJOR_B_MINOR'      // F#, C#
-  | 'A_MAJOR_F_SHARP_MINOR'// F#, C#, G#
-  | 'E_MAJOR_C_SHARP_MINOR'// F#, C#, G#, D#
-  | 'B_MAJOR_G_SHARP_MINOR'// F#, C#, G#, D#, A#
-  | 'F_MAJOR_D_MINOR'      // Bb
-  | 'B_FLAT_MAJOR_G_MINOR' // Bb, Eb
-  | 'E_FLAT_MAJOR_C_MINOR' // Bb, Eb, Ab
-  | 'A_FLAT_MAJOR_F_MINOR' // Bb, Eb, Ab, Db
-  | 'CHROMATIC';           // All notes
+  | 'C_MAJOR_A_MINOR'              // C major / A minor
+  | 'D_FLAT_MAJOR_B_FLAT_MINOR'    // D♭ major / B♭ minor
+  | 'D_MAJOR_B_MINOR'              // D major / B minor
+  | 'E_FLAT_MAJOR_C_MINOR'         // E♭ major / C minor
+  | 'E_MAJOR_D_FLAT_MINOR'         // E major / C♯/D♭ minor
+  | 'F_MAJOR_D_MINOR'              // F major / D minor
+  | 'G_FLAT_MAJOR_E_FLAT_MINOR'    // G♭ major / E♭ minor
+  | 'G_MAJOR_E_MINOR'              // G major / E minor
+  | 'A_FLAT_MAJOR_F_MINOR'         // A♭ major / F minor
+  | 'A_MAJOR_G_FLAT_MINOR'         // A major / F♯/G♭ minor
+  | 'B_FLAT_MAJOR_G_MINOR'         // B♭ major / G minor
+  | 'B_MAJOR_A_FLAT_MINOR'         // B major / G♯/A♭ minor
+  | 'SCALE_UNSPECIFIED';           // Default / The model decides
 
 /**
  * Lyria RealTime session configuration

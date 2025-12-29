@@ -24,50 +24,60 @@ const DEFAULT_CONFIG: LyriaConfig = {
 };
 
 // Map our key format to Lyria scale
+// Uses exact enum values from Google Lyria API
 export function keyToLyriaScale(key: string | null, keyScale: 'major' | 'minor' | null): LyriaScale {
-  if (!key) return 'C_MAJOR_A_MINOR';
+  if (!key) return 'SCALE_UNSPECIFIED';
 
   const keyMap: Record<string, LyriaScale> = {
     // Major keys and their relative minors
     'C': 'C_MAJOR_A_MINOR',
     'Am': 'C_MAJOR_A_MINOR',
-    'G': 'G_MAJOR_E_MINOR',
-    'Em': 'G_MAJOR_E_MINOR',
+    'Db': 'D_FLAT_MAJOR_B_FLAT_MINOR',
+    'C#': 'D_FLAT_MAJOR_B_FLAT_MINOR', // C# = Db enharmonic
+    'Bbm': 'D_FLAT_MAJOR_B_FLAT_MINOR',
+    'A#m': 'D_FLAT_MAJOR_B_FLAT_MINOR', // A#m = Bbm enharmonic
     'D': 'D_MAJOR_B_MINOR',
     'Bm': 'D_MAJOR_B_MINOR',
-    'A': 'A_MAJOR_F_SHARP_MINOR',
-    'F#m': 'A_MAJOR_F_SHARP_MINOR',
-    'E': 'E_MAJOR_C_SHARP_MINOR',
-    'C#m': 'E_MAJOR_C_SHARP_MINOR',
-    'B': 'B_MAJOR_G_SHARP_MINOR',
-    'G#m': 'B_MAJOR_G_SHARP_MINOR',
+    'Eb': 'E_FLAT_MAJOR_C_MINOR',
+    'D#': 'E_FLAT_MAJOR_C_MINOR', // D# = Eb enharmonic
+    'Cm': 'E_FLAT_MAJOR_C_MINOR',
+    'E': 'E_MAJOR_D_FLAT_MINOR',
+    'C#m': 'E_MAJOR_D_FLAT_MINOR',
+    'Dbm': 'E_MAJOR_D_FLAT_MINOR', // Dbm = C#m enharmonic
     'F': 'F_MAJOR_D_MINOR',
     'Dm': 'F_MAJOR_D_MINOR',
-    'Bb': 'B_FLAT_MAJOR_G_MINOR',
-    'Gm': 'B_FLAT_MAJOR_G_MINOR',
-    'Eb': 'E_FLAT_MAJOR_C_MINOR',
-    'Cm': 'E_FLAT_MAJOR_C_MINOR',
+    'Gb': 'G_FLAT_MAJOR_E_FLAT_MINOR',
+    'F#': 'G_FLAT_MAJOR_E_FLAT_MINOR', // F# = Gb enharmonic
+    'Ebm': 'G_FLAT_MAJOR_E_FLAT_MINOR',
+    'D#m': 'G_FLAT_MAJOR_E_FLAT_MINOR', // D#m = Ebm enharmonic
+    'G': 'G_MAJOR_E_MINOR',
+    'Em': 'G_MAJOR_E_MINOR',
     'Ab': 'A_FLAT_MAJOR_F_MINOR',
-    'Fm': 'A_FLAT_MAJOR_F_MINOR',
-    // Sharp major keys (map to enharmonic equivalents)
-    'F#': 'B_MAJOR_G_SHARP_MINOR', // F# major ≈ Gb major, use B major (closest)
-    'C#': 'E_MAJOR_C_SHARP_MINOR', // C# is relative minor of E
     'G#': 'A_FLAT_MAJOR_F_MINOR', // G# = Ab enharmonic
-    'D#': 'E_FLAT_MAJOR_C_MINOR', // D# = Eb enharmonic
+    'Fm': 'A_FLAT_MAJOR_F_MINOR',
+    'A': 'A_MAJOR_G_FLAT_MINOR',
+    'F#m': 'A_MAJOR_G_FLAT_MINOR',
+    'Gbm': 'A_MAJOR_G_FLAT_MINOR', // Gbm = F#m enharmonic
+    'Bb': 'B_FLAT_MAJOR_G_MINOR',
     'A#': 'B_FLAT_MAJOR_G_MINOR', // A# = Bb enharmonic
-    // Minor variants without 'm' suffix
-    'Db': 'E_MAJOR_C_SHARP_MINOR', // Db = C# enharmonic
-    'Gb': 'B_MAJOR_G_SHARP_MINOR', // Gb = F# enharmonic
+    'Gm': 'B_FLAT_MAJOR_G_MINOR',
+    'B': 'B_MAJOR_A_FLAT_MINOR',
+    'G#m': 'B_MAJOR_A_FLAT_MINOR',
+    'Abm': 'B_MAJOR_A_FLAT_MINOR', // Abm = G#m enharmonic
   };
 
-  // Try direct match first
+  // When keyScale is 'minor', try the minor variant first
+  if (keyScale === 'minor') {
+    const keyWithMinor = `${key}m`;
+    if (keyMap[keyWithMinor]) return keyMap[keyWithMinor];
+  }
+
+  // Try direct match
   if (keyMap[key]) return keyMap[key];
 
-  // Try with scale suffix
-  const keyWithScale = keyScale === 'minor' ? `${key}m` : key;
-  if (keyMap[keyWithScale]) return keyMap[keyWithScale];
-
-  return 'C_MAJOR_A_MINOR';
+  // Fallback to unspecified (let model decide)
+  console.warn(`[Lyria] Unknown key "${key}" with scale "${keyScale}", falling back to SCALE_UNSPECIFIED`);
+  return 'SCALE_UNSPECIFIED';
 }
 
 // Parse prompt string with weights like "jazz piano:0.7, ambient:0.3"
@@ -392,14 +402,20 @@ export class LyriaSession {
   /**
    * Start music playback by sending prompts and play command
    */
-  play(): void {
+  async play(): Promise<void> {
     if (this.state !== 'connected' && this.state !== 'paused') {
       console.warn('Cannot play: not connected');
       return;
     }
 
+    // Must await resume before sending play command, otherwise audio won't play
     if (this.audioContext?.state === 'suspended') {
-      this.audioContext.resume();
+      try {
+        await this.audioContext.resume();
+        console.log('[Lyria] AudioContext resumed successfully');
+      } catch (err) {
+        console.warn('[Lyria] Failed to resume AudioContext:', err);
+      }
     }
 
     if (this.ws?.readyState === WebSocket.OPEN) {

@@ -148,7 +148,7 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
   },
 
   // Play with optional config
-  play: (config?: LyriaTrackConfig) => {
+  play: async (config?: LyriaTrackConfig) => {
     const { session, sessionState, activeConfig, roomBpm, roomKey, roomKeyScale } = get();
     if (!session) return;
 
@@ -179,7 +179,7 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
       session.setPrompts(prompt);
     }
 
-    session.play();
+    await session.play();
   },
 
   // Pause playback
