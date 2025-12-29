@@ -3,7 +3,7 @@
 import { useMemo, useEffect, useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTheme } from '@/components/theme/ThemeProvider';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { useRoomStore } from '@/stores/room-store';
 import type { User } from '@/types';
 import { Music, Mic, Guitar, Users2 } from 'lucide-react';
@@ -250,7 +250,7 @@ function ChatBubble({ message, index }: { message: { content: string; userName: 
 }
 
 // User avatar with instrument animation
-function UserAvatar({
+function UserAvatarItem({
   user,
   position,
   audioLevel,
@@ -317,12 +317,11 @@ function UserAvatar({
         />
 
         <div className="relative">
-          <AvatarDisplay
-            avatar={null}
+          <UserAvatar
+            userId={user.id}
             username={user.name}
-            size="xl"
-            showEffects
-            showFrame
+            size={128}
+            variant="fullBody"
           />
         </div>
 
@@ -532,7 +531,7 @@ export function AvatarWorldView({ users, currentUser, audioLevels, activeView, o
       {/* User avatars arranged around the campfire */}
       <AnimatePresence>
         {allUsers.map((user, index) => (
-          <UserAvatar
+          <UserAvatarItem
             key={user.id}
             user={user}
             position={userPositions[index] || { x: '50%', y: '20%', scale: 1 }}

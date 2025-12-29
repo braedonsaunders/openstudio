@@ -3,12 +3,12 @@
 import { useEffect, useState } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useAuthStore } from '@/stores/auth-store';
-import { getUserProfile, getUserStats, getUserInstruments, getUserAchievements, getUserAvatar, searchUsers } from '@/lib/supabase/auth';
-import { AvatarDisplay } from '@/components/avatar/AvatarDisplay';
+import { getUserProfile, getUserStats, getUserInstruments, getUserAchievements, searchUsers } from '@/lib/supabase/auth';
+import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
 import { getLevelTitle, xpProgress, INSTRUMENTS } from '@/types/user';
-import type { UserProfile, UserStats, UserInstrument, UserAchievement, Avatar } from '@/types/user';
+import type { UserProfile, UserStats, UserInstrument, UserAchievement } from '@/types/user';
 import { ALL_ACHIEVEMENTS, ACHIEVEMENT_TIERS } from '@/data/achievements';
 import {
   ArrowLeft,
@@ -37,7 +37,7 @@ export default function ProfilePage() {
   const { user, profile: currentUserProfile, friends, sendFriendRequest, removeFriend } = useAuthStore();
 
   const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [avatar, setAvatar] = useState<Avatar | null>(null);
+  const [profileUserId, setProfileUserId] = useState<string | null>(null);
   const [stats, setStats] = useState<UserStats | null>(null);
   const [instruments, setInstruments] = useState<UserInstrument[]>([]);
   const [achievements, setAchievements] = useState<UserAchievement[]>([]);
@@ -57,13 +57,12 @@ export default function ProfilePage() {
 
         if (foundUser) {
           const userProfile = await getUserProfile(foundUser.id);
-          const userAvatar = await getUserAvatar(foundUser.id);
           const userStats = await getUserStats(foundUser.id);
           const userInstruments = await getUserInstruments(foundUser.id);
           const userAchievements = await getUserAchievements(foundUser.id);
 
+          setProfileUserId(foundUser.id);
           setProfile(userProfile);
-          setAvatar(userAvatar);
           setStats(userStats);
           setInstruments(userInstruments);
           setAchievements(userAchievements);
@@ -154,7 +153,7 @@ export default function ProfilePage() {
         <div className="flex flex-col md:flex-row items-start gap-6 mb-8">
           {/* Avatar */}
           <div className="relative">
-            <AvatarDisplay avatar={avatar} size="xl" username={profile.username} showEffects />
+            <UserAvatar userId={profileUserId || undefined} username={profile.username} size="xl" />
             {profile.currentDailyStreak >= 7 && (
               <div className="absolute -bottom-2 -right-2 bg-orange-500 rounded-full p-1.5">
                 <Flame className="w-4 h-4 text-white" />
