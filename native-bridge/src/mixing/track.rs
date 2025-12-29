@@ -1,0 +1,121 @@
+//! Track state and management
+
+use serde::{Deserialize, Serialize};
+
+/// Track state for the local user's track
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct TrackState {
+    /// Track is armed for recording
+    pub is_armed: bool,
+    /// Track is muted
+    pub is_muted: bool,
+    /// Track is soloed
+    pub is_solo: bool,
+    /// Track volume (0.0 - 1.0)
+    pub volume: f32,
+    /// Input gain in dB (-24 to +24)
+    pub input_gain_db: f32,
+    /// Direct monitoring enabled
+    pub monitoring_enabled: bool,
+    /// Monitoring volume (0.0 - 1.0)
+    pub monitoring_volume: f32,
+}
+
+impl TrackState {
+    pub fn new() -> Self {
+        Self {
+            is_armed: false,
+            is_muted: false,
+            is_solo: false,
+            volume: 1.0,
+            input_gain_db: 0.0,
+            monitoring_enabled: false,
+            monitoring_volume: 0.8,
+        }
+    }
+
+    /// Calculate the input gain as a linear multiplier
+    pub fn input_gain_linear(&self) -> f32 {
+        10.0_f32.powf(self.input_gain_db / 20.0)
+    }
+
+    /// Should audio pass through based on arm/mute/solo state?
+    pub fn should_pass_audio(&self, any_solo: bool) -> bool {
+        if !self.is_armed {
+            return false;
+        }
+        if self.is_muted {
+            return false;
+        }
+        if any_solo && !self.is_solo {
+            return false;
+        }
+        true
+    }
+}
+
+/// Remote user audio state
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteUser {
+    pub user_id: String,
+    pub user_name: String,
+    /// Volume (0.0 - 1.0)
+    pub volume: f32,
+    /// Is muted
+    pub is_muted: bool,
+    /// Latency compensation delay in ms
+    pub compensation_delay_ms: f32,
+    /// Current audio level (0.0 - 1.0)
+    pub level: f32,
+}
+
+impl RemoteUser {
+    pub fn new(user_id: String, user_name: String) -> Self {
+        Self {
+            user_id,
+            user_name,
+            volume: 1.0,
+            is_muted: false,
+            compensation_delay_ms: 0.0,
+            level: 0.0,
+        }
+    }
+}
+
+/// A local audio track (for multi-track support)
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Track {
+    pub id: String,
+    pub name: String,
+    pub track_type: TrackType,
+    pub state: TrackState,
+    pub device_id: Option<String>,
+    pub channel_config: crate::audio::ChannelConfig,
+    pub effects: crate::effects::EffectsSettings,
+    pub color: String,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
+#[serde(rename_all = "lowercase")]
+pub enum TrackType {
+    Audio,
+    Midi,
+}
+
+impl Track {
+    pub fn new(id: String, name: String, track_type: TrackType) -> Self {
+        Self {
+            id,
+            name,
+            track_type,
+            state: TrackState::new(),
+            device_id: None,
+            channel_config: crate::audio::ChannelConfig::default(),
+            effects: crate::effects::EffectsSettings::default(),
+            color: "#3b82f6".to_string(), // Default blue
+        }
+    }
+}
