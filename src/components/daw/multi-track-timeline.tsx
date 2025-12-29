@@ -1314,9 +1314,9 @@ export function MultiTrackTimeline({
       {/* Timeline Area */}
       {isLyriaSong ? (
         /* Minimal Lyria Timeline Overlay - just animated waveform */
-        <div className="flex-1 relative overflow-hidden bg-[#0a0a0f]">
+        <div className="flex-1 relative overflow-hidden bg-gray-100 dark:bg-[#0a0a0f]">
           {/* Very subtle gradient */}
-          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/3 via-transparent to-purple-500/3" />
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/5 dark:from-purple-500/3 via-transparent to-purple-500/5 dark:to-purple-500/3" />
 
           {/* Animated waveform bars */}
           <div className="absolute inset-0 flex items-center justify-center gap-0.5 px-4">
@@ -1326,7 +1326,7 @@ export function MultiTrackTimeline({
               return (
                 <div
                   key={i}
-                  className="w-0.5 rounded-full bg-gradient-to-t from-purple-500/40 to-purple-400/20 transition-all duration-75"
+                  className="w-0.5 rounded-full bg-gradient-to-t from-purple-500/50 dark:from-purple-500/40 to-purple-400/30 dark:to-purple-400/20 transition-all duration-75"
                   style={{ height: `${animatedHeight}%` }}
                 />
               );
@@ -1335,9 +1335,9 @@ export function MultiTrackTimeline({
 
           {/* Tiny live indicator in corner */}
           {isPlaying && (
-            <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2 py-1 rounded bg-black/30 backdrop-blur-sm">
-              <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-[9px] text-emerald-400/70">LIVE</span>
+            <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2 py-1 rounded bg-white/50 dark:bg-black/30 backdrop-blur-sm">
+              <span className="w-1 h-1 rounded-full bg-emerald-500 dark:bg-emerald-400 animate-pulse" />
+              <span className="text-[9px] text-emerald-600 dark:text-emerald-400/70">LIVE</span>
             </div>
           )}
         </div>
