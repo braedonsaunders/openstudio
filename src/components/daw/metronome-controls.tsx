@@ -643,7 +643,7 @@ export function MetronomeInline({
           <button
             onClick={handleToggle}
             className={cn(
-              'flex items-center gap-1.5 px-2 py-1.5 rounded-l-lg border border-r-0 transition-all',
+              'flex items-center gap-1.5 px-2 h-8 rounded-l-lg border border-r-0 transition-all',
               enabled
                 ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
                 : 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white'
@@ -683,7 +683,7 @@ export function MetronomeInline({
             setShowPopover(!showPopover);
           }}
           className={cn(
-            'px-1.5 py-1.5 rounded-r-lg border border-l-0 transition-all',
+            'px-1.5 h-8 flex items-center rounded-r-lg border border-l-0 transition-all',
             enabled
               ? 'bg-orange-500/20 text-orange-400 border-orange-500/30'
               : 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 border-gray-200 dark:border-white/10 hover:bg-gray-200 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white',
