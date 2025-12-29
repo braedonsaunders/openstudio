@@ -25,19 +25,19 @@ export function useAudioAnalysis(options: UseAudioAnalysisOptions = {}) {
   const visualizationFrameRef = useRef<number | null>(null);
   const didStartAnalysisRef = useRef(false);
 
-  // Subscribe to store values we need to read reactively
-  // For store functions, we use getState() inside callbacks/effects to avoid dependency issues
-  // Subscribe only to values, not setter functions (to avoid infinite loops)
-  const {
-    localAnalysis,
-    syncedAnalysis,
-    analysisSource,
-    isAnalyzing,
-    isWorkerReady,
-    spectrumData,
-    waveformData,
-    tunerEnabled,
-  } = useAnalysisStore();
+  // IMPORTANT: Only subscribe to values that are actually used in the component's render output
+  // Values used only in effects should be read via getState() to avoid infinite render loops
+  // DAWLayout only uses `resetAnalysis` from this hook, so we minimize subscriptions
+  const analysisSource = useAnalysisStore((state) => state.analysisSource);
+  const isWorkerReady = useAnalysisStore((state) => state.isWorkerReady);
+
+  // These are only used for the return value, not for effects
+  const localAnalysis = useAnalysisStore((state) => state.localAnalysis);
+  const syncedAnalysis = useAnalysisStore((state) => state.syncedAnalysis);
+  const isAnalyzing = useAnalysisStore((state) => state.isAnalyzing);
+  const spectrumData = useAnalysisStore((state) => state.spectrumData);
+  const waveformData = useAnalysisStore((state) => state.waveformData);
+  const tunerEnabled = useAnalysisStore((state) => state.tunerEnabled);
 
   // Initialize the analyzer in background - doesn't block audio
   useEffect(() => {
