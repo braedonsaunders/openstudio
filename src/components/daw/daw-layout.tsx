@@ -141,9 +141,8 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   const loopTracks = getTracksByRoom(roomId);
 
   // Lyria store - for AI music generation tracks
-  const lyriaStore = useLyriaStore();
-  const lyriaStoreRef = useRef(lyriaStore);
-  lyriaStoreRef.current = lyriaStore;
+  // Note: We use useLyriaStore.getState() directly instead of the hook
+  // to avoid subscribing to store changes, which prevents infinite render loops
 
   // Calculate loop duration from definition
   const getLoopDuration = useCallback((loopDef: ReturnType<typeof getLoopById>): number => {
@@ -243,7 +242,8 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
 
   // Initialize Lyria store and connect to audio engine
   useEffect(() => {
-    const lyria = lyriaStoreRef.current;
+    // Get fresh state from store (not the ref, which might be stale)
+    const lyria = useLyriaStore.getState();
 
     // Initialize the Lyria session
     lyria.initialize();
@@ -252,7 +252,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     lyria.setAudioCallbacks(
       (stream: MediaStream) => {
         // Called when Lyria connects - add stream to audio engine
-        audioEngineRef.current.addExternalAudioSource(LYRIA_AUDIO_SOURCE_ID, stream, lyria.volume);
+        // Get fresh volume from store at callback time
+        const currentVolume = useLyriaStore.getState().volume;
+        audioEngineRef.current.addExternalAudioSource(LYRIA_AUDIO_SOURCE_ID, stream, currentVolume);
         console.log('[DAWLayout] Lyria audio connected to AudioEngine');
       },
       () => {
@@ -264,7 +266,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
 
     return () => {
       // Cleanup on unmount
-      lyria.dispose();
+      useLyriaStore.getState().dispose();
     };
   }, []);
 
@@ -408,7 +410,8 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     for (const track of songTracks) {
       if (track.type === 'lyria' && track.lyriaConfig && !track.ref.muted) {
         console.log('Playing Lyria track:', track.name);
-        const lyria = lyriaStoreRef.current;
+        // Get fresh state from store
+        const lyria = useLyriaStore.getState();
 
         // Connect to Lyria if not already connected
         if (lyria.sessionState === 'disconnected' || lyria.sessionState === 'error') {
@@ -444,7 +447,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     }
 
     // Pause Lyria if playing
-    const lyria = lyriaStoreRef.current;
+    const lyria = useLyriaStore.getState();
     if (lyria.sessionState === 'playing') {
       lyria.pause();
     }
