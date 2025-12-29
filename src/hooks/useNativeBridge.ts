@@ -164,19 +164,20 @@ export function useNativeBridge() {
       return;
     }
 
+    // For ASIO, use same device for input and output
+    // If input not set or different from output, use output device for both
+    const deviceId = state.selectedOutputDeviceId;
+
     console.log('[useNativeBridge] Starting audio with config:', {
-      inputDevice: state.selectedInputDeviceId,
-      outputDevice: state.selectedOutputDeviceId,
+      device: deviceId,
       bufferSize: state.bufferSize,
       sampleRate: state.sampleRate,
       channelConfig: state.inputChannelConfig,
     });
 
-    if (state.selectedInputDeviceId) {
-      nativeBridge.setInputDevice(state.selectedInputDeviceId);
-    }
-    if (state.selectedOutputDeviceId) {
-      nativeBridge.setOutputDevice(state.selectedOutputDeviceId);
+    if (deviceId) {
+      nativeBridge.setInputDevice(deviceId);
+      nativeBridge.setOutputDevice(deviceId);
     }
 
     nativeBridge.setBufferSize(state.bufferSize);
