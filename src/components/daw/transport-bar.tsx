@@ -84,6 +84,8 @@ function BpmBadge() {
   }, [isEditing]);
 
   const handleValueClick = () => {
+    // Don't reset value if already editing
+    if (isEditing) return;
     if (source === 'manual' || source === 'tap') {
       setEditValue(Math.round(tempo).toString());
       setIsEditing(true);
