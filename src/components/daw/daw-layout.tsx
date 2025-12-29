@@ -214,6 +214,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   // Memoize track type checks to avoid recalculating on every render
   const hasAudioTracks = useMemo(() => songTracks.some((t) => t.type === 'audio'), [songTracks]);
   const hasLoopTracks = useMemo(() => songTracks.some((t) => t.type === 'loop'), [songTracks]);
+  const hasLyriaTracks = useMemo(() => songTracks.some((t) => t.type === 'lyria'), [songTracks]);
 
   // Check if Song has any tracks to play
   const hasSongTracks = songTracks.length > 0;
@@ -688,8 +689,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   const [seekVersion, setSeekVersion] = useState(0);
 
   useEffect(() => {
-    // Only run for loop-only playback (no audio tracks to drive time)
-    if (!isPlaying || !hasLoopTracks || hasAudioTracks) {
+    // Run for loop-only or lyria-only playback (no audio tracks to drive time)
+    const needsTimeTracking = (hasLoopTracks || hasLyriaTracks) && !hasAudioTracks;
+    if (!isPlaying || !needsTimeTracking) {
       playStartTimeRef.current = null;
       if (loopTimeAnimationRef.current) {
         cancelAnimationFrame(loopTimeAnimationRef.current);
@@ -698,30 +700,34 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       return;
     }
 
-    // Start time tracking for loop-only playback
+    // Start time tracking
     const startPosition = useAudioStore.getState().currentTime;
     playStartTimeRef.current = performance.now();
     playStartPositionRef.current = startPosition;
 
-    const updateLoopTime = () => {
+    const updateTime = () => {
       if (playStartTimeRef.current === null) return;
 
       const elapsed = (performance.now() - playStartTimeRef.current) / 1000;
       const newTime = playStartPositionRef.current + elapsed;
 
-      if (newTime < songDuration) {
+      // For Lyria tracks, never reset - they're infinite
+      if (hasLyriaTracks) {
         useAudioStore.getState().setCurrentTime(newTime);
-        loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
+        loopTimeAnimationRef.current = requestAnimationFrame(updateTime);
+      } else if (newTime < songDuration) {
+        useAudioStore.getState().setCurrentTime(newTime);
+        loopTimeAnimationRef.current = requestAnimationFrame(updateTime);
       } else {
-        // Song ended - loop back to start
+        // Song ended - loop back to start (only for non-Lyria)
         useAudioStore.getState().setCurrentTime(0);
         playStartTimeRef.current = performance.now();
         playStartPositionRef.current = 0;
-        loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
+        loopTimeAnimationRef.current = requestAnimationFrame(updateTime);
       }
     };
 
-    loopTimeAnimationRef.current = requestAnimationFrame(updateLoopTime);
+    loopTimeAnimationRef.current = requestAnimationFrame(updateTime);
 
     return () => {
       if (loopTimeAnimationRef.current) {
@@ -730,7 +736,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       }
       playStartTimeRef.current = null;
     };
-  }, [isPlaying, hasAudioTracks, hasLoopTracks, songDuration, seekVersion]);
+  }, [isPlaying, hasAudioTracks, hasLoopTracks, hasLyriaTracks, songDuration, seekVersion]);
 
   // Handler functions - BULLETPROOF track selection
   const handleTrackSelect = useCallback((track: BackingTrack) => {

@@ -1214,11 +1214,17 @@ export function MultiTrackTimeline({
 
   // Generate time markers - adapt intervals for all zoom levels
   const timeMarkers = useMemo(() => {
+    // Don't generate markers for Lyria songs (they use a special overlay)
+    if (isLyriaSong) return [];
+
     const markers: { time: number; label: string }[] = [];
     // More granular intervals for different zoom levels
     const interval = zoom > 100 ? 1 : zoom > 50 ? 5 : zoom > 25 ? 10 : zoom > 10 ? 30 : zoom > 5 ? 60 : 120;
 
-    for (let t = 0; t <= songDuration; t += interval) {
+    // Ensure we never loop infinitely - cap at reasonable duration
+    const safeDuration = Math.min(songDuration, 3600); // Max 1 hour
+
+    for (let t = 0; t <= safeDuration; t += interval) {
       const mins = Math.floor(t / 60);
       const secs = Math.floor(t % 60);
       markers.push({
@@ -1227,7 +1233,7 @@ export function MultiTrackTimeline({
       });
     }
     return markers;
-  }, [songDuration, zoom]);
+  }, [songDuration, zoom, isLyriaSong]);
 
   // Keep playhead visible during playback (only if user hasn't scrolled manually)
   useEffect(() => {
@@ -1307,69 +1313,33 @@ export function MultiTrackTimeline({
 
       {/* Timeline Area */}
       {isLyriaSong ? (
-        /* Special Lyria Timeline Overlay - Premium glowing view */
-        <div className="flex-1 relative overflow-hidden bg-gradient-to-br from-[#0d0d14] via-[#12121a] to-[#0d0d14]">
-          {/* Animated background gradients */}
-          <div className="absolute inset-0 overflow-hidden">
-            <div className="absolute -top-1/2 -left-1/2 w-full h-full bg-gradient-radial from-purple-500/20 via-transparent to-transparent animate-pulse" style={{ animationDuration: '4s' }} />
-            <div className="absolute -bottom-1/2 -right-1/2 w-full h-full bg-gradient-radial from-pink-500/15 via-transparent to-transparent animate-pulse" style={{ animationDuration: '6s', animationDelay: '2s' }} />
-            <div className="absolute top-1/4 left-1/4 w-1/2 h-1/2 bg-gradient-radial from-blue-500/10 via-transparent to-transparent animate-pulse" style={{ animationDuration: '5s', animationDelay: '1s' }} />
-          </div>
+        /* Minimal Lyria Timeline Overlay - just animated waveform */
+        <div className="flex-1 relative overflow-hidden bg-[#0a0a0f]">
+          {/* Very subtle gradient */}
+          <div className="absolute inset-0 bg-gradient-to-r from-purple-500/3 via-transparent to-purple-500/3" />
 
-          {/* Waveform visualization bars */}
-          <div className="absolute inset-0 flex items-center justify-center gap-1 opacity-40">
-            {Array.from({ length: 60 }).map((_, i) => {
-              const height = 20 + Math.sin((i + currentTime * 2) * 0.3) * 40 + Math.random() * 20;
+          {/* Animated waveform bars */}
+          <div className="absolute inset-0 flex items-center justify-center gap-0.5 px-4">
+            {Array.from({ length: 100 }).map((_, i) => {
+              const baseHeight = 20 + Math.sin(i * 0.12) * 15;
+              const animatedHeight = isPlaying ? baseHeight + Math.sin((i + currentTime * 2) * 0.4) * 12 : baseHeight * 0.5;
               return (
                 <div
                   key={i}
-                  className="w-1 rounded-full bg-gradient-to-t from-purple-500 via-pink-500 to-purple-400 transition-all duration-150"
-                  style={{ height: `${height}%`, opacity: 0.3 + Math.sin(i * 0.2) * 0.3 }}
+                  className="w-0.5 rounded-full bg-gradient-to-t from-purple-500/40 to-purple-400/20 transition-all duration-75"
+                  style={{ height: `${animatedHeight}%` }}
                 />
               );
             })}
           </div>
 
-          {/* Center content */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center z-10">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center shadow-2xl shadow-purple-500/30">
-                <Sparkles className="w-8 h-8 text-white" />
-              </div>
-              <div>
-                <h2 className="text-2xl font-bold text-white mb-1">AI Live Music</h2>
-                <p className="text-purple-300/80 text-sm">{currentSong?.name}</p>
-              </div>
+          {/* Tiny live indicator in corner */}
+          {isPlaying && (
+            <div className="absolute bottom-3 right-3 flex items-center gap-1 px-2 py-1 rounded bg-black/30 backdrop-blur-sm">
+              <span className="w-1 h-1 rounded-full bg-emerald-400 animate-pulse" />
+              <span className="text-[9px] text-emerald-400/70">LIVE</span>
             </div>
-
-            {/* Time display */}
-            <div className="flex items-center gap-4 px-6 py-3 rounded-2xl bg-black/30 backdrop-blur-sm border border-white/10">
-              <div className="text-center">
-                <p className="text-3xl font-mono font-bold text-white">
-                  {Math.floor(currentTime / 60).toString().padStart(2, '0')}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
-                </p>
-                <p className="text-[10px] text-purple-400/70 uppercase tracking-wider mt-1">Elapsed</p>
-              </div>
-              <div className="h-10 w-px bg-white/10" />
-              <div className="text-center">
-                <p className="text-3xl font-bold text-purple-400">∞</p>
-                <p className="text-[10px] text-purple-400/70 uppercase tracking-wider mt-1">Duration</p>
-              </div>
-            </div>
-
-            {/* Status indicator */}
-            {isPlaying && (
-              <div className="flex items-center gap-2 mt-6 px-4 py-2 rounded-full bg-emerald-500/20 border border-emerald-500/30">
-                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                <span className="text-sm font-medium text-emerald-400">Streaming Live</span>
-              </div>
-            )}
-          </div>
-
-          {/* Bottom hint */}
-          <div className="absolute bottom-4 left-0 right-0 text-center">
-            <p className="text-xs text-white/30">Lyria generates infinite music in real-time. Seeking is disabled.</p>
-          </div>
+          )}
         </div>
       ) : (
         <div
