@@ -307,8 +307,12 @@ impl BridgeServer {
 fn detect_driver_type() -> String {
     #[cfg(target_os = "windows")]
     {
-        if cpal::host_from_id(cpal::HostId::Asio).is_ok() {
-            return "ASIO".to_string();
+        // Check for ASIO if the feature is enabled
+        #[cfg(feature = "asio")]
+        {
+            if cpal::host_from_id(cpal::HostId::Asio).is_ok() {
+                return "ASIO".to_string();
+            }
         }
         return "WASAPI".to_string();
     }

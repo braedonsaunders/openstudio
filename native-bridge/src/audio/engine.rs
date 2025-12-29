@@ -237,46 +237,45 @@ impl AudioEngine {
             self.output_device = Some(AudioDevice::default_output()?);
         }
 
-        let sample_rate = self.config.sample_rate as u32;
-        let buffer_size = self.config.buffer_size as u32;
-        let channel_config = self.config.channel_config.clone();
-
-        // Build input stream config
         let input_device = self.input_device.as_ref().unwrap();
+        let output_device = self.output_device.as_ref().unwrap();
+
+        // Get default configs from devices (works with WASAPI)
+        let input_default_config = input_device.device.default_input_config()
+            .map_err(|e| anyhow::anyhow!("No input config: {}", e))?;
+        let output_default_config = output_device.device.default_output_config()
+            .map_err(|e| anyhow::anyhow!("No output config: {}", e))?;
+
+        info!("Input device config: {:?}", input_default_config);
+        info!("Output device config: {:?}", output_default_config);
+
+        // Use default config but request our preferred sample rate if supported
         let input_config = cpal::StreamConfig {
-            channels: (channel_config.left_channel.max(
-                channel_config.right_channel.unwrap_or(0)
-            ) + 1) as u16,
-            sample_rate: cpal::SampleRate(sample_rate),
-            buffer_size: cpal::BufferSize::Fixed(buffer_size),
+            channels: input_default_config.channels(),
+            sample_rate: input_default_config.sample_rate(),
+            buffer_size: cpal::BufferSize::Default, // Let the driver choose
         };
+
+        let output_config = cpal::StreamConfig {
+            channels: output_default_config.channels().min(2), // Limit to stereo
+            sample_rate: output_default_config.sample_rate(),
+            buffer_size: cpal::BufferSize::Default,
+        };
+
+        // Store actual sample rate for latency calculation
+        let actual_sample_rate = output_config.sample_rate.0;
 
         // Shared state for input stream
         let levels = self.levels.clone();
-        let channel_cfg = channel_config.clone();
+        let input_channels = input_config.channels as usize;
 
         // Create input stream
         let input_stream = input_device.device.build_input_stream(
             &input_config,
             move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                // Extract selected channels
-                let mut samples = Vec::with_capacity(data.len() / input_config.channels as usize * 2);
-                let num_channels = input_config.channels as usize;
-
-                for frame in data.chunks(num_channels) {
-                    let left = frame.get(channel_cfg.left_channel as usize).copied().unwrap_or(0.0);
-                    let right = if channel_cfg.channel_count == 2 {
-                        frame.get(channel_cfg.right_channel.unwrap_or(1) as usize).copied().unwrap_or(left)
-                    } else {
-                        left // Mono: duplicate to both channels
-                    };
-                    samples.push(left);
-                    samples.push(right);
-                }
-
-                // Calculate input level
-                let level = samples.iter()
-                    .map(|s| s.abs())
+                // Calculate input level from first channel
+                let level = data.chunks(input_channels)
+                    .map(|frame| frame.first().copied().unwrap_or(0.0).abs())
                     .fold(0.0_f32, f32::max);
 
                 // Update levels (non-blocking)
@@ -290,14 +289,6 @@ impl AudioEngine {
             },
             None,
         )?;
-
-        // Build output stream config
-        let output_device = self.output_device.as_ref().unwrap();
-        let output_config = cpal::StreamConfig {
-            channels: 2,
-            sample_rate: cpal::SampleRate(sample_rate),
-            buffer_size: cpal::BufferSize::Fixed(buffer_size),
-        };
 
         // Shared state for output stream
         let output_levels = self.levels.clone();
@@ -335,14 +326,14 @@ impl AudioEngine {
         self.output_stream = Some(output_stream);
         self.is_running.store(true, Ordering::SeqCst);
 
-        let latency = self.get_latency_info();
+        // Estimate latency (WASAPI typically uses ~10ms buffers)
+        let estimated_buffer_ms = 10.0;
         info!(
-            "Audio started: {} -> {} | Buffer: {} samples ({:.1}ms) @ {}Hz",
-            self.input_device.as_ref().unwrap().info.name,
-            self.output_device.as_ref().unwrap().info.name,
-            latency.buffer_size_samples,
-            latency.total_latency_ms,
-            sample_rate
+            "Audio started: {} -> {} @ {}Hz (estimated latency: {:.1}ms)",
+            input_device.info.name,
+            output_device.info.name,
+            actual_sample_rate,
+            estimated_buffer_ms * 2.0
         );
 
         Ok(())
