@@ -195,13 +195,11 @@ export class StereoDelayProcessor extends BaseEffect {
   }
 
   private updateTone(): void {
-    const now = this.audioContext.currentTime;
-
     // Map tone 0-100 to filter frequency 500-15000 Hz
     const freq = 500 + (this.settings.tone / 100) * 14500;
 
-    this.filterLeft.frequency.setTargetAtTime(freq, now, 0.01);
-    this.filterRight.frequency.setTargetAtTime(freq, now, 0.01);
+    this.safeSetFilterFrequency(this.filterLeft, freq);
+    this.safeSetFilterFrequency(this.filterRight, freq);
   }
 
   private updateMix(): void {

@@ -34,6 +34,10 @@ export class MultiFilterProcessor extends BaseEffect {
   // Tempo sync
   private currentBpm: number = 120;
 
+  // Throttling for envelope follower
+  private lastEnvelopeUpdate: number = 0;
+  private envelopeUpdateInterval: number = 33; // ~30fps
+
   constructor(audioContext: AudioContext, settings?: Partial<MultiFilterSettings>) {
     super(audioContext);
 
@@ -124,30 +128,45 @@ export class MultiFilterProcessor extends BaseEffect {
     if (this.animationFrameId !== null) return;
 
     const follow = () => {
-      this.envelopeAnalyser.getFloatTimeDomainData(this.envelopeData);
-
-      // Calculate RMS
-      let rms = 0;
-      for (let i = 0; i < this.envelopeData.length; i++) {
-        rms += this.envelopeData[i] * this.envelopeData[i];
+      // Throttle updates to prevent filter instability
+      const now = performance.now();
+      if (now - this.lastEnvelopeUpdate < this.envelopeUpdateInterval) {
+        this.animationFrameId = requestAnimationFrame(follow);
+        return;
       }
-      rms = Math.sqrt(rms / this.envelopeData.length);
+      this.lastEnvelopeUpdate = now;
 
-      // Scale by sensitivity
-      const sensitivity = this.settings.envelopeSensitivity / 50;
-      const envelope = Math.min(1, rms * sensitivity * 10);
+      try {
+        this.envelopeAnalyser.getFloatTimeDomainData(this.envelopeData);
 
-      // Apply to filter frequency
-      const baseFreq = this.settings.frequency;
-      const envelopeAmount = this.settings.envelopeAmount / 100;
-      const modulation = envelope * envelopeAmount * baseFreq * 4;
+        // Calculate RMS
+        let rms = 0;
+        for (let i = 0; i < this.envelopeData.length; i++) {
+          rms += this.envelopeData[i] * this.envelopeData[i];
+        }
+        rms = Math.sqrt(rms / this.envelopeData.length);
 
-      const targetFreq = Math.max(20, Math.min(20000, baseFreq + modulation));
-      this.filter.frequency.setTargetAtTime(
-        targetFreq,
-        this.audioContext.currentTime,
-        this.settings.envelopeAttack / 1000
-      );
+        // Check for valid values
+        if (!this.isSafeValue(rms)) {
+          this.animationFrameId = requestAnimationFrame(follow);
+          return;
+        }
+
+        // Scale by sensitivity
+        const sensitivity = this.settings.envelopeSensitivity / 50;
+        const envelope = Math.min(1, rms * sensitivity * 10);
+
+        // Apply to filter frequency
+        const baseFreq = this.settings.frequency;
+        const envelopeAmount = this.settings.envelopeAmount / 100;
+        const modulation = envelope * envelopeAmount * baseFreq * 4;
+
+        const targetFreq = Math.max(20, Math.min(20000, baseFreq + modulation));
+        const attackTime = Math.max(0.01, this.settings.envelopeAttack / 1000);
+        this.safeSetFilterFrequency(this.filter, targetFreq, attackTime);
+      } catch (e) {
+        console.warn('[Filter] Envelope follower error:', e);
+      }
 
       this.animationFrameId = requestAnimationFrame(follow);
     };
@@ -162,11 +181,14 @@ export class MultiFilterProcessor extends BaseEffect {
   }
 
   private updateFilter(): void {
-    const now = this.audioContext.currentTime;
-
-    this.filter.type = this.settings.type;
-    this.filter.frequency.setTargetAtTime(this.settings.frequency, now, 0.01);
-    this.filter.Q.setTargetAtTime(this.settings.resonance, now, 0.01);
+    try {
+      this.filter.type = this.settings.type;
+      this.safeSetFilterFrequency(this.filter, this.settings.frequency);
+      this.safeSetFilterQ(this.filter, this.settings.resonance);
+    } catch (e) {
+      console.warn('[Filter] Error updating filter:', e);
+      this.resetFilter(this.filter);
+    }
   }
 
   private updateLFO(): void {

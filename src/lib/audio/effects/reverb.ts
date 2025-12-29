@@ -169,13 +169,11 @@ export class ReverbProcessor extends BaseEffect {
     }
 
     if (settings.lowCut !== undefined) {
-      const now = this.audioContext.currentTime;
-      this.lowCutFilter.frequency.setTargetAtTime(settings.lowCut, now, 0.01);
+      this.safeSetFilterFrequency(this.lowCutFilter, settings.lowCut);
     }
 
     if (settings.highCut !== undefined) {
-      const now = this.audioContext.currentTime;
-      this.highCutFilter.frequency.setTargetAtTime(settings.highCut, now, 0.01);
+      this.safeSetFilterFrequency(this.highCutFilter, settings.highCut);
     }
 
     if (needsNewImpulse) {
