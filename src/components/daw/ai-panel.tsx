@@ -2,8 +2,9 @@
 
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { cn } from '@/lib/utils';
-import { useRoomStore } from '@/stores/room-store';
+import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-tempo-store';
 import { useAIPermissions } from '@/hooks/usePermissions';
+import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { Slider } from '../ui/slider';
 import {
   Sparkles,
@@ -42,9 +43,22 @@ interface AIPanelProps {
   getCloudflareRef?: () => CloudflareCalls | null;
 }
 
+// Constant ID for Lyria external audio source in AudioEngine
+const LYRIA_AUDIO_SOURCE_ID = 'lyria-ai-music';
+
 export function AIPanel({ getCloudflareRef }: AIPanelProps) {
-  const { syncedAnalysis } = useRoomStore();
   const { canGenerateMusic } = useAIPermissions();
+
+  // Audio engine for routing Lyria through master channel
+  const {
+    addExternalAudioSource,
+    removeExternalAudioSource,
+    setExternalAudioVolume,
+  } = useAudioEngine();
+
+  // Use session tempo store as single source of truth for BPM/key
+  const roomBpm = useSessionTempoStore(selectTempo);
+  const { key: roomKey, scale: roomKeyScale } = useSessionTempoStore(selectKey);
 
   // Lyria session
   const sessionRef = useRef<LyriaSession | null>(null);
@@ -69,14 +83,13 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   const [bass, setBass] = useState(0.7);
   const [temperature, setTemperature] = useState(0.5);
 
-  // Sync with room BPM and key
-  const roomBpm = syncedAnalysis?.bpm || 120;
-  const roomKey = syncedAnalysis?.key || null;
-  const roomKeyScale = syncedAnalysis?.keyScale || null;
-
   // Initialize session on mount
   useEffect(() => {
     const session = createLyriaSession();
+
+    // Enable external routing so Lyria audio goes through AudioEngine's master bus
+    session.setUseExternalRouting(true);
+
     session.setCallbacks({
       onStateChange: (state) => {
         setSessionState(state);
@@ -96,7 +109,9 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
     sessionRef.current = session;
 
     return () => {
-      // Cleanup: stop sharing and disconnect
+      // Cleanup: remove from AudioEngine and stop sharing
+      removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
+
       if (lyriaTrackIdRef.current && getCloudflareRef) {
         const cloudflare = getCloudflareRef();
         cloudflare?.removeTrack(lyriaTrackIdRef.current).catch(() => {});
@@ -104,7 +119,7 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
       }
       session.disconnect();
     };
-  }, [getCloudflareRef]);
+  }, [getCloudflareRef, removeExternalAudioSource]);
 
   // Update session when room BPM changes
   useEffect(() => {
@@ -120,6 +135,14 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
       sessionRef.current.setScale(scale);
     }
   }, [roomKey, roomKeyScale, sessionState]);
+
+  // Update prompts when style/mood changes during playback
+  useEffect(() => {
+    if (sessionRef.current && sessionState === 'playing') {
+      const prompt = customPrompt.trim() || buildPrompt(selectedStyle, selectedMood || undefined);
+      sessionRef.current.setPrompts(prompt);
+    }
+  }, [selectedStyle, selectedMood, customPrompt, sessionState]);
 
   // Add Lyria audio to WebRTC for sharing with room
   const shareAudioWithRoom = useCallback(async (retryCount = 0): Promise<boolean> => {
@@ -200,18 +223,28 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
         temperature: temperature * 3, // Scale to 0-3
       });
 
+      // Connect Lyria audio to AudioEngine's master bus
+      const outputStream = sessionRef.current.getOutputStream();
+      if (outputStream) {
+        addExternalAudioSource(LYRIA_AUDIO_SOURCE_ID, outputStream, volume);
+        console.log('[Lyria] Audio routed through AudioEngine master');
+      }
+
       // Share audio with room once connected
       await shareAudioWithRoom();
     } catch (err) {
       setError((err as Error).message);
     }
-  }, [roomBpm, roomKey, roomKeyScale, density, brightness, drums, bass, temperature, shareAudioWithRoom]);
+  }, [roomBpm, roomKey, roomKeyScale, density, brightness, drums, bass, temperature, volume, shareAudioWithRoom, addExternalAudioSource]);
 
   const handleDisconnect = useCallback(async () => {
+    // Remove from AudioEngine
+    removeExternalAudioSource(LYRIA_AUDIO_SOURCE_ID);
+
     // Stop sharing audio before disconnecting
     await stopSharingAudio();
     sessionRef.current?.disconnect();
-  }, [stopSharingAudio]);
+  }, [stopSharingAudio, removeExternalAudioSource]);
 
   const handlePlay = useCallback(() => {
     if (!sessionRef.current) return;
@@ -234,46 +267,49 @@ export function AIPanel({ getCloudflareRef }: AIPanelProps) {
   const handleVolumeChange = useCallback((value: number) => {
     setVolume(value);
     sessionRef.current?.setVolume(value);
-  }, []);
+    // Also update AudioEngine external source volume
+    setExternalAudioVolume(LYRIA_AUDIO_SOURCE_ID, value);
+  }, [setExternalAudioVolume]);
 
-  const handleDensityChange = useCallback((value: number) => {
-    setDensity(value);
-    if (sessionState === 'playing') {
-      sessionRef.current?.setDensity(value);
-    }
-  }, [sessionState]);
-
-  const handleBrightnessChange = useCallback((value: number) => {
-    setBrightness(value);
-    if (sessionState === 'playing') {
-      sessionRef.current?.setBrightness(value);
-    }
-  }, [sessionState]);
-
-  const handleDrumsChange = useCallback((value: number) => {
-    setDrums(value);
-    if (sessionState === 'playing') {
-      sessionRef.current?.setDrums(value);
-    }
-  }, [sessionState]);
-
-  const handleBassChange = useCallback((value: number) => {
-    setBass(value);
-    if (sessionState === 'playing') {
-      sessionRef.current?.setBass(value);
-    }
-  }, [sessionState]);
-
-  const handleTemperatureChange = useCallback((value: number) => {
-    setTemperature(value);
-    if (sessionState === 'playing') {
-      sessionRef.current?.setTemperature(value * 3);
-    }
-  }, [sessionState]);
-
+  // Connection state helpers
   const isConnected = sessionState === 'connected' || sessionState === 'playing' || sessionState === 'paused';
   const isPlaying = sessionState === 'playing';
   const isConnecting = sessionState === 'connecting';
+
+  const handleDensityChange = useCallback((value: number) => {
+    setDensity(value);
+    if (isConnected) {
+      sessionRef.current?.setDensity(value);
+    }
+  }, [isConnected]);
+
+  const handleBrightnessChange = useCallback((value: number) => {
+    setBrightness(value);
+    if (isConnected) {
+      sessionRef.current?.setBrightness(value);
+    }
+  }, [isConnected]);
+
+  const handleDrumsChange = useCallback((value: number) => {
+    setDrums(value);
+    if (isConnected) {
+      sessionRef.current?.setDrums(value);
+    }
+  }, [isConnected]);
+
+  const handleBassChange = useCallback((value: number) => {
+    setBass(value);
+    if (isConnected) {
+      sessionRef.current?.setBass(value);
+    }
+  }, [isConnected]);
+
+  const handleTemperatureChange = useCallback((value: number) => {
+    setTemperature(value);
+    if (isConnected) {
+      sessionRef.current?.setTemperature(value * 3);
+    }
+  }, [isConnected]);
 
   return (
     <div className="h-full flex flex-col overflow-y-auto">

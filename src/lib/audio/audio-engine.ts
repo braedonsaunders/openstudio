@@ -69,6 +69,13 @@ export class AudioEngine {
     bass: { enabled: true, volume: 1 },
     other: { enabled: true, volume: 1 },
   };
+
+  // External audio sources (e.g., Lyria AI music) routed through master
+  private externalSources: Map<string, {
+    source: MediaStreamAudioSourceNode;
+    gainNode: GainNode;
+    stream: MediaStream;
+  }> = new Map();
   private isPlaying = false;
   private playbackStartTime = 0;
   private playbackOffset = 0;
@@ -391,6 +398,68 @@ export class AudioEngine {
         streamData.gainNode.gain.setTargetAtTime(volume, this.audioContext.currentTime, 0.01);
       }
     }
+  }
+
+  /**
+   * Add an external audio source (like Lyria AI music) to the master bus.
+   * This routes external MediaStreams through the master gain and effects.
+   * The stream will go through the master effects chain to the output.
+   * @param id Unique identifier for this source
+   * @param stream MediaStream from the external source
+   * @param volume Initial volume (0-1)
+   */
+  addExternalAudioSource(id: string, stream: MediaStream, volume: number = 1): void {
+    if (!this.audioContext || !this.masterGain) {
+      console.warn('[AudioEngine] Cannot add external source: not initialized');
+      return;
+    }
+
+    // Remove existing source with same ID
+    this.removeExternalAudioSource(id);
+
+    const source = this.audioContext.createMediaStreamSource(stream);
+    const gainNode = this.audioContext.createGain();
+    gainNode.gain.value = Math.max(0, Math.min(1, volume));
+
+    source.connect(gainNode);
+    gainNode.connect(this.masterGain);
+
+    this.externalSources.set(id, { source, gainNode, stream });
+    console.log('[AudioEngine] External audio source added:', id);
+  }
+
+  /**
+   * Remove an external audio source
+   */
+  removeExternalAudioSource(id: string): void {
+    const data = this.externalSources.get(id);
+    if (data) {
+      data.gainNode.disconnect();
+      data.source.disconnect();
+      this.externalSources.delete(id);
+      console.log('[AudioEngine] External audio source removed:', id);
+    }
+  }
+
+  /**
+   * Set volume for an external audio source
+   */
+  setExternalAudioVolume(id: string, volume: number): void {
+    const data = this.externalSources.get(id);
+    if (data?.gainNode && this.audioContext) {
+      data.gainNode.gain.setTargetAtTime(
+        Math.max(0, Math.min(1, volume)),
+        this.audioContext.currentTime,
+        0.01
+      );
+    }
+  }
+
+  /**
+   * Check if an external audio source is connected
+   */
+  hasExternalAudioSource(id: string): boolean {
+    return this.externalSources.has(id);
   }
 
   setMasterVolume(volume: number): void {
@@ -1139,6 +1208,13 @@ export class AudioEngine {
 
     this.stopBackingTrack();
     this.stopStemmedTrack();
+
+    // Clean up external audio sources
+    for (const data of this.externalSources.values()) {
+      data.gainNode?.disconnect();
+      data.source?.disconnect();
+    }
+    this.externalSources.clear();
 
     for (const streamData of this.remoteStreams.values()) {
       streamData.gainNode?.disconnect();
