@@ -255,6 +255,24 @@ impl BridgeServer {
                 }
             }
 
+            BrowserMessage::SetSampleRate { rate } => {
+                let mut app = self.state.lock().await;
+
+                let sample_rate = match rate {
+                    44100 => crate::audio::SampleRate::Hz44100,
+                    48000 => crate::audio::SampleRate::Hz48000,
+                    _ => crate::audio::SampleRate::Hz48000,
+                };
+
+                match app.audio_engine.set_sample_rate(sample_rate) {
+                    Ok(_) => None,
+                    Err(e) => Some(NativeMessage::Error {
+                        code: "CONFIG_ERROR".to_string(),
+                        message: e.to_string(),
+                    }),
+                }
+            }
+
             BrowserMessage::UpdateTrackState { state: track_state, .. } => {
                 let app = self.state.lock().await;
                 app.audio_engine.update_track_state(track_state);

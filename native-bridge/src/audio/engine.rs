@@ -242,7 +242,14 @@ impl AudioEngine {
 
         // Get default configs from devices (works with WASAPI)
         let input_default_config = input_device.device.default_input_config()
-            .map_err(|e| anyhow::anyhow!("No input config: {}", e))?;
+            .map_err(|e| {
+                let msg = e.to_string();
+                if msg.contains("no longer available") || msg.contains("unplugged") {
+                    anyhow::anyhow!("ASIO device busy - close other audio apps (DAW, UA Console) and try again")
+                } else {
+                    anyhow::anyhow!("No input config: {}", e)
+                }
+            })?;
         let output_default_config = output_device.device.default_output_config()
             .map_err(|e| anyhow::anyhow!("No output config: {}", e))?;
 
