@@ -19,6 +19,8 @@ import type {
   CreateUnlockRuleRequest,
   UpdateUnlockRuleRequest,
   AdminAvatarStats,
+  CanvasData,
+  UserAvatarCanvas,
 } from '@/types/avatar';
 
 // ============================================
@@ -808,4 +810,83 @@ export async function setComponentUnlockRules(
 
     if (error) throw error;
   }
+}
+
+// ============================================
+// CANVAS FUNCTIONS
+// ============================================
+
+function transformUserAvatarCanvas(data: Record<string, unknown>): UserAvatarCanvas {
+  return {
+    id: data.id as string,
+    userId: data.user_id as string,
+    canvasData: data.canvas_data as CanvasData,
+    fullBodyUrl: data.full_body_url as string | null,
+    headshotUrl: data.headshot_url as string | null,
+    thumbnailUrls: data.thumbnail_urls as UserAvatarCanvas['thumbnailUrls'],
+    createdAt: data.created_at as string,
+    updatedAt: data.updated_at as string,
+  };
+}
+
+export async function getUserAvatarCanvas(userId: string): Promise<UserAvatarCanvas | null> {
+  const { data, error } = await supabaseAuth
+    .from('user_avatar_canvas')
+    .select('*')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null; // Not found
+    throw error;
+  }
+
+  return data ? transformUserAvatarCanvas(data) : null;
+}
+
+export async function saveUserAvatarCanvas(
+  userId: string,
+  canvasData: CanvasData,
+  fullBodyUrl?: string,
+  headshotUrl?: string,
+  thumbnailUrls?: UserAvatarCanvas['thumbnailUrls']
+): Promise<UserAvatarCanvas> {
+  const { data, error } = await supabaseAuth
+    .from('user_avatar_canvas')
+    .upsert({
+      user_id: userId,
+      canvas_data: canvasData,
+      full_body_url: fullBodyUrl,
+      headshot_url: headshotUrl,
+      thumbnail_urls: thumbnailUrls,
+      updated_at: new Date().toISOString(),
+    })
+    .select()
+    .single();
+
+  if (error) throw error;
+  return transformUserAvatarCanvas(data);
+}
+
+export async function getPublicAvatarUrls(userId: string): Promise<{
+  fullBodyUrl: string | null;
+  headshotUrl: string | null;
+  thumbnailUrls: UserAvatarCanvas['thumbnailUrls'];
+} | null> {
+  const { data, error } = await supabaseAuth
+    .from('user_avatar_canvas')
+    .select('full_body_url, headshot_url, thumbnail_urls')
+    .eq('user_id', userId)
+    .single();
+
+  if (error) {
+    if (error.code === 'PGRST116') return null;
+    throw error;
+  }
+
+  return data ? {
+    fullBodyUrl: data.full_body_url as string | null,
+    headshotUrl: data.headshot_url as string | null,
+    thumbnailUrls: data.thumbnail_urls as UserAvatarCanvas['thumbnailUrls'],
+  } : null;
 }

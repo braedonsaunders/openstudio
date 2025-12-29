@@ -1,0 +1,414 @@
+'use client';
+
+import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import dynamic from 'next/dynamic';
+import {
+  Undo2,
+  Redo2,
+  Save,
+  RotateCcw,
+  Loader2,
+  Check,
+  Palette,
+} from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { AssetLibraryPanel } from './AssetLibraryPanel';
+import { LayerPanel } from './LayerPanel';
+import { TransformControls } from './TransformControls';
+import { useCanvasState } from './hooks/useCanvasState';
+import { useCanvasExport } from './hooks/useCanvasExport';
+import type Konva from 'konva';
+import type {
+  AvatarCategory,
+  AvatarComponent,
+  AvatarColorPalette,
+  CanvasData,
+  CanvasBackground,
+} from '@/types/avatar';
+
+// Dynamically import CanvasWorkspace to avoid SSR issues with Konva
+const CanvasWorkspace = dynamic(
+  () => import('./CanvasWorkspace').then((mod) => mod.CanvasWorkspace),
+  { ssr: false, loading: () => <CanvasPlaceholder /> }
+);
+
+function CanvasPlaceholder() {
+  return (
+    <div className="w-[512px] h-[512px] bg-gray-100 dark:bg-gray-800 rounded-lg flex items-center justify-center">
+      <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+    </div>
+  );
+}
+
+interface AvatarCanvasEditorProps {
+  userId: string;
+  onSave?: (fullBodyUrl: string, headshotUrl: string) => void;
+}
+
+interface LibraryData {
+  categories: AvatarCategory[];
+  components: AvatarComponent[];
+  colorPalettes: AvatarColorPalette[];
+  unlockedComponentIds: string[];
+}
+
+export function AvatarCanvasEditor({ userId, onSave }: AvatarCanvasEditorProps) {
+  const [libraryData, setLibraryData] = useState<LibraryData | null>(null);
+  const [initialCanvasData, setInitialCanvasData] = useState<CanvasData | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveSuccess, setSaveSuccess] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [showBackgroundPicker, setShowBackgroundPicker] = useState(false);
+
+  const stageRef = useRef<Konva.Stage | null>(null);
+
+  // Canvas state management
+  const {
+    layers,
+    sortedLayers,
+    selectedLayerId,
+    selectedLayer,
+    background,
+    canvasData,
+    canUndo,
+    canRedo,
+    addLayer,
+    removeLayer,
+    selectLayer,
+    updateTransform,
+    reorderLayers,
+    setColorVariant,
+    setBackground,
+    duplicateLayer,
+    loadCanvas,
+    resetCanvas,
+    undo,
+    redo,
+  } = useCanvasState(initialCanvasData || undefined);
+
+  // Canvas export
+  const { exportFromStage, setStageRef } = useCanvasExport();
+
+  // Create lookup maps for components and categories
+  const componentsMap = useMemo(() => {
+    if (!libraryData) return new Map<string, AvatarComponent>();
+    return new Map(libraryData.components.map((c) => [c.id, c]));
+  }, [libraryData]);
+
+  const categoriesMap = useMemo(() => {
+    if (!libraryData) return new Map<string, AvatarCategory>();
+    return new Map(libraryData.categories.map((c) => [c.id, c]));
+  }, [libraryData]);
+
+  const colorPalettesRecord = useMemo(() => {
+    if (!libraryData) return {};
+    const record: Record<string, string[]> = {};
+    for (const palette of libraryData.colorPalettes) {
+      record[palette.id] = palette.colors;
+    }
+    return record;
+  }, [libraryData]);
+
+  const unlockedSet = useMemo(() => {
+    if (!libraryData) return new Set<string>();
+    return new Set(libraryData.unlockedComponentIds);
+  }, [libraryData]);
+
+  // Load library and existing canvas data
+  useEffect(() => {
+    async function loadData() {
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        // Load library and canvas in parallel
+        const [libraryResponse, canvasResponse] = await Promise.all([
+          fetch('/api/avatar/library'),
+          fetch('/api/avatar/canvas'),
+        ]);
+
+        if (!libraryResponse.ok) {
+          throw new Error('Failed to load avatar library');
+        }
+
+        const library = await libraryResponse.json();
+        setLibraryData(library);
+
+        if (canvasResponse.ok) {
+          const canvasResult = await canvasResponse.json();
+          if (canvasResult.canvasData) {
+            setInitialCanvasData(canvasResult.canvasData);
+            loadCanvas(canvasResult.canvasData);
+          }
+        }
+      } catch (err) {
+        setError(err instanceof Error ? err.message : 'Failed to load');
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    loadData();
+  }, [loadCanvas]);
+
+  // Handle stage ref
+  useEffect(() => {
+    if (stageRef.current) {
+      setStageRef(stageRef.current);
+    }
+  }, [setStageRef]);
+
+  // Handle adding asset from library
+  const handleAddAsset = useCallback(
+    (component: AvatarComponent, category: AvatarCategory, position?: { x: number; y: number }) => {
+      addLayer(component, category, position);
+    },
+    [addLayer]
+  );
+
+  // Handle save
+  const handleSave = async () => {
+    setIsSaving(true);
+    setError(null);
+
+    try {
+      // Export images
+      const exported = await exportFromStage();
+      if (!exported) {
+        throw new Error('Failed to generate avatar images');
+      }
+
+      // Save to server
+      const response = await fetch('/api/avatar/canvas', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          canvasData,
+          fullBodyImage: exported.fullBodyDataUrl,
+          headshotImage: exported.headshotDataUrl,
+          thumbnails: exported.thumbnails,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.error || 'Failed to save avatar');
+      }
+
+      const result = await response.json();
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 2000);
+
+      onSave?.(result.fullBodyUrl, result.headshotUrl);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to save');
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Handle background change
+  const handleSetBackground = (bg: CanvasBackground) => {
+    setBackground(bg);
+    setShowBackgroundPicker(false);
+  };
+
+  // Background color options
+  const backgroundColors = [
+    { value: null, label: 'Transparent', type: 'transparent' as const },
+    { value: '#ffffff', label: 'White', type: 'color' as const },
+    { value: '#f3f4f6', label: 'Light Gray', type: 'color' as const },
+    { value: '#1f2937', label: 'Dark Gray', type: 'color' as const },
+    { value: '#000000', label: 'Black', type: 'color' as const },
+    { value: '#fef3c7', label: 'Warm', type: 'color' as const },
+    { value: '#dbeafe', label: 'Cool', type: 'color' as const },
+    { value: '#dcfce7', label: 'Mint', type: 'color' as const },
+    { value: '#fce7f3', label: 'Pink', type: 'color' as const },
+  ];
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center h-[600px]">
+        <Loader2 className="w-8 h-8 text-gray-400 animate-spin" />
+      </div>
+    );
+  }
+
+  if (error && !libraryData) {
+    return (
+      <div className="flex flex-col items-center justify-center h-[600px] gap-4">
+        <p className="text-red-500">{error}</p>
+        <Button onClick={() => window.location.reload()}>Retry</Button>
+      </div>
+    );
+  }
+
+  if (!libraryData) {
+    return (
+      <div className="flex items-center justify-center h-[600px]">
+        <p className="text-gray-500">No avatar assets available</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={undo}
+            disabled={!canUndo}
+            title="Undo"
+          >
+            <Undo2 className="w-4 h-4" />
+          </Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={redo}
+            disabled={!canRedo}
+            title="Redo"
+          >
+            <Redo2 className="w-4 h-4" />
+          </Button>
+          <div className="w-px h-6 bg-gray-200 dark:bg-gray-700 mx-1" />
+          <div className="relative">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowBackgroundPicker(!showBackgroundPicker)}
+              title="Background"
+            >
+              <Palette className="w-4 h-4 mr-1" />
+              Background
+            </Button>
+            {showBackgroundPicker && (
+              <div className="absolute top-full left-0 mt-1 p-2 bg-white dark:bg-gray-900 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700 z-10">
+                <div className="grid grid-cols-3 gap-2">
+                  {backgroundColors.map((bg) => (
+                    <button
+                      key={bg.value || 'transparent'}
+                      onClick={() =>
+                        handleSetBackground({
+                          type: bg.type,
+                          value: bg.value,
+                        })
+                      }
+                      className={`w-8 h-8 rounded border-2 transition-all ${
+                        (background.type === bg.type && background.value === bg.value)
+                          ? 'border-indigo-500 ring-2 ring-indigo-500/50'
+                          : 'border-gray-300 dark:border-gray-600 hover:border-gray-400'
+                      }`}
+                      style={{
+                        backgroundColor: bg.value || 'transparent',
+                        backgroundImage: !bg.value
+                          ? 'linear-gradient(45deg, #ccc 25%, transparent 25%), linear-gradient(-45deg, #ccc 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #ccc 75%), linear-gradient(-45deg, transparent 75%, #ccc 75%)'
+                          : undefined,
+                        backgroundSize: !bg.value ? '8px 8px' : undefined,
+                        backgroundPosition: !bg.value ? '0 0, 0 4px, 4px -4px, -4px 0px' : undefined,
+                      }}
+                      title={bg.label}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={resetCanvas}
+            title="Clear canvas"
+          >
+            <RotateCcw className="w-4 h-4 mr-1" />
+            Reset
+          </Button>
+        </div>
+
+        <Button onClick={handleSave} disabled={isSaving || layers.length === 0}>
+          {isSaving ? (
+            <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+          ) : saveSuccess ? (
+            <Check className="w-4 h-4 mr-2" />
+          ) : (
+            <Save className="w-4 h-4 mr-2" />
+          )}
+          {saveSuccess ? 'Saved!' : 'Save Avatar'}
+        </Button>
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 text-sm rounded-lg">
+          {error}
+        </div>
+      )}
+
+      {/* Main Editor Layout */}
+      <div className="flex gap-4">
+        {/* Asset Library */}
+        <div className="w-48 h-[600px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+          <AssetLibraryPanel
+            categories={libraryData.categories}
+            components={libraryData.components}
+            unlockedComponentIds={unlockedSet}
+            colorPalettes={colorPalettesRecord}
+            onAddAsset={(component, category) => handleAddAsset(component, category)}
+          />
+        </div>
+
+        {/* Canvas */}
+        <div className="flex-shrink-0">
+          <CanvasWorkspace
+            layers={sortedLayers}
+            selectedLayerId={selectedLayerId}
+            background={background}
+            components={componentsMap}
+            categories={categoriesMap}
+            onSelectLayer={selectLayer}
+            onUpdateTransform={updateTransform}
+            onAddAsset={handleAddAsset}
+            stageRef={stageRef}
+          />
+        </div>
+
+        {/* Right Panel: Layers + Transform */}
+        <div className="flex-1 flex flex-col min-w-[200px] max-w-[280px] h-[600px] overflow-hidden rounded-lg border border-gray-200 dark:border-gray-800">
+          <div className="flex-1 overflow-hidden">
+            <LayerPanel
+              layers={layers}
+              selectedLayerId={selectedLayerId}
+              components={componentsMap}
+              categories={categoriesMap}
+              colorPalettes={colorPalettesRecord}
+              onSelectLayer={selectLayer}
+              onRemoveLayer={removeLayer}
+              onDuplicateLayer={duplicateLayer}
+              onReorderLayers={reorderLayers}
+              onSetColorVariant={setColorVariant}
+              onUpdateTransform={updateTransform}
+            />
+          </div>
+          <TransformControls
+            selectedLayer={selectedLayer}
+            onUpdateTransform={updateTransform}
+            onRemoveLayer={removeLayer}
+            onDuplicateLayer={duplicateLayer}
+          />
+        </div>
+      </div>
+
+      {/* Instructions */}
+      <div className="text-sm text-gray-500 dark:text-gray-400">
+        <p>
+          <strong>Tip:</strong> Click an asset to add it, or drag and drop onto the canvas.
+          Drag corners to resize, use the top handle to rotate.
+        </p>
+      </div>
+    </div>
+  );
+}

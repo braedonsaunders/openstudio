@@ -240,6 +240,82 @@ export interface UploadComponentImageResponse {
 }
 
 // ============================================
+// CANVAS EDITOR TYPES
+// ============================================
+
+export interface LayerTransform {
+  x: number;           // Position X (0-512)
+  y: number;           // Position Y (0-512)
+  width: number;       // Scaled width
+  height: number;      // Scaled height
+  rotation: number;    // Degrees (0-360)
+  flipX: boolean;      // Horizontal flip
+  flipY: boolean;      // Vertical flip
+  opacity: number;     // 0-1
+}
+
+export interface CanvasLayer {
+  id: string;
+  componentId: string;
+  categoryId: string;
+  transform: LayerTransform;
+  colorVariant?: string;
+  zIndex: number;
+}
+
+export interface CanvasBackground {
+  type: 'color' | 'image' | 'transparent';
+  value: string | null;  // Hex color or component ID
+}
+
+export interface CanvasData {
+  version: number;
+  layers: CanvasLayer[];
+  background: CanvasBackground;
+}
+
+export interface UserAvatarCanvas {
+  id: string;
+  userId: string;
+  canvasData: CanvasData;
+  fullBodyUrl: string | null;
+  headshotUrl: string | null;
+  thumbnailUrls: {
+    xs: string;
+    sm: string;
+    md: string;
+    lg: string;
+  } | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+// Canvas state management types
+export type CanvasAction =
+  | { type: 'ADD_LAYER'; component: AvatarComponent; position?: { x: number; y: number } }
+  | { type: 'REMOVE_LAYER'; layerId: string }
+  | { type: 'SELECT_LAYER'; layerId: string | null }
+  | { type: 'UPDATE_TRANSFORM'; layerId: string; transform: Partial<LayerTransform> }
+  | { type: 'REORDER_LAYERS'; fromIndex: number; toIndex: number }
+  | { type: 'SET_COLOR_VARIANT'; layerId: string; variant: string }
+  | { type: 'SET_BACKGROUND'; background: CanvasBackground }
+  | { type: 'DUPLICATE_LAYER'; layerId: string }
+  | { type: 'LOAD_CANVAS'; canvasData: CanvasData }
+  | { type: 'RESET_CANVAS' }
+  | { type: 'UNDO' }
+  | { type: 'REDO' };
+
+export interface CanvasState {
+  layers: CanvasLayer[];
+  selectedLayerId: string | null;
+  background: CanvasBackground;
+  zoom: number;
+  showGrid: boolean;
+  history: CanvasData[];
+  historyIndex: number;
+}
+
+// ============================================
 // COMPOSITOR TYPES
 // ============================================
 
