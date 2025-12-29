@@ -573,6 +573,9 @@ export class LatencyCompensator {
 
     // Notify
     this.onCompensationChange?.(this.targetDelay, new Map(this.userCompensations));
+
+    // Recalculate and notify jam compatibility whenever latencies change
+    this.calculateJamCompatibility();
   }
 }
 
