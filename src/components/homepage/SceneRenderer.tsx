@@ -1099,28 +1099,37 @@ export function SceneRenderer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
-  // Track previous values for transition direction
+  // Track previous values using refs - updated synchronously
   const prevSceneRef = useRef<HomepageSceneType>(currentScene);
   const prevThemeRef = useRef<boolean>(isDark);
-  const [transitionType, setTransitionType] = useState<'scene' | 'theme' | 'initial'>('initial');
-  const [sceneDirection, setSceneDirection] = useState<number>(1); // 1 = going right, -1 = going left
 
-  // Determine transition type and direction when scene or theme changes
-  useEffect(() => {
-    const sceneChanged = prevSceneRef.current !== currentScene;
-    const themeChanged = prevThemeRef.current !== isDark;
+  // Calculate transition info synchronously during render (before refs update)
+  const transitionInfo = useMemo(() => {
+    const prevScene = prevSceneRef.current;
+    const prevTheme = prevThemeRef.current;
+    const sceneChanged = prevScene !== currentScene;
+    const themeChanged = prevTheme !== isDark;
 
     if (sceneChanged) {
-      const prevIndex = SCENE_ORDER.indexOf(prevSceneRef.current);
+      const prevIndex = SCENE_ORDER.indexOf(prevScene);
       const currentIndex = SCENE_ORDER.indexOf(currentScene);
-      // Positive = new scene is to the right, slides in from right
-      setSceneDirection(currentIndex > prevIndex ? 1 : -1);
-      setTransitionType('scene');
-      prevSceneRef.current = currentScene;
+      return {
+        type: 'scene' as const,
+        direction: currentIndex > prevIndex ? 1 : -1,
+      };
     } else if (themeChanged) {
-      setTransitionType('theme');
-      prevThemeRef.current = isDark;
+      return {
+        type: 'theme' as const,
+        direction: isDark ? 1 : -1,
+      };
     }
+    return { type: 'initial' as const, direction: 1 };
+  }, [currentScene, isDark]);
+
+  // Update refs AFTER render via useEffect
+  useEffect(() => {
+    prevSceneRef.current = currentScene;
+    prevThemeRef.current = isDark;
   }, [currentScene, isDark]);
 
   useEffect(() => {
@@ -1165,36 +1174,33 @@ export function SceneRenderer({
   const backdrop = isDark ? SCENE_BACKDROPS[currentScene].night : SCENE_BACKDROPS[currentScene].day;
   const ground = isDark ? SCENE_GROUNDS[currentScene].night : SCENE_GROUNDS[currentScene].day;
 
-  // Dynamic variants based on transition type
-  const getSceneVariants = () => {
-    if (transitionType === 'initial') {
+  // Dynamic variants based on transition type - computed synchronously
+  const sceneVariants = useMemo(() => {
+    const { type, direction } = transitionInfo;
+
+    if (type === 'initial') {
       return {
         initial: { opacity: 0, scale: 0.95 },
         animate: { opacity: 1, scale: 1, x: 0, y: 0 },
         exit: { opacity: 0, scale: 0.95 },
       };
     }
-    if (transitionType === 'scene') {
+    if (type === 'scene') {
       // Horizontal slide - scenes are laid out left to right
-      // Going right (higher index): new scene enters from right, old exits left
-      // Going left (lower index): new scene enters from left, old exits right
       return {
-        initial: { opacity: 0, x: `${sceneDirection * 100}%` },
+        initial: { opacity: 0, x: `${direction * 100}%` },
         animate: { opacity: 1, x: 0 },
-        exit: { opacity: 0, x: `${-sceneDirection * 100}%` },
+        exit: { opacity: 0, x: `${-direction * 100}%` },
       };
     }
     // Vertical slide for theme changes
-    // Night: slides down from top (enters from -y)
-    // Day: slides up from bottom (enters from +y)
+    // Night: slides down from top, Day: slides up from bottom
     return {
       initial: { opacity: 0, y: isDark ? '-60%' : '60%' },
       animate: { opacity: 1, y: 0 },
       exit: { opacity: 0, y: isDark ? '60%' : '-60%' },
     };
-  };
-
-  const sceneVariants = getSceneVariants();
+  }, [transitionInfo, isDark]);
 
   return (
     <div ref={containerRef} className={`relative w-full h-full overflow-hidden ${className}`}>
@@ -1219,14 +1225,14 @@ export function SceneRenderer({
           style={{ background: ground, top: `${sceneConfig.ground.horizonY}%` }}
           initial={{
             opacity: 0,
-            x: transitionType === 'scene' ? `${sceneDirection * 30}%` : 0,
-            y: transitionType === 'theme' ? (isDark ? '-20%' : '20%') : 0,
+            x: transitionInfo.type === 'scene' ? `${transitionInfo.direction * 30}%` : 0,
+            y: transitionInfo.type === 'theme' ? (isDark ? '-20%' : '20%') : 0,
           }}
           animate={{ opacity: 1, x: 0, y: 0 }}
           exit={{
             opacity: 0,
-            x: transitionType === 'scene' ? `${-sceneDirection * 30}%` : 0,
-            y: transitionType === 'theme' ? (isDark ? '20%' : '-20%') : 0,
+            x: transitionInfo.type === 'scene' ? `${-transitionInfo.direction * 30}%` : 0,
+            y: transitionInfo.type === 'theme' ? (isDark ? '20%' : '-20%') : 0,
           }}
           transition={{ duration: 0.35, ease: [0.4, 0, 0.2, 1] }}
         />
