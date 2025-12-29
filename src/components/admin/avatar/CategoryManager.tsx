@@ -39,10 +39,6 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
   const [formSupportsColorVariants, setFormSupportsColorVariants] = useState(false);
   const [formDefaultPalette, setFormDefaultPalette] = useState<string>('');
   const [formPromptAddition, setFormPromptAddition] = useState('');
-  const [formRenderX, setFormRenderX] = useState(0);
-  const [formRenderY, setFormRenderY] = useState(0);
-  const [formRenderWidth, setFormRenderWidth] = useState(512);
-  const [formRenderHeight, setFormRenderHeight] = useState(512);
   const [isSaving, setIsSaving] = useState(false);
 
   // Delete modal
@@ -99,10 +95,6 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
     setFormSupportsColorVariants(false);
     setFormDefaultPalette('');
     setFormPromptAddition('');
-    setFormRenderX(0);
-    setFormRenderY(0);
-    setFormRenderWidth(512);
-    setFormRenderHeight(512);
     setIsModalOpen(true);
   };
 
@@ -115,10 +107,6 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
     setFormSupportsColorVariants(category.supportsColorVariants);
     setFormDefaultPalette(category.defaultColorPalette || '');
     setFormPromptAddition(category.promptAddition || '');
-    setFormRenderX(category.renderX);
-    setFormRenderY(category.renderY);
-    setFormRenderWidth(category.renderWidth);
-    setFormRenderHeight(category.renderHeight);
     setIsModalOpen(true);
   };
 
@@ -136,10 +124,6 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
           supportsColorVariants: formSupportsColorVariants,
           defaultColorPalette: formDefaultPalette || null,
           promptAddition: formPromptAddition || null,
-          renderX: formRenderX,
-          renderY: formRenderY,
-          renderWidth: formRenderWidth,
-          renderHeight: formRenderHeight,
         });
 
         if (response.ok) {
@@ -153,10 +137,6 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
               supportsColorVariants: formSupportsColorVariants,
               defaultColorPalette: formDefaultPalette || undefined,
               promptAddition: formPromptAddition || undefined,
-              renderX: formRenderX,
-              renderY: formRenderY,
-              renderWidth: formRenderWidth,
-              renderHeight: formRenderHeight,
             } : c
           ));
           setIsModalOpen(false);
@@ -173,10 +153,6 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
           supportsColorVariants: formSupportsColorVariants,
           defaultColorPalette: formDefaultPalette || undefined,
           promptAddition: formPromptAddition || undefined,
-          renderX: formRenderX,
-          renderY: formRenderY,
-          renderWidth: formRenderWidth,
-          renderHeight: formRenderHeight,
         });
 
         if (response.ok) {
@@ -190,10 +166,10 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
             supportsColorVariants: formSupportsColorVariants,
             defaultColorPalette: formDefaultPalette || undefined,
             promptAddition: formPromptAddition || undefined,
-            renderX: formRenderX,
-            renderY: formRenderY,
-            renderWidth: formRenderWidth,
-            renderHeight: formRenderHeight,
+            renderX: 0,
+            renderY: 0,
+            renderWidth: 512,
+            renderHeight: 512,
             isActive: true,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString(),
@@ -306,7 +282,7 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
                 )}
               </div>
               <p className="text-sm text-gray-500 dark:text-gray-400">
-                ID: {category.id} | Max: {category.maxSelections} | Pos: ({category.renderX}, {category.renderY}) {category.renderWidth}×{category.renderHeight}
+                ID: {category.id} | Max: {category.maxSelections}
               </p>
             </div>
 
@@ -435,82 +411,6 @@ export function CategoryManager({ categories, colorPalettes, onRefresh }: Catego
                 Supports color variants
               </span>
             </label>
-          </div>
-
-          {/* Render Position */}
-          <div className="border-t border-gray-200 dark:border-gray-700 pt-4 mt-4">
-            <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
-              Render Position (on 512×512 canvas)
-            </h4>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  X Position
-                </label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={512}
-                  value={formRenderX}
-                  onChange={(e) => setFormRenderX(parseInt(e.target.value) || 0)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Y Position
-                </label>
-                <Input
-                  type="number"
-                  min={0}
-                  max={512}
-                  value={formRenderY}
-                  onChange={(e) => setFormRenderY(parseInt(e.target.value) || 0)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Width
-                </label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={512}
-                  value={formRenderWidth}
-                  onChange={(e) => setFormRenderWidth(parseInt(e.target.value) || 512)}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-gray-500 dark:text-gray-400 mb-1">
-                  Height
-                </label>
-                <Input
-                  type="number"
-                  min={1}
-                  max={512}
-                  value={formRenderHeight}
-                  onChange={(e) => setFormRenderHeight(parseInt(e.target.value) || 512)}
-                />
-              </div>
-            </div>
-
-            {/* Visual Preview */}
-            <div className="mt-4">
-              <label className="block text-xs text-gray-500 dark:text-gray-400 mb-2">
-                Position Preview
-              </label>
-              <div className="relative w-32 h-32 bg-gray-100 dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded">
-                <div
-                  className="absolute bg-indigo-500/50 border border-indigo-500 rounded"
-                  style={{
-                    left: `${(formRenderX / 512) * 100}%`,
-                    top: `${(formRenderY / 512) * 100}%`,
-                    width: `${(formRenderWidth / 512) * 100}%`,
-                    height: `${(formRenderHeight / 512) * 100}%`,
-                  }}
-                />
-              </div>
-            </div>
           </div>
 
           <div className="flex justify-end gap-3">
