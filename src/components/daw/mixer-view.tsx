@@ -31,7 +31,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
-import type { User } from '@/types';
+import type { User, UserTrack } from '@/types';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
@@ -608,6 +608,205 @@ function SongChannelStrip({
       {/* Bus Label */}
       <div className="flex items-center justify-center py-1.5 border-t border-emerald-300/30 dark:border-emerald-900/30 bg-emerald-100/20 dark:bg-emerald-950/20">
         <span className="text-[7px] text-emerald-500/60 dark:text-emerald-400/60 font-mono">SONG BUS</span>
+      </div>
+    </motion.div>
+  );
+}
+
+// User Track Channel Strip (for individual user tracks like drum, bass, guitar, etc.)
+function UserTrackChannelStrip({
+  track,
+  isMaster: isRoomMaster,
+  audioLevel,
+}: {
+  track: UserTrack;
+  isMaster: boolean;
+  audioLevel: number;
+}) {
+  const { setTrackVolume, setTrackMuted, setTrackSolo } = useUserTracksStore();
+
+  // Use actual audio level from the engine
+  const level = track.isMuted ? 0 : audioLevel;
+
+  // Get icon based on track name/type
+  const getTrackIcon = () => {
+    const name = track.name.toLowerCase();
+    if (name.includes('drum')) return <Drum className="w-5 h-5" />;
+    if (name.includes('bass')) return <Guitar className="w-5 h-5" />;
+    if (name.includes('guitar')) return <Guitar className="w-5 h-5" />;
+    if (name.includes('piano') || name.includes('keys')) return <Piano className="w-5 h-5" />;
+    if (name.includes('vocal') || name.includes('mic')) return <Mic className="w-5 h-5" />;
+    if (track.type === 'midi') return <Piano className="w-5 h-5" />;
+    return <Music className="w-5 h-5" />;
+  };
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, scale: 0.9 }}
+      animate={{ opacity: 1, scale: 1 }}
+      exit={{ opacity: 0, scale: 0.9 }}
+      className={cn(
+        'flex flex-col h-full rounded-xl overflow-hidden',
+        'bg-gradient-to-b from-gray-200/60 to-gray-100/95 dark:from-zinc-800/60 dark:to-zinc-900/95',
+        'border dark:border-zinc-700/50',
+        'shadow-xl shadow-black/10 dark:shadow-black/30'
+      )}
+      style={{
+        width: '90px',
+        minWidth: '90px',
+        borderColor: track.color + '40',
+      }}
+    >
+      {/* Channel Header */}
+      <div
+        className="p-2 border-b dark:border-zinc-800/50"
+        style={{ backgroundColor: track.color + '20', borderBottomColor: track.color + '30' }}
+      >
+        <div className="flex flex-col items-center gap-1.5">
+          {/* Track Icon */}
+          <div className="relative">
+            <div
+              className="w-10 h-10 rounded-lg border flex items-center justify-center"
+              style={{
+                backgroundColor: track.color + '30',
+                borderColor: track.color + '50',
+                color: track.color,
+              }}
+            >
+              {getTrackIcon()}
+            </div>
+            {level > 0.05 && (
+              <motion.div
+                className="absolute -inset-0.5 rounded-lg border"
+                style={{ borderColor: track.color + '60' }}
+                animate={{ opacity: [0.2, 0.6, 0.2] }}
+                transition={{ duration: 1.5, repeat: Infinity }}
+              />
+            )}
+            {track.isArmed && (
+              <div className="absolute -top-1 -right-1 w-3 h-3 rounded-full bg-red-500 animate-pulse" />
+            )}
+          </div>
+
+          {/* Track Name */}
+          <div className="w-full text-center">
+            <div
+              className="text-[9px] font-semibold truncate px-1"
+              style={{ color: track.color }}
+            >
+              {track.name}
+            </div>
+            {track.ownerUserName && (
+              <div className="text-[7px] text-gray-500 dark:text-zinc-500 truncate px-1">
+                {track.ownerUserName}
+              </div>
+            )}
+          </div>
+
+          {/* Track Type Badge */}
+          <div
+            className="flex items-center gap-1 px-1.5 py-0.5 rounded-full text-[8px] font-medium"
+            style={{ backgroundColor: track.color + '20', color: track.color }}
+          >
+            {track.type === 'midi' ? (
+              <>
+                <Piano className="w-2.5 h-2.5" />
+                <span>MIDI</span>
+              </>
+            ) : (
+              <>
+                <Mic className="w-2.5 h-2.5" />
+                <span>AUDIO</span>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Pan Section */}
+      <div className="flex justify-center py-2 border-b border-gray-300/30 dark:border-zinc-800/30">
+        <PanKnob disabled={!isRoomMaster} />
+      </div>
+
+      {/* Fader + Meter Section */}
+      <div className="flex-1 flex items-stretch gap-1 px-2 py-2 min-h-0">
+        {/* Left dB Scale */}
+        <div className="flex flex-col justify-between text-[6px] text-gray-500 dark:text-zinc-600 font-mono py-1">
+          {METER_DB_MARKS.map((mark) => (
+            <span key={mark}>{mark}</span>
+          ))}
+        </div>
+
+        {/* Meter */}
+        <StereoMeter
+          leftLevel={level}
+          rightLevel={level * 0.95}
+          color={track.color}
+        />
+
+        {/* Fader */}
+        <div className="flex-1 flex justify-center">
+          <VerticalFader
+            value={track.volume}
+            onChange={(vol) => setTrackVolume(track.id, vol)}
+            disabled={!isRoomMaster}
+            color={track.color}
+          />
+        </div>
+      </div>
+
+      {/* dB Display */}
+      <div className="px-2 pb-1">
+        <div className="flex justify-center">
+          <div
+            className="px-2 py-0.5 rounded bg-white/60 dark:bg-black/60 border"
+            style={{ borderColor: track.color + '30' }}
+          >
+            <span className="text-[9px] font-mono" style={{ color: track.color }}>
+              {formatDb(track.volume)}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Mute/Solo */}
+      <div className="flex gap-1 p-2 border-t border-gray-300/30 dark:border-zinc-800/30">
+        <button
+          onClick={() => isRoomMaster && setTrackMuted(track.id, !track.isMuted)}
+          disabled={!isRoomMaster}
+          className={cn(
+            'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
+            track.isMuted
+              ? 'bg-red-600 text-white shadow-[0_0_8px_rgba(220,38,38,0.4)]'
+              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
+            !isRoomMaster && 'cursor-not-allowed opacity-50'
+          )}
+        >
+          M
+        </button>
+        <button
+          onClick={() => isRoomMaster && setTrackSolo(track.id, !track.isSolo)}
+          disabled={!isRoomMaster}
+          className={cn(
+            'flex-1 py-1 rounded text-[9px] font-bold tracking-wide transition-all',
+            track.isSolo
+              ? 'bg-amber-500 text-black shadow-[0_0_8px_rgba(245,158,11,0.4)]'
+              : 'bg-gray-300/80 dark:bg-zinc-700/80 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-zinc-600',
+            !isRoomMaster && 'cursor-not-allowed opacity-50'
+          )}
+        >
+          S
+        </button>
+      </div>
+
+      {/* Track Type Label */}
+      <div
+        className="flex items-center justify-center py-1.5 border-t"
+        style={{ borderColor: track.color + '20', backgroundColor: track.color + '10' }}
+      >
+        <span className="text-[7px] font-mono" style={{ color: track.color + '80' }}>
+          {track.type === 'midi' ? 'MIDI' : 'AUDIO'}
+        </span>
       </div>
     </motion.div>
   );
@@ -1242,7 +1441,13 @@ export function MixerView({
   onViewChange,
 }: MixerViewProps) {
   const { currentTrack } = useRoomStore();
+  const { tracks: userTracksMap, trackLevels } = useUserTracksStore();
   const [showMasterFxPanel, setShowMasterFxPanel] = useState(false);
+
+  // Get all user tracks as an array
+  const allUserTracks = useMemo(() => {
+    return Array.from(userTracksMap.values()).filter(track => track.isActive);
+  }, [userTracksMap]);
 
   // Combine and sort users
   const allUsers = useMemo(() => {
@@ -1274,7 +1479,7 @@ export function MixerView({
         </div>
 
         <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-zinc-500">
-          <span>{allUsers.length} channels</span>
+          <span>{allUsers.length + allUserTracks.length} channels</span>
           <div className="flex items-center gap-1.5">
             <span className="text-[9px] text-gray-500 dark:text-zinc-600 font-mono">48kHz</span>
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
@@ -1307,8 +1512,23 @@ export function MixerView({
             </div>
           )}
 
-          {/* Divider */}
-          {(allUsers.length > 0 || currentTrack) && (
+          {/* User Tracks Divider */}
+          {allUserTracks.length > 0 && (
+            <SectionDivider label="TRACKS" />
+          )}
+
+          {/* User Track Channels (individual tracks like drum, bass, guitar, etc.) */}
+          {allUserTracks.map((track) => (
+            <UserTrackChannelStrip
+              key={track.id}
+              track={track}
+              isMaster={isMaster}
+              audioLevel={trackLevels.get(track.id) || 0}
+            />
+          ))}
+
+          {/* Divider before Song/Master */}
+          {(allUsers.length > 0 || allUserTracks.length > 0 || currentTrack) && (
             <SectionDivider label={currentTrack ? 'SONG' : 'MASTER'} />
           )}
 
