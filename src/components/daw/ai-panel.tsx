@@ -115,6 +115,7 @@ export function AIPanel() {
   }, [density, brightness, drums, bass, temperature]);
 
   // Live update prompts when style/mood changes (only when playing)
+  // Debounce custom prompt changes to avoid sending on every keystroke
   useEffect(() => {
     const lyriaStore = useLyriaStore.getState();
     if (lyriaStore.sessionState !== 'playing') return;
@@ -123,7 +124,14 @@ export function AIPanel() {
     if (!session) return;
 
     const prompt = customPrompt.trim() || buildPrompt(selectedStyle, selectedMood || undefined);
-    session.setPrompts(prompt);
+
+    // Debounce custom prompt changes (500ms) to avoid spamming the API
+    // Style/mood changes are immediate since they're discrete selections
+    const timeoutId = setTimeout(() => {
+      session.setPrompts(prompt);
+    }, 500);
+
+    return () => clearTimeout(timeoutId);
   }, [selectedStyle, selectedMood, customPrompt]);
 
   // Get current config as LyriaTrackConfig

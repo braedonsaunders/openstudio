@@ -82,14 +82,17 @@ export function keyToLyriaScale(key: string | null, keyScale: 'major' | 'minor' 
 
 // Parse prompt string with weights like "jazz piano:0.7, ambient:0.3"
 export function parseWeightedPrompts(promptString: string): LyriaWeightedPrompt[] {
-  const parts = promptString.split(',').map(p => p.trim());
+  const parts = promptString.split(',').map(p => p.trim()).filter(p => p.length > 0);
   return parts.map(part => {
     const match = part.match(/^(.+?):(\d*\.?\d+)$/);
     if (match) {
-      return { text: match[1].trim(), weight: parseFloat(match[2]) };
+      const text = match[1].trim();
+      // Skip empty text after weight extraction
+      if (!text) return null;
+      return { text, weight: parseFloat(match[2]) };
     }
     return { text: part, weight: 1.0 };
-  });
+  }).filter((p): p is LyriaWeightedPrompt => p !== null);
 }
 
 export interface LyriaSessionCallbacks {
@@ -273,11 +276,13 @@ export class LyriaSession {
     if (typeof prompts === 'string') {
       this.prompts = parseWeightedPrompts(prompts);
     } else {
-      this.prompts = prompts;
+      // Filter out any prompts with empty text
+      this.prompts = prompts.filter(p => p.text.trim().length > 0);
     }
 
     // If already playing, send new prompts immediately for smooth transition
-    if (this.state === 'playing' && this.ws?.readyState === WebSocket.OPEN) {
+    // Skip if no valid prompts to avoid API error for empty weighted_prompts
+    if (this.state === 'playing' && this.ws?.readyState === WebSocket.OPEN && this.prompts.length > 0) {
       this.sendMessage({
         client_content: {
           weighted_prompts: this.prompts.map(p => ({
