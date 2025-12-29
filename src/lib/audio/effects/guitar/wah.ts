@@ -212,8 +212,7 @@ export class WahProcessor extends BaseEffect {
   }
 
   private updateQ(): void {
-    const now = this.audioContext.currentTime;
-    this.wahFilter.Q.setTargetAtTime(this.settings.q, now, 0.01);
+    this.safeSetFilterQ(this.wahFilter, this.settings.q);
   }
 
   private updateEnvelopeSettings(): void {
@@ -225,8 +224,8 @@ export class WahProcessor extends BaseEffect {
     // Attack/release via smoother frequency
     // Faster attack = higher frequency, slower release = lower frequency
     // We use a compromise based on release time
-    const smootherFreq = 1 / this.settings.release;
-    this.envelopeSmoother.frequency.setTargetAtTime(smootherFreq, now, 0.01);
+    const smootherFreq = Math.max(0.1, 1 / Math.max(0.01, this.settings.release));
+    this.safeSetFilterFrequency(this.envelopeSmoother, smootherFreq);
   }
 
   /**

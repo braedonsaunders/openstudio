@@ -38,12 +38,15 @@ export class FormantShifterProcessor extends BaseEffect {
       ...settings,
     };
 
-    // Create formant filter bank
+    // Create formant filter bank with safe initial values
     for (let i = 0; i < this.baseFormants.length; i++) {
       const filter = audioContext.createBiquadFilter();
       filter.type = 'bandpass';
-      filter.frequency.value = this.baseFormants[i];
-      filter.Q.value = this.baseFormants[i] / this.formantBandwidths[i];
+      // Clamp frequency to safe range
+      filter.frequency.value = Math.max(20, Math.min(20000, this.baseFormants[i]));
+      // Clamp Q to safe range (0.0001-30)
+      const q = this.baseFormants[i] / this.formantBandwidths[i];
+      filter.Q.value = Math.max(0.0001, Math.min(30, q));
       this.formantFilters.push(filter);
 
       const gain = audioContext.createGain();
@@ -83,33 +86,35 @@ export class FormantShifterProcessor extends BaseEffect {
   }
 
   private updateFormants(): void {
-    const now = this.audioContext.currentTime;
+    try {
+      // Calculate shift ratio from semitones
+      const shiftRatio = Math.pow(2, this.settings.shift / 12);
 
-    // Calculate shift ratio from semitones
-    const shiftRatio = Math.pow(2, this.settings.shift / 12);
+      // Gender affects formant spacing
+      // Male voices have lower, more spaced formants
+      // Female voices have higher, closer formants
+      const genderShift = this.settings.gender / 100;
+      const genderRatio = 1 + genderShift * 0.3; // ±30% frequency shift
 
-    // Gender affects formant spacing
-    // Male voices have lower, more spaced formants
-    // Female voices have higher, closer formants
-    const genderShift = this.settings.gender / 100;
-    const genderRatio = 1 + genderShift * 0.3; // ±30% frequency shift
+      for (let i = 0; i < this.formantFilters.length; i++) {
+        // Apply both shift and gender transformation
+        const newFreq = this.baseFormants[i] * shiftRatio * genderRatio;
 
-    for (let i = 0; i < this.formantFilters.length; i++) {
-      // Apply both shift and gender transformation
-      const newFreq = this.baseFormants[i] * shiftRatio * genderRatio;
+        // Use safe filter methods
+        this.safeSetFilterFrequency(this.formantFilters[i], newFreq);
 
-      // Clamp to valid frequency range
-      const clampedFreq = Math.max(50, Math.min(15000, newFreq));
+        // Adjust bandwidth based on frequency
+        const clampedFreq = Math.max(20, Math.min(20000, newFreq));
+        const newQ = clampedFreq / (this.formantBandwidths[i] * genderRatio);
+        this.safeSetFilterQ(this.formantFilters[i], newQ);
 
-      this.formantFilters[i].frequency.setTargetAtTime(clampedFreq, now, 0.02);
-
-      // Adjust bandwidth based on frequency
-      const newQ = clampedFreq / (this.formantBandwidths[i] * genderRatio);
-      this.formantFilters[i].Q.setTargetAtTime(Math.max(0.5, Math.min(20, newQ)), now, 0.02);
-
-      // Higher formants get progressively lower gain for natural sound
-      const gainCompensation = 1 - (i * 0.15);
-      this.formantGains[i].gain.setTargetAtTime(gainCompensation, now, 0.02);
+        // Higher formants get progressively lower gain for natural sound
+        const gainCompensation = 1 - (i * 0.15);
+        const now = this.audioContext.currentTime;
+        this.formantGains[i].gain.setTargetAtTime(gainCompensation, now, 0.02);
+      }
+    } catch (e) {
+      console.warn('[Formant Shifter] Error updating formants:', e);
     }
   }
 
