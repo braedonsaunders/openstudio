@@ -401,7 +401,7 @@ export function CharacterManager() {
           setEditingCharacter(null);
         }}
         title={editingCharacter ? `Edit ${editingCharacter.name}` : 'Create Character'}
-        size="xl"
+        className="max-w-4xl"
       >
         <div className="space-y-6">
           {/* Basic Info */}
