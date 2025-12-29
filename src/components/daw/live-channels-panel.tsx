@@ -1,11 +1,11 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { TrackHeader } from './track-header';
 import { UserTrackHeader } from './user-track-header';
 import { InactiveTrackHeader } from './inactive-track-header';
 import { AddTrackModal } from './add-track-modal';
-import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useUserTracksStore, TRACK_COLORS } from '@/stores/user-tracks-store';
 import { Plus, Radio } from 'lucide-react';
 import type { User } from '@/types';
 
@@ -21,20 +21,6 @@ interface LiveChannelsPanelProps {
   roomId?: string;
 }
 
-// Track color palette for remote users
-const TRACK_COLORS = [
-  '#f472b6', // Pink
-  '#fb923c', // Orange
-  '#a3e635', // Lime
-  '#22d3ee', // Cyan
-  '#a78bfa', // Violet
-  '#fbbf24', // Yellow
-  '#34d399', // Emerald
-  '#f87171', // Red
-  '#60a5fa', // Blue
-  '#c084fc', // Purple
-];
-
 export function LiveChannelsPanel({
   users,
   currentUser,
@@ -48,9 +34,14 @@ export function LiveChannelsPanel({
 }: LiveChannelsPanelProps) {
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
 
+  // Track colors assigned to remote users - persists based on join order
+  const userColorsRef = useRef<Map<string, string>>(new Map());
+  const colorIndexRef = useRef(0);
+
   const {
     getTracksByUser,
     getInactiveTracks,
+    getAllTracks,
     trackLevels,
     removeTrack,
     assignTrackToUser,
@@ -85,8 +76,35 @@ export function LiveChannelsPanel({
   // Remote users (excluding current user)
   const remoteUsers = users.filter((u) => u.id !== currentUser?.id);
 
-  // Assign colors to remote users
-  const getUserColor = (index: number) => TRACK_COLORS[index % TRACK_COLORS.length];
+  // Get colors already used by existing tracks to avoid duplicates
+  const getUsedColors = useCallback(() => {
+    const allTracks = getAllTracks();
+    return new Set(allTracks.map(t => t.color));
+  }, [getAllTracks]);
+
+  // Assign persistent colors to remote users based on join order
+  // Picks colors that aren't already used by local tracks when possible
+  const getUserColor = useCallback((userId: string) => {
+    if (!userColorsRef.current.has(userId)) {
+      const usedColors = getUsedColors();
+      // Also consider colors already assigned to other remote users
+      for (const color of userColorsRef.current.values()) {
+        usedColors.add(color);
+      }
+
+      // Find the next available color that isn't already used
+      let color: string;
+      let attempts = 0;
+      do {
+        color = TRACK_COLORS[colorIndexRef.current % TRACK_COLORS.length];
+        colorIndexRef.current++;
+        attempts++;
+      } while (usedColors.has(color) && attempts < TRACK_COLORS.length);
+
+      userColorsRef.current.set(userId, color);
+    }
+    return userColorsRef.current.get(userId)!;
+  }, [getUsedColors]);
 
   // Count total channels for display
   const totalChannels = localTracks.length + remoteUsers.length + inactiveTracks.length;
@@ -181,7 +199,7 @@ export function LiveChannelsPanel({
             </div>
             {remoteUsers.map((user, index) => {
               const level = audioLevels.get(user.id) || 0;
-              const trackColor = getUserColor(index);
+              const trackColor = getUserColor(user.id);
               const globalTrackNumber = localTracks.length + index + 1;
 
               return (
