@@ -37,6 +37,9 @@ const REMOTE_RING_BUFFER_SIZE: usize = 16384;
 /// Ring buffer size for backing track
 const BACKING_RING_BUFFER_SIZE: usize = 32768;
 
+/// Ring buffer size for streaming to browser (larger for network jitter)
+const BROWSER_STREAM_BUFFER_SIZE: usize = 16384;
+
 /// Audio engine configuration
 #[derive(Debug, Clone)]
 pub struct EngineConfig {
@@ -155,6 +158,10 @@ pub struct AudioEngine {
     backing_producer: Option<Arc<std::sync::Mutex<HeapProd<f32>>>>,
     backing_consumer: Option<Arc<std::sync::Mutex<HeapCons<f32>>>>,
 
+    // Browser streaming ring buffer (for sending raw audio to browser for WebRTC)
+    browser_stream_producer: Option<Arc<std::sync::Mutex<HeapProd<f32>>>>,
+    browser_stream_consumer: Option<Arc<std::sync::Mutex<HeapCons<f32>>>>,
+
     // Shared processing state
     processing_state: Arc<RwLock<AudioProcessingState>>,
 
@@ -197,6 +204,8 @@ impl AudioEngine {
             remote_buffers: Arc::new(RwLock::new(HashMap::new())),
             backing_producer: None,
             backing_consumer: None,
+            browser_stream_producer: None,
+            browser_stream_consumer: None,
             processing_state: Arc::new(RwLock::new(processing_state)),
             is_monitoring: Arc::new(AtomicBool::new(true)),
             monitoring_volume: Arc::new(AtomicU32::new(1.0_f32.to_bits())),
@@ -446,6 +455,34 @@ impl AudioEngine {
         }
     }
 
+    /// Get raw audio samples for streaming to browser (for WebRTC broadcast)
+    /// Returns up to `max_samples` stereo samples, or fewer if buffer has less
+    pub fn get_browser_stream_audio(&self, max_samples: usize) -> Vec<f32> {
+        if let Some(ref consumer) = self.browser_stream_consumer {
+            if let Ok(mut cons) = consumer.try_lock() {
+                let available = cons.occupied_len();
+                let to_read = available.min(max_samples);
+                if to_read > 0 {
+                    let mut buffer = vec![0.0f32; to_read];
+                    let read = cons.pop_slice(&mut buffer);
+                    buffer.truncate(read);
+                    return buffer;
+                }
+            }
+        }
+        Vec::new()
+    }
+
+    /// Check if there's audio available for browser streaming
+    pub fn has_browser_stream_audio(&self) -> bool {
+        if let Some(ref consumer) = self.browser_stream_consumer {
+            if let Ok(cons) = consumer.try_lock() {
+                return cons.occupied_len() > 0;
+            }
+        }
+        false
+    }
+
     // === Audio Stream Control ===
 
     pub fn start(&mut self) -> Result<()> {
@@ -463,6 +500,12 @@ impl AudioEngine {
         let (backing_prod, backing_cons) = backing_ring.split();
         self.backing_producer = Some(Arc::new(std::sync::Mutex::new(backing_prod)));
         self.backing_consumer = Some(Arc::new(std::sync::Mutex::new(backing_cons)));
+
+        // Browser stream ring buffer (for sending raw audio to browser for WebRTC broadcast)
+        let browser_ring = HeapRb::<f32>::new(BROWSER_STREAM_BUFFER_SIZE);
+        let (browser_prod, browser_cons) = browser_ring.split();
+        self.browser_stream_producer = Some(Arc::new(std::sync::Mutex::new(browser_prod)));
+        self.browser_stream_consumer = Some(Arc::new(std::sync::Mutex::new(browser_cons)));
 
         let input_device_id = self.config.input_device_id.clone();
         let is_asio = input_device_id
@@ -555,6 +598,7 @@ impl AudioEngine {
         sample_format: SampleFormat,
     ) -> Result<cpal::Stream> {
         let producer = self.local_producer.clone().unwrap();
+        let browser_stream_producer = self.browser_stream_producer.clone();
         let levels = self.levels.clone();
         let is_monitoring = self.is_monitoring.clone();
         let monitoring_volume = self.monitoring_volume.clone();
@@ -570,6 +614,7 @@ impl AudioEngine {
                         data,
                         input_channels,
                         &producer,
+                        browser_stream_producer.as_ref(),
                         &levels,
                         &is_monitoring,
                         &monitoring_volume,
@@ -581,6 +626,7 @@ impl AudioEngine {
                 None,
             )?,
             SampleFormat::I32 => {
+                let browser_stream_producer = self.browser_stream_producer.clone();
                 device.build_input_stream(
                     config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
@@ -590,6 +636,7 @@ impl AudioEngine {
                             &float_data,
                             input_channels,
                             &producer,
+                            browser_stream_producer.as_ref(),
                             &levels,
                             &is_monitoring,
                             &monitoring_volume,
@@ -602,6 +649,7 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I16 => {
+                let browser_stream_producer = self.browser_stream_producer.clone();
                 device.build_input_stream(
                     config,
                     move |data: &[i16], _: &cpal::InputCallbackInfo| {
@@ -611,6 +659,7 @@ impl AudioEngine {
                             &float_data,
                             input_channels,
                             &producer,
+                            browser_stream_producer.as_ref(),
                             &levels,
                             &is_monitoring,
                             &monitoring_volume,
@@ -711,6 +760,7 @@ impl AudioEngine {
         data: &[f32],
         input_channels: usize,
         producer: &Arc<std::sync::Mutex<HeapProd<f32>>>,
+        browser_stream_producer: Option<&Arc<std::sync::Mutex<HeapProd<f32>>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         is_monitoring: &Arc<AtomicBool>,
         monitoring_volume: &Arc<AtomicU32>,
@@ -765,6 +815,26 @@ impl AudioEngine {
             info!("[INPUT] Extracted stereo peak: {:.6} | buffer_size={}", level, stereo_buffer.len());
         }
 
+        // Stream RAW audio to browser for WebRTC broadcast (BEFORE effects)
+        // The browser will apply effects using Web Audio, ensuring single effects codebase
+        if let Some(browser_prod) = browser_stream_producer {
+            if let Ok(mut prod) = browser_prod.try_lock() {
+                // Only send if track is armed (active)
+                let is_armed = if let Ok(state) = processing_state.try_read() {
+                    state.track_state.is_armed
+                } else {
+                    false
+                };
+
+                if is_armed {
+                    let pushed = prod.push_slice(&stereo_buffer);
+                    if should_log {
+                        info!("[INPUT] Streamed {} raw samples to browser", pushed);
+                    }
+                }
+            }
+        }
+
         let monitoring_enabled = is_monitoring.load(Ordering::Relaxed);
         let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
 
@@ -772,30 +842,15 @@ impl AudioEngine {
             info!("[INPUT] Monitoring: enabled={} volume={:.2}", monitoring_enabled, mon_vol);
         }
 
-        // If monitoring enabled, process and send to output
+        // If monitoring enabled, do DRY monitoring (no effects - effects are in browser)
+        // This provides zero-latency monitoring of raw input
         if monitoring_enabled {
-            let (gain, volume) = if let Ok(mut state) = processing_state.try_write() {
-                // Apply input gain
+            let (gain, volume) = if let Ok(state) = processing_state.try_read() {
+                // Apply input gain and monitoring volume only
                 let gain = state.track_state.input_gain_linear();
-                for sample in stereo_buffer.iter_mut() {
-                    *sample *= gain;
-                }
-
-                // Process through effects chain
-                state.effects_chain.process(&mut stereo_buffer);
-
-                // Get effects metering
-                let metering = state.effects_chain.get_metering();
-                if let Ok(mut em) = effects_metering.try_write() {
-                    em.noise_gate_open = metering.noise_gate_open;
-                    em.compressor_reduction = metering.compressor_reduction;
-                    em.limiter_reduction = metering.limiter_reduction;
-                }
-
-                // Apply track volume and monitoring volume
                 let volume = state.track_state.volume;
                 for sample in stereo_buffer.iter_mut() {
-                    *sample *= volume * mon_vol;
+                    *sample *= gain * volume * mon_vol;
                 }
                 (gain, volume)
             } else {
@@ -1068,6 +1123,7 @@ impl AudioEngine {
 
         // Clone shared state for callbacks
         let producer = self.local_producer.clone().unwrap();
+        let browser_stream_producer = self.browser_stream_producer.clone();
         let levels_in = self.levels.clone();
         let is_monitoring = self.is_monitoring.clone();
         let monitoring_volume = self.monitoring_volume.clone();
@@ -1083,6 +1139,7 @@ impl AudioEngine {
                         data,
                         input_channels,
                         &producer,
+                        browser_stream_producer.as_ref(),
                         &levels_in,
                         &is_monitoring,
                         &monitoring_volume,
@@ -1095,6 +1152,7 @@ impl AudioEngine {
             )?,
             SampleFormat::I32 => {
                 let producer = self.local_producer.clone().unwrap();
+                let browser_stream_producer = self.browser_stream_producer.clone();
                 let levels_in = self.levels.clone();
                 let is_monitoring = self.is_monitoring.clone();
                 let monitoring_volume = self.monitoring_volume.clone();
@@ -1110,6 +1168,7 @@ impl AudioEngine {
                             &float_data,
                             input_channels,
                             &producer,
+                            browser_stream_producer.as_ref(),
                             &levels_in,
                             &is_monitoring,
                             &monitoring_volume,

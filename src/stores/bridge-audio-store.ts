@@ -25,6 +25,10 @@ interface BridgeAudioState {
     total: number;
   };
 
+  // Live audio levels from bridge (for metering)
+  inputLevel: number;
+  inputPeak: number;
+
   // Available devices from bridge
   inputDevices: BridgeDevice[];
   outputDevices: BridgeDevice[];
@@ -60,6 +64,7 @@ interface BridgeAudioState {
   setRunning: (running: boolean) => void;
   setDriverType: (driverType: string | null) => void;
   setLatency: (latency: { input: number; output: number; total: number }) => void;
+  setInputLevels: (level: number, peak: number) => void;
   setDevices: (inputs: BridgeDevice[], outputs: BridgeDevice[]) => void;
   setSelectedInputDevice: (deviceId: string | null) => void;
   setSelectedOutputDevice: (deviceId: string | null) => void;
@@ -84,6 +89,8 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
       isRunning: false,
       driverType: null,
       latency: { input: 0, output: 0, total: 0 },
+      inputLevel: 0,
+      inputPeak: 0,
       inputDevices: [],
       outputDevices: [],
       lastError: null,
@@ -110,6 +117,7 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
       setRunning: (running) => set({ isRunning: running }),
       setDriverType: (driverType) => set({ driverType }),
       setLatency: (latency) => set({ latency }),
+      setInputLevels: (level, peak) => set({ inputLevel: level, inputPeak: peak }),
 
       setDevices: (inputs, outputs) => {
         const state = get();
@@ -155,6 +163,8 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
         isRunning: false,
         driverType: null,
         latency: { input: 0, output: 0, total: 0 },
+        inputLevel: 0,
+        inputPeak: 0,
         inputDevices: [],
         outputDevices: [],
         lastError: null,

@@ -5,11 +5,22 @@ import {
   nativeBridge,
   launchNativeBridge,
   getNativeBridgeDownloadUrl,
+  type BridgeAudioData,
 } from '@/lib/audio/native-bridge';
 import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
+
+// Import audio engine for bridge audio processing
+// We use a lazy import pattern to avoid circular dependencies
+let audioEngineModule: typeof import('./useAudioEngine') | null = null;
+const getAudioEngine = async () => {
+  if (!audioEngineModule) {
+    audioEngineModule = await import('./useAudioEngine');
+  }
+  return audioEngineModule;
+};
 
 interface BridgeDevice {
   id: string;
@@ -99,6 +110,9 @@ export function useNativeBridge() {
       outputPeak: number;
       remoteLevels: [string, number][];
     }) => {
+      // Store input levels in bridge audio store for UI metering
+      useBridgeAudioStore.getState().setInputLevels(data.inputLevel, data.inputPeak);
+
       // Get current user's primary track and update its level
       const roomState = useRoomStore.getState();
       const currentUserId = roomState.currentUser?.id;
@@ -118,6 +132,24 @@ export function useNativeBridge() {
       useAudioStore.getState().setLocalLevel(data.inputLevel);
     };
 
+    // Handle raw audio data from native bridge
+    // This is the core of the bridge integration - raw ASIO audio is sent here
+    // and routed through Web Audio effects chain + WebRTC for broadcast
+    const handleAudioData = async (data: BridgeAudioData) => {
+      // Get audio engine and push samples
+      // The audio engine will process through effects and route to WebRTC
+      try {
+        const engineModule = await getAudioEngine();
+        // Access the global engine directly since we can't use the hook here
+        // The pushBridgeAudio is designed to be called from outside React
+        if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+          (window as any).__openStudioAudioEngine.pushBridgeAudio(data.samples);
+        }
+      } catch (e) {
+        // Silently ignore - audio engine may not be ready yet
+      }
+    };
+
     // Register all listeners
     nativeBridge.on('connected', handleConnected);
     nativeBridge.on('disconnected', handleDisconnected);
@@ -125,6 +157,7 @@ export function useNativeBridge() {
     nativeBridge.on('devices', handleDevices);
     nativeBridge.on('error', handleError);
     nativeBridge.on('levels', handleLevels);
+    nativeBridge.on('audioData', handleAudioData);
 
     console.log('[useNativeBridge] Event listeners registered, checking availability...');
 
@@ -150,6 +183,7 @@ export function useNativeBridge() {
       nativeBridge.off('devices', handleDevices);
       nativeBridge.off('error', handleError);
       nativeBridge.off('levels', handleLevels);
+      nativeBridge.off('audioData', handleAudioData);
       initialized.current = false;
     };
   }, []); // Empty dependency array - run once
@@ -189,7 +223,7 @@ export function useNativeBridge() {
   }, []);
 
   // Configure and start audio
-  const startAudio = useCallback(() => {
+  const startAudio = useCallback(async () => {
     const state = useBridgeAudioStore.getState();
     if (!state.isConnected) {
       console.warn('[useNativeBridge] Cannot start audio - not connected');
@@ -206,6 +240,13 @@ export function useNativeBridge() {
       sampleRate: state.sampleRate,
       channelConfig: state.inputChannelConfig,
     });
+
+    // Enable bridge audio mode in the audio engine
+    // This routes incoming bridge audio through Web Audio effects chain + WebRTC
+    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+      console.log('[useNativeBridge] Enabling bridge audio mode in audio engine');
+      await (window as any).__openStudioAudioEngine.enableBridgeAudio();
+    }
 
     if (deviceId) {
       nativeBridge.setInputDevice(deviceId);
@@ -226,6 +267,8 @@ export function useNativeBridge() {
       if (userTracks.length > 0) {
         const track = userTracks[0];
         console.log('[useNativeBridge] Sending initial track state to bridge:', track.id);
+        // Note: We only send track state, not effects
+        // Effects are processed in the browser via Web Audio, not in the native bridge
         nativeBridge.updateTrackState(track.id, {
           isArmed: track.isArmed,
           isMuted: track.isMuted,
@@ -235,11 +278,6 @@ export function useNativeBridge() {
           monitoringEnabled: track.audioSettings.directMonitoring ?? true,
           monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
         });
-
-        // Also send effects
-        if (track.audioSettings.effects) {
-          nativeBridge.updateEffects(track.id, track.audioSettings.effects);
-        }
       }
     }
   }, []);
@@ -250,6 +288,12 @@ export function useNativeBridge() {
     if (state.isConnected) {
       console.log('[useNativeBridge] Stopping audio');
       nativeBridge.stopAudio();
+    }
+
+    // Disable bridge audio mode in the audio engine
+    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+      console.log('[useNativeBridge] Disabling bridge audio mode in audio engine');
+      (window as any).__openStudioAudioEngine.disableBridgeAudio();
     }
   }, []);
 

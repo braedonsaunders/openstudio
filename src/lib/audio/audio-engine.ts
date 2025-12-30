@@ -62,6 +62,12 @@ export class AudioEngine {
   private broadcastMixerGain: GainNode | null = null;
   private midiSourceNode: MediaStreamAudioSourceNode | null = null;
   private midiMixGain: GainNode | null = null;
+
+  // Native bridge audio source (replaces localSourceNode when bridge is active)
+  private bridgeSourceNode: ScriptProcessorNode | null = null;
+  private bridgeAudioBuffer: Float32Array[] = []; // Ring buffer of audio chunks
+  private bridgeReadIndex: number = 0;
+  private useBridgeAudio: boolean = false;
   private stemMixState: StemMixState = {
     vocals: { enabled: true, volume: 1 },
     drums: { enabled: true, volume: 1 },
@@ -340,6 +346,150 @@ export class AudioEngine {
     }
 
     return this.localStream;
+  }
+
+  /**
+   * Enable native bridge audio mode.
+   * This creates a ScriptProcessorNode that receives audio from the native bridge
+   * and routes it through the same effects chain as local microphone audio.
+   */
+  async enableBridgeAudio(): Promise<void> {
+    if (!this.audioContext || !this.masterGain) {
+      console.warn('[AudioEngine] Cannot enable bridge audio: AudioContext not initialized');
+      return;
+    }
+
+    console.log('[AudioEngine] Enabling bridge audio mode');
+    this.useBridgeAudio = true;
+    this.bridgeAudioBuffer = [];
+    this.bridgeReadIndex = 0;
+
+    // Clean up any existing local source
+    this.localSourceNode?.disconnect();
+    this.localSourceNode = null;
+
+    // Create ScriptProcessorNode for bridge audio
+    // Buffer size of 256 for low latency while maintaining stability
+    const bufferSize = 256;
+    this.bridgeSourceNode = this.audioContext.createScriptProcessor(bufferSize, 0, 2);
+
+    this.bridgeSourceNode.onaudioprocess = (event) => {
+      const outputL = event.outputBuffer.getChannelData(0);
+      const outputR = event.outputBuffer.getChannelData(1);
+
+      // Try to get samples from the buffer
+      if (this.bridgeAudioBuffer.length > 0) {
+        const samples = this.bridgeAudioBuffer.shift()!;
+
+        // Deinterleave stereo samples
+        const frameCount = Math.min(samples.length / 2, outputL.length);
+        for (let i = 0; i < frameCount; i++) {
+          outputL[i] = samples[i * 2] || 0;
+          outputR[i] = samples[i * 2 + 1] || 0;
+        }
+
+        // Fill remaining with zeros if needed
+        for (let i = frameCount; i < outputL.length; i++) {
+          outputL[i] = 0;
+          outputR[i] = 0;
+        }
+      } else {
+        // No data - output silence
+        outputL.fill(0);
+        outputR.fill(0);
+      }
+    };
+
+    // Set up the audio chain: bridgeSource -> inputGainNode (dB) -> inputGain -> armGain -> effects -> ...
+    // We need to create the same chain as captureLocalAudio but with bridge source
+
+    // Clean up existing nodes
+    this.localAnalyser?.disconnect();
+    this.localInputGain?.disconnect();
+    this.localArmGain?.disconnect();
+    this.localMuteGain?.disconnect();
+    this.localMonitorGain?.disconnect();
+    this.localEffectsProcessor?.dispose();
+
+    // Create gain nodes
+    this.localAnalyser = this.audioContext.createAnalyser();
+    this.localAnalyser.fftSize = 256;
+
+    this.localInputGain = this.audioContext.createGain();
+    this.localInputGain.gain.value = this.localTrackVolume;
+
+    this.localArmGain = this.audioContext.createGain();
+    this.localArmGain.gain.value = this.localTrackArmed ? 1 : 0;
+
+    this.localMuteGain = this.audioContext.createGain();
+    this.localMuteGain.gain.value = this.localTrackMuted ? 0 : 1;
+
+    this.localMonitorGain = this.audioContext.createGain();
+    this.localMonitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
+
+    // Connect the chain
+    // bridgeSource -> inputGain -> analyser
+    // bridgeSource -> inputGain -> armGain -> effects -> muteGain -> monitorGain -> masterGain
+    this.bridgeSourceNode.connect(this.localInputGain);
+    this.localInputGain.connect(this.localAnalyser);
+    this.localInputGain.connect(this.localArmGain);
+
+    // Create effects processor
+    this.localEffectsProcessor = new ExtendedEffectsProcessor(this.audioContext);
+    this.localArmGain.connect(this.localEffectsProcessor.getInputNode());
+    this.localEffectsProcessor.connect(this.localMuteGain);
+    this.localMuteGain.connect(this.localMonitorGain);
+    this.localMonitorGain.connect(this.masterGain);
+
+    // Also connect to broadcast for WebRTC
+    if (this.broadcastMixerGain) {
+      this.localMuteGain.connect(this.broadcastMixerGain);
+    }
+
+    console.log('[AudioEngine] Bridge audio enabled, signal chain connected');
+  }
+
+  /**
+   * Disable bridge audio mode and clean up resources.
+   */
+  disableBridgeAudio(): void {
+    console.log('[AudioEngine] Disabling bridge audio mode');
+    this.useBridgeAudio = false;
+
+    if (this.bridgeSourceNode) {
+      this.bridgeSourceNode.disconnect();
+      this.bridgeSourceNode.onaudioprocess = null;
+      this.bridgeSourceNode = null;
+    }
+
+    this.bridgeAudioBuffer = [];
+    this.bridgeReadIndex = 0;
+  }
+
+  /**
+   * Push audio samples from native bridge into the audio engine.
+   * Called when we receive binary audio data from the WebSocket.
+   * @param samples Interleaved stereo Float32Array samples
+   */
+  pushBridgeAudio(samples: Float32Array): void {
+    if (!this.useBridgeAudio) return;
+
+    // Add to buffer queue
+    // Limit buffer size to prevent memory growth (keep last ~100ms of audio)
+    const maxBufferChunks = 10;
+    if (this.bridgeAudioBuffer.length > maxBufferChunks) {
+      // Drop oldest chunk if buffer is getting too full
+      this.bridgeAudioBuffer.shift();
+    }
+
+    this.bridgeAudioBuffer.push(samples);
+  }
+
+  /**
+   * Check if bridge audio mode is active
+   */
+  isBridgeAudioEnabled(): boolean {
+    return this.useBridgeAudio;
   }
 
   async addRemoteStream(userId: string, stream: MediaStream): Promise<void> {
