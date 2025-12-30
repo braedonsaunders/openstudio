@@ -490,6 +490,52 @@ export class NativeBridge {
   }
 
   /**
+   * Seek backing track
+   */
+  seekBackingTrack(time: number): void {
+    this.send({ type: 'seekBackingTrack', time });
+  }
+
+  /**
+   * Set backing track volume
+   */
+  setBackingTrackVolume(volume: number): void {
+    this.send({ type: 'setBackingTrackVolume', volume });
+  }
+
+  /**
+   * Set stem state (for stem separation playback)
+   */
+  setStemState(stem: string, enabled: boolean, volume: number): void {
+    this.send({ type: 'setStemState', stem, enabled, volume });
+  }
+
+  /**
+   * Set master effects enabled
+   */
+  setMasterEffectsEnabled(enabled: boolean): void {
+    this.send({ type: 'setMasterEffectsEnabled', enabled });
+  }
+
+  /**
+   * Update master effects settings
+   */
+  updateMasterEffects(settings: {
+    eq?: unknown;
+    compressor?: unknown;
+    reverb?: unknown;
+    limiter?: unknown;
+  }): void {
+    this.send({
+      type: 'updateMasterEffects',
+      eq: settings.eq,
+      compressor: settings.compressor,
+      reverb: settings.reverb,
+      limiter: settings.limiter,
+    });
+  }
+
+  /**
    * Ping for latency measurement
    */
   ping(): void {

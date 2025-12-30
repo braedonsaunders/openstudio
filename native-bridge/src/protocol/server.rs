@@ -67,7 +67,7 @@ impl BridgeServer {
                         input_peak: audio_levels.input_peak,
                         output_level: audio_levels.output_level,
                         output_peak: audio_levels.output_peak,
-                        remote_levels: vec![],
+                        remote_levels: audio_levels.remote_levels,
                     }
                 };
 
@@ -299,8 +299,88 @@ impl BridgeServer {
             }
 
             BrowserMessage::SetMasterVolume { volume } => {
+                let app = self.state.lock().await;
+                app.audio_engine.set_master_volume(volume);
+                None
+            }
+
+            // === Remote Users ===
+            BrowserMessage::AddRemoteUser { user_id, user_name } => {
+                info!("AddRemoteUser: {} ({})", user_name, user_id);
+                let app = self.state.lock().await;
+                app.audio_engine.add_remote_user(&user_id, &user_name);
+                None
+            }
+
+            BrowserMessage::RemoveRemoteUser { user_id } => {
+                info!("RemoveRemoteUser: {}", user_id);
+                let app = self.state.lock().await;
+                app.audio_engine.remove_remote_user(&user_id);
+                None
+            }
+
+            BrowserMessage::UpdateRemoteUser { user_id, volume, muted, compensation_delay_ms } => {
+                let app = self.state.lock().await;
+                app.audio_engine.update_remote_user(&user_id, volume, muted, compensation_delay_ms);
+                None
+            }
+
+            // === Backing Track ===
+            BrowserMessage::LoadBackingTrack { url, duration } => {
+                info!("LoadBackingTrack: {} ({:.1}s)", url, duration);
+                // Note: Actual audio fetching would be done here
+                // For now, acknowledge the load request
+                Some(NativeMessage::BackingTrackLoaded {
+                    duration,
+                    waveform: vec![], // Would compute waveform from decoded audio
+                })
+            }
+
+            BrowserMessage::PlayBackingTrack { sync_timestamp: _, offset } => {
+                info!("PlayBackingTrack at offset: {:.2}s", offset);
+                let app = self.state.lock().await;
+                app.audio_engine.set_backing_track_state(true, offset);
+                None
+            }
+
+            BrowserMessage::StopBackingTrack => {
+                info!("StopBackingTrack");
+                let app = self.state.lock().await;
+                app.audio_engine.set_backing_track_state(false, 0.0);
+                None
+            }
+
+            BrowserMessage::SeekBackingTrack { time } => {
+                let app = self.state.lock().await;
+                app.audio_engine.set_backing_track_state(true, time);
+                None
+            }
+
+            BrowserMessage::SetBackingTrackVolume { volume } => {
+                let app = self.state.lock().await;
+                app.audio_engine.set_backing_track_volume(volume);
+                None
+            }
+
+            // === Stems ===
+            BrowserMessage::SetStemState { stem, enabled, volume } => {
+                info!("SetStemState: {} enabled={} volume={:.2}", stem, enabled, volume);
                 let mut app = self.state.lock().await;
-                app.mixer.set_master_volume(volume);
+                app.mixer.set_stem_state(&stem, enabled, volume);
+                None
+            }
+
+            // === Master Effects ===
+            BrowserMessage::SetMasterEffectsEnabled { enabled } => {
+                let mut app = self.state.lock().await;
+                app.mixer.set_master_effects_enabled(enabled);
+                None
+            }
+
+            BrowserMessage::UpdateMasterEffects { eq, compressor, reverb, limiter } => {
+                info!("UpdateMasterEffects");
+                // Would update master effects chain here
+                let _ = (eq, compressor, reverb, limiter);
                 None
             }
 
@@ -316,13 +396,24 @@ impl BridgeServer {
             let samples_offset = AudioMessageHeader::SIZE;
             let sample_bytes = &data[samples_offset..];
 
-            let _samples: Vec<f32> = sample_bytes
+            let samples: Vec<f32> = sample_bytes
                 .chunks_exact(4)
                 .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
                 .collect();
 
             if header.msg_type == 0 {
-                // TODO: Route to mixer for playback
+                // Remote user audio - route to audio engine
+                // The user_id is encoded in the first 32 bytes after header
+                // For now, we'll handle this when we add WebRTC support
+                // The samples would be pushed to the appropriate user's ring buffer
+                let app = self.state.lock().await;
+                // Would extract user_id from binary format and call:
+                // app.audio_engine.push_remote_audio(&user_id, &samples);
+                let _ = samples; // Prevent unused warning for now
+            } else if header.msg_type == 1 {
+                // Backing track audio - route to backing track buffer
+                let app = self.state.lock().await;
+                app.audio_engine.push_backing_audio(&samples);
             }
         }
     }
