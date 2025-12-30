@@ -113,17 +113,19 @@ export function useNativeBridge() {
     };
 
     // Handle audio levels from native bridge - update track levels for waveform display
+    // TODO: In multi-track mode, native bridge should send per-track levels
+    // For now, we use the global input level for the primary track
     const handleLevels = (data: {
       inputLevel: number;
       inputPeak: number;
       outputLevel: number;
       outputPeak: number;
       remoteLevels: [string, number][];
+      trackLevels?: Array<{ trackId: string; level: number; peak: number }>; // Multi-track levels
     }) => {
       // Store input levels in bridge audio store for UI metering
       useBridgeAudioStore.getState().setInputLevels(data.inputLevel, data.inputPeak);
 
-      // Get current user's primary track and update its level
       const roomState = useRoomStore.getState();
       const currentUserId = roomState.currentUser?.id;
 
@@ -131,9 +133,14 @@ export function useNativeBridge() {
         const tracksState = useUserTracksStore.getState();
         const userTracks = tracksState.getTracksByUser(currentUserId);
 
-        if (userTracks.length > 0) {
+        // Multi-track: update individual track levels if available
+        if (data.trackLevels && data.trackLevels.length > 0) {
+          for (const trackLevel of data.trackLevels) {
+            tracksState.setTrackLevel(trackLevel.trackId, trackLevel.level);
+          }
+        } else if (userTracks.length > 0) {
+          // Legacy: update primary track with global input level
           const primaryTrackId = userTracks[0].id;
-          // Update track level for waveform visualization
           tracksState.setTrackLevel(primaryTrackId, data.inputLevel);
         }
 
@@ -151,10 +158,15 @@ export function useNativeBridge() {
     // Handle raw audio data from native bridge
     // This is the core of the bridge integration - raw ASIO audio is sent here
     // and routed through Web Audio effects chain + WebRTC for broadcast
+    //
+    // Multi-track support:
+    // - msgType 1 (legacy): Audio goes to primary track / legacy single-track path
+    // - msgType 2 (multi-track): Audio includes trackId and routes to specific track processor
     const handleAudioData = async (data: BridgeAudioData) => {
       // Log occasionally to confirm audio data is being received
       if (audioDataCounter++ % 500 === 0) {
         console.log('[useNativeBridge] handleAudioData called, samples:', data.samples?.length,
+          'trackId:', data.trackId || 'none (legacy)',
           'hasEngine:', !!(window as any).__openStudioAudioEngine,
           'bridgeEnabled:', (window as any).__openStudioAudioEngine?.isBridgeAudioEnabled?.());
       }
@@ -166,7 +178,15 @@ export function useNativeBridge() {
         // Access the global engine directly since we can't use the hook here
         // The pushBridgeAudio is designed to be called from outside React
         if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-          (window as any).__openStudioAudioEngine.pushBridgeAudio(data.samples);
+          const engine = (window as any).__openStudioAudioEngine;
+
+          if (data.trackId) {
+            // Multi-track mode: route to specific track processor
+            engine.pushTrackBridgeAudio(data.trackId, data.samples);
+          } else {
+            // Legacy mode: use single-track path
+            engine.pushBridgeAudio(data.samples);
+          }
         }
       } catch (e) {
         console.error('[useNativeBridge] handleAudioData error:', e);
@@ -303,9 +323,24 @@ export function useNativeBridge() {
     if (currentUserId) {
       const tracksState = useUserTracksStore.getState();
       const userTracks = tracksState.getTracksByUser(currentUserId);
-      if (userTracks.length > 0) {
-        const track = userTracks[0];
-        console.log('[useNativeBridge] Sending initial track state to bridge:', track.id);
+
+      // Multi-track: Send channel config for all tracks
+      if (userTracks.length > 1) {
+        const trackConfigs = userTracks.map(track => ({
+          trackId: track.id,
+          channelCount: track.audioSettings.channelConfig?.channelCount || 2,
+          leftChannel: track.audioSettings.channelConfig?.leftChannel || 0,
+          rightChannel: track.audioSettings.channelConfig?.rightChannel,
+        }));
+        nativeBridge.setMultiTrackConfig(trackConfigs);
+        console.log('[useNativeBridge] Sent multi-track config for', userTracks.length, 'tracks');
+      }
+
+      // Send state for ALL tracks, not just the first one
+      for (let i = 0; i < userTracks.length; i++) {
+        const track = userTracks[i];
+        console.log('[useNativeBridge] Sending initial track state to bridge:', track.id, i === 0 ? '(primary)' : '');
+
         // Note: We only send track state, not effects
         // Effects are processed in the browser via Web Audio, not in the native bridge
         nativeBridge.updateTrackState(track.id, {
@@ -318,24 +353,50 @@ export function useNativeBridge() {
           monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
         });
 
-        // Also sync effects to the audio engine
-        // This ensures effects are applied even if useTrackAudioSync hasn't fired yet
-        if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine && track.audioSettings.effects) {
-          console.log('[useNativeBridge] Syncing initial effects to audio engine');
-          (window as any).__openStudioAudioEngine.updateLocalEffects(track.audioSettings.effects);
+        // Per-track channel config
+        if (track.audioSettings.channelConfig) {
+          nativeBridge.setTrackChannelConfig(track.id, track.audioSettings.channelConfig);
         }
 
-        // Sync track state to audio engine
-        // Browser software monitoring is controlled by ARM state (not Direct Monitoring)
-        // Direct Monitoring only controls native bridge DRY passthrough
+        // Sync to audio engine
         if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-          (window as any).__openStudioAudioEngine.setLocalTrackArmed(track.isArmed);
-          (window as any).__openStudioAudioEngine.setLocalTrackMuted(track.isMuted);
-          (window as any).__openStudioAudioEngine.setLocalTrackVolume(track.volume);
-          // Software monitoring = armed && not muted
+          const engine = (window as any).__openStudioAudioEngine;
+
+          // Create track processor if it doesn't exist
+          engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
+
+          // Update track state
+          const shouldMonitor = track.isArmed && !track.isMuted;
+          engine.updateTrackState(track.id, {
+            isArmed: track.isArmed,
+            isMuted: track.isMuted,
+            isSolo: track.isSolo,
+            volume: track.volume,
+            inputGain: track.audioSettings.inputGain || 0,
+            monitoringEnabled: shouldMonitor,
+          });
+
+          // Sync effects
+          if (track.audioSettings.effects) {
+            engine.updateTrackEffects(track.id, track.audioSettings.effects);
+          }
+        }
+      }
+
+      // Legacy: also sync first track to single-track API for backward compat
+      if (userTracks.length > 0) {
+        const track = userTracks[0];
+        if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+          const engine = (window as any).__openStudioAudioEngine;
+          engine.setLocalTrackArmed(track.isArmed);
+          engine.setLocalTrackMuted(track.isMuted);
+          engine.setLocalTrackVolume(track.volume);
           const shouldSoftwareMonitor = track.isArmed && !track.isMuted;
-          console.log('[useNativeBridge] Syncing software monitoring:', shouldSoftwareMonitor, '(armed:', track.isArmed, 'muted:', track.isMuted, ')');
-          (window as any).__openStudioAudioEngine.setMonitoringEnabled(shouldSoftwareMonitor);
+          console.log('[useNativeBridge] Primary track software monitoring:', shouldSoftwareMonitor);
+          engine.setMonitoringEnabled(shouldSoftwareMonitor);
+          if (track.audioSettings.effects) {
+            engine.updateLocalEffects(track.audioSettings.effects);
+          }
         }
       }
     }
@@ -450,8 +511,10 @@ export function useNativeBridge() {
         if (currentUserId) {
           const tracksState = useUserTracksStore.getState();
           const userTracks = tracksState.getTracksByUser(currentUserId);
-          if (userTracks.length > 0) {
-            const track = userTracks[0];
+
+          // Re-sync ALL tracks after sample rate change
+          for (let i = 0; i < userTracks.length; i++) {
+            const track = userTracks[i];
 
             // Send track state to native bridge
             nativeBridge.updateTrackState(track.id, {
@@ -464,14 +527,45 @@ export function useNativeBridge() {
               monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
             });
 
+            // Per-track channel config
+            if (track.audioSettings.channelConfig) {
+              nativeBridge.setTrackChannelConfig(track.id, track.audioSettings.channelConfig);
+            }
+
             // Sync to audio engine
+            const engine = (window as any).__openStudioAudioEngine;
+            if (engine) {
+              // Create track processor if it doesn't exist
+              engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
+
+              // Update track state
+              const shouldMonitor = track.isArmed && !track.isMuted;
+              engine.updateTrackState(track.id, {
+                isArmed: track.isArmed,
+                isMuted: track.isMuted,
+                isSolo: track.isSolo,
+                volume: track.volume,
+                inputGain: track.audioSettings.inputGain || 0,
+                monitoringEnabled: shouldMonitor,
+              });
+
+              // Sync effects
+              if (track.audioSettings.effects) {
+                engine.updateTrackEffects(track.id, track.audioSettings.effects);
+              }
+            }
+          }
+
+          // Legacy: also sync first track to single-track API
+          if (userTracks.length > 0) {
+            const track = userTracks[0];
             const engine = (window as any).__openStudioAudioEngine;
             if (engine) {
               engine.setLocalTrackArmed(track.isArmed);
               engine.setLocalTrackMuted(track.isMuted);
               engine.setLocalTrackVolume(track.volume);
               const shouldSoftwareMonitor = track.isArmed && !track.isMuted;
-              console.log('[useNativeBridge] After sample rate change - setting software monitoring:', shouldSoftwareMonitor);
+              console.log('[useNativeBridge] After sample rate change - primary track monitoring:', shouldSoftwareMonitor);
               engine.setMonitoringEnabled(shouldSoftwareMonitor);
               if (track.audioSettings.effects) {
                 engine.updateLocalEffects(track.audioSettings.effects);

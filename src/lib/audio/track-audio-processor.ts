@@ -1,8 +1,9 @@
 // Track Audio Processor - Manages per-track audio processing
 // Includes: input gain, effects chain, mute, solo, volume, monitoring
+// Supports multiple input sources: MediaStream (web) or AudioWorklet (native bridge)
 
 import { ExtendedEffectsProcessor } from './effects/extended-effects-processor';
-import type { ExtendedEffectsChain, TrackAudioSettings } from '@/types';
+import type { ExtendedEffectsChain, TrackAudioSettings, InputChannelConfig } from '@/types';
 
 export interface TrackAudioState {
   isMuted: boolean;
@@ -10,6 +11,12 @@ export interface TrackAudioState {
   volume: number;
   isArmed: boolean;
   inputGain: number; // dB (-24 to +24)
+  monitoringEnabled: boolean;
+}
+
+export interface TrackInputConfig {
+  channelConfig: InputChannelConfig;
+  deviceId?: string; // For web audio mode
 }
 
 export interface TrackProcessingMetrics {
@@ -22,15 +29,27 @@ export interface TrackProcessingMetrics {
   limiterReduction: number;
 }
 
+export type TrackInputSourceType = 'none' | 'mediastream' | 'bridge';
+
 export class TrackAudioProcessor {
   private audioContext: AudioContext;
   private trackId: string;
+
+  // Input source management
+  private inputSourceType: TrackInputSourceType = 'none';
+  private mediaStreamSource: MediaStreamAudioSourceNode | null = null;
+  private mediaStream: MediaStream | null = null;
+  private bridgeWorkletNode: AudioWorkletNode | null = null;
+  private channelSplitter: ChannelSplitterNode | null = null;
+  private channelMerger: ChannelMergerNode | null = null;
+  private inputConfig: TrackInputConfig | null = null;
 
   // Audio nodes
   private inputGainNode: GainNode;
   private armGainNode: GainNode; // Gates input when track is not armed
   private volumeGainNode: GainNode;
   private muteGainNode: GainNode;
+  private monitorGainNode: GainNode; // Controls monitoring output
   private inputAnalyser: AnalyserNode;
   private outputAnalyser: AnalyserNode;
 
@@ -42,13 +61,17 @@ export class TrackAudioProcessor {
     isMuted: false,
     isSolo: false,
     volume: 1,
-    isArmed: true,
+    isArmed: false,
     inputGain: 0,
+    monitoringEnabled: false,
   };
 
   // Solo management (class-level for all tracks)
   private static soloedTracks = new Set<string>();
   private static allProcessors = new Map<string, TrackAudioProcessor>();
+
+  // Bridge worklet module loaded flag
+  private static bridgeWorkletLoaded = false;
 
   // Metrics
   private lastProcessingTime = 0;
@@ -64,9 +87,12 @@ export class TrackAudioProcessor {
 
     // Create audio nodes
     this.inputGainNode = audioContext.createGain();
-    this.armGainNode = audioContext.createGain(); // Gates input when not armed
+    this.armGainNode = audioContext.createGain();
+    this.armGainNode.gain.value = 0; // Start disarmed
     this.volumeGainNode = audioContext.createGain();
     this.muteGainNode = audioContext.createGain();
+    this.monitorGainNode = audioContext.createGain();
+    this.monitorGainNode.gain.value = 0; // Start with monitoring off
     this.inputAnalyser = audioContext.createAnalyser();
     this.inputAnalyser.fftSize = 256;
     this.outputAnalyser = audioContext.createAnalyser();
@@ -80,23 +106,33 @@ export class TrackAudioProcessor {
     );
 
     // Wire up the signal chain:
-    // input -> inputGain -> armGain -> inputAnalyser -> effects -> volumeGain -> muteGain -> outputAnalyser -> output
-    // When not armed, armGain is 0, blocking all input from being processed or visualized
+    // [source] -> inputGain -> armGain -> inputAnalyser -> effects -> volumeGain -> muteGain -> outputAnalyser
+    // outputAnalyser branches to:
+    //   1. monitorGain -> [monitoring output]
+    //   2. [broadcast/mix output]
     this.inputGainNode.connect(this.armGainNode);
     this.armGainNode.connect(this.inputAnalyser);
     this.inputAnalyser.connect(this.effectsProcessor.getInputNode());
     this.effectsProcessor.connect(this.volumeGainNode);
     this.volumeGainNode.connect(this.muteGainNode);
     this.muteGainNode.connect(this.outputAnalyser);
+    this.outputAnalyser.connect(this.monitorGainNode);
 
     // Apply initial settings
     if (initialSettings) {
       this.state.inputGain = initialSettings.inputGain ?? 0;
+      this.state.monitoringEnabled = initialSettings.directMonitoring ?? false;
       this.updateInputGain();
+      this.updateMonitoringState();
     }
 
     // Register this processor
     TrackAudioProcessor.allProcessors.set(trackId, this);
+    console.log(`[TrackAudioProcessor] Created processor for track ${trackId}`);
+  }
+
+  getTrackId(): string {
+    return this.trackId;
   }
 
   // Get the input node (where audio enters this processor)
@@ -119,12 +155,175 @@ export class TrackAudioProcessor {
     this.outputAnalyser.disconnect();
   }
 
+  // Get the monitor output node (for connecting to speakers)
+  getMonitorNode(): GainNode {
+    return this.monitorGainNode;
+  }
+
+  // Get the broadcast output node (for WebRTC - before monitor gain)
+  getBroadcastNode(): AnalyserNode {
+    return this.outputAnalyser;
+  }
+
+  // Connect monitor output to destination (speakers)
+  connectMonitor(destination: AudioNode): void {
+    this.monitorGainNode.connect(destination);
+  }
+
+  // ==========================================
+  // Input Source Management
+  // ==========================================
+
+  /**
+   * Set up MediaStream input (web audio mode)
+   * Captures from device microphone/interface via getUserMedia
+   */
+  async setMediaStreamInput(stream: MediaStream, config: TrackInputConfig): Promise<void> {
+    // Clean up existing input
+    this.disconnectInputSource();
+
+    this.inputConfig = config;
+    this.mediaStream = stream;
+    this.inputSourceType = 'mediastream';
+
+    // Create source from stream
+    this.mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
+
+    const channelCount = config.channelConfig.channelCount;
+    const leftChannel = config.channelConfig.leftChannel;
+    const rightChannel = config.channelConfig.rightChannel;
+
+    if (channelCount === 1) {
+      // Mono: extract single channel and connect
+      const numChannels = stream.getAudioTracks()[0]?.getSettings().channelCount || 2;
+      this.channelSplitter = this.audioContext.createChannelSplitter(numChannels);
+      this.channelMerger = this.audioContext.createChannelMerger(2);
+
+      this.mediaStreamSource.connect(this.channelSplitter);
+      // Route selected channel to both L and R
+      this.channelSplitter.connect(this.channelMerger, leftChannel, 0);
+      this.channelSplitter.connect(this.channelMerger, leftChannel, 1);
+      this.channelMerger.connect(this.inputGainNode);
+    } else {
+      // Stereo: extract L/R channels
+      const numChannels = stream.getAudioTracks()[0]?.getSettings().channelCount || 2;
+      this.channelSplitter = this.audioContext.createChannelSplitter(numChannels);
+      this.channelMerger = this.audioContext.createChannelMerger(2);
+
+      this.mediaStreamSource.connect(this.channelSplitter);
+      this.channelSplitter.connect(this.channelMerger, leftChannel, 0);
+      this.channelSplitter.connect(this.channelMerger, rightChannel ?? leftChannel, 1);
+      this.channelMerger.connect(this.inputGainNode);
+    }
+
+    console.log(`[TrackAudioProcessor] ${this.trackId} - MediaStream input connected`, config);
+  }
+
+  /**
+   * Set up bridge worklet input (native bridge mode)
+   * Receives audio via postMessage from native ASIO bridge
+   */
+  async setBridgeInput(config: TrackInputConfig): Promise<void> {
+    // Clean up existing input
+    this.disconnectInputSource();
+
+    this.inputConfig = config;
+    this.inputSourceType = 'bridge';
+
+    // Load bridge worklet if not already loaded
+    if (!TrackAudioProcessor.bridgeWorkletLoaded) {
+      try {
+        await this.audioContext.audioWorklet.addModule('/audio/bridge-processor.js');
+        TrackAudioProcessor.bridgeWorkletLoaded = true;
+        console.log('[TrackAudioProcessor] Bridge worklet module loaded');
+      } catch (err) {
+        console.log('[TrackAudioProcessor] Bridge worklet already loaded or error:', err);
+        TrackAudioProcessor.bridgeWorkletLoaded = true;
+      }
+    }
+
+    // Create AudioWorkletNode for this track's bridge audio
+    this.bridgeWorkletNode = new AudioWorkletNode(this.audioContext, 'bridge-audio-processor', {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [2],
+    });
+
+    // Handle worklet messages (stats)
+    this.bridgeWorkletNode.port.onmessage = (event) => {
+      if (event.data.type === 'stats') {
+        // Could emit stats event here if needed
+      }
+    };
+
+    // Connect worklet to input chain
+    this.bridgeWorkletNode.connect(this.inputGainNode);
+
+    console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge input connected`, config);
+  }
+
+  /**
+   * Push audio samples to bridge worklet (called from native bridge WebSocket)
+   */
+  pushBridgeAudio(samples: Float32Array): void {
+    if (this.inputSourceType !== 'bridge' || !this.bridgeWorkletNode) {
+      return;
+    }
+
+    this.bridgeWorkletNode.port.postMessage({
+      type: 'audio',
+      samples: samples,
+    });
+  }
+
+  /**
+   * Disconnect current input source
+   */
+  disconnectInputSource(): void {
+    if (this.mediaStreamSource) {
+      this.mediaStreamSource.disconnect();
+      this.mediaStreamSource = null;
+    }
+    if (this.channelSplitter) {
+      this.channelSplitter.disconnect();
+      this.channelSplitter = null;
+    }
+    if (this.channelMerger) {
+      this.channelMerger.disconnect();
+      this.channelMerger = null;
+    }
+    if (this.bridgeWorkletNode) {
+      this.bridgeWorkletNode.port.postMessage({ type: 'reset' });
+      this.bridgeWorkletNode.disconnect();
+      this.bridgeWorkletNode = null;
+    }
+    if (this.mediaStream) {
+      // Don't stop tracks - they may be shared with other tracks
+      this.mediaStream = null;
+    }
+    this.inputSourceType = 'none';
+    this.inputConfig = null;
+  }
+
+  getInputSourceType(): TrackInputSourceType {
+    return this.inputSourceType;
+  }
+
+  getInputConfig(): TrackInputConfig | null {
+    return this.inputConfig;
+  }
+
+  // ==========================================
+  // State Management
+  // ==========================================
+
   // Update track state
   updateState(updates: Partial<TrackAudioState>): void {
     const prevMuted = this.state.isMuted;
     const prevSolo = this.state.isSolo;
     const prevVolume = this.state.volume;
     const prevArmed = this.state.isArmed;
+    const prevMonitoring = this.state.monitoringEnabled;
 
     Object.assign(this.state, updates);
 
@@ -146,6 +345,10 @@ export class TrackAudioProcessor {
 
     if (updates.isArmed !== undefined && updates.isArmed !== prevArmed) {
       this.updateArmState();
+    }
+
+    if (updates.monitoringEnabled !== undefined && updates.monitoringEnabled !== prevMonitoring) {
+      this.updateMonitoringState();
     }
   }
 
@@ -200,6 +403,15 @@ export class TrackAudioProcessor {
     // Use setTargetAtTime for smooth transitions
     const targetGain = shouldMute ? 0 : 1;
     this.muteGainNode.gain.setTargetAtTime(targetGain, this.audioContext.currentTime, 0.01);
+  }
+
+  private updateMonitoringState(): void {
+    // Monitoring allows hearing input through speakers when armed
+    // When armed + monitoring enabled: hear yourself
+    // When not armed OR monitoring disabled: no monitoring output
+    const shouldMonitor = this.state.isArmed && this.state.monitoringEnabled;
+    const targetGain = shouldMonitor ? 1 : 0;
+    this.monitorGainNode.gain.setTargetAtTime(targetGain, this.audioContext.currentTime, 0.01);
   }
 
   // Update effects settings
@@ -259,20 +471,41 @@ export class TrackAudioProcessor {
 
   // Dispose and clean up
   dispose(): void {
+    console.log(`[TrackAudioProcessor] Disposing processor for track ${this.trackId}`);
+
     TrackAudioProcessor.allProcessors.delete(this.trackId);
     TrackAudioProcessor.soloedTracks.delete(this.trackId);
 
     // Update remaining tracks' mute states
     TrackAudioProcessor.updateAllMuteStates();
 
+    // Clean up input source first
+    this.disconnectInputSource();
+
+    // Disconnect all nodes
     this.disconnect();
     this.effectsProcessor.dispose();
     this.inputGainNode.disconnect();
     this.armGainNode.disconnect();
     this.volumeGainNode.disconnect();
     this.muteGainNode.disconnect();
+    this.monitorGainNode.disconnect();
     this.inputAnalyser.disconnect();
     this.outputAnalyser.disconnect();
+  }
+
+  // Static method to get a specific processor
+  static getProcessor(trackId: string): TrackAudioProcessor | undefined {
+    return TrackAudioProcessor.allProcessors.get(trackId);
+  }
+
+  // Static method to dispose all processors
+  static disposeAll(): void {
+    for (const processor of TrackAudioProcessor.allProcessors.values()) {
+      processor.dispose();
+    }
+    TrackAudioProcessor.allProcessors.clear();
+    TrackAudioProcessor.soloedTracks.clear();
   }
 
   // Static method to get all active processors
