@@ -386,7 +386,7 @@ export function useNativeBridge() {
           const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
           await engine.setTrackBridgeInput(track.id, { channelConfig });
 
-          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, monitoring: ${shouldMonitor}`);
+          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${track.audioSettings.directMonitoring ?? true}`);
         }
       }
     }
