@@ -7,8 +7,10 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     super();
 
     // Ring buffer for stereo audio (interleaved L/R samples)
-    // Size: ~100ms at 48kHz = 4800 stereo frames = 9600 samples
-    this.bufferSize = 9600;
+    // Size: ~500ms at 48kHz = 24000 stereo frames = 48000 samples
+    // Larger buffer needed because WebSocket delivery is bursty and native
+    // bridge sends 2048 samples per message every ~2ms
+    this.bufferSize = 48000;
     this.buffer = new Float32Array(this.bufferSize);
     this.writePos = 0;
     this.readPos = 0;
