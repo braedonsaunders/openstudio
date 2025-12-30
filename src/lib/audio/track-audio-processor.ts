@@ -288,7 +288,15 @@ export class TrackAudioProcessor {
     // Handle worklet messages (stats)
     this.bridgeWorkletNode.port.onmessage = (event) => {
       if (event.data.type === 'stats') {
-        // Could emit stats event here if needed
+        const { underruns, overruns, bufferFill } = event.data;
+        console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} worklet stats:`, {
+          underruns,
+          overruns,
+          bufferFill: (bufferFill * 100).toFixed(1) + '%',
+          armGain: this.armGainNode.gain.value,
+          monitorGain: this.monitorGainNode.gain.value,
+          inputSourceType: this.inputSourceType,
+        });
       }
     };
 
@@ -393,6 +401,10 @@ export class TrackAudioProcessor {
     // This is like a traditional DAW where unarmed tracks don't receive input
     const targetGain = this.state.isArmed ? 1 : 0;
     this.armGainNode.gain.setTargetAtTime(targetGain, this.audioContext.currentTime, 0.01);
+    console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} arm state changed:`, {
+      isArmed: this.state.isArmed,
+      armGain: targetGain,
+    });
   }
 
   private updateInputGain(): void {
@@ -448,6 +460,12 @@ export class TrackAudioProcessor {
     const shouldMonitor = this.state.isArmed && this.state.monitoringEnabled;
     const targetGain = shouldMonitor ? 1 : 0;
     this.monitorGainNode.gain.setTargetAtTime(targetGain, this.audioContext.currentTime, 0.01);
+    console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} monitoring state changed:`, {
+      isArmed: this.state.isArmed,
+      monitoringEnabled: this.state.monitoringEnabled,
+      shouldMonitor,
+      monitorGain: targetGain,
+    });
   }
 
   // Update effects settings
