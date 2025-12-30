@@ -466,7 +466,7 @@ export async function unlockAchievement(userId: string, achievementId: string): 
     .select('id')
     .eq('user_id', userId)
     .eq('achievement_id', achievementId)
-    .single();
+    .maybeSingle();
 
   if (existing) return;
 
@@ -475,7 +475,7 @@ export async function unlockAchievement(userId: string, achievementId: string): 
     .from('achievements')
     .select('xp_reward')
     .eq('id', achievementId)
-    .single();
+    .maybeSingle();
 
   // Unlock achievement
   const { error } = await supabaseAuth
