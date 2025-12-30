@@ -1,5 +1,5 @@
 import { createClient, User as SupabaseUser, Session, SupabaseClient } from '@supabase/supabase-js';
-import type { UserProfile, Avatar, UserStats, UserInstrument, Achievement, UserAchievement } from '@/types/user';
+import type { UserProfile, UserStats, UserInstrument, Achievement, UserAchievement } from '@/types/user';
 
 // Lazy initialization to avoid issues during static page generation
 let supabaseAuthInstance: SupabaseClient | null = null;
@@ -210,32 +210,6 @@ export async function checkUsernameAvailable(username: string): Promise<boolean>
   return !data;
 }
 
-// ============================================
-// AVATAR FUNCTIONS
-// ============================================
-
-export async function getUserAvatar(userId: string): Promise<Avatar | null> {
-  const { data, error } = await supabaseAuth
-    .from('user_avatars')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (error || !data) return null;
-  return data.avatar_data as Avatar;
-}
-
-export async function updateAvatar(userId: string, avatar: Avatar): Promise<void> {
-  const { error } = await supabaseAuth
-    .from('user_avatars')
-    .upsert({
-      user_id: userId,
-      avatar_data: avatar,
-      updated_at: new Date().toISOString(),
-    });
-
-  if (error) throw error;
-}
 
 // ============================================
 // STATS FUNCTIONS

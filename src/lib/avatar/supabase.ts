@@ -10,7 +10,6 @@ import type {
   AvatarComponentUnlock,
   AvatarColorPalette,
   AvatarGenerationPreset,
-  UserAvatarConfig,
   UserUnlockedComponent,
   AvatarComponentLibrary,
   CreateComponentRequest,
@@ -144,16 +143,6 @@ function transformPreset(data: Record<string, unknown>): AvatarGenerationPreset 
   };
 }
 
-function transformUserConfig(data: Record<string, unknown>): UserAvatarConfig {
-  return {
-    id: data.id as string,
-    userId: data.user_id as string,
-    selections: (data.selections as Record<string, { componentId: string; colorVariant?: string }>) || {},
-    createdAt: data.created_at as string,
-    updatedAt: data.updated_at as string,
-  };
-}
-
 // ============================================
 // PUBLIC LIBRARY FUNCTIONS
 // ============================================
@@ -196,39 +185,6 @@ export async function getAvatarLibrary(): Promise<AvatarComponentLibrary> {
     unlockRules,
     componentUnlocks,
   };
-}
-
-// ============================================
-// USER CONFIG FUNCTIONS
-// ============================================
-
-export async function getUserAvatarConfig(userId: string): Promise<UserAvatarConfig | null> {
-  const { data, error } = await supabaseAuth
-    .from('user_avatar_configs')
-    .select('*')
-    .eq('user_id', userId)
-    .single();
-
-  if (error || !data) return null;
-  return transformUserConfig(data);
-}
-
-export async function saveUserAvatarConfig(
-  userId: string,
-  selections: Record<string, { componentId: string; colorVariant?: string }>
-): Promise<UserAvatarConfig> {
-  const { data, error } = await supabaseAuth
-    .from('user_avatar_configs')
-    .upsert({
-      user_id: userId,
-      selections,
-      updated_at: new Date().toISOString(),
-    })
-    .select()
-    .single();
-
-  if (error) throw error;
-  return transformUserConfig(data);
 }
 
 export async function getUserUnlockedComponents(userId: string): Promise<Set<string>> {
@@ -905,7 +861,7 @@ export async function getUserAvatarCanvas(userId: string): Promise<UserAvatarCan
   ]);
 
   // Refresh thumbnail URLs if present
-  let freshThumbnailUrls = canvas.thumbnailUrls;
+  let freshThumbnailUrls: UserAvatarCanvas['thumbnailUrls'] = canvas.thumbnailUrls;
   if (canvas.thumbnailUrls) {
     const [xs, sm, md, lg] = await Promise.all([
       canvas.thumbnailUrls.xs ? getSignedUrlFromKeyOrUrl(canvas.thumbnailUrls.xs) : null,
@@ -913,7 +869,7 @@ export async function getUserAvatarCanvas(userId: string): Promise<UserAvatarCan
       canvas.thumbnailUrls.md ? getSignedUrlFromKeyOrUrl(canvas.thumbnailUrls.md) : null,
       canvas.thumbnailUrls.lg ? getSignedUrlFromKeyOrUrl(canvas.thumbnailUrls.lg) : null,
     ]);
-    freshThumbnailUrls = { xs, sm, md, lg };
+    freshThumbnailUrls = { xs, sm, md, lg } as UserAvatarCanvas['thumbnailUrls'];
   }
 
   return {

@@ -3,7 +3,7 @@
 import { createContext, useContext, type ReactNode } from 'react';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
 import { useAuthStore } from '@/stores/auth-store';
-import type { UserProfile, Avatar, UserStats, UserInstrument, Achievement, UserAchievement } from '@/types/user';
+import type { UserProfile, UserStats, UserInstrument, Achievement, UserAchievement } from '@/types/user';
 
 interface AuthContextType {
   isAuthenticated: boolean;
@@ -11,7 +11,6 @@ interface AuthContextType {
   isInitialized: boolean;
   user: SupabaseUser | null;
   profile: UserProfile | null;
-  avatar: Avatar | null;
   stats: UserStats | null;
   instruments: UserInstrument[];
   achievements: Achievement[];
@@ -32,7 +31,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const {
     user,
     profile,
-    avatar,
     stats,
     instruments,
     achievements,
@@ -54,7 +52,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         isInitialized,
         user,
         profile,
-        avatar,
         stats,
         instruments,
         achievements,
