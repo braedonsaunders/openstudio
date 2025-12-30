@@ -1082,7 +1082,6 @@ export async function startSession(
       room_id: roomId,
       instrument,
       joined_at: new Date().toISOString(),
-      collaborator_ids: [],
     })
     .select()
     .single();
@@ -1103,7 +1102,7 @@ export async function startSession(
 
 export async function endSession(
   sessionId: string,
-  collaboratorIds: string[]
+  _collaboratorIds: string[]
 ): Promise<{ durationSeconds: number }> {
   const now = new Date();
 
@@ -1119,12 +1118,13 @@ export async function endSession(
   const joinedAt = new Date(session.joined_at);
   const durationSeconds = Math.floor((now.getTime() - joinedAt.getTime()) / 1000);
 
+  // Note: collaborator_ids column may not exist in older schemas
+  // Stats for unique collaborators are tracked separately via updateStats
   const { error } = await supabaseAuth
     .from('session_history')
     .update({
       left_at: now.toISOString(),
       duration_seconds: durationSeconds,
-      collaborator_ids: collaboratorIds,
     })
     .eq('id', sessionId);
 
@@ -1135,14 +1135,12 @@ export async function endSession(
 
 export async function updateSessionCollaborators(
   sessionId: string,
-  collaboratorIds: string[]
+  _collaboratorIds: string[]
 ): Promise<void> {
-  const { error } = await supabaseAuth
-    .from('session_history')
-    .update({ collaborator_ids: collaboratorIds })
-    .eq('id', sessionId);
-
-  if (error) throw error;
+  // Note: collaborator_ids column may not exist in older schemas
+  // This function is kept for API compatibility but is a no-op
+  // Unique collaborators are tracked via updateStats in endSession
+  if (!sessionId) return;
 }
 
 // ============================================
