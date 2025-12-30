@@ -244,13 +244,18 @@ export function useNativeBridge() {
       channelConfig: state.inputChannelConfig,
     });
 
-    // Enable bridge audio mode in the audio engine
-    // This routes incoming bridge audio through Web Audio effects chain + WebRTC
+    // Ensure AudioContext sample rate matches the user's selection
+    // If they differ, recreate the AudioContext with the correct rate
     if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-      console.log('[useNativeBridge] Enabling bridge audio mode in audio engine');
-      await (window as any).__openStudioAudioEngine.enableBridgeAudio();
+      const engine = (window as any).__openStudioAudioEngine;
+      const audioCtx = engine.getAudioContext?.();
+      if (audioCtx?.sampleRate && audioCtx.sampleRate !== state.sampleRate) {
+        console.log(`[useNativeBridge] AudioContext rate (${audioCtx.sampleRate}) differs from UI (${state.sampleRate}). Changing to match.`);
+        await engine.changeSampleRate(state.sampleRate);
+      }
     }
 
+    // Configure native bridge
     if (deviceId) {
       nativeBridge.setInputDevice(deviceId);
       nativeBridge.setOutputDevice(deviceId);
@@ -260,6 +265,17 @@ export function useNativeBridge() {
     nativeBridge.setSampleRate(state.sampleRate);
     nativeBridge.setChannelConfig(state.inputChannelConfig);
     nativeBridge.startAudio();
+
+    // Small delay to let native bridge initialize with correct sample rate
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // NOW enable bridge audio mode in the audio engine
+    // This creates the ScriptProcessorNode that will receive audio from native bridge
+    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+      const engine = (window as any).__openStudioAudioEngine;
+      console.log('[useNativeBridge] Enabling bridge audio mode. Sample rate:', state.sampleRate);
+      await engine.enableBridgeAudio();
+    }
 
     // Send initial track state after starting audio
     const roomState = useRoomStore.getState();
@@ -360,12 +376,46 @@ export function useNativeBridge() {
     }
   }, []);
 
-  // Set sample rate
-  const setSampleRate = useCallback((rate: 44100 | 48000) => {
+  // Set sample rate - this changes BOTH AudioContext and native bridge
+  const setSampleRate = useCallback(async (rate: 44100 | 48000) => {
     const store = useBridgeAudioStore.getState();
     store.setSampleRate(rate);
+
+    // Change the AudioContext sample rate (recreates it)
+    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+      console.log('[useNativeBridge] Changing AudioContext sample rate to', rate);
+      await (window as any).__openStudioAudioEngine.changeSampleRate(rate);
+    }
+
+    // Update native bridge sample rate
     if (store.isConnected) {
       nativeBridge.setSampleRate(rate);
+
+      // If bridge is running, restart it with new rate
+      if (store.isRunning) {
+        console.log('[useNativeBridge] Restarting bridge audio with new sample rate');
+        // Re-sync track state after the audio engine was recreated
+        const roomState = useRoomStore.getState();
+        const currentUserId = roomState.currentUser?.id;
+        if (currentUserId) {
+          const tracksState = useUserTracksStore.getState();
+          const userTracks = tracksState.getTracksByUser(currentUserId);
+          if (userTracks.length > 0) {
+            const track = userTracks[0];
+            const engine = (window as any).__openStudioAudioEngine;
+            if (engine) {
+              engine.setLocalTrackArmed(track.isArmed);
+              engine.setLocalTrackMuted(track.isMuted);
+              engine.setLocalTrackVolume(track.volume);
+              const shouldSoftwareMonitor = track.isArmed && !track.isMuted;
+              engine.setMonitoringEnabled(shouldSoftwareMonitor);
+              if (track.audioSettings.effects) {
+                engine.updateLocalEffects(track.audioSettings.effects);
+              }
+            }
+          }
+        }
+      }
     }
   }, []);
 

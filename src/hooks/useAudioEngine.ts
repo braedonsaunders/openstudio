@@ -633,6 +633,20 @@ export function useAudioEngine() {
     return globalEngine?.isBridgeAudioEnabled() ?? false;
   }, []);
 
+  // Change sample rate (recreates AudioContext)
+  const changeSampleRate = useCallback(async (rate: 44100 | 48000) => {
+    if (!globalEngine) {
+      console.warn('[useAudioEngine] Cannot change sample rate: engine not initialized');
+      return;
+    }
+    await globalEngine.changeSampleRate(rate);
+  }, []);
+
+  // Get current AudioContext sample rate
+  const getAudioContextSampleRate = useCallback((): number | null => {
+    return globalEngine?.getAudioContext()?.sampleRate ?? null;
+  }, []);
+
   return {
     isInitialized,
     isPlaying,
@@ -690,5 +704,8 @@ export function useAudioEngine() {
     disableBridgeAudio,
     pushBridgeAudio,
     isBridgeAudioEnabled,
+    // Sample rate control
+    changeSampleRate,
+    getAudioContextSampleRate,
   };
 }
