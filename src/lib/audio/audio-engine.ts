@@ -489,12 +489,7 @@ export class AudioEngine {
       const outputL = event.outputBuffer.getChannelData(0);
       const outputR = event.outputBuffer.getChannelData(1);
 
-      // Log occasionally to confirm callback is running
-      if (processCounter++ % 500 === 0) {
-        console.log('[AudioEngine] onaudioprocess running, bufferQueueLen:', this.bridgeAudioBuffer.length,
-          'monitorGain:', this.localMonitorGain?.gain.value,
-          'armGain:', this.localArmGain?.gain.value);
-      }
+      processCounter++;
 
       // Try to get samples from the buffer
       if (this.bridgeAudioBuffer.length > 0) {
@@ -512,10 +507,22 @@ export class AudioEngine {
           outputL[i] = 0;
           outputR[i] = 0;
         }
+
+        // Log occasionally when we have data
+        if (processCounter % 500 === 0) {
+          const outputPeak = Math.max(...outputL.map(Math.abs));
+          console.log('[AudioEngine] onaudioprocess - processed audio, outputPeak:', outputPeak.toFixed(4),
+            'remainingBuffer:', this.bridgeAudioBuffer.length);
+        }
       } else {
         // No data - output silence
         outputL.fill(0);
         outputR.fill(0);
+
+        // Log occasionally when buffer is empty
+        if (processCounter % 500 === 0) {
+          console.log('[AudioEngine] onaudioprocess - buffer empty, outputting silence');
+        }
       }
     };
 
@@ -617,19 +624,6 @@ export class AudioEngine {
       return;
     }
 
-    // Log occasionally to confirm audio is flowing
-    if (this.bridgeAudioLogCounter++ % 500 === 0) {
-      const peak = samples.reduce((max, s) => Math.max(max, Math.abs(s)), 0);
-      console.log('[AudioEngine] pushBridgeAudio:', {
-        sampleCount: samples.length,
-        peak: peak.toFixed(4),
-        bufferQueueLen: this.bridgeAudioBuffer.length,
-        armGain: this.localArmGain?.gain.value,
-        muteGain: this.localMuteGain?.gain.value,
-        monitorGain: this.localMonitorGain?.gain.value,
-      });
-    }
-
     // Add to buffer queue
     // Limit buffer size to prevent memory growth (keep last ~100ms of audio)
     const maxBufferChunks = 10;
@@ -639,6 +633,19 @@ export class AudioEngine {
     }
 
     this.bridgeAudioBuffer.push(samples);
+
+    // Log occasionally to confirm audio is flowing (AFTER pushing)
+    if (this.bridgeAudioLogCounter++ % 500 === 0) {
+      const peak = samples.reduce((max, s) => Math.max(max, Math.abs(s)), 0);
+      console.log('[AudioEngine] pushBridgeAudio:', {
+        sampleCount: samples.length,
+        peak: peak.toFixed(4),
+        bufferQueueLenAfterPush: this.bridgeAudioBuffer.length,
+        hasBridgeSourceNode: !!this.bridgeSourceNode,
+        armGain: this.localArmGain?.gain.value,
+        monitorGain: this.localMonitorGain?.gain.value,
+      });
+    }
   }
 
   /**
