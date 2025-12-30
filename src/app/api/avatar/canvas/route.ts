@@ -156,8 +156,9 @@ export async function PUT(req: NextRequest) {
           uploadAvatarImage(user.id, headshotImage, 'headshot'),
         ]);
 
-        fullBodyUrl = fullBodyResult.url;
-        headshotUrl = headshotResult.url;
+        // Store R2 keys (not signed URLs) to avoid URL expiration
+        fullBodyUrl = fullBodyResult.key;
+        headshotUrl = headshotResult.key;
 
         // Upload thumbnails
         if (thumbnails) {
@@ -168,11 +169,12 @@ export async function PUT(req: NextRequest) {
             uploadAvatarImage(user.id, thumbnails.lg, 'thumb-lg'),
           ]);
 
+          // Store R2 keys (not signed URLs) to avoid URL expiration
           thumbnailUrls = {
-            xs: xsResult.url,
-            sm: smResult.url,
-            md: mdResult.url,
-            lg: lgResult.url,
+            xs: xsResult.key,
+            sm: smResult.key,
+            md: mdResult.key,
+            lg: lgResult.key,
           };
         }
       } catch (uploadError) {

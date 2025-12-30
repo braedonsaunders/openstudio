@@ -64,7 +64,7 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
   const { messages, currentUser, addMessage } = useRoomStore();
-  const { profile, avatar, user } = useAuthStore();
+  const { profile, user } = useAuthStore();
 
   // Load persisted messages on mount
   useEffect(() => {

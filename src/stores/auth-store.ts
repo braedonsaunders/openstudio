@@ -1,14 +1,13 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { User as SupabaseUser } from '@supabase/supabase-js';
-import type { UserProfile, Avatar, UserStats, UserInstrument, Achievement, UserAchievement, Friendship, Notification } from '@/types/user';
+import type { UserProfile, UserStats, UserInstrument, Achievement, UserAchievement, Friendship, Notification } from '@/types/user';
 import * as authApi from '@/lib/supabase/auth';
 
 interface AuthState {
   // Auth state
   user: SupabaseUser | null;
   profile: UserProfile | null;
-  avatar: Avatar | null;
   stats: UserStats | null;
   instruments: UserInstrument[];
   achievements: Achievement[];
@@ -34,7 +33,6 @@ interface AuthState {
 
   // Actions - Profile
   updateProfile: (updates: Partial<UserProfile>) => Promise<void>;
-  updateAvatar: (avatar: Avatar) => Promise<void>;
   refreshProfile: () => Promise<void>;
 
   // Actions - Instruments
@@ -64,7 +62,6 @@ interface AuthState {
 const initialState = {
   user: null,
   profile: null,
-  avatar: null,
   stats: null,
   instruments: [],
   achievements: [],
@@ -101,7 +98,6 @@ export const useAuthStore = create<AuthState>()(
               // Fetch user data with individual error handling to prevent one failure from blocking all
               const results = await Promise.allSettled([
                 authApi.getUserProfile(user.id),
-                authApi.getUserAvatar(user.id),
                 authApi.getUserStats(user.id),
                 authApi.getUserInstruments(user.id),
                 authApi.getAllAchievements(),
@@ -110,12 +106,11 @@ export const useAuthStore = create<AuthState>()(
               ]);
 
               const profile = results[0].status === 'fulfilled' ? results[0].value : null;
-              const avatar = results[1].status === 'fulfilled' ? results[1].value : null;
-              const stats = results[2].status === 'fulfilled' ? results[2].value : null;
-              const instruments = results[3].status === 'fulfilled' ? results[3].value : [];
-              const achievements = results[4].status === 'fulfilled' ? results[4].value : [];
-              const unlockedAchievements = results[5].status === 'fulfilled' ? results[5].value : [];
-              const friendsResult = results[6].status === 'fulfilled' ? results[6].value : { friends: [], pending: [] };
+              const stats = results[1].status === 'fulfilled' ? results[1].value : null;
+              const instruments = results[2].status === 'fulfilled' ? results[2].value : [];
+              const achievements = results[3].status === 'fulfilled' ? results[3].value : [];
+              const unlockedAchievements = results[4].status === 'fulfilled' ? results[4].value : [];
+              const friendsResult = results[5].status === 'fulfilled' ? results[5].value : { friends: [], pending: [] };
 
               // Update streak (non-blocking)
               if (profile) {
@@ -125,7 +120,6 @@ export const useAuthStore = create<AuthState>()(
               set({
                 user,
                 profile,
-                avatar,
                 stats,
                 instruments,
                 achievements,
@@ -188,16 +182,14 @@ export const useAuthStore = create<AuthState>()(
 
               // Fetch profile data - AWAIT this to ensure profile loads
               try {
-                const [profile, avatar, stats] = await Promise.all([
+                const [profile, stats] = await Promise.all([
                   authApi.getUserProfile(user.id),
-                  authApi.getUserAvatar(user.id),
                   authApi.getUserStats(user.id),
                 ]);
 
                 // Set profileError if profile is null to prevent infinite retry loops
                 set({
                   profile,
-                  avatar,
                   stats,
                   isProfileLoading: false,
                   profileError: profile ? null : 'Profile not found'
@@ -282,14 +274,6 @@ export const useAuthStore = create<AuthState>()(
           }
         },
 
-        updateAvatar: async (avatar) => {
-          const { user } = get();
-          if (!user) return;
-
-          await authApi.updateAvatar(user.id, avatar);
-          set({ avatar });
-        },
-
         refreshProfile: async () => {
           const { user } = get();
           if (!user) return;
@@ -297,16 +281,14 @@ export const useAuthStore = create<AuthState>()(
           set({ isProfileLoading: true, profileError: null });
 
           try {
-            const [profile, avatar, stats] = await Promise.all([
+            const [profile, stats] = await Promise.all([
               authApi.getUserProfile(user.id),
-              authApi.getUserAvatar(user.id),
               authApi.getUserStats(user.id),
             ]);
 
             // Set profileError if profile is null to prevent infinite retry loops
             set({
               profile,
-              avatar,
               stats,
               isProfileLoading: false,
               profileError: profile ? null : 'Profile not found'
