@@ -178,7 +178,7 @@ impl AudioEngine {
 
         let processing_state = AudioProcessingState {
             effects_chain: EffectsChain::new(),
-            track_state: TrackState::default(),
+            track_state: TrackState::new(),  // Use new() not default() - default() sets volume to 0!
             channel_config: ChannelConfig::default(),
             sample_rate: 48000,
             master_volume: 1.0,
@@ -718,7 +718,7 @@ impl AudioEngine {
         effects_metering: &Arc<RwLock<EffectsMetering>>,
     ) {
         let frame_num = INPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-        let should_log = frame_num % 500 == 0; // Log every 500 frames (~every 0.67s at 64 samples/48kHz)
+        let should_log = frame_num % 7500 == 0; // Log every 7500 frames (~every 10s at 64 samples/48kHz)
 
         // Get channel config
         let (left_ch, right_ch, is_stereo) = if let Ok(state) = processing_state.try_read() {
@@ -843,7 +843,7 @@ impl AudioEngine {
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
         let frame_num = OUTPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-        let should_log = frame_num % 500 == 0;
+        let should_log = frame_num % 7500 == 0;
 
         if should_log {
             info!("[OUTPUT] Frame {} | output_buffer_len={}", frame_num, data.len());
