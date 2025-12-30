@@ -16,7 +16,7 @@ use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::SampleFormat;
 use ringbuf::{
     traits::{Consumer, Producer, Split},
-    HeapRb,
+    HeapRb, HeapCons, HeapProd,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
@@ -96,8 +96,8 @@ pub struct BackingTrackState {
 
 /// Remote user audio buffer
 struct RemoteUserBuffer {
-    consumer: Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>,
-    producer: Arc<std::sync::Mutex<ringbuf::HeapProd<'static, f32>>>,
+    consumer: Arc<std::sync::Mutex<HeapCons<f32>>>,
+    producer: Arc<std::sync::Mutex<HeapProd<f32>>>,
     volume: f32,
     is_muted: bool,
     compensation_delay_samples: usize,
@@ -141,15 +141,15 @@ pub struct AudioEngine {
     output_stream: Option<cpal::Stream>,
 
     // Local audio ring buffer
-    local_producer: Option<Arc<std::sync::Mutex<ringbuf::HeapProd<'static, f32>>>>,
-    local_consumer: Option<Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>>,
+    local_producer: Option<Arc<std::sync::Mutex<HeapProd<f32>>>>,
+    local_consumer: Option<Arc<std::sync::Mutex<HeapCons<f32>>>>,
 
     // Remote user audio buffers
     remote_buffers: Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
 
     // Backing track ring buffer
-    backing_producer: Option<Arc<std::sync::Mutex<ringbuf::HeapProd<'static, f32>>>>,
-    backing_consumer: Option<Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>>,
+    backing_producer: Option<Arc<std::sync::Mutex<HeapProd<f32>>>>,
+    backing_consumer: Option<Arc<std::sync::Mutex<HeapCons<f32>>>>,
 
     // Shared processing state
     processing_state: Arc<RwLock<AudioProcessingState>>,
@@ -706,7 +706,7 @@ impl AudioEngine {
     fn process_input(
         data: &[f32],
         input_channels: usize,
-        producer: &Arc<std::sync::Mutex<ringbuf::HeapProd<'static, f32>>>,
+        producer: &Arc<std::sync::Mutex<HeapProd<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         is_monitoring: &Arc<AtomicBool>,
         monitoring_volume: &Arc<AtomicU32>,
@@ -774,8 +774,8 @@ impl AudioEngine {
 
             // Push to ring buffer
             if let Ok(mut prod) = producer.try_lock() {
-                for &sample in &stereo_buffer {
-                    let _ = prod.try_push(sample);
+                for sample in stereo_buffer.iter() {
+                    let _ = prod.try_push(*sample);
                 }
             }
         }
@@ -784,9 +784,9 @@ impl AudioEngine {
     /// Process output audio (mix all sources)
     fn process_output_f32(
         data: &mut [f32],
-        local_consumer: &Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>,
+        local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
-        backing_consumer: &Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>,
+        backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
@@ -871,9 +871,9 @@ impl AudioEngine {
 
     fn process_output_i32(
         data: &mut [i32],
-        local_consumer: &Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>,
+        local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
-        backing_consumer: &Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>,
+        backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
@@ -896,9 +896,9 @@ impl AudioEngine {
 
     fn process_output_i16(
         data: &mut [i16],
-        local_consumer: &Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>,
+        local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
-        backing_consumer: &Arc<std::sync::Mutex<ringbuf::HeapCons<'static, f32>>>,
+        backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
