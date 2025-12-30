@@ -1294,47 +1294,24 @@ export function SceneRenderer({
     const placedPositions: Array<{ x: number; y: number }> = [];
 
     // Minimum distance between characters
-    const MIN_SPAWN_DISTANCE = 15;
+    const MIN_SPAWN_DISTANCE = 12;
 
-    // Content card exclusion zone - must match WalkingCharacter.tsx
-    const CONTENT_CARD_ZONE = {
-      minX: 18,
-      maxX: 82,
-      minY: 15,
-      maxY: 58,
-    };
+    // ONLY spawn in bottom 30% of screen - no exceptions
+    const SPAWN_MIN_Y = 70;
 
-    // Check if point is inside card zone
-    const isInsideCardZone = (x: number, y: number) =>
-      x >= CONTENT_CARD_ZONE.minX && x <= CONTENT_CARD_ZONE.maxX &&
-      y >= CONTENT_CARD_ZONE.minY && y <= CONTENT_CARD_ZONE.maxY;
-
-    // Create spawn points in all valid zones around the card
-    const spawnPoints: Array<{ x: number; y: number; priority: number }> = [];
+    // Create spawn points ONLY in bottom 30% of screen
+    const spawnPoints: Array<{ x: number; y: number }> = [];
     const spacing = 8;
 
-    // Generate points across walkable area, filtering out card zone
-    for (let x = walkableArea.minX + 3; x <= walkableArea.maxX - 3; x += spacing) {
-      for (let y = walkableArea.minY + 3; y <= walkableArea.maxY - 3; y += spacing) {
-        if (!isInsideCardZone(x, y)) {
-          // Priority: bottom area is highest, sides are medium, top is lower
-          let priority = 0;
-          if (y > CONTENT_CARD_ZONE.maxY) {
-            priority = 3; // Bottom zone - most preferred
-          } else if (x < CONTENT_CARD_ZONE.minX || x > CONTENT_CARD_ZONE.maxX) {
-            priority = 2; // Side zones
-          } else if (y < CONTENT_CARD_ZONE.minY) {
-            priority = 1; // Top zone
-          }
-          spawnPoints.push({ x, y, priority });
-        }
+    for (let x = walkableArea.minX + 5; x <= walkableArea.maxX - 5; x += spacing) {
+      for (let y = SPAWN_MIN_Y; y <= walkableArea.maxY - 3; y += spacing) {
+        spawnPoints.push({ x, y });
       }
     }
 
-    // Sort by priority (higher first), then by Y position (bottom first for same priority)
+    // Sort to spread characters across the bottom
     spawnPoints.sort((a, b) => {
-      if (a.priority !== b.priority) return b.priority - a.priority;
-      if (Math.abs(a.y - b.y) > 3) return b.y - a.y;
+      // Spread from center outward
       return Math.abs(a.x - 50) - Math.abs(b.x - 50);
     });
 
@@ -1356,26 +1333,13 @@ export function SceneRenderer({
         }
       }
 
-      // Fallback: use evenly distributed point if no non-overlapping found
+      // Fallback: use bottom corner if no non-overlapping found
       if (!bestPoint) {
-        bestPoint = spawnPoints[index % spawnPoints.length] || { x: walkableArea.minX + 10, y: walkableArea.maxY - 10 };
+        bestPoint = { x: walkableArea.minX + 10 + (index * 15) % 80, y: SPAWN_MIN_Y + 5 };
       }
 
-      // Add slight variation for natural look (deterministic based on index)
-      const offsetX = ((index * 7) % 5) - 2;
-      const offsetY = ((index * 11) % 5) - 2;
-
-      let finalX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, bestPoint.x + offsetX));
-      let finalY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, bestPoint.y + offsetY));
-
-      // Ensure final position is not in card zone
-      if (isInsideCardZone(finalX, finalY)) {
-        finalX = bestPoint.x;
-        finalY = bestPoint.y;
-      }
-
-      positions.set(character.id, { x: finalX, y: finalY });
-      placedPositions.push({ x: finalX, y: finalY });
+      positions.set(character.id, { x: bestPoint.x, y: bestPoint.y });
+      placedPositions.push({ x: bestPoint.x, y: bestPoint.y });
     });
 
     return positions;

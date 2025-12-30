@@ -172,40 +172,17 @@ function getValidPosition(
   return { x, y };
 }
 
-// Generate a position biased towards walking zones (avoiding the card)
+// Generate a position in the bottom 30% of the screen ONLY
 function getBiasedPosition(
   walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
 ): { x: number; y: number } {
-  // Define valid walking zones around the card
-  const zones = [
-    // Bottom zone (below card) - most common
-    { minX: walkableArea.minX, maxX: walkableArea.maxX, minY: CONTENT_CARD_ZONE.maxY + 2, maxY: walkableArea.maxY, weight: 5 },
-    // Left zone (left of card)
-    { minX: walkableArea.minX, maxX: CONTENT_CARD_ZONE.minX - 2, minY: walkableArea.minY, maxY: walkableArea.maxY, weight: 2 },
-    // Right zone (right of card)
-    { minX: CONTENT_CARD_ZONE.maxX + 2, maxX: walkableArea.maxX, minY: walkableArea.minY, maxY: walkableArea.maxY, weight: 2 },
-    // Top zone (above card) - rare
-    { minX: walkableArea.minX, maxX: walkableArea.maxX, minY: walkableArea.minY, maxY: CONTENT_CARD_ZONE.minY - 2, weight: 1 },
-  ];
+  // ONLY spawn in bottom 30% of screen - Y >= 70
+  const SPAWN_MIN_Y = 70;
 
-  // Pick a zone based on weights
-  const totalWeight = zones.reduce((sum, z) => sum + z.weight, 0);
-  let r = Math.random() * totalWeight;
-  let selectedZone = zones[0];
+  const x = walkableArea.minX + 5 + Math.random() * (walkableArea.maxX - walkableArea.minX - 10);
+  const y = SPAWN_MIN_Y + Math.random() * (walkableArea.maxY - SPAWN_MIN_Y - 3);
 
-  for (const zone of zones) {
-    r -= zone.weight;
-    if (r <= 0) {
-      selectedZone = zone;
-      break;
-    }
-  }
-
-  // Generate position within selected zone
-  const x = selectedZone.minX + Math.random() * (selectedZone.maxX - selectedZone.minX);
-  const y = selectedZone.minY + Math.random() * (selectedZone.maxY - selectedZone.minY);
-
-  return getValidPosition(x, y, walkableArea);
+  return { x, y };
 }
 
 // Idle animation variants
