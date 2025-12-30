@@ -273,7 +273,7 @@ export function useNativeBridge() {
     // This creates the ScriptProcessorNode that will receive audio from native bridge
     if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
       const engine = (window as any).__openStudioAudioEngine;
-      console.log('[useNativeBridge] Enabling bridge audio mode. Sample rate:', sampleRateToUse);
+      console.log('[useNativeBridge] Enabling bridge audio mode. Sample rate:', state.sampleRate);
       await engine.enableBridgeAudio();
     }
 
