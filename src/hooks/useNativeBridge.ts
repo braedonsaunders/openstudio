@@ -345,11 +345,8 @@ export function useNativeBridge() {
           const engine = (window as any).__openStudioAudioEngine;
           engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 
-          // CRITICAL: Set up bridge input for each track processor
-          // This creates the AudioWorklet that receives audio from native bridge
-          const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
-          await engine.setTrackBridgeInput(track.id, { channelConfig });
-
+          // IMPORTANT: Set track state BEFORE enabling audio input
+          // This ensures monitoring is enabled before audio starts flowing
           const shouldMonitor = track.isArmed && !track.isMuted;
           engine.updateTrackState(track.id, {
             isArmed: track.isArmed,
@@ -364,7 +361,12 @@ export function useNativeBridge() {
             engine.updateTrackEffects(track.id, track.audioSettings.effects);
           }
 
-          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}`);
+          // Now set up bridge input - audio can flow after this
+          // This creates the AudioWorklet that receives audio from native bridge
+          const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
+          await engine.setTrackBridgeInput(track.id, { channelConfig });
+
+          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, monitoring: ${shouldMonitor}`);
         }
       }
     }
