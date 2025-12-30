@@ -92,9 +92,14 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         }
       }
 
-      // Apply monitoring state if changed (browser-side WET monitoring)
-      if (!lastState || lastState.monitoringEnabled !== currentState.monitoringEnabled) {
-        setLocalMonitoring(currentState.monitoringEnabled);
+      // Browser software monitoring is controlled by ARM state, not Direct Monitoring
+      // When armed and not muted, you hear your input through the browser with effects
+      // Direct Monitoring only controls the native bridge DRY passthrough (zero-latency, no effects)
+      const shouldSoftwareMonitor = currentState.isArmed && !currentState.isMuted;
+      if (!lastState ||
+          (lastState.isArmed !== currentState.isArmed) ||
+          (lastState.isMuted !== currentState.isMuted)) {
+        setLocalMonitoring(shouldSoftwareMonitor);
       }
 
       // Sync to native bridge if active
