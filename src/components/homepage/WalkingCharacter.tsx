@@ -94,55 +94,19 @@ const WALK_DURATION_MIN = 2000; // Short walks between stops
 const WALK_DURATION_MAX = 4000; // Not too long walks
 const SETTLING_DURATION = 300; // Pause to let spring animation settle
 
-// Center UI exclusion zone (percentage of screen) - characters avoid this area
-// This is where the main "Play Together" UI panel sits
-const UI_EXCLUSION_ZONE = {
-  minX: 20, // Left boundary
-  maxX: 80, // Right boundary
-  minY: 15, // Top boundary (in ground-relative %)
-  maxY: 55, // Bottom boundary (in ground-relative %)
-};
+// Minimum Y position for walking - characters stay below the main UI card
+const MIN_WALK_Y = 62;
 
-// Check if a position is inside the UI exclusion zone
-function isInExclusionZone(x: number, y: number): boolean {
-  return (
-    x >= UI_EXCLUSION_ZONE.minX &&
-    x <= UI_EXCLUSION_ZONE.maxX &&
-    y >= UI_EXCLUSION_ZONE.minY &&
-    y <= UI_EXCLUSION_ZONE.maxY
-  );
-}
-
-// Get a valid position that avoids the UI zone, biased towards the bottom
+// Get a valid position that keeps characters in the bottom area
 function getValidPosition(
   baseX: number,
   baseY: number,
   walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
 ): { x: number; y: number } {
+  // Clamp to walkable area
   let x = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, baseX));
-  let y = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, baseY));
-
-  // If in exclusion zone, push to sides or bottom
-  if (isInExclusionZone(x, y)) {
-    // Decide: go left, right, or below
-    const goLeft = x < 50;
-    const goBelow = y > (UI_EXCLUSION_ZONE.minY + UI_EXCLUSION_ZONE.maxY) / 2;
-
-    if (goBelow) {
-      // Push below the UI
-      y = UI_EXCLUSION_ZONE.maxY + 5 + Math.random() * 20;
-    } else if (goLeft) {
-      // Push to left side
-      x = UI_EXCLUSION_ZONE.minX - 5 - Math.random() * 10;
-    } else {
-      // Push to right side
-      x = UI_EXCLUSION_ZONE.maxX + 5 + Math.random() * 10;
-    }
-
-    // Re-clamp to walkable area
-    x = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, x));
-    y = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, y));
-  }
+  // Force Y to be below the main content card
+  let y = Math.max(MIN_WALK_Y, Math.min(walkableArea.maxY, baseY));
 
   return { x, y };
 }
