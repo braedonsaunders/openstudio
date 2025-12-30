@@ -104,7 +104,6 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     setInputDevice: setBridgeInputDevice,
     setChannelConfig: setBridgeChannelConfig,
     getSelectedInputDevice: getBridgeSelectedInput,
-    setSampleRate: setBridgeSampleRate,
   } = useNativeBridge();
 
   // Bridge input level from store (for metering when bridge is active)
@@ -198,22 +197,6 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
       setBridgeChannelConfig(config);
     },
     [setBridgeChannelConfig]
-  );
-
-  // Handle sample rate change - updates both track settings AND the audio systems
-  // This ensures AudioContext and native bridge use the same sample rate
-  const handleSampleRateChange = useCallback(
-    async (rate: 44100 | 48000) => {
-      // Update track settings
-      updateTrackSettings(track.id, { sampleRate: rate });
-
-      // Update AudioContext and native bridge via the unified setSampleRate function
-      // This handles recreating AudioContext and updating native bridge if connected
-      await setBridgeSampleRate(rate);
-
-      console.log('[AdvancedAudioSettings] Sample rate changed to', rate);
-    },
-    [track.id, updateTrackSettings, setBridgeSampleRate]
   );
 
   // Select application source (for app capture mode)
@@ -769,7 +752,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
                   <label className="text-[10px] text-gray-500 dark:text-zinc-500">Sample Rate</label>
                   <select
                     value={track.audioSettings.sampleRate}
-                    onChange={(e) => handleSampleRateChange(parseInt(e.target.value) as 48000 | 44100)}
+                    onChange={(e) => handleSettingChange({ sampleRate: parseInt(e.target.value) as 48000 | 44100 })}
                     className={selectTinyClassName}
                   >
                     <option value={48000}>48 kHz</option>
