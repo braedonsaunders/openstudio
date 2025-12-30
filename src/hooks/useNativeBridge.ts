@@ -289,14 +289,17 @@ export function useNativeBridge() {
           (window as any).__openStudioAudioEngine.updateLocalEffects(track.audioSettings.effects);
         }
 
-        // Sync monitoring state to audio engine (browser WET monitoring)
+        // Sync track state to audio engine
+        // Browser software monitoring is controlled by ARM state (not Direct Monitoring)
+        // Direct Monitoring only controls native bridge DRY passthrough
         if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-          const directMonitoringEnabled = track.audioSettings.directMonitoring ?? true;
-          console.log('[useNativeBridge] Syncing monitoring state:', directMonitoringEnabled);
-          (window as any).__openStudioAudioEngine.setMonitoringEnabled(directMonitoringEnabled);
           (window as any).__openStudioAudioEngine.setLocalTrackArmed(track.isArmed);
           (window as any).__openStudioAudioEngine.setLocalTrackMuted(track.isMuted);
           (window as any).__openStudioAudioEngine.setLocalTrackVolume(track.volume);
+          // Software monitoring = armed && not muted
+          const shouldSoftwareMonitor = track.isArmed && !track.isMuted;
+          console.log('[useNativeBridge] Syncing software monitoring:', shouldSoftwareMonitor, '(armed:', track.isArmed, 'muted:', track.isMuted, ')');
+          (window as any).__openStudioAudioEngine.setMonitoringEnabled(shouldSoftwareMonitor);
         }
       }
     }
