@@ -14,6 +14,14 @@ import { getRoom } from '@/lib/rooms/service';
 import { SceneRenderer, SceneSelector } from '@/components/homepage';
 import type { HomepageSceneType } from '@/types/avatar';
 
+// All available homepage scenes for random selection
+const HOMEPAGE_SCENES: HomepageSceneType[] = ['campfire', 'rooftop', 'beach', 'studio', 'space', 'forest'];
+
+// Get a random scene for initial load
+const getRandomScene = (): HomepageSceneType => {
+  return HOMEPAGE_SCENES[Math.floor(Math.random() * HOMEPAGE_SCENES.length)];
+};
+
 // Theme toggle button
 function ThemeToggle() {
   const { resolvedTheme, toggleTheme } = useTheme();
@@ -115,7 +123,7 @@ export default function HomePage() {
   const [isHovering, setIsHovering] = useState(false);
   const [mounted, setMounted] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [currentScene, setCurrentScene] = useState<HomepageSceneType>('beach');
+  const [currentScene, setCurrentScene] = useState<HomepageSceneType>(getRandomScene);
 
   useEffect(() => {
     setMounted(true);
