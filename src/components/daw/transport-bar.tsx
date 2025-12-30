@@ -460,7 +460,7 @@ function KeyBadge() {
 // =============================================================================
 // Overflow Menu Component - For collapsed controls on small screens
 // =============================================================================
-function OverflowMenu({ onSettingsClick }: { onSettingsClick: () => void }) {
+function OverflowMenu({ onSettingsClick, onLeaveRoom }: { onSettingsClick: () => void; onLeaveRoom: () => void }) {
   const [isOpen, setIsOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -508,6 +508,17 @@ function OverflowMenu({ onSettingsClick }: { onSettingsClick: () => void }) {
           >
             <User className="w-4 h-4 text-gray-400 dark:text-zinc-500" />
             <span className="text-sm text-gray-700 dark:text-zinc-300">Profile</span>
+          </button>
+          <div className="my-1 border-t border-gray-200 dark:border-white/10" />
+          <button
+            onClick={() => {
+              setIsOpen(false);
+              onLeaveRoom();
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-all hover:bg-red-50 dark:hover:bg-red-500/10"
+          >
+            <LogOut className="w-4 h-4 text-red-500 dark:text-red-400" />
+            <span className="text-sm text-red-500 dark:text-red-400">Leave Room</span>
           </button>
         </div>
       )}
@@ -860,7 +871,7 @@ export function TransportBar({
         <div className="h-5 w-px bg-gray-200 dark:bg-white/10 hidden @sm:block" />
 
         {/* Overflow Menu (visible only on smallest containers) */}
-        <OverflowMenu onSettingsClick={onSettingsClick} />
+        <OverflowMenu onSettingsClick={onSettingsClick} onLeaveRoom={onLeave} />
 
         {/* Mute Button */}
         <button
@@ -887,17 +898,8 @@ export function TransportBar({
 
         {/* User Menu (hidden on smallest containers) */}
         <div className="hidden @sm:block">
-          <UserMenu />
+          <UserMenu onLeaveRoom={onLeave} />
         </div>
-
-        {/* Leave */}
-        <button
-          onClick={onLeave}
-          className="flex items-center gap-2 px-2 @sm:px-3 py-2 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-red-500/20 hover:text-red-500 dark:hover:text-red-400 transition-all"
-        >
-          <LogOut className="w-4 h-4" />
-          <span className="text-sm font-medium hidden @lg:block">Leave</span>
-        </button>
       </div>
     </header>
   );

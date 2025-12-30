@@ -19,9 +19,14 @@ import {
   Shield,
   Flame,
   FolderOpen,
+  DoorOpen,
 } from 'lucide-react';
 
-export function UserMenu() {
+interface UserMenuProps {
+  onLeaveRoom?: () => void;
+}
+
+export function UserMenu({ onLeaveRoom }: UserMenuProps = {}) {
   const router = useRouter();
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -271,6 +276,21 @@ export function UserMenu() {
                     onClick={() => {
                       router.push('/admin');
                       setShowDropdown(false);
+                    }}
+                    className="text-red-500 dark:text-red-400"
+                  />
+                </>
+              )}
+
+              {onLeaveRoom && (
+                <>
+                  <div className="my-2 border-t border-gray-200 dark:border-gray-800" />
+                  <MenuItem
+                    icon={DoorOpen}
+                    label="Leave Room"
+                    onClick={() => {
+                      setShowDropdown(false);
+                      onLeaveRoom();
                     }}
                     className="text-red-500 dark:text-red-400"
                   />
