@@ -172,12 +172,12 @@ function getValidPosition(
   return { x, y };
 }
 
-// Generate a position in the bottom 30% of the screen ONLY
+// Generate a position in the bottom 15% of the screen ONLY
 function getBiasedPosition(
   walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
 ): { x: number; y: number } {
-  // ONLY spawn in bottom 30% of screen - Y >= 70
-  const SPAWN_MIN_Y = 70;
+  // ONLY spawn in bottom 15% of screen - Y >= 85
+  const SPAWN_MIN_Y = 85;
 
   const x = walkableArea.minX + 5 + Math.random() * (walkableArea.maxX - walkableArea.minX - 10);
   const y = SPAWN_MIN_Y + Math.random() * (walkableArea.maxY - SPAWN_MIN_Y - 3);
