@@ -288,14 +288,15 @@ export class TrackAudioProcessor {
     // Handle worklet messages (stats)
     this.bridgeWorkletNode.port.onmessage = (event) => {
       if (event.data.type === 'stats') {
-        const { underruns, overruns, bufferFill } = event.data;
+        const { underruns, overruns, bufferFill, samplesReceived, messageCount } = event.data;
         console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} worklet stats:`, {
           underruns,
           overruns,
           bufferFill: (bufferFill * 100).toFixed(1) + '%',
+          samplesReceived,
+          messageCount,
           armGain: this.armGainNode.gain.value,
           monitorGain: this.monitorGainNode.gain.value,
-          inputSourceType: this.inputSourceType,
         });
       }
     };
