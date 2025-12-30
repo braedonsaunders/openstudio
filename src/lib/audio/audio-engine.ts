@@ -258,18 +258,16 @@ export class AudioEngine {
     }
     this.masterEffectsProcessor?.setEnabled(savedState.masterEffectsEnabled);
 
-    // Re-enable bridge audio if it was active
-    if (savedState.useBridgeAudio) {
-      await this.enableBridgeAudio();
-      // Restore effects settings to the new processor
-      if (savedState.effectsSettings) {
-        this.localEffectsProcessor?.updateSettings(savedState.effectsSettings);
-      }
-    }
+    // Note: Bridge audio for tracks is re-enabled via setTrackBridgeInput calls
+    // from useNativeBridge after sample rate change completes
 
     console.log('[AudioEngine] Sample rate changed to', this.config.sampleRate);
   }
 
+  /**
+   * Capture audio from a device via getUserMedia.
+   * Returns the raw MediaStream - routing to TrackAudioProcessor is handled by the caller.
+   */
   async captureLocalAudio(options: CaptureAudioOptions = {}): Promise<MediaStream> {
     const {
       deviceId,
@@ -284,9 +282,6 @@ export class AudioEngine {
       ? Math.max(2, (channelConfig.leftChannel || 0) + 1) // Need at least leftChannel+1 channels
       : channelConfig?.channelCount || 2;
 
-    // Note: 'latency' is a valid Chrome/Edge constraint for requesting minimum capture latency
-    // but it's not in the standard TypeScript MediaTrackConstraints type definition.
-    // We use a type assertion to include this experimental low-latency hint.
     // Audio processing (echo cancellation, noise suppression, auto gain) is always disabled
     // for lowest latency - these add significant processing delay.
     const audioConstraints: MediaTrackConstraints & { latency?: number } = {
@@ -296,7 +291,6 @@ export class AudioEngine {
       sampleRate,
       channelCount: requestedChannelCount,
       // Request minimum capture latency for live jamming (Chrome/Edge support)
-      // This hints to the browser to minimize capture buffer size
       latency: 0,
     };
 
@@ -312,6 +306,11 @@ export class AudioEngine {
       sampleRate,
     });
 
+    // Stop any existing stream
+    if (this.localStream) {
+      this.localStream.getTracks().forEach(track => track.stop());
+    }
+
     // Try with full constraints first, fall back to minimal for iOS Safari compatibility
     try {
       this.localStream = await navigator.mediaDevices.getUserMedia({
@@ -319,11 +318,9 @@ export class AudioEngine {
       });
     } catch (err) {
       const error = err as Error;
-      // Handle OverconstrainedError (common on iOS Safari) or NotSupportedError
       if (error.name === 'OverconstrainedError' || error.name === 'NotSupportedError') {
-        console.warn('[AudioEngine] Constraints not supported, falling back to minimal constraints:', error.message);
+        console.warn('[AudioEngine] Constraints not supported, falling back:', error.message);
 
-        // Try with just device ID if specified, otherwise minimal constraints
         const fallbackConstraints: MediaTrackConstraints = deviceId && deviceId !== 'default'
           ? { deviceId: { ideal: deviceId } }
           : {};
@@ -331,10 +328,7 @@ export class AudioEngine {
         this.localStream = await navigator.mediaDevices.getUserMedia({
           audio: fallbackConstraints.deviceId ? fallbackConstraints : true,
         });
-
-        console.log('[AudioEngine] Successfully captured audio with fallback constraints');
       } else {
-        // Re-throw other errors (e.g., NotAllowedError for permission denied)
         throw err;
       }
     }
@@ -348,96 +342,6 @@ export class AudioEngine {
         sampleRate: settings.sampleRate,
         deviceId: settings.deviceId,
       });
-    }
-
-    if (this.audioContext && this.masterGain) {
-      // Clean up existing nodes
-      this.localSourceNode?.disconnect();
-      this.localChannelSplitter?.disconnect();
-      this.localAnalyser?.disconnect();
-      this.localMonitorGain?.disconnect();
-      this.localInputGain?.disconnect();
-      this.localInputGainNode?.disconnect();
-      this.localArmGain?.disconnect();
-      this.localMuteGain?.disconnect();
-      this.localEffectsProcessor?.dispose();
-
-      this.localSourceNode = this.audioContext.createMediaStreamSource(this.localStream);
-      this.localAnalyser = this.audioContext.createAnalyser();
-      this.localAnalyser.fftSize = 256;
-
-      // Create input gain dB node for input level adjustment (-24 to +24 dB)
-      // This is the first gain stage in the signal chain
-      this.localInputGainNode = this.audioContext.createGain();
-      const linearGain = Math.pow(10, this.localInputGainDb / 20);
-      this.localInputGainNode.gain.value = linearGain;
-
-      // Create input gain for track level control (fader/volume)
-      this.localInputGain = this.audioContext.createGain();
-      this.localInputGain.gain.value = this.localTrackVolume;
-
-      // Create arm gain to gate audio when track is not armed
-      // When unarmed, this blocks all audio from passing through
-      this.localArmGain = this.audioContext.createGain();
-      this.localArmGain.gain.value = this.localTrackArmed ? 1 : 0;
-
-      // Create mute gain for track mute/solo control
-      this.localMuteGain = this.audioContext.createGain();
-      this.localMuteGain.gain.value = this.localTrackMuted ? 0 : 1;
-
-      // Create monitoring gain node for local audio output
-      this.localMonitorGain = this.audioContext.createGain();
-      this.localMonitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
-
-      // Audio signal flow:
-      // source -> [channelSplitter if mono] -> inputGainNode (dB) -> inputGain (volume) -> armGain -> effects -> muteGain -> monitorGain -> masterGain
-      // When not armed, armGain is 0, blocking all audio from being processed or monitored
-
-      // For mono mode with a specific channel selection, use ChannelSplitter
-      // to extract only the desired channel
-      if (channelConfig?.channelCount === 1 && channelConfig.leftChannel !== undefined) {
-        const actualChannelCount = audioTrack?.getSettings().channelCount || requestedChannelCount;
-
-        if (channelConfig.leftChannel < actualChannelCount) {
-          console.log('[AudioEngine] Using ChannelSplitter to extract channel:', channelConfig.leftChannel);
-
-          // Create a channel splitter to access individual channels
-          this.localChannelSplitter = this.audioContext.createChannelSplitter(actualChannelCount);
-
-          // Create a channel merger to convert back to mono for the analyser
-          const merger = this.audioContext.createChannelMerger(1);
-
-          // Connect: source -> splitter -> specific channel -> merger -> inputGainNode (dB)
-          this.localSourceNode.connect(this.localChannelSplitter);
-          this.localChannelSplitter.connect(merger, channelConfig.leftChannel, 0);
-          merger.connect(this.localInputGainNode);
-        } else {
-          // Requested channel not available, fall back to default
-          console.warn('[AudioEngine] Requested channel', channelConfig.leftChannel,
-            'not available (device has', actualChannelCount, 'channels). Using default.');
-          this.localSourceNode.connect(this.localInputGainNode);
-        }
-      } else {
-        // Stereo or default: connect directly to inputGainNode (dB)
-        this.localSourceNode.connect(this.localInputGainNode);
-      }
-
-      // Connect input gain dB to track volume
-      this.localInputGainNode.connect(this.localInputGain);
-
-      // Connect input gain to analyser (for input level metering before arm gate)
-      this.localInputGain.connect(this.localAnalyser);
-
-      // Connect input gain to arm gate (this is where audio gets blocked when unarmed)
-      this.localInputGain.connect(this.localArmGain);
-
-      // Create extended effects processor (all 35 effects in signal chain order)
-      // Connect: inputGain -> armGain -> effectsProcessor -> muteGain -> monitorGain -> masterGain
-      this.localEffectsProcessor = new ExtendedEffectsProcessor(this.audioContext);
-      this.localArmGain.connect(this.localEffectsProcessor.getInputNode());
-      this.localEffectsProcessor.connect(this.localMuteGain);
-      this.localMuteGain.connect(this.localMonitorGain);
-      this.localMonitorGain.connect(this.masterGain);
     }
 
     return this.localStream;
