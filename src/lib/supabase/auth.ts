@@ -381,13 +381,22 @@ export async function removeUserInstrument(userId: string, instrumentId: string)
 // XP FUNCTIONS
 // ============================================
 
+// Helper to check if a string is a valid UUID
+function isValidUUID(str: string): boolean {
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  return uuidRegex.test(str);
+}
+
 export async function addXP(userId: string, amount: number, reason: string, sourceType?: string, sourceId?: string): Promise<{ newXp: number; newLevel: number; leveledUp: boolean }> {
+  // Only pass sourceId if it's a valid UUID (database expects uuid type)
+  const validSourceId = sourceId && isValidUUID(sourceId) ? sourceId : null;
+
   const { data, error } = await supabaseAuth.rpc('add_user_xp', {
     p_user_id: userId,
     p_amount: amount,
     p_reason: reason,
     p_source_type: sourceType || null,
-    p_source_id: sourceId || null,
+    p_source_id: validSourceId,
   });
 
   if (error) throw error;
