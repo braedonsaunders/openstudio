@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest, getAdminSupabase } from '@/lib/supabase/server';
+import { withAdminAuth, getAdminSupabase } from '@/lib/supabase/server';
 import { getComponentById } from '@/lib/avatar/supabase';
 import { processAvatarComponent, createThumbnail, applyEraserMask } from '@/lib/avatar/image-processor';
 import { downloadAvatarComponent, uploadAvatarComponentWithThumbnail, getAvatarUrl } from '@/lib/storage/r2';
@@ -23,13 +23,8 @@ interface ReprocessBody {
  * - If previewOnly, returns a base64 preview
  * - Otherwise, saves the reprocessed image to R2 and updates the component
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json() as ReprocessBody;
     const {
       componentId,
@@ -168,4 +163,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

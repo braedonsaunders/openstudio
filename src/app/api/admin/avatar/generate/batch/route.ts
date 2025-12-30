@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest } from '@/lib/supabase/server';
+import { withAdminAuth } from '@/lib/supabase/server';
 import { generateVariedPrompts, generateAvatarImages, buildPromptFromPreset } from '@/lib/avatar/generator';
 import { getGenerationPresets, getAllCategories } from '@/lib/avatar/supabase';
 
@@ -23,13 +23,8 @@ function sseMessage(event: string, data: unknown): string {
 }
 
 // POST /api/admin/avatar/generate/batch - Generate batch of varied images with streaming
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json() as BatchGenerateBody;
     const { theme, categoryId, categoryName, count, model, presetId } = body;
 
@@ -187,7 +182,7 @@ export async function POST(req: NextRequest) {
         'Connection': 'keep-alive',
         'X-Accel-Buffering': 'no', // Disable nginx buffering
       },
-    });
+    }) as unknown as NextResponse;
   } catch (error) {
     console.error('Batch generation failed:', error);
     return NextResponse.json(
@@ -195,4 +190,4 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

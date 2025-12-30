@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest, getAdminSupabase } from '@/lib/supabase/server';
+import { withAdminAuth, getAdminSupabase } from '@/lib/supabase/server';
 import { extractAvatarR2Key, isPresignedUrl } from '@/lib/storage/r2';
 
 /**
@@ -7,13 +7,8 @@ import { extractAvatarR2Key, isPresignedUrl } from '@/lib/storage/r2';
  * Converts expired presigned URLs to R2 keys
  * The keys will be converted to fresh signed URLs when components are fetched
  */
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const adminClient = getAdminSupabase();
     if (!adminClient) {
       return NextResponse.json(
@@ -99,18 +94,13 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 /**
  * GET - Check how many components have presigned URLs that need fixing
  */
-export async function GET(req: NextRequest) {
+export const GET = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const adminClient = getAdminSupabase();
     if (!adminClient) {
       return NextResponse.json(
@@ -166,4 +156,4 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

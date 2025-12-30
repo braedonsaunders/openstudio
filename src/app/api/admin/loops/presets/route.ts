@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest } from '@/lib/supabase/server';
+import { withAdminAuth } from '@/lib/supabase/server';
 import {
   getAllInstantBandPresets,
   createInstantBandPreset,
@@ -8,13 +8,8 @@ import {
 } from '@/lib/loops/supabase';
 
 // GET /api/admin/loops/presets - List all instant band presets
-export async function GET(req: NextRequest) {
+export const GET = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const activeOnly = searchParams.get('active') !== 'false';
 
@@ -27,16 +22,11 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // POST /api/admin/loops/presets - Create a new preset
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json();
 
     if (!body.id || !body.name || !body.loop_ids || !body.genre) {
@@ -55,16 +45,11 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // PATCH /api/admin/loops/presets?id=X - Update a preset
-export async function PATCH(req: NextRequest) {
+export const PATCH = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -82,16 +67,11 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // DELETE /api/admin/loops/presets?id=X - Delete a preset
-export async function DELETE(req: NextRequest) {
+export const DELETE = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -108,4 +88,4 @@ export async function DELETE(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

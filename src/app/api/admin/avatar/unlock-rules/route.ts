@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest } from '@/lib/supabase/server';
+import { withAdminAuth } from '@/lib/supabase/server';
 import {
   getAllUnlockRules,
   createUnlockRule,
@@ -10,13 +10,8 @@ import {
 import type { CreateUnlockRuleRequest, UpdateUnlockRuleRequest } from '@/types/avatar';
 
 // GET /api/admin/avatar/unlock-rules - List all unlock rules
-export async function GET(req: NextRequest) {
+export const GET = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const includeComponents = searchParams.get('includeComponents') === 'true';
 
@@ -48,16 +43,11 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // POST /api/admin/avatar/unlock-rules - Create a new unlock rule
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json() as CreateUnlockRuleRequest;
 
     if (!body.id || !body.displayName || !body.unlockType) {
@@ -100,16 +90,11 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // PATCH /api/admin/avatar/unlock-rules - Update an unlock rule
-export async function PATCH(req: NextRequest) {
+export const PATCH = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -128,16 +113,11 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // DELETE /api/admin/avatar/unlock-rules - Delete an unlock rule
-export async function DELETE(req: NextRequest) {
+export const DELETE = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -154,4 +134,4 @@ export async function DELETE(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest } from '@/lib/supabase/server';
+import { withAdminAuth } from '@/lib/supabase/server';
 import {
   getAllComponents,
   createComponent,
@@ -10,13 +10,8 @@ import {
 import type { CreateComponentRequest, UpdateComponentRequest } from '@/types/avatar';
 
 // GET /api/admin/avatar/components - List all components
-export async function GET(req: NextRequest) {
+export const GET = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const components = await getAllComponents();
     return NextResponse.json(components);
   } catch (error) {
@@ -26,16 +21,11 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // POST /api/admin/avatar/components - Create a new component
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json() as CreateComponentRequest;
 
     if (!body.id || !body.categoryId || !body.name || !body.imageUrl || !body.r2Key) {
@@ -54,16 +44,11 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // PATCH /api/admin/avatar/components - Update a component
-export async function PATCH(req: NextRequest) {
+export const PATCH = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -92,16 +77,11 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // DELETE /api/admin/avatar/components - Delete a component
-export async function DELETE(req: NextRequest) {
+export const DELETE = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -118,4 +98,4 @@ export async function DELETE(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});

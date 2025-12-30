@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { verifyAdminRequest } from '@/lib/supabase/server';
+import { withAdminAuth } from '@/lib/supabase/server';
 import {
   getAllCharacters,
   createCharacter,
@@ -10,13 +10,8 @@ import {
 import type { CreateHomepageCharacterRequest, UpdateHomepageCharacterRequest } from '@/types/avatar';
 
 // GET /api/admin/homepage/characters - List all characters
-export async function GET(req: NextRequest) {
+export const GET = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const characters = await getAllCharacters();
     return NextResponse.json(characters);
   } catch (error) {
@@ -26,16 +21,11 @@ export async function GET(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // POST /api/admin/homepage/characters - Create a new character
-export async function POST(req: NextRequest) {
+export const POST = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json() as CreateHomepageCharacterRequest;
 
     if (!body.name || !body.canvasData) {
@@ -54,16 +44,11 @@ export async function POST(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // PATCH /api/admin/homepage/characters - Update a character
-export async function PATCH(req: NextRequest) {
+export const PATCH = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -82,16 +67,11 @@ export async function PATCH(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // DELETE /api/admin/homepage/characters - Delete a character
-export async function DELETE(req: NextRequest) {
+export const DELETE = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const { searchParams } = new URL(req.url);
     const id = searchParams.get('id');
 
@@ -108,16 +88,11 @@ export async function DELETE(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
 
 // PUT /api/admin/homepage/characters - Reorder characters
-export async function PUT(req: NextRequest) {
+export const PUT = withAdminAuth(async (req, user) => {
   try {
-    const user = await verifyAdminRequest(req);
-    if (!user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
     const body = await req.json() as { orderedIds: string[] };
 
     if (!body.orderedIds || !Array.isArray(body.orderedIds)) {
@@ -136,4 +111,4 @@ export async function PUT(req: NextRequest) {
       { status: 500 }
     );
   }
-}
+});
