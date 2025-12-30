@@ -313,18 +313,18 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             channelConfig: track.audioSettings.channelConfig,
           });
 
-          // Set the track state with monitoring enabled
-          const shouldMonitor = track.isArmed && !track.isMuted && (track.audioSettings.directMonitoring ?? true);
+          // Set the track state - send raw monitoringEnabled, TrackAudioProcessor handles its own calculation
+          const monitoringEnabled = track.audioSettings.directMonitoring ?? true;
           updateTrackState(track.id, {
             isArmed: track.isArmed,
             isMuted: track.isMuted,
             isSolo: track.isSolo,
             volume: track.volume,
             inputGain: track.audioSettings.inputGain || 0,
-            monitoringEnabled: shouldMonitor,
+            monitoringEnabled: monitoringEnabled,
           });
 
-          console.log(`[useRoom] Connected MediaStream to track ${track.id}, monitoring: ${shouldMonitor}`);
+          console.log(`[useRoom] Connected MediaStream to track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${monitoringEnabled}`);
         }
       }
 
