@@ -258,14 +258,8 @@ export class AudioEngine {
     }
     this.masterEffectsProcessor?.setEnabled(savedState.masterEffectsEnabled);
 
-    // Re-enable bridge audio if it was active
-    if (savedState.useBridgeAudio) {
-      await this.enableBridgeAudio();
-      // Restore effects settings to the new processor
-      if (savedState.effectsSettings) {
-        this.localEffectsProcessor?.updateSettings(savedState.effectsSettings);
-      }
-    }
+    // Note: Bridge audio for tracks is re-enabled via setTrackBridgeInput calls
+    // from useNativeBridge after sample rate change completes
 
     console.log('[AudioEngine] Sample rate changed to', this.config.sampleRate);
   }

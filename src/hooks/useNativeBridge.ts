@@ -298,14 +298,6 @@ export function useNativeBridge() {
     // Small delay to let native bridge initialize with correct sample rate
     await new Promise(resolve => setTimeout(resolve, 50));
 
-    // NOW enable bridge audio mode in the audio engine
-    // This creates the ScriptProcessorNode that will receive audio from native bridge
-    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-      const engine = (window as any).__openStudioAudioEngine;
-      console.log('[useNativeBridge] Enabling bridge audio mode. Sample rate:', state.sampleRate);
-      await engine.enableBridgeAudio();
-    }
-
     // Send initial track state after starting audio
     // NOTE: Native bridge only supports single-track audio capture. Multi-track is handled
     // entirely in the browser - all tracks share the same audio input from the bridge,
