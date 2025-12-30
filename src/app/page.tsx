@@ -8,7 +8,7 @@ import { UserMenu } from '@/components/auth/UserMenu';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { useAuthStore } from '@/stores/auth-store';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus, AlertCircle } from 'lucide-react';
+import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus, AlertCircle, Play, Pause } from 'lucide-react';
 import { CreateRoomModal } from '@/components/rooms';
 import { getRoom } from '@/lib/rooms/service';
 import { SceneRenderer, SceneSelector } from '@/components/homepage';
@@ -21,6 +21,15 @@ const HOMEPAGE_SCENES: HomepageSceneType[] = ['campfire', 'rooftop', 'beach', 's
 const getRandomScene = (): HomepageSceneType => {
   return HOMEPAGE_SCENES[Math.floor(Math.random() * HOMEPAGE_SCENES.length)];
 };
+
+// Get a random scene excluding the current one
+const getRandomSceneExcluding = (currentScene: HomepageSceneType): HomepageSceneType => {
+  const availableScenes = HOMEPAGE_SCENES.filter(scene => scene !== currentScene);
+  return availableScenes[Math.floor(Math.random() * availableScenes.length)];
+};
+
+// Auto scene switch interval in milliseconds (1 minute)
+const AUTO_SCENE_SWITCH_INTERVAL = 60 * 1000;
 
 // Theme toggle button
 function ThemeToggle() {
@@ -53,6 +62,44 @@ function ThemeToggle() {
     </motion.button>
   );
 }
+
+// Auto scene switch toggle button
+function AutoSceneToggle({
+  isEnabled,
+  onToggle,
+  isDark
+}: {
+  isEnabled: boolean;
+  onToggle: () => void;
+  isDark: boolean;
+}) {
+  return (
+    <motion.button
+      onClick={onToggle}
+      className={`relative flex items-center gap-1.5 px-2.5 py-2 rounded-xl transition-colors ${
+        isDark
+          ? isEnabled
+            ? 'bg-purple-500/30 hover:bg-purple-500/40 text-purple-300 border border-purple-500/30'
+            : 'bg-white/10 hover:bg-white/20 text-white'
+          : isEnabled
+            ? 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-700 border border-purple-500/30'
+            : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
+      }`}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      aria-label={isEnabled ? 'Disable auto scene switch' : 'Enable auto scene switch'}
+      title={isEnabled ? 'Auto-switching scenes (click to stop)' : 'Click to auto-switch scenes'}
+    >
+      {isEnabled ? (
+        <Pause className="w-4 h-4" />
+      ) : (
+        <Play className="w-4 h-4" />
+      )}
+      <span className="text-xs font-medium hidden sm:inline">Auto</span>
+    </motion.button>
+  );
+}
+
 // Floating music notes ambient
 function FloatingMusicNotes({ isDark }: { isDark: boolean }) {
   const notes = ['♪', '♫', '♬', '♩'];
@@ -124,6 +171,7 @@ export default function HomePage() {
   const [mounted, setMounted] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [currentScene, setCurrentScene] = useState<HomepageSceneType>(getRandomScene);
+  const [autoSceneSwitch, setAutoSceneSwitch] = useState(true);
 
   useEffect(() => {
     setMounted(true);
@@ -156,6 +204,27 @@ export default function HomePage() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Auto scene switch interval
+  useEffect(() => {
+    if (!autoSceneSwitch) return;
+
+    const intervalId = setInterval(() => {
+      setCurrentScene((current) => getRandomSceneExcluding(current));
+    }, AUTO_SCENE_SWITCH_INTERVAL);
+
+    return () => clearInterval(intervalId);
+  }, [autoSceneSwitch]);
+
+  // Disable auto switch when user manually changes scene
+  const handleSceneChange = useCallback((scene: HomepageSceneType) => {
+    setAutoSceneSwitch(false);
+    setCurrentScene(scene);
+  }, []);
+
+  const toggleAutoSceneSwitch = useCallback(() => {
+    setAutoSceneSwitch((prev) => !prev);
   }, []);
 
   const handleCreateRoom = useCallback(async () => {
@@ -253,7 +322,12 @@ export default function HomePage() {
           >
             <SceneSelector
               currentScene={currentScene}
-              onSceneChange={setCurrentScene}
+              onSceneChange={handleSceneChange}
+            />
+            <AutoSceneToggle
+              isEnabled={autoSceneSwitch}
+              onToggle={toggleAutoSceneSwitch}
+              isDark={isDark}
             />
             <ThemeToggle />
             <UserMenu />
