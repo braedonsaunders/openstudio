@@ -230,11 +230,20 @@ impl AudioEngine {
             return Ok(());
         }
 
-        // Use default devices if not set
-        if self.input_device.is_none() {
+        // Re-fetch device handles right before use to avoid stale ASIO handles
+        // ASIO drivers are singleton and handles can become invalid if the driver
+        // was re-enumerated (e.g., by getDevices calls)
+        if let Some(ref device_id) = self.config.input_device_id {
+            info!("Re-fetching input device: {}", device_id);
+            self.input_device = Some(AudioDevice::get_by_id(device_id)?);
+        } else if self.input_device.is_none() {
             self.input_device = Some(AudioDevice::default_input()?);
         }
-        if self.output_device.is_none() {
+
+        if let Some(ref device_id) = self.config.output_device_id {
+            info!("Re-fetching output device: {}", device_id);
+            self.output_device = Some(AudioDevice::get_by_id(device_id)?);
+        } else if self.output_device.is_none() {
             self.output_device = Some(AudioDevice::default_output()?);
         }
 
