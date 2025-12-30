@@ -367,14 +367,16 @@ export function useNativeBridge() {
 
           // IMPORTANT: Set track state BEFORE enabling audio input
           // This ensures monitoring is enabled before audio starts flowing
-          // Send raw monitoringEnabled - TrackAudioProcessor handles its own calculation
+          // For bridge mode: JS monitors WET audio when directMonitoring is OFF
+          // (Native bridge handles DRY monitoring when directMonitoring is ON)
+          const directMonitoring = track.audioSettings.directMonitoring ?? true;
           engine.updateTrackState(track.id, {
             isArmed: track.isArmed,
             isMuted: track.isMuted,
             isSolo: track.isSolo,
             volume: track.volume,
             inputGain: track.audioSettings.inputGain || 0,
-            monitoringEnabled: track.audioSettings.directMonitoring ?? true,
+            monitoringEnabled: !directMonitoring, // Invert: WET when direct is OFF
           });
 
           if (track.audioSettings.effects) {
@@ -386,7 +388,7 @@ export function useNativeBridge() {
           const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
           await engine.setTrackBridgeInput(track.id, { channelConfig });
 
-          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${track.audioSettings.directMonitoring ?? true}`);
+          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, directMonitoring: ${directMonitoring}, jsMonitoring: ${!directMonitoring}`);
         }
       }
     }
@@ -523,14 +525,16 @@ export function useNativeBridge() {
               engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 
               // Set track state BEFORE enabling audio input
-              // Send raw monitoringEnabled - TrackAudioProcessor handles its own calculation
+              // For bridge mode: JS monitors WET audio when directMonitoring is OFF
+              // (Native bridge handles DRY monitoring when directMonitoring is ON)
+              const directMonitoring = track.audioSettings.directMonitoring ?? true;
               engine.updateTrackState(track.id, {
                 isArmed: track.isArmed,
                 isMuted: track.isMuted,
                 isSolo: track.isSolo,
                 volume: track.volume,
                 inputGain: track.audioSettings.inputGain || 0,
-                monitoringEnabled: track.audioSettings.directMonitoring ?? true,
+                monitoringEnabled: !directMonitoring, // Invert: WET when direct is OFF
               });
 
               if (track.audioSettings.effects) {
