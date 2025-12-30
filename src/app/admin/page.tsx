@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/auth-store';
 import { supabaseAuth, getAdminStats, getAllUsers, searchUsers, banUser, unbanUser, setUserAdmin, logAdminAction } from '@/lib/supabase/auth';
 import { adminGet } from '@/lib/api/admin';
@@ -208,14 +209,96 @@ export default function AdminPage() {
 
         {/* Main Content */}
         <main className="flex-1 p-6">
-          {activeTab === 'dashboard' && <DashboardTab adminId={user!.id} />}
-          {activeTab === 'users' && <UsersTab adminId={user!.id} />}
-          {activeTab === 'rooms' && <RoomsTab />}
-          {activeTab === 'reports' && <ReportsTab />}
-          {activeTab === 'analytics' && <AnalyticsTab />}
-          {activeTab === 'avatars' && <AvatarsTab />}
-          {activeTab === 'loops' && <LoopsTab />}
-          {activeTab === 'homepage' && <HomepageTab />}
+          <AnimatePresence mode="wait">
+            {activeTab === 'dashboard' && (
+              <motion.div
+                key="dashboard"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+                <DashboardTab adminId={user!.id} />
+              </motion.div>
+            )}
+            {activeTab === 'users' && (
+              <motion.div
+                key="users"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+                <UsersTab adminId={user!.id} />
+              </motion.div>
+            )}
+            {activeTab === 'rooms' && (
+              <motion.div
+                key="rooms"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+                <RoomsTab />
+              </motion.div>
+            )}
+            {activeTab === 'reports' && (
+              <motion.div
+                key="reports"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+                <ReportsTab />
+              </motion.div>
+            )}
+            {activeTab === 'analytics' && (
+              <motion.div
+                key="analytics"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+                <AnalyticsTab />
+              </motion.div>
+            )}
+            {activeTab === 'avatars' && (
+              <motion.div
+                key="avatars"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+                <AvatarsTab />
+              </motion.div>
+            )}
+            {activeTab === 'loops' && (
+              <motion.div
+                key="loops"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+                <LoopsTab />
+              </motion.div>
+            )}
+            {activeTab === 'homepage' && (
+              <motion.div
+                key="homepage"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+                <HomepageTab />
+              </motion.div>
+            )}
+          </AnimatePresence>
         </main>
       </div>
     </div>
