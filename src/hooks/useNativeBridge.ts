@@ -500,6 +500,7 @@ export function useNativeBridge() {
             if (engine) {
               engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 
+              // Set track state BEFORE enabling audio input
               const shouldMonitor = track.isArmed && !track.isMuted;
               engine.updateTrackState(track.id, {
                 isArmed: track.isArmed,
@@ -513,6 +514,12 @@ export function useNativeBridge() {
               if (track.audioSettings.effects) {
                 engine.updateTrackEffects(track.id, track.audioSettings.effects);
               }
+
+              // CRITICAL: Re-establish bridge input after AudioContext was recreated
+              // The track processor was recreated with no audio input
+              const channelConfig = track.audioSettings.channelConfig || store.inputChannelConfig;
+              await engine.setTrackBridgeInput(track.id, { channelConfig });
+              console.log(`[useNativeBridge] Re-established bridge input for track ${track.id} after sample rate change`);
             }
           }
         }
