@@ -230,25 +230,34 @@ impl AudioEngine {
             return Ok(());
         }
 
-        // Re-fetch device handles right before use to avoid stale ASIO handles
-        // ASIO drivers are singleton and handles can become invalid if the driver
-        // was re-enumerated (e.g., by getDevices calls)
-        if let Some(ref device_id) = self.config.input_device_id {
-            info!("Re-fetching input device: {}", device_id);
+        // Re-fetch device to get fresh handle
+        let input_device_id = self.config.input_device_id.clone();
+
+        if let Some(ref device_id) = input_device_id {
+            info!("Fetching device: {}", device_id);
             self.input_device = Some(AudioDevice::get_by_id(device_id)?);
         } else if self.input_device.is_none() {
             self.input_device = Some(AudioDevice::default_input()?);
         }
 
-        if let Some(ref device_id) = self.config.output_device_id {
-            info!("Re-fetching output device: {}", device_id);
-            self.output_device = Some(AudioDevice::get_by_id(device_id)?);
-        } else if self.output_device.is_none() {
-            self.output_device = Some(AudioDevice::default_output()?);
-        }
-
         let input_device = self.input_device.as_ref().unwrap();
-        let output_device = self.output_device.as_ref().unwrap();
+
+        // For ASIO, input and output MUST be the same device instance
+        // ASIO uses unified I/O - you can't have separate input/output devices
+        let is_asio = input_device_id.as_ref().map(|id| id.starts_with("asio:")).unwrap_or(false);
+        let output_device = if is_asio {
+            info!("ASIO mode: using same device for input and output");
+            input_device
+        } else {
+            // Non-ASIO: can use separate output device
+            let output_device_id = self.config.output_device_id.clone();
+            if let Some(ref device_id) = output_device_id {
+                self.output_device = Some(AudioDevice::get_by_id(device_id)?);
+            } else if self.output_device.is_none() {
+                self.output_device = Some(AudioDevice::default_output()?);
+            }
+            self.output_device.as_ref().unwrap()
+        };
 
         // Get default configs from devices (works with WASAPI)
         let input_default_config = input_device.device.default_input_config()
