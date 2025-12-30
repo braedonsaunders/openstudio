@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useRef } from 'react';
-import { useUserTracksStore, type UserTrack } from '@/stores/user-tracks-store';
+import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import { useAudioEngine } from './useAudioEngine';
 import { nativeBridge } from '@/lib/audio/native-bridge';
@@ -23,37 +23,22 @@ interface TrackSyncState {
  * Hook that synchronizes user track state (mute, solo, volume, effects)
  * with the audio engine AND native bridge (when active).
  *
- * This hook supports multi-track mode - it syncs ALL user tracks, not just the first one.
- * Each track gets its own TrackAudioProcessor in the audio engine.
- *
- * Call this hook in a component that has access to the audio engine
- * (e.g., DAWLayout or a track component).
+ * Syncs ALL user tracks - each track gets its own TrackAudioProcessor.
  */
 export function useTrackAudioSync(currentUserId: string | undefined) {
   const {
-    setLocalTrackArmed,
-    setLocalTrackMuted,
-    setLocalTrackVolume,
-    updateLocalEffects,
-    setLocalMonitoring,
-    // Multi-track methods
     getOrCreateTrackProcessor,
     updateTrackState,
     updateTrackEffects,
+    removeTrackProcessor,
   } = useAudioEngine();
 
-  // Track last sync state for each track
   const lastSyncRef = useRef<Map<string, TrackSyncState>>(new Map());
-
-  // Legacy single-track sync ref for backward compatibility
-  const lastPrimarySyncRef = useRef<TrackSyncState | null>(null);
 
   useEffect(() => {
     if (!currentUserId) return;
 
-    // Subscribe to track changes
     const unsubscribe = useUserTracksStore.subscribe((state) => {
-      // Get all tracks for the current user
       const userTracks = state.getTracksByUser(currentUserId);
       if (userTracks.length === 0) return;
 
@@ -66,13 +51,11 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
 
       // Process each track
-      for (let i = 0; i < userTracks.length; i++) {
-        const track = userTracks[i];
+      for (const track of userTracks) {
         if (!track) continue;
 
         // Calculate effective mute state considering solo
-        const isEffectivelyMuted = track.isMuted ||
-          (hasSoloedTracks && !track.isSolo);
+        const isEffectivelyMuted = track.isMuted || (hasSoloedTracks && !track.isSolo);
 
         const currentState: TrackSyncState = {
           isArmed: track.isArmed,
@@ -88,7 +71,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
 
         const lastState = lastSyncRef.current.get(track.id);
 
-        // Ensure track processor exists in audio engine
+        // Ensure track processor exists
         getOrCreateTrackProcessor(track.id, track.audioSettings);
 
         // Sync state to audio engine's track processor
@@ -101,7 +84,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           lastState.monitoringEnabled !== currentState.monitoringEnabled;
 
         if (stateChanged) {
-          // Calculate monitoring: only monitor if armed and not muted
           const shouldMonitor = currentState.isArmed && !currentState.isMuted && currentState.monitoringEnabled;
 
           updateTrackState(track.id, {
@@ -117,35 +99,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         // Sync effects if changed
         if (currentState.effects && (!lastState || lastState.effects !== currentState.effects)) {
           updateTrackEffects(track.id, currentState.effects);
-        }
-
-        // Primary track (first track) also updates legacy single-track API for backward compat
-        if (i === 0) {
-          const lastPrimaryState = lastPrimarySyncRef.current;
-
-          if (!lastPrimaryState || lastPrimaryState.isArmed !== currentState.isArmed) {
-            setLocalTrackArmed(currentState.isArmed);
-          }
-          if (!lastPrimaryState || lastPrimaryState.isMuted !== currentState.isMuted) {
-            setLocalTrackMuted(currentState.isMuted);
-          }
-          if (!lastPrimaryState || lastPrimaryState.volume !== currentState.volume) {
-            setLocalTrackVolume(currentState.volume);
-          }
-          if (currentState.effects && (!lastPrimaryState || lastPrimaryState.effects !== currentState.effects)) {
-            updateLocalEffects(currentState.effects);
-          }
-
-          // Software monitoring for primary track
-          const shouldSoftwareMonitor = currentState.isArmed && !currentState.isMuted;
-          if (!lastPrimaryState ||
-              lastPrimaryState.isArmed !== currentState.isArmed ||
-              lastPrimaryState.isMuted !== currentState.isMuted) {
-            console.log('[useTrackAudioSync] Primary track monitoring:', shouldSoftwareMonitor);
-            setLocalMonitoring(shouldSoftwareMonitor);
-          }
-
-          lastPrimarySyncRef.current = currentState;
         }
 
         // Sync to native bridge if active
@@ -182,7 +135,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           }
         }
 
-        // Update last sync state for this track
         lastSyncRef.current.set(track.id, currentState);
       }
 
@@ -191,23 +143,11 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       for (const trackId of lastSyncRef.current.keys()) {
         if (!currentTrackIds.has(trackId)) {
           lastSyncRef.current.delete(trackId);
-          // Could also call removeTrackProcessor here if tracks are deleted
+          removeTrackProcessor(trackId);
         }
       }
     });
 
-    return () => {
-      unsubscribe();
-    };
-  }, [
-    currentUserId,
-    setLocalTrackArmed,
-    setLocalTrackMuted,
-    setLocalTrackVolume,
-    updateLocalEffects,
-    setLocalMonitoring,
-    getOrCreateTrackProcessor,
-    updateTrackState,
-    updateTrackEffects,
-  ]);
+    return () => unsubscribe();
+  }, [currentUserId, getOrCreateTrackProcessor, updateTrackState, updateTrackEffects, removeTrackProcessor]);
 }

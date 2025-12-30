@@ -1031,12 +1031,9 @@ export class AudioEngine {
 
   /**
    * Update the local track effects (extended - all 35 effects)
+   * Updates the primary track processor
    */
   updateLocalEffects(effects: Partial<ExtendedEffectsChain>): void {
-    if (this.localEffectsProcessor) {
-      this.localEffectsProcessor.updateSettings(effects);
-    }
-    // Also update primary track processor if it exists
     if (this.primaryTrackId) {
       const processor = this.trackProcessors.get(this.primaryTrackId);
       processor?.updateEffects(effects);
@@ -1359,16 +1356,14 @@ export class AudioEngine {
   /**
    * Create a mixed broadcast stream for WebRTC that combines:
    * - All armed user tracks (after effects processing)
-   * - Local mic/instrument input (legacy single-track mode)
    * - MIDI loop audio (optional)
    *
-   * This is the stream that should be sent to other participants in a jam session.
+   * This is the stream sent to other participants in a jam session.
    * @param midiStream Optional MediaStream from SoundEngine.enableBroadcast()
-   * @param micVolume Volume for mic input (0-1) - applies to legacy single-track mode
    * @param midiVolume Volume for MIDI audio (0-1)
    * @returns MediaStream containing the mixed audio for WebRTC
    */
-  createBroadcastStream(midiStream?: MediaStream | null, micVolume: number = 1, midiVolume: number = 0.8): MediaStream | null {
+  createBroadcastStream(midiStream?: MediaStream | null, midiVolume: number = 0.8): MediaStream | null {
     if (!this.audioContext) {
       console.warn('[AudioEngine] Cannot create broadcast stream: audio context not initialized');
       return null;
@@ -1381,29 +1376,17 @@ export class AudioEngine {
       this.broadcastMixerGain.connect(this.broadcastDestination);
     }
 
-    // Connect all track processor outputs to broadcast mixer (multi-track mode)
-    // Each track's output goes through its own mute/solo logic before reaching here
+    // Connect all track processor outputs to broadcast mixer
+    // Each track's output goes through its own mute/solo logic
     if (this.broadcastMixerGain) {
       for (const processor of this.trackProcessors.values()) {
-        // The broadcast node is after mute/solo logic, so only unmuted/soloed tracks broadcast
         processor.getBroadcastNode().connect(this.broadcastMixerGain);
       }
       console.log(`[AudioEngine] Connected ${this.trackProcessors.size} tracks to broadcast mix`);
     }
 
-    // Connect local effects output to broadcast mixer (legacy single-track mode)
-    // The signal flow: effectsProcessor -> muteGain -> broadcastMixerGain -> broadcastDestination
-    if (this.localMuteGain && this.broadcastMixerGain) {
-      // Create a separate gain for mic volume in broadcast mix
-      const micBroadcastGain = this.audioContext.createGain();
-      micBroadcastGain.gain.value = micVolume;
-      this.localMuteGain.connect(micBroadcastGain);
-      micBroadcastGain.connect(this.broadcastMixerGain);
-    }
-
     // Connect MIDI stream to broadcast mixer if provided
     if (midiStream && this.broadcastMixerGain) {
-      // Clean up previous MIDI source if exists
       if (this.midiSourceNode) {
         this.midiSourceNode.disconnect();
       }
@@ -1901,13 +1884,12 @@ export class AudioEngine {
     this.levelUpdateInterval = setInterval(() => {
       const levels = new Map<string, number>();
 
-      // Local level (legacy single-track mode)
+      // Local level (aggregate of all armed tracks)
       if (this.localAnalyser) {
         levels.set('local', this.calculateLevel(this.localAnalyser));
       }
 
-      // Per-track levels (multi-track mode)
-      // Use prefix "track:" to differentiate from user IDs
+      // Per-track levels
       for (const [trackId, processor] of this.trackProcessors) {
         levels.set(`track:${trackId}`, processor.getOutputLevel());
       }
