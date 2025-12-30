@@ -262,7 +262,7 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
   }, [contextMenu, duplicateLoop, currentSong, roomId, userId, userName, addLoopTrack, addTrackToSong, closeContextMenu]);
 
   // Delete asset handler - also removes all instances from timeline
-  const handleDeleteAsset = useCallback(() => {
+  const handleDeleteAsset = useCallback(async () => {
     if (!contextMenu) return;
 
     const assetId = contextMenu.assetId;
@@ -283,7 +283,16 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
     if (contextMenu.type === 'audio') {
       onTrackRemove(assetId);
     } else {
+      // Remove from local store
       removeLoopTrack(assetId);
+      // Persist deletion to server
+      try {
+        await fetch(`/api/rooms/${roomId}/loop-tracks?trackId=${assetId}`, {
+          method: 'DELETE',
+        });
+      } catch (err) {
+        console.error('Failed to delete loop track:', err);
+      }
     }
 
     closeContextMenu();
@@ -638,7 +647,7 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
                     </span>
                     {isMaster && (
                       <button
-                        onClick={(e) => {
+                        onClick={async (e) => {
                           e.stopPropagation();
                           // Remove all song track references that use this asset first
                           const { getSongsByRoom, removeTrackFromSong } = useSongsStore.getState();
@@ -649,8 +658,16 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
                               removeTrackFromSong(song.id, ref.id);
                             }
                           }
-                          // Then remove the asset
+                          // Remove from local store
                           removeLoopTrack(asset.id);
+                          // Persist deletion to server
+                          try {
+                            await fetch(`/api/rooms/${roomId}/loop-tracks?trackId=${asset.id}`, {
+                              method: 'DELETE',
+                            });
+                          } catch (err) {
+                            console.error('Failed to delete loop track:', err);
+                          }
                         }}
                         className="p-0.5 text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
                         title="Delete asset"
