@@ -445,163 +445,824 @@ function CampfireScene({ isDark }: { isDark: boolean }) {
 }
 
 // ============================================
-// FOREST SCENE - Day & Night (Ground-dominant pseudo-3D)
+// FOREST SCENE - Magical Enchanted Forest Clearing
 // ============================================
+
+// Realistic tree component with trunk, branches, and layered foliage
+const ForestTree = memo(function ForestTree({
+  x,
+  scale,
+  variant,
+  isDark,
+  flip = false,
+}: {
+  x: number;
+  scale: number;
+  variant: 'oak' | 'pine' | 'birch' | 'willow';
+  isDark: boolean;
+  flip?: boolean;
+}) {
+  const baseHeight = variant === 'pine' ? 180 : variant === 'willow' ? 160 : 150;
+  const height = baseHeight * scale;
+  const width = (variant === 'pine' ? 80 : variant === 'willow' ? 120 : 100) * scale;
+
+  // Color palettes for day/night
+  const colors = isDark ? {
+    trunk: '#1a0f0a',
+    trunkLight: '#2d1f15',
+    foliage1: '#052e16',
+    foliage2: '#064e3b',
+    foliage3: '#065f46',
+    highlight: '#0d9488',
+  } : {
+    trunk: '#5d4037',
+    trunkLight: '#795548',
+    foliage1: '#166534',
+    foliage2: '#15803d',
+    foliage3: '#22c55e',
+    highlight: '#86efac',
+  };
+
+  const renderTree = () => {
+    switch (variant) {
+      case 'pine':
+        return (
+          <svg width={width} height={height} viewBox="0 0 80 180" style={{ transform: flip ? 'scaleX(-1)' : undefined }}>
+            {/* Trunk */}
+            <path d="M36 180 L36 100 Q40 95 44 100 L44 180" fill={colors.trunk} />
+            <path d="M38 180 L38 105 Q40 102 42 105 L42 180" fill={colors.trunkLight} />
+            {/* Pine layers */}
+            <path d="M40 10 L10 70 L25 65 L5 100 L20 95 L0 130 L40 110 L80 130 L60 95 L75 100 L55 65 L70 70 Z" fill={colors.foliage1} />
+            <path d="M40 15 L18 65 L28 62 L12 92 L25 88 L10 118 L40 102 L70 118 L55 88 L68 92 L52 62 L62 65 Z" fill={colors.foliage2} />
+            <path d="M40 25 L28 58 L35 56 L22 82 L32 78 L20 105 L40 92 L60 105 L48 78 L58 82 L45 56 L52 58 Z" fill={colors.foliage3} />
+            {/* Highlight */}
+            <path d="M40 30 L32 52 L38 50 L30 72 L36 70 L28 90 L40 82 L52 90 L44 70 L50 72 L42 50 L48 52 Z" fill={colors.highlight} opacity="0.3" />
+          </svg>
+        );
+      case 'birch':
+        return (
+          <svg width={width} height={height} viewBox="0 0 100 150" style={{ transform: flip ? 'scaleX(-1)' : undefined }}>
+            {/* Birch trunk with markings */}
+            <path d="M45 150 L45 40 Q50 35 55 40 L55 150" fill={isDark ? '#374151' : '#f5f5f4'} />
+            <path d="M46 150 L46 45 Q50 42 54 45 L54 150" fill={isDark ? '#4b5563' : '#fafaf9'} />
+            {/* Birch bark markings */}
+            {[50, 70, 95, 115, 135].map((y, i) => (
+              <ellipse key={i} cx={50 + (i % 2) * 3} cy={y} rx={4} ry={2} fill={isDark ? '#1f2937' : '#292524'} opacity="0.6" />
+            ))}
+            {/* Foliage clusters */}
+            <ellipse cx="35" cy="35" rx="25" ry="20" fill={colors.foliage2} />
+            <ellipse cx="60" cy="30" rx="28" ry="22" fill={colors.foliage1} />
+            <ellipse cx="50" cy="22" rx="22" ry="18" fill={colors.foliage3} />
+            <ellipse cx="70" cy="40" rx="20" ry="16" fill={colors.foliage2} />
+            <ellipse cx="30" cy="45" rx="18" ry="14" fill={colors.foliage1} />
+            {/* Highlights */}
+            <ellipse cx="50" cy="20" rx="12" ry="10" fill={colors.highlight} opacity="0.25" />
+          </svg>
+        );
+      case 'willow':
+        return (
+          <svg width={width} height={height} viewBox="0 0 120 160" style={{ transform: flip ? 'scaleX(-1)' : undefined }}>
+            {/* Trunk */}
+            <path d="M55 160 L50 80 Q60 60 60 40 Q58 60 70 80 L65 160" fill={colors.trunk} />
+            <path d="M57 160 L53 85 Q60 68 60 50 Q58 68 67 85 L63 160" fill={colors.trunkLight} />
+            {/* Main canopy */}
+            <ellipse cx="60" cy="35" rx="45" ry="30" fill={colors.foliage1} />
+            <ellipse cx="60" cy="30" rx="38" ry="25" fill={colors.foliage2} />
+            {/* Drooping branches */}
+            {[20, 40, 60, 80, 100].map((bx, i) => (
+              <path
+                key={i}
+                d={`M${bx} 45 Q${bx + (i % 2 ? 5 : -5)} 80 ${bx + (i % 2 ? 10 : -10)} 120`}
+                stroke={colors.foliage3}
+                strokeWidth="8"
+                fill="none"
+                opacity="0.8"
+              />
+            ))}
+            {/* Leaf clusters on branches */}
+            {[18, 42, 62, 82, 102].map((bx, i) => (
+              <g key={i}>
+                <ellipse cx={bx + (i % 2 ? 8 : -8)} cy={90 + i * 5} rx="12" ry="8" fill={colors.foliage2} opacity="0.7" />
+                <ellipse cx={bx + (i % 2 ? 12 : -12)} cy={110 + i * 3} rx="10" ry="6" fill={colors.foliage3} opacity="0.6" />
+              </g>
+            ))}
+          </svg>
+        );
+      default: // oak
+        return (
+          <svg width={width} height={height} viewBox="0 0 100 150" style={{ transform: flip ? 'scaleX(-1)' : undefined }}>
+            {/* Main trunk */}
+            <path d="M42 150 L40 90 Q35 70 38 50 Q42 45 50 45 Q58 45 62 50 Q65 70 60 90 L58 150" fill={colors.trunk} />
+            {/* Trunk texture */}
+            <path d="M44 150 L43 95 Q40 75 42 55 Q46 50 50 50 Q54 50 58 55 Q60 75 57 95 L56 150" fill={colors.trunkLight} />
+            {/* Branches */}
+            <path d="M42 70 Q30 60 20 55" stroke={colors.trunk} strokeWidth="6" fill="none" />
+            <path d="M58 65 Q70 55 82 50" stroke={colors.trunk} strokeWidth="5" fill="none" />
+            <path d="M45 55 Q35 45 30 35" stroke={colors.trunk} strokeWidth="4" fill="none" />
+            <path d="M55 52 Q62 42 72 35" stroke={colors.trunk} strokeWidth="4" fill="none" />
+            {/* Foliage clusters */}
+            <ellipse cx="20" cy="45" rx="22" ry="18" fill={colors.foliage1} />
+            <ellipse cx="80" cy="40" rx="20" ry="16" fill={colors.foliage1} />
+            <ellipse cx="30" cy="28" rx="18" ry="15" fill={colors.foliage2} />
+            <ellipse cx="70" cy="25" rx="20" ry="16" fill={colors.foliage2} />
+            <ellipse cx="50" cy="20" rx="30" ry="22" fill={colors.foliage1} />
+            <ellipse cx="50" cy="15" rx="25" ry="18" fill={colors.foliage2} />
+            <ellipse cx="40" cy="35" rx="22" ry="18" fill={colors.foliage3} />
+            <ellipse cx="60" cy="32" rx="24" ry="20" fill={colors.foliage2} />
+            <ellipse cx="50" cy="25" rx="20" ry="16" fill={colors.foliage3} />
+            {/* Highlights */}
+            <ellipse cx="45" cy="18" rx="12" ry="10" fill={colors.highlight} opacity="0.2" />
+            <ellipse cx="65" cy="28" rx="10" ry="8" fill={colors.highlight} opacity="0.15" />
+          </svg>
+        );
+    }
+  };
+
+  return (
+    <div
+      className="absolute bottom-0"
+      style={{
+        left: `${x}%`,
+        transform: 'translateX(-50%)',
+        zIndex: Math.floor((1 - scale) * 10),
+      }}
+    >
+      {renderTree()}
+    </div>
+  );
+});
+
+// Magical floating particles for the forest
+const MagicalParticles = memo(function MagicalParticles({ isDark }: { isDark: boolean }) {
+  const particles = useMemo(() =>
+    Array.from({ length: isDark ? 40 : 25 }, (_, i) => ({
+      id: i,
+      left: 15 + Math.random() * 70,
+      top: 20 + Math.random() * 60,
+      size: isDark ? Math.random() * 4 + 2 : Math.random() * 3 + 1,
+      duration: 4 + Math.random() * 6,
+      delay: Math.random() * 8,
+      color: isDark
+        ? ['#fef08a', '#a5f3fc', '#c4b5fd', '#fbcfe8', '#bef264'][Math.floor(Math.random() * 5)]
+        : ['#fef9c3', '#d9f99d', '#bbf7d0', '#a7f3d0'][Math.floor(Math.random() * 4)],
+    })), [isDark]);
+
+  return (
+    <>
+      {particles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            left: `${p.left}%`,
+            top: `${p.top}%`,
+            width: p.size,
+            height: p.size,
+            background: p.color,
+            boxShadow: isDark ? `0 0 ${p.size * 3}px ${p.color}` : `0 0 ${p.size}px ${p.color}`,
+          }}
+          animate={{
+            opacity: [0, isDark ? 0.9 : 0.6, 0],
+            scale: [0.3, 1.2, 0.3],
+            y: [0, -30 - Math.random() * 40, -60],
+            x: [0, (Math.random() - 0.5) * 40, (Math.random() - 0.5) * 60],
+          }}
+          transition={{
+            duration: p.duration,
+            delay: p.delay,
+            repeat: Infinity,
+            ease: 'easeInOut'
+          }}
+        />
+      ))}
+    </>
+  );
+});
+
+// Sun rays through canopy
+const SunRays = memo(function SunRays() {
+  const rays = useMemo(() => [
+    { x: 20, width: 60, skew: -15, delay: 0 },
+    { x: 35, width: 80, skew: -8, delay: 0.5 },
+    { x: 50, width: 100, skew: 0, delay: 1 },
+    { x: 65, width: 70, skew: 8, delay: 1.5 },
+    { x: 80, width: 50, skew: 15, delay: 2 },
+  ], []);
+
+  return (
+    <>
+      {rays.map((ray, i) => (
+        <motion.div
+          key={i}
+          className="absolute top-0 pointer-events-none"
+          style={{
+            left: `${ray.x}%`,
+            width: ray.width,
+            height: '100%',
+            background: 'linear-gradient(180deg, rgba(255, 251, 235, 0.5) 0%, rgba(254, 249, 195, 0.3) 30%, transparent 70%)',
+            transform: `translateX(-50%) skewX(${ray.skew}deg)`,
+          }}
+          animate={{
+            opacity: [0.15, 0.4, 0.15],
+            scaleX: [0.9, 1.1, 0.9],
+          }}
+          transition={{
+            duration: 5,
+            delay: ray.delay,
+            repeat: Infinity,
+            ease: 'easeInOut'
+          }}
+        />
+      ))}
+    </>
+  );
+});
+
+// Glowing mushroom cluster
+const MushroomCluster = memo(function MushroomCluster({
+  x,
+  y,
+  scale,
+  isDark
+}: {
+  x: number;
+  y: number;
+  scale: number;
+  isDark: boolean;
+}) {
+  const mushrooms = useMemo(() => [
+    { offsetX: 0, offsetY: 0, size: 1, hue: 280 },
+    { offsetX: -12, offsetY: 5, size: 0.7, hue: 320 },
+    { offsetX: 10, offsetY: 3, size: 0.8, hue: 200 },
+  ], []);
+
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: `${x}%`,
+        top: `${y}%`,
+        transform: `scale(${scale})`,
+        zIndex: Math.floor(y / 10),
+      }}
+    >
+      {mushrooms.map((m, i) => (
+        <div
+          key={i}
+          className="absolute"
+          style={{
+            left: m.offsetX,
+            top: m.offsetY,
+            transform: `scale(${m.size})`,
+          }}
+        >
+          {/* Stem */}
+          <div
+            className="w-3 h-6 mx-auto rounded-b-lg"
+            style={{
+              background: isDark
+                ? 'linear-gradient(to right, #fef3c7, #fde68a, #fef3c7)'
+                : 'linear-gradient(to right, #fefce8, #fef9c3, #fefce8)',
+              opacity: isDark ? 0.9 : 0.7,
+            }}
+          />
+          {/* Cap */}
+          <motion.div
+            className="w-10 h-5 -mt-2 rounded-t-full mx-auto"
+            style={{
+              background: `radial-gradient(ellipse at 50% 80%, hsl(${m.hue}, 80%, ${isDark ? '45%' : '55%'}), hsl(${m.hue}, 70%, ${isDark ? '30%' : '40%'}))`,
+              boxShadow: isDark
+                ? `0 0 15px 5px hsla(${m.hue}, 80%, 50%, 0.5), inset 0 -2px 4px hsla(${m.hue}, 60%, 60%, 0.3)`
+                : 'none',
+            }}
+            animate={isDark ? {
+              boxShadow: [
+                `0 0 15px 5px hsla(${m.hue}, 80%, 50%, 0.4)`,
+                `0 0 25px 8px hsla(${m.hue}, 80%, 60%, 0.6)`,
+                `0 0 15px 5px hsla(${m.hue}, 80%, 50%, 0.4)`,
+              ]
+            } : {}}
+            transition={{ duration: 2 + i * 0.5, repeat: Infinity }}
+          />
+          {/* Cap spots */}
+          <div className="absolute -top-1.5 left-1/2 -translate-x-1/2 flex gap-1">
+            <div className="w-1.5 h-1 rounded-full bg-white/40" />
+            <div className="w-1 h-1 rounded-full bg-white/30" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+});
+
+// Forest floor details - ferns, flowers, grass patches
+const ForestFloorDetails = memo(function ForestFloorDetails({ isDark }: { isDark: boolean }) {
+  const elements = useMemo(() => ({
+    ferns: [
+      { x: 12, y: 25, scale: 0.5, flip: false },
+      { x: 88, y: 22, scale: 0.45, flip: true },
+      { x: 8, y: 55, scale: 0.7, flip: false },
+      { x: 92, y: 58, scale: 0.65, flip: true },
+      { x: 5, y: 78, scale: 0.9, flip: false },
+      { x: 95, y: 82, scale: 0.85, flip: true },
+    ],
+    flowers: [
+      { x: 22, y: 40, color: '#f472b6', scale: 0.6 },
+      { x: 78, y: 38, color: '#a78bfa', scale: 0.55 },
+      { x: 18, y: 65, color: '#fbbf24', scale: 0.75 },
+      { x: 82, y: 68, color: '#f472b6', scale: 0.7 },
+      { x: 25, y: 85, color: '#60a5fa', scale: 0.9 },
+      { x: 75, y: 88, color: '#a78bfa', scale: 0.85 },
+    ],
+    grassPatches: [
+      { x: 15, y: 30, scale: 0.5 },
+      { x: 85, y: 28, scale: 0.45 },
+      { x: 10, y: 50, scale: 0.65 },
+      { x: 90, y: 52, scale: 0.6 },
+      { x: 20, y: 75, scale: 0.8 },
+      { x: 80, y: 78, scale: 0.75 },
+    ],
+  }), []);
+
+  const fernColor = isDark ? '#065f46' : '#16a34a';
+  const fernColorLight = isDark ? '#059669' : '#22c55e';
+  const grassColor = isDark ? '#047857' : '#22c55e';
+
+  return (
+    <>
+      {/* Ferns */}
+      {elements.ferns.map((fern, i) => (
+        <svg
+          key={`fern-${i}`}
+          className="absolute"
+          style={{
+            left: `${fern.x}%`,
+            top: `${fern.y}%`,
+            transform: `scale(${fern.scale}) ${fern.flip ? 'scaleX(-1)' : ''}`,
+            opacity: 0.4 + fern.scale * 0.5,
+            zIndex: Math.floor(fern.y / 10),
+          }}
+          width="40" height="35" viewBox="0 0 40 35"
+        >
+          {/* Fern fronds */}
+          <path d="M20 35 Q18 25 15 20 Q10 22 5 20 Q12 18 15 15 Q10 12 8 8 Q15 12 18 12 Q16 8 18 2 Q20 10 22 12 Q25 12 32 8 Q30 12 25 15 Q28 18 35 20 Q30 22 25 20 Q22 25 20 35"
+            fill={fernColor} />
+          <path d="M20 35 Q19 26 17 21 Q14 22 10 21 Q15 19 17 17 Q14 15 12 12 Q17 14 19 14 Q18 10 19 5 Q20 12 21 14 Q23 14 28 12 Q26 15 23 17 Q25 19 30 21 Q26 22 23 21 Q21 26 20 35"
+            fill={fernColorLight} opacity="0.7" />
+        </svg>
+      ))}
+
+      {/* Wildflowers */}
+      {elements.flowers.map((flower, i) => (
+        <motion.div
+          key={`flower-${i}`}
+          className="absolute"
+          style={{
+            left: `${flower.x}%`,
+            top: `${flower.y}%`,
+            transform: `scale(${flower.scale})`,
+            zIndex: Math.floor(flower.y / 10),
+          }}
+          animate={{ rotate: [-2, 2, -2] }}
+          transition={{ duration: 3 + i * 0.5, repeat: Infinity }}
+        >
+          <svg width="16" height="24" viewBox="0 0 16 24">
+            {/* Stem */}
+            <path d="M8 24 Q7 18 8 12" stroke={grassColor} strokeWidth="1.5" fill="none" />
+            {/* Leaves */}
+            <path d="M8 18 Q4 16 3 18 Q5 17 8 18" fill={grassColor} />
+            <path d="M8 20 Q12 18 13 20 Q11 19 8 20" fill={grassColor} />
+            {/* Petals */}
+            <circle cx="8" cy="8" r="5" fill={flower.color} opacity={isDark ? 0.6 : 0.8} />
+            <circle cx="8" cy="8" r="3" fill={flower.color} />
+            {/* Center */}
+            <circle cx="8" cy="8" r="1.5" fill={isDark ? '#fef08a' : '#fbbf24'} />
+          </svg>
+        </motion.div>
+      ))}
+
+      {/* Grass patches */}
+      {elements.grassPatches.map((patch, i) => (
+        <motion.svg
+          key={`grass-${i}`}
+          className="absolute"
+          style={{
+            left: `${patch.x}%`,
+            top: `${patch.y}%`,
+            transform: `scale(${patch.scale})`,
+            opacity: 0.5 + patch.scale * 0.4,
+            zIndex: Math.floor(patch.y / 10),
+          }}
+          width="30" height="25" viewBox="0 0 30 25"
+          animate={{ scaleX: [1, 1.02, 0.98, 1] }}
+          transition={{ duration: 4 + i, repeat: Infinity }}
+        >
+          <path d="M3 25 Q4 15 6 8 Q5 16 3 25" fill={grassColor} />
+          <path d="M8 25 Q10 12 11 3 Q10 14 8 25" fill={fernColorLight} />
+          <path d="M13 25 Q14 14 16 6 Q15 15 13 25" fill={grassColor} />
+          <path d="M18 25 Q20 10 22 2 Q20 12 18 25" fill={fernColorLight} />
+          <path d="M23 25 Q24 15 27 7 Q25 16 23 25" fill={grassColor} />
+        </motion.svg>
+      ))}
+    </>
+  );
+});
+
 function ForestScene({ isDark }: { isDark: boolean }) {
   const config = SCENE_CONFIGS.forest.ground;
 
+  // Tree configurations for the forest surrounding the clearing
+  const trees = useMemo(() => ({
+    // Back row - smallest, furthest trees (at horizon)
+    backRow: [
+      { x: 2, scale: 0.25, variant: 'pine' as const },
+      { x: 8, scale: 0.28, variant: 'oak' as const },
+      { x: 14, scale: 0.22, variant: 'birch' as const },
+      { x: 20, scale: 0.26, variant: 'pine' as const },
+      // Gap for clearing center
+      { x: 80, scale: 0.24, variant: 'pine' as const },
+      { x: 86, scale: 0.27, variant: 'oak' as const },
+      { x: 92, scale: 0.23, variant: 'birch' as const },
+      { x: 98, scale: 0.25, variant: 'pine' as const },
+    ],
+    // Middle row - medium trees
+    middleRow: [
+      { x: -2, scale: 0.45, variant: 'oak' as const, flip: false },
+      { x: 6, scale: 0.5, variant: 'willow' as const, flip: false },
+      { x: 15, scale: 0.42, variant: 'pine' as const, flip: false },
+      { x: 22, scale: 0.48, variant: 'birch' as const, flip: false },
+      // Gap for clearing
+      { x: 78, scale: 0.46, variant: 'birch' as const, flip: true },
+      { x: 85, scale: 0.44, variant: 'pine' as const, flip: true },
+      { x: 94, scale: 0.52, variant: 'willow' as const, flip: true },
+      { x: 102, scale: 0.47, variant: 'oak' as const, flip: true },
+    ],
+    // Front row - largest trees, framing the scene
+    frontRow: [
+      { x: -5, scale: 0.85, variant: 'oak' as const, flip: false },
+      { x: 8, scale: 0.75, variant: 'pine' as const, flip: false },
+      { x: 18, scale: 0.7, variant: 'willow' as const, flip: false },
+      // Gap for clearing
+      { x: 82, scale: 0.72, variant: 'willow' as const, flip: true },
+      { x: 92, scale: 0.78, variant: 'pine' as const, flip: true },
+      { x: 105, scale: 0.88, variant: 'oak' as const, flip: true },
+    ],
+  }), []);
+
+  // Mushroom cluster positions
+  const mushroomClusters = useMemo(() => [
+    { x: 10, y: 35, scale: 0.5 },
+    { x: 90, y: 32, scale: 0.45 },
+    { x: 8, y: 60, scale: 0.7 },
+    { x: 92, y: 62, scale: 0.65 },
+    { x: 15, y: 80, scale: 0.85 },
+    { x: 85, y: 82, scale: 0.8 },
+  ], []);
+
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Forest canopy at horizon */}
+      {/* Sky/Canopy backdrop */}
       <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
+        {/* Sky gradient - visible through canopy gaps */}
         <div className={`absolute inset-0 ${
           isDark
-            ? 'bg-gradient-to-b from-emerald-950 via-green-900 to-emerald-800'
-            : 'bg-gradient-to-b from-emerald-400 via-green-300 to-emerald-300'
+            ? 'bg-gradient-to-b from-slate-950 via-indigo-950 to-emerald-950'
+            : 'bg-gradient-to-b from-sky-300 via-emerald-200 to-emerald-300'
         }`} />
 
-        {/* Light rays through canopy (day) */}
-        {!isDark && useMemo(() => Array.from({ length: 5 }, (_, i) => (
-          <motion.div
-            key={i}
-            className="absolute"
-            style={{
-              left: `${15 + i * 18}%`,
-              top: 0,
-              width: 30 + i * 5,
-              height: '100%',
-              background: 'linear-gradient(180deg, rgba(255, 255, 255, 0.4) 0%, transparent 80%)',
-              transform: `skewX(${-10 + i * 5}deg)`,
-            }}
-            animate={{ opacity: [0.2, 0.4, 0.2] }}
-            transition={{ duration: 4, repeat: Infinity, delay: i * 0.5 }}
-          />
-        )), [])}
-
-        {/* Stars (night) */}
-        {isDark && <StarField count={20} />}
-
-        {/* Distant tree silhouettes at horizon */}
-        <svg className="absolute bottom-0 left-0 right-0 w-full h-[70%]" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          <g fill={isDark ? 'rgba(5, 46, 22, 0.9)' : 'rgba(22, 101, 52, 0.6)'}>
-            {useMemo(() => [0, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400].map((x, i) => (
-              <path key={i} d={`M${x + 40} 200 L${x + 40} ${140 - (i % 3) * 20} L${x + 20} ${170 - (i % 3) * 15} L${x + 60} ${170 - (i % 3) * 15} Z`} />
-            )), [])}
-          </g>
-        </svg>
-      </div>
-
-      {/* Forest floor - large magical glade */}
-      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
-        {/* Ground gradient with moss/grass feel */}
-        <div className={`absolute inset-0 ${
-          isDark
-            ? 'bg-gradient-to-b from-emerald-900 via-green-950 to-emerald-950'
-            : 'bg-gradient-to-b from-emerald-300 via-green-400 to-emerald-500'
-        }`} />
-
-        {/* Grass texture hints */}
+        {/* Dense canopy layer */}
         <div
-          className={`absolute inset-0 ${isDark ? 'opacity-10' : 'opacity-15'}`}
+          className={`absolute inset-0 ${isDark ? 'opacity-90' : 'opacity-70'}`}
           style={{
-            backgroundImage: `repeating-linear-gradient(90deg, transparent, transparent 8px, ${isDark ? '#22c55e' : '#16a34a'} 8px, ${isDark ? '#22c55e' : '#16a34a'} 9px)`,
+            background: isDark
+              ? 'radial-gradient(ellipse at 50% 120%, #022c22 0%, #064e3b 40%, #0f766e 100%)'
+              : 'radial-gradient(ellipse at 50% 120%, #15803d 0%, #22c55e 40%, #4ade80 100%)',
           }}
         />
 
-        {/* Glowing mushrooms at different depths */}
-        {useMemo(() => [
-          { x: 8, y: 20, scale: 0.4, hue: 280 },
-          { x: 92, y: 25, scale: 0.45, hue: 200 },
-          { x: 15, y: 50, scale: 0.6, hue: 320 },
-          { x: 85, y: 55, scale: 0.65, hue: 180 },
-          { x: 5, y: 75, scale: 0.8, hue: 260 },
-          { x: 95, y: 80, scale: 0.75, hue: 220 },
-        ].map((shroom, i) => (
-          <div
-            key={i}
-            className="absolute"
+        {/* Canopy leaf texture */}
+        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+          {useMemo(() => Array.from({ length: 25 }, (_, i) => {
+            const x = (i % 5) * 25 + Math.random() * 15;
+            const y = Math.floor(i / 5) * 25 + Math.random() * 15;
+            return (
+              <ellipse
+                key={i}
+                cx={`${x}%`}
+                cy={`${y}%`}
+                rx="12%"
+                ry="15%"
+                fill={isDark ? '#052e16' : '#166534'}
+                opacity={0.3 + Math.random() * 0.3}
+              />
+            );
+          }), [isDark])}
+        </svg>
+
+        {/* Stars visible through canopy gaps (night) */}
+        {isDark && <StarField count={30} maxTop={90} />}
+
+        {/* Moon glow through trees (night) */}
+        {isDark && (
+          <motion.div
+            className="absolute top-[15%] right-[25%] w-16 h-16 rounded-full"
             style={{
-              left: `${shroom.x}%`,
-              top: `${shroom.y}%`,
-              transform: `scale(${shroom.scale})`,
+              background: 'radial-gradient(circle, rgba(226, 232, 240, 0.3) 0%, transparent 70%)',
+              boxShadow: '0 0 60px 30px rgba(226, 232, 240, 0.15)',
             }}
-          >
-            {/* Stem */}
-            <div className="w-2 h-4 mx-auto rounded-b bg-amber-100/60" />
-            {/* Cap */}
-            <motion.div
-              className="w-6 h-3 -mt-1 rounded-t-full"
-              style={{
-                backgroundColor: `hsl(${shroom.hue}, 70%, ${isDark ? '50%' : '60%'})`,
-                boxShadow: isDark ? `0 0 8px hsl(${shroom.hue}, 70%, 50%)` : 'none',
-              }}
-              animate={isDark ? { boxShadow: [`0 0 8px hsl(${shroom.hue}, 70%, 50%)`, `0 0 15px hsl(${shroom.hue}, 70%, 60%)`, `0 0 8px hsl(${shroom.hue}, 70%, 50%)`] } : {}}
-              transition={{ duration: 2, repeat: Infinity }}
-            />
-          </div>
+            animate={{ opacity: [0.5, 0.7, 0.5] }}
+            transition={{ duration: 6, repeat: Infinity }}
+          />
+        )}
+
+        {/* Sun rays through canopy (day) */}
+        {!isDark && <SunRays />}
+
+        {/* Back row trees (at horizon) */}
+        <div className="absolute bottom-0 left-0 right-0 h-[80%]">
+          {trees.backRow.map((tree, i) => (
+            <ForestTree key={`back-${i}`} x={tree.x} scale={tree.scale} variant={tree.variant} isDark={isDark} />
+          ))}
+        </div>
+      </div>
+
+      {/* Forest floor - the magical clearing */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
+        {/* Base ground with moss gradient */}
+        <div className={`absolute inset-0 ${
+          isDark
+            ? 'bg-gradient-to-b from-emerald-950 via-green-950 to-slate-950'
+            : 'bg-gradient-to-b from-emerald-400 via-green-500 to-emerald-600'
+        }`} />
+
+        {/* Clearing spotlight effect - lighter center */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: isDark
+              ? 'radial-gradient(ellipse at 50% 30%, rgba(16, 185, 129, 0.15) 0%, transparent 50%)'
+              : 'radial-gradient(ellipse at 50% 30%, rgba(254, 249, 195, 0.4) 0%, transparent 50%)',
+          }}
+        />
+
+        {/* Ground texture - moss and grass */}
+        <div
+          className={`absolute inset-0 ${isDark ? 'opacity-15' : 'opacity-20'}`}
+          style={{
+            backgroundImage: `
+              radial-gradient(circle at 20% 30%, ${isDark ? '#22c55e' : '#16a34a'} 1px, transparent 1px),
+              radial-gradient(circle at 80% 60%, ${isDark ? '#22c55e' : '#16a34a'} 1px, transparent 1px),
+              radial-gradient(circle at 40% 80%, ${isDark ? '#22c55e' : '#16a34a'} 1px, transparent 1px)
+            `,
+            backgroundSize: '60px 60px, 80px 80px, 50px 50px',
+          }}
+        />
+
+        {/* Fallen leaves scattered on ground */}
+        {useMemo(() => Array.from({ length: 15 }, (_, i) => (
+          <motion.div
+            key={`leaf-${i}`}
+            className="absolute rounded-full"
+            style={{
+              left: `${10 + Math.random() * 80}%`,
+              top: `${20 + Math.random() * 60}%`,
+              width: 4 + Math.random() * 4,
+              height: 3 + Math.random() * 3,
+              background: isDark
+                ? ['#713f12', '#854d0e', '#92400e'][Math.floor(Math.random() * 3)]
+                : ['#ca8a04', '#eab308', '#facc15'][Math.floor(Math.random() * 3)],
+              opacity: 0.3 + Math.random() * 0.3,
+              transform: `rotate(${Math.random() * 360}deg)`,
+            }}
+            animate={{ rotate: [0, 5, -5, 0] }}
+            transition={{ duration: 8 + Math.random() * 4, repeat: Infinity, delay: Math.random() * 5 }}
+          />
         )), [isDark])}
 
-        {/* Flowers/plants at various depths */}
-        {useMemo(() => [
-          { x: 20, y: 35, scale: 0.5 },
-          { x: 80, y: 40, scale: 0.55 },
-          { x: 25, y: 65, scale: 0.75 },
-          { x: 75, y: 70, scale: 0.8 },
-        ].map((plant, i) => (
-          <svg
-            key={i}
-            className="absolute"
-            style={{
-              left: `${plant.x}%`,
-              top: `${plant.y}%`,
-              transform: `scale(${plant.scale})`,
-              opacity: 0.5 + plant.scale * 0.3,
-            }}
-            width="20" height="16" viewBox="0 0 20 16"
-          >
-            <path d="M10 16 L10 8" stroke={isDark ? '#22c55e' : '#16a34a'} strokeWidth="1.5" />
-            <circle cx="10" cy="5" r="4" fill={i % 2 === 0 ? '#f472b6' : '#a78bfa'} opacity="0.7" />
-          </svg>
-        )), [isDark])}
+        {/* Middle row trees */}
+        {trees.middleRow.map((tree, i) => (
+          <ForestTree
+            key={`mid-${i}`}
+            x={tree.x}
+            scale={tree.scale}
+            variant={tree.variant}
+            isDark={isDark}
+            flip={tree.flip}
+          />
+        ))}
 
-        {/* Deer (day) */}
+        {/* Forest floor details - ferns, flowers, grass */}
+        <ForestFloorDetails isDark={isDark} />
+
+        {/* Glowing mushroom clusters */}
+        {mushroomClusters.map((cluster, i) => (
+          <MushroomCluster
+            key={`mushroom-${i}`}
+            x={cluster.x}
+            y={cluster.y}
+            scale={cluster.scale}
+            isDark={isDark}
+          />
+        ))}
+
+        {/* Front row trees - framing the scene */}
+        {trees.frontRow.map((tree, i) => (
+          <ForestTree
+            key={`front-${i}`}
+            x={tree.x}
+            scale={tree.scale}
+            variant={tree.variant}
+            isDark={isDark}
+            flip={tree.flip}
+          />
+        ))}
+
+        {/* Deer in the clearing (day) */}
         {!isDark && (
           <motion.div
-            className="absolute text-3xl"
-            style={{ top: '45%', right: '25%', transform: 'scale(0.7)' }}
-            animate={{ x: [-5, 5, -5] }}
-            transition={{ duration: 6, repeat: Infinity }}
+            className="absolute"
+            style={{
+              top: '35%',
+              left: '60%',
+              zIndex: 5,
+            }}
+            animate={{ x: [-10, 10, -10], y: [0, -3, 0] }}
+            transition={{ duration: 8, repeat: Infinity }}
           >
-            🦌
+            <svg width="50" height="45" viewBox="0 0 50 45">
+              {/* Body */}
+              <ellipse cx="25" cy="30" rx="15" ry="10" fill="#a16207" />
+              {/* Neck */}
+              <path d="M32 25 Q38 15 35 8" stroke="#a16207" strokeWidth="6" fill="none" />
+              {/* Head */}
+              <ellipse cx="35" cy="8" rx="6" ry="5" fill="#ca8a04" />
+              {/* Ear */}
+              <ellipse cx="38" cy="4" rx="2" ry="4" fill="#ca8a04" />
+              {/* Eye */}
+              <circle cx="33" cy="7" r="1" fill="#1c1917" />
+              {/* Legs */}
+              <path d="M15 38 L15 45" stroke="#854d0e" strokeWidth="2" />
+              <path d="M20 38 L20 45" stroke="#854d0e" strokeWidth="2" />
+              <path d="M30 38 L30 45" stroke="#854d0e" strokeWidth="2" />
+              <path d="M35 38 L35 45" stroke="#854d0e" strokeWidth="2" />
+              {/* Tail */}
+              <ellipse cx="10" cy="28" rx="3" ry="2" fill="#fef3c7" />
+            </svg>
           </motion.div>
         )}
 
-        {/* Owl (night) */}
+        {/* Fox in the clearing (night) */}
         {isDark && (
           <motion.div
-            className="absolute text-2xl"
-            style={{ top: '15%', left: '20%', transform: 'scale(0.6)' }}
-            animate={{ rotate: [-3, 3, -3] }}
+            className="absolute"
+            style={{
+              top: '45%',
+              left: '35%',
+              zIndex: 5,
+            }}
+            animate={{ rotate: [-2, 2, -2] }}
             transition={{ duration: 4, repeat: Infinity }}
           >
-            🦉
+            <svg width="40" height="30" viewBox="0 0 40 30">
+              {/* Body */}
+              <ellipse cx="20" cy="22" rx="12" ry="7" fill="#ea580c" />
+              {/* Tail */}
+              <path d="M8 22 Q2 18 0 22 Q2 24 8 22" fill="#ea580c" />
+              <path d="M2 22 Q1 21 0 22 Q1 23 2 22" fill="#fef3c7" />
+              {/* Head */}
+              <ellipse cx="30" cy="18" rx="7" ry="6" fill="#f97316" />
+              {/* Snout */}
+              <ellipse cx="36" cy="20" rx="4" ry="3" fill="#fef3c7" />
+              <circle cx="38" cy="19" r="1" fill="#1c1917" />
+              {/* Ears */}
+              <path d="M26 12 L24 6 L28 10 Z" fill="#f97316" />
+              <path d="M32 12 L34 6 L30 10 Z" fill="#f97316" />
+              <path d="M26 11 L25 8 L27 10 Z" fill="#1c1917" />
+              <path d="M32 11 L33 8 L31 10 Z" fill="#1c1917" />
+              {/* Eyes */}
+              <ellipse cx="28" cy="17" rx="1.5" ry="2" fill="#fef08a">
+                <animate attributeName="ry" values="2;0.5;2" dur="4s" repeatCount="indefinite" />
+              </ellipse>
+              {/* Legs */}
+              <path d="M14 28 L14 30" stroke="#c2410c" strokeWidth="2" />
+              <path d="M26 28 L26 30" stroke="#c2410c" strokeWidth="2" />
+            </svg>
+          </motion.div>
+        )}
+
+        {/* Owl in tree (night) */}
+        {isDark && (
+          <motion.div
+            className="absolute"
+            style={{ top: '15%', left: '12%', zIndex: 20 }}
+            animate={{ rotate: [-5, 5, -5], y: [0, -2, 0] }}
+            transition={{ duration: 5, repeat: Infinity }}
+          >
+            <svg width="28" height="35" viewBox="0 0 28 35">
+              {/* Body */}
+              <ellipse cx="14" cy="24" rx="10" ry="11" fill="#78716c" />
+              {/* Chest */}
+              <ellipse cx="14" cy="26" rx="6" ry="8" fill="#a8a29e" />
+              {/* Chest pattern */}
+              <path d="M11 22 L14 24 L17 22" stroke="#57534e" strokeWidth="0.5" fill="none" />
+              <path d="M10 25 L14 27 L18 25" stroke="#57534e" strokeWidth="0.5" fill="none" />
+              <path d="M11 28 L14 30 L17 28" stroke="#57534e" strokeWidth="0.5" fill="none" />
+              {/* Head */}
+              <ellipse cx="14" cy="10" rx="9" ry="8" fill="#78716c" />
+              {/* Ear tufts */}
+              <path d="M6 5 L4 0 L8 4 Z" fill="#57534e" />
+              <path d="M22 5 L24 0 L20 4 Z" fill="#57534e" />
+              {/* Face disc */}
+              <ellipse cx="14" cy="11" rx="7" ry="6" fill="#d6d3d1" />
+              {/* Eyes */}
+              <circle cx="10" cy="10" r="3" fill="#1c1917" />
+              <circle cx="18" cy="10" r="3" fill="#1c1917" />
+              <motion.circle
+                cx="10" cy="10" r="2"
+                fill="#fef08a"
+                animate={{ r: [2, 2.5, 2] }}
+                transition={{ duration: 3, repeat: Infinity }}
+              />
+              <motion.circle
+                cx="18" cy="10" r="2"
+                fill="#fef08a"
+                animate={{ r: [2, 2.5, 2] }}
+                transition={{ duration: 3, repeat: Infinity, delay: 0.5 }}
+              />
+              <circle cx="10" cy="10" r="1" fill="#1c1917" />
+              <circle cx="18" cy="10" r="1" fill="#1c1917" />
+              {/* Beak */}
+              <path d="M14 12 L12 15 L14 14 L16 15 Z" fill="#f59e0b" />
+            </svg>
           </motion.div>
         )}
       </div>
 
-      {/* Fireflies floating everywhere */}
-      {isDark && <Particles color="#fef08a" count={18} />}
-      {!isDark && useMemo(() => [0, 1, 2, 3].map((i) => (
+      {/* Magical particles floating throughout */}
+      <MagicalParticles isDark={isDark} />
+
+      {/* Butterflies (day) */}
+      {!isDark && useMemo(() => Array.from({ length: 5 }, (_, i) => (
         <motion.div
-          key={i}
-          className="absolute text-lg"
-          style={{ left: `${15 + i * 20}%`, top: `${35 + (i % 2) * 10}%` }}
-          animate={{ x: [0, 30, -15, 0], y: [0, -20, 10, 0] }}
-          transition={{ duration: 7 + i, repeat: Infinity, delay: i * 0.8 }}
+          key={`butterfly-${i}`}
+          className="absolute pointer-events-none"
+          style={{
+            left: `${20 + i * 15}%`,
+            top: `${30 + (i % 3) * 15}%`,
+            zIndex: 30,
+          }}
+          animate={{
+            x: [0, 40, -20, 30, 0],
+            y: [0, -30, 20, -10, 0],
+            rotate: [0, 10, -10, 5, 0],
+          }}
+          transition={{ duration: 12 + i * 2, repeat: Infinity, delay: i * 1.5 }}
         >
-          🦋
+          <svg width="20" height="16" viewBox="0 0 20 16">
+            <motion.g
+              animate={{ scaleY: [1, 0.3, 1] }}
+              transition={{ duration: 0.3, repeat: Infinity }}
+            >
+              {/* Left wing */}
+              <ellipse cx="6" cy="8" rx="5" ry="6" fill={['#f472b6', '#a78bfa', '#60a5fa', '#34d399', '#fbbf24'][i % 5]} opacity="0.8" />
+              {/* Right wing */}
+              <ellipse cx="14" cy="8" rx="5" ry="6" fill={['#f472b6', '#a78bfa', '#60a5fa', '#34d399', '#fbbf24'][i % 5]} opacity="0.8" />
+            </motion.g>
+            {/* Body */}
+            <ellipse cx="10" cy="8" rx="1" ry="5" fill="#1c1917" />
+          </svg>
         </motion.div>
       )), [])}
+
+      {/* Mystical fog near ground (night) */}
+      {isDark && (
+        <>
+          <motion.div
+            className="absolute bottom-0 left-0 right-0 h-[25%] pointer-events-none"
+            style={{
+              background: 'linear-gradient(to top, rgba(16, 185, 129, 0.15) 0%, transparent 100%)',
+            }}
+            animate={{ opacity: [0.3, 0.5, 0.3] }}
+            transition={{ duration: 8, repeat: Infinity }}
+          />
+          <motion.div
+            className="absolute bottom-[5%] left-[10%] w-[30%] h-[15%] rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(ellipse, rgba(167, 139, 250, 0.2) 0%, transparent 70%)',
+            }}
+            animate={{ x: [0, 20, 0], opacity: [0.2, 0.4, 0.2] }}
+            transition={{ duration: 12, repeat: Infinity }}
+          />
+          <motion.div
+            className="absolute bottom-[8%] right-[15%] w-[25%] h-[12%] rounded-full pointer-events-none"
+            style={{
+              background: 'radial-gradient(ellipse, rgba(34, 211, 238, 0.15) 0%, transparent 70%)',
+            }}
+            animate={{ x: [0, -15, 0], opacity: [0.15, 0.35, 0.15] }}
+            transition={{ duration: 10, repeat: Infinity, delay: 3 }}
+          />
+        </>
+      )}
     </div>
   );
 }

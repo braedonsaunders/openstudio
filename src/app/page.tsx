@@ -129,6 +129,35 @@ export default function HomePage() {
     setMounted(true);
   }, []);
 
+  // Arrow key navigation for scenes
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Don't trigger if user is typing in an input
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        setCurrentScene((current) => {
+          const currentIndex = HOMEPAGE_SCENES.indexOf(current);
+          if (e.key === 'ArrowLeft') {
+            // Go to previous scene (wrap around)
+            const prevIndex = currentIndex === 0 ? HOMEPAGE_SCENES.length - 1 : currentIndex - 1;
+            return HOMEPAGE_SCENES[prevIndex];
+          } else {
+            // Go to next scene (wrap around)
+            const nextIndex = (currentIndex + 1) % HOMEPAGE_SCENES.length;
+            return HOMEPAGE_SCENES[nextIndex];
+          }
+        });
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const handleCreateRoom = useCallback(async () => {
     if (user) {
       // Open the create room modal directly for logged-in users
