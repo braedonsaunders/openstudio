@@ -339,6 +339,11 @@ export function useAudioEngine() {
     globalEngine?.updateLocalEffects(effects);
   }, []);
 
+  // Set local monitoring enabled (for browser-side WET monitoring)
+  const setLocalMonitoring = useCallback((enabled: boolean) => {
+    globalEngine?.setMonitoringEnabled(enabled);
+  }, []);
+
   // Master effects chain controls (EQ, Compressor, Reverb, Limiter)
   const setMasterEffectsEnabled = useCallback((enabled: boolean) => {
     globalEngine?.setMasterEffectsEnabled(enabled);
@@ -652,6 +657,7 @@ export function useAudioEngine() {
     setLocalTrackVolume,
     setLocalInputGainDb,
     updateLocalEffects,
+    setLocalMonitoring,
     // Master effects chain
     setMasterEffectsEnabled,
     isMasterEffectsEnabled,

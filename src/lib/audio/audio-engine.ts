@@ -360,6 +360,14 @@ export class AudioEngine {
     }
 
     console.log('[AudioEngine] Enabling bridge audio mode');
+
+    // IMPORTANT: Save current effects settings before disposing the processor
+    // This ensures effects are preserved when switching to bridge audio
+    const savedEffectsSettings = this.localEffectsProcessor?.getSettings() ?? null;
+    if (savedEffectsSettings) {
+      console.log('[AudioEngine] Saved effects settings before bridge switch');
+    }
+
     this.useBridgeAudio = true;
     this.bridgeAudioBuffer = [];
     this.bridgeReadIndex = 0;
@@ -434,8 +442,15 @@ export class AudioEngine {
     this.localInputGain.connect(this.localAnalyser);
     this.localInputGain.connect(this.localArmGain);
 
-    // Create effects processor
+    // Create effects processor and restore saved settings
     this.localEffectsProcessor = new ExtendedEffectsProcessor(this.audioContext);
+
+    // Restore effects settings that were saved before switching
+    if (savedEffectsSettings) {
+      console.log('[AudioEngine] Restoring effects settings to new processor');
+      this.localEffectsProcessor.updateSettings(savedEffectsSettings);
+    }
+
     this.localArmGain.connect(this.localEffectsProcessor.getInputNode());
     this.localEffectsProcessor.connect(this.localMuteGain);
     this.localMuteGain.connect(this.localMonitorGain);

@@ -14,7 +14,7 @@ import { nativeBridge } from '@/lib/audio/native-bridge';
  * (e.g., DAWLayout or a track component).
  */
 export function useTrackAudioSync(currentUserId: string | undefined) {
-  const { setLocalTrackArmed, setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects } = useAudioEngine();
+  const { setLocalTrackArmed, setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects, setLocalMonitoring } = useAudioEngine();
   const lastSyncRef = useRef<{
     isArmed: boolean;
     isMuted: boolean;
@@ -92,6 +92,11 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         }
       }
 
+      // Apply monitoring state if changed (browser-side WET monitoring)
+      if (!lastState || lastState.monitoringEnabled !== currentState.monitoringEnabled) {
+        setLocalMonitoring(currentState.monitoringEnabled);
+      }
+
       // Sync to native bridge if active
       // Note: We only sync track state (arm/mute/solo/volume/gain/monitoring)
       // Effects are processed entirely in the browser via Web Audio, not in the bridge
@@ -125,5 +130,5 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
     return () => {
       unsubscribe();
     };
-  }, [currentUserId, setLocalTrackArmed, setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects]);
+  }, [currentUserId, setLocalTrackArmed, setLocalTrackMuted, setLocalTrackVolume, updateLocalEffects, setLocalMonitoring]);
 }

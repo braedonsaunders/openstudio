@@ -281,6 +281,23 @@ export function useNativeBridge() {
           monitoringEnabled: track.audioSettings.directMonitoring ?? true,
           monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
         });
+
+        // Also sync effects to the audio engine
+        // This ensures effects are applied even if useTrackAudioSync hasn't fired yet
+        if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine && track.audioSettings.effects) {
+          console.log('[useNativeBridge] Syncing initial effects to audio engine');
+          (window as any).__openStudioAudioEngine.updateLocalEffects(track.audioSettings.effects);
+        }
+
+        // Sync monitoring state to audio engine (browser WET monitoring)
+        if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+          const directMonitoringEnabled = track.audioSettings.directMonitoring ?? true;
+          console.log('[useNativeBridge] Syncing monitoring state:', directMonitoringEnabled);
+          (window as any).__openStudioAudioEngine.setMonitoringEnabled(directMonitoringEnabled);
+          (window as any).__openStudioAudioEngine.setLocalTrackArmed(track.isArmed);
+          (window as any).__openStudioAudioEngine.setLocalTrackMuted(track.isMuted);
+          (window as any).__openStudioAudioEngine.setLocalTrackVolume(track.volume);
+        }
       }
     }
   }, []);

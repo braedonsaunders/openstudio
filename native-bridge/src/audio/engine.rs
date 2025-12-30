@@ -762,7 +762,7 @@ impl AudioEngine {
         producer: &Arc<std::sync::Mutex<HeapProd<f32>>>,
         browser_stream_producer: Option<&Arc<std::sync::Mutex<HeapProd<f32>>>>,
         levels: &Arc<RwLock<AudioLevels>>,
-        is_monitoring: &Arc<AtomicBool>,
+        _is_monitoring: &Arc<AtomicBool>, // Now unused - monitoring_enabled read from processing_state.track_state
         monitoring_volume: &Arc<AtomicU32>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
         _effects_metering: &Arc<RwLock<EffectsMetering>>,
@@ -835,14 +835,15 @@ impl AudioEngine {
             }
         }
 
-        let monitoring_enabled = is_monitoring.load(Ordering::Relaxed);
+        // Get monitoring volume from atomic (can be updated independently)
         let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
 
-        // Get track state for arm/mute checks
-        let (is_armed, is_muted) = if let Ok(state) = processing_state.try_read() {
-            (state.track_state.is_armed, state.track_state.is_muted)
+        // Get all track state including monitoring_enabled from processing state
+        // This is updated by UpdateTrackState messages from the browser
+        let (is_armed, is_muted, monitoring_enabled) = if let Ok(state) = processing_state.try_read() {
+            (state.track_state.is_armed, state.track_state.is_muted, state.track_state.monitoring_enabled)
         } else {
-            (false, false)
+            (false, false, false)
         };
 
         // Only do DRY monitoring if: monitoring enabled AND track armed AND not muted
