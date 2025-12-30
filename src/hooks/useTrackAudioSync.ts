@@ -93,6 +93,8 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       }
 
       // Sync to native bridge if active
+      // Note: We only sync track state (arm/mute/solo/volume/gain/monitoring)
+      // Effects are processed entirely in the browser via Web Audio, not in the bridge
       if (useBridge) {
         const needsTrackStateUpdate =
           !lastState ||
@@ -114,13 +116,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
             monitoringEnabled: currentState.monitoringEnabled,
             monitoringVolume: currentState.monitoringVolume,
           });
-        }
-
-        // Sync effects to native bridge
-        if (!lastState || lastState.effects !== currentState.effects) {
-          if (currentState.effects) {
-            nativeBridge.updateEffects(primaryTrack.id, currentState.effects);
-          }
         }
       }
 

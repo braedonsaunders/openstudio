@@ -52,6 +52,7 @@ pub enum BrowserMessage {
     // === Track State ===
     /// Update track arm/mute/solo/volume
     UpdateTrackState {
+        #[serde(rename = "trackId")]
         track_id: String,
         #[serde(flatten)]
         state: TrackState,
@@ -59,6 +60,7 @@ pub enum BrowserMessage {
 
     /// Update track effects
     UpdateEffects {
+        #[serde(rename = "trackId")]
         track_id: String,
         effects: EffectsSettings,
     },

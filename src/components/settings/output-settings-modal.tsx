@@ -175,45 +175,57 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
           </div>
         )}
 
-        {/* Audio Engine Toggle - only show when bridge is available */}
-        {isConnected && (
-          <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl">
-            <div className="flex items-center justify-between">
-              <div>
-                <div className="text-sm font-medium text-gray-900 dark:text-white">Audio Engine</div>
-                <div className="text-xs text-gray-500 dark:text-gray-400">
-                  {preferNativeBridge ? 'Using low-latency native bridge' : 'Using browser Web Audio'}
-                </div>
-              </div>
-              <div className="flex items-center gap-2">
-                <button
-                  onClick={() => setPreferNativeBridge(false)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                    !preferNativeBridge
-                      ? 'bg-indigo-500 text-white'
-                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                  )}
-                >
-                  <Globe className="w-3.5 h-3.5" />
-                  Web Audio
-                </button>
-                <button
-                  onClick={() => setPreferNativeBridge(true)}
-                  className={cn(
-                    'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
-                    preferNativeBridge
-                      ? 'bg-indigo-500 text-white'
-                      : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
-                  )}
-                >
-                  <Zap className="w-3.5 h-3.5" />
-                  Native Bridge
-                </button>
+        {/* Audio Engine Toggle - always visible */}
+        <div className="p-4 bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-800/50 dark:to-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-xl">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-medium text-gray-900 dark:text-white">Audio Engine</div>
+              <div className="text-xs text-gray-500 dark:text-gray-400">
+                {preferNativeBridge && isConnected
+                  ? 'Using low-latency native bridge'
+                  : preferNativeBridge && !isConnected
+                  ? 'Native bridge preferred (not connected)'
+                  : 'Using browser Web Audio'}
               </div>
             </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setPreferNativeBridge(false)}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  !preferNativeBridge
+                    ? 'bg-indigo-500 text-white'
+                    : 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                )}
+              >
+                <Globe className="w-3.5 h-3.5" />
+                Web Audio
+              </button>
+              <button
+                onClick={() => setPreferNativeBridge(true)}
+                disabled={!isConnected}
+                className={cn(
+                  'flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all',
+                  preferNativeBridge && isConnected
+                    ? 'bg-indigo-500 text-white'
+                    : preferNativeBridge && !isConnected
+                    ? 'bg-indigo-500/50 text-white/70 cursor-not-allowed'
+                    : isConnected
+                    ? 'bg-white dark:bg-gray-800 text-gray-600 dark:text-gray-400 border border-gray-200 dark:border-gray-700'
+                    : 'bg-white/50 dark:bg-gray-800/50 text-gray-400 dark:text-gray-500 border border-gray-200 dark:border-gray-700 cursor-not-allowed'
+                )}
+              >
+                <Zap className="w-3.5 h-3.5" />
+                Native Bridge
+              </button>
+            </div>
           </div>
-        )}
+          {!isConnected && preferNativeBridge && (
+            <p className="text-xs text-amber-600 dark:text-amber-400 mt-2">
+              Connect the native bridge below to enable low-latency audio
+            </p>
+          )}
+        </div>
 
         {/* Native Bridge Section */}
         <div className="p-4 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-500/10 dark:to-purple-500/10 border border-indigo-200 dark:border-indigo-500/20 rounded-xl space-y-4">

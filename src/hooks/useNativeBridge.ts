@@ -267,6 +267,8 @@ export function useNativeBridge() {
       if (userTracks.length > 0) {
         const track = userTracks[0];
         console.log('[useNativeBridge] Sending initial track state to bridge:', track.id);
+        // Note: We only send track state, not effects
+        // Effects are processed in the browser via Web Audio, not in the native bridge
         nativeBridge.updateTrackState(track.id, {
           isArmed: track.isArmed,
           isMuted: track.isMuted,
@@ -276,11 +278,6 @@ export function useNativeBridge() {
           monitoringEnabled: track.audioSettings.directMonitoring ?? true,
           monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
         });
-
-        // Also send effects
-        if (track.audioSettings.effects) {
-          nativeBridge.updateEffects(track.id, track.audioSettings.effects);
-        }
       }
     }
   }, []);
