@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback, memo } from 'react';
+import { useState, useEffect, useRef, memo } from 'react';
 import { motion } from 'framer-motion';
 import {
   SceneGroundConfig,
@@ -78,9 +78,11 @@ interface CharacterState {
   targetX: number;
   targetY: number;
   isWalking: boolean;
+  isSettling: boolean; // Brief transition state between walking and idle
   facingRight: boolean;
   walkTimer: number;
   idleTimer: number;
+  settlingTimer: number;
 }
 
 // Slow, casual lobby movement - characters meander around
@@ -89,6 +91,7 @@ const IDLE_DURATION_MIN = 3000; // Longer idles - characters hang around
 const IDLE_DURATION_MAX = 7000; // Can stand still quite a while
 const WALK_DURATION_MIN = 2000; // Short walks between stops
 const WALK_DURATION_MAX = 4000; // Not too long walks
+const SETTLING_DURATION = 150; // Brief pause to smooth walk->idle transition
 
 // Center UI exclusion zone (percentage of screen) - characters avoid this area
 // This is where the main "Play Together" UI panel sits
@@ -207,53 +210,16 @@ export const WalkingCharacter = memo(function WalkingCharacter({
       targetX: initial.x,
       targetY: initial.y,
       isWalking: false,
+      isSettling: false,
       facingRight: Math.random() > 0.5,
       walkTimer: 0,
       idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
+      settlingTimer: 0,
     };
   });
 
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
-
-  // Start walking to a new target - short distances for casual strolling
-  const startWalking = useCallback(() => {
-    setState(prev => {
-      // Pick a nearby target, biased towards bottom and avoiding UI
-      const { walkableArea } = groundConfig;
-      const maxStepX = 12; // Maximum 12% of screen width per walk
-      const maxStepY = 10; // Maximum 10% of screen height per walk
-
-      // Random offset within step range, with slight bias towards bottom
-      const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
-      const offsetY = (Math.random() - 0.3) * 2 * maxStepY; // Bias downward
-
-      // Calculate base target
-      const baseX = prev.x + offsetX;
-      const baseY = prev.y + offsetY;
-
-      // Get valid position that avoids UI zone
-      const validPos = getValidPosition(baseX, baseY, walkableArea);
-
-      return {
-        ...prev,
-        targetX: validPos.x,
-        targetY: validPos.y,
-        isWalking: true,
-        facingRight: validPos.x > prev.x,
-        walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
-      };
-    });
-  }, [groundConfig]);
-
-  // Stop walking and start idle
-  const stopWalking = useCallback(() => {
-    setState(prev => ({
-      ...prev,
-      isWalking: false,
-      idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
-    }));
-  }, []);
 
   // Animation loop
   useEffect(() => {
@@ -274,7 +240,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           const distance = Math.sqrt(dx * dx + dy * dy);
 
           if (distance < 1 || prev.walkTimer <= 0) {
-            // Reached target or timer expired - clamp final position to bounds
+            // Reached target or timer expired - enter settling state for smooth transition
             const { walkableArea } = groundConfig;
             const finalX = distance < 1 ? prev.targetX : prev.x;
             const finalY = distance < 1 ? prev.targetY : prev.y;
@@ -283,7 +249,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
               x: Math.max(walkableArea.minX, Math.min(walkableArea.maxX, finalX)),
               y: Math.max(walkableArea.minY, Math.min(walkableArea.maxY, finalY)),
               isWalking: false,
-              idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
+              isSettling: true,
+              settlingTimer: SETTLING_DURATION,
             };
           }
 
@@ -299,11 +266,12 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           // Check for collisions with other characters
           const otherPositions = getOtherPositions?.(character.id) ?? [];
           if (wouldCollide(newX, newY, otherPositions)) {
-            // Stop walking if we would collide
+            // Stop walking if we would collide - enter settling state
             return {
               ...prev,
               isWalking: false,
-              idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
+              isSettling: true,
+              settlingTimer: SETTLING_DURATION,
             };
           }
 
@@ -313,6 +281,19 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             y: newY,
             walkTimer: prev.walkTimer - deltaTime,
             facingRight: dx > 0,
+          };
+        } else if (prev.isSettling) {
+          // Settling state - smooth transition from walking to idle
+          if (prev.settlingTimer <= 0) {
+            return {
+              ...prev,
+              isSettling: false,
+              idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
+            };
+          }
+          return {
+            ...prev,
+            settlingTimer: prev.settlingTimer - deltaTime,
           };
         } else {
           // Idle - count down timer
@@ -343,6 +324,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
               targetX: nonCollidingPos.x,
               targetY: nonCollidingPos.y,
               isWalking: true,
+              isSettling: false,
               facingRight: nonCollidingPos.x > prev.x,
               walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
             };
@@ -386,6 +368,27 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   // Get idle animation config
   const idleConfig = idleAnimations[character.idleAnimation];
 
+  // Determine animation based on state: walking -> settling -> idle
+  const getAnimationConfig = () => {
+    if (state.isWalking) {
+      return {
+        animate: { y: [0, -1.5, 0], rotate: [-0.5, 0.5, -0.5] },
+        transition: { duration: 0.5, repeat: Infinity, ease: 'easeInOut' as const },
+      };
+    }
+    if (state.isSettling) {
+      // Smooth transition to neutral position before idle animation starts
+      return {
+        animate: { y: 0, rotate: 0 },
+        transition: { duration: 0.15, ease: 'easeOut' as const },
+      };
+    }
+    // Idle state
+    return idleConfig;
+  };
+
+  const animConfig = getAnimationConfig();
+
   return (
     <motion.div
       className="absolute pointer-events-none"
@@ -406,8 +409,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           height: baseSize * scale,
           transform: `scaleX(${state.facingRight ? 1 : -1})`,
         }}
-        animate={!state.isWalking ? idleConfig.animate : { y: [0, -1.5, 0], rotate: [-0.5, 0.5, -0.5] }}
-        transition={!state.isWalking ? idleConfig.transition : { duration: 0.5, repeat: Infinity, ease: 'easeInOut' }}
+        animate={animConfig.animate}
+        transition={animConfig.transition}
       >
         {/* Character Image */}
         {character.fullBodyUrl ? (
