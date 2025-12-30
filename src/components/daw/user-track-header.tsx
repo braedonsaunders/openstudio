@@ -476,7 +476,7 @@ export function UserTrackHeader({
         </div>
 
         {/* Right: Full Height Level Meter */}
-        <div className="w-6 h-full shrink-0 bg-black/20 border-l border-gray-200 dark:border-white/5">
+        <div className="w-6 h-full shrink-0 bg-gray-100 dark:bg-black/20 border-l border-gray-200 dark:border-white/5">
           <FullHeightMeter
             level={effectiveLevel}
             color={track.color}

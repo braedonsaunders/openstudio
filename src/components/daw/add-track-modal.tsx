@@ -23,6 +23,133 @@ import {
 
 type TrackTypeOption = 'audio' | 'midi';
 
+// Native Bridge Channel Selector - allows per-track channel selection
+// Device is global (set in Output Settings), but each track can use different channels
+function NativeChannelSelector({
+  settings,
+  onSettingsChange,
+  nativeAudioRunning,
+  driverType,
+}: {
+  settings: TrackAudioSettings;
+  onSettingsChange: (updates: Partial<TrackAudioSettings>) => void;
+  nativeAudioRunning: boolean;
+  driverType: string | null;
+}) {
+  const { getSelectedInputDevice } = useNativeBridge();
+  const selectedDevice = getSelectedInputDevice();
+  const channels = selectedDevice?.channels || [];
+
+  // Generate stereo pairs from available channels
+  const stereoPairs = channels
+    .filter((_, i) => i < channels.length - 1 && i % 2 === 0)
+    .map((ch, i) => ({
+      left: i * 2,
+      right: i * 2 + 1,
+      label: `${ch.name || `Ch ${i * 2 + 1}`} / ${channels[i * 2 + 1]?.name || `Ch ${i * 2 + 2}`}`,
+    }));
+
+  const currentChannelConfig = settings.channelConfig || { channelCount: 1, leftChannel: 0 };
+
+  return (
+    <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-3">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-medium text-indigo-800">
+          {driverType} Input Channel
+        </span>
+        {nativeAudioRunning && (
+          <span className="text-xs text-green-600 flex items-center gap-1">
+            <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+            Active
+          </span>
+        )}
+      </div>
+
+      {selectedDevice && (
+        <p className="text-[10px] text-indigo-600/70">
+          Device: {selectedDevice.name} (global)
+        </p>
+      )}
+
+      {/* Mono/Stereo toggle */}
+      <div className="flex gap-2">
+        <button
+          onClick={() => onSettingsChange({
+            channelConfig: { channelCount: 1, leftChannel: currentChannelConfig.leftChannel }
+          })}
+          className={cn(
+            'flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
+            currentChannelConfig.channelCount === 1
+              ? 'bg-indigo-500 text-white'
+              : 'bg-white border border-indigo-200 text-indigo-700'
+          )}
+        >
+          Mono
+        </button>
+        <button
+          onClick={() => onSettingsChange({
+            channelConfig: {
+              channelCount: 2,
+              leftChannel: currentChannelConfig.leftChannel,
+              rightChannel: (currentChannelConfig.leftChannel + 1) % Math.max(channels.length, 2),
+            }
+          })}
+          className={cn(
+            'flex-1 px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
+            currentChannelConfig.channelCount === 2
+              ? 'bg-indigo-500 text-white'
+              : 'bg-white border border-indigo-200 text-indigo-700'
+          )}
+        >
+          Stereo
+        </button>
+      </div>
+
+      {/* Channel selection */}
+      {currentChannelConfig.channelCount === 1 ? (
+        <select
+          value={currentChannelConfig.leftChannel}
+          onChange={(e) => onSettingsChange({
+            channelConfig: { channelCount: 1, leftChannel: parseInt(e.target.value) }
+          })}
+          className="w-full h-9 px-2 bg-white border border-indigo-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+        >
+          {channels.length === 0 ? (
+            <option value={0}>Channel 1</option>
+          ) : (
+            channels.map((ch) => (
+              <option key={ch.index} value={ch.index}>
+                {ch.name || `Channel ${ch.index + 1}`}
+              </option>
+            ))
+          )}
+        </select>
+      ) : (
+        <select
+          value={`${currentChannelConfig.leftChannel}-${currentChannelConfig.rightChannel ?? currentChannelConfig.leftChannel + 1}`}
+          onChange={(e) => {
+            const [left, right] = e.target.value.split('-').map(Number);
+            onSettingsChange({
+              channelConfig: { channelCount: 2, leftChannel: left, rightChannel: right }
+            });
+          }}
+          className="w-full h-9 px-2 bg-white border border-indigo-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+        >
+          {stereoPairs.length === 0 ? (
+            <option value="0-1">Channels 1-2</option>
+          ) : (
+            stereoPairs.map((pair) => (
+              <option key={`${pair.left}-${pair.right}`} value={`${pair.left}-${pair.right}`}>
+                {pair.label}
+              </option>
+            ))
+          )}
+        </select>
+      )}
+    </div>
+  );
+}
+
 interface AddTrackModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -450,36 +577,14 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
                 </button>
               </div>
 
-              {/* Native Bridge device selector */}
+              {/* Native Bridge channel selector */}
               {settings.inputMode === 'native' && nativeBridgeConnected && (
-                <div className="p-3 bg-indigo-50 border border-indigo-200 rounded-lg space-y-2">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-indigo-800">
-                      {driverType} Input Device
-                    </span>
-                    {nativeAudioRunning && (
-                      <span className="text-xs text-green-600 flex items-center gap-1">
-                        <span className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                        Active
-                      </span>
-                    )}
-                  </div>
-                  <select
-                    value={settings.inputDeviceId}
-                    onChange={(e) => setSettings({ ...settings, inputDeviceId: e.target.value })}
-                    className="w-full h-9 px-2 bg-white border border-indigo-200 rounded-lg text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                  >
-                    {nativeInputDevices.length === 0 ? (
-                      <option value="default">Default Device</option>
-                    ) : (
-                      nativeInputDevices.map((device) => (
-                        <option key={device.id} value={device.id}>
-                          {device.name} {device.isDefault && '(Default)'}
-                        </option>
-                      ))
-                    )}
-                  </select>
-                </div>
+                <NativeChannelSelector
+                  settings={settings}
+                  onSettingsChange={(updates) => setSettings({ ...settings, ...updates })}
+                  nativeAudioRunning={nativeAudioRunning}
+                  driverType={driverType}
+                />
               )}
 
               {settings.inputMode === 'application' && (
