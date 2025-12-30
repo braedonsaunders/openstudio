@@ -70,8 +70,9 @@ export class TrackAudioProcessor {
   private static soloedTracks = new Set<string>();
   private static allProcessors = new Map<string, TrackAudioProcessor>();
 
-  // Bridge worklet module loaded flag
-  private static bridgeWorkletLoaded = false;
+  // Track which AudioContexts have the bridge worklet module loaded
+  // Using WeakSet so closed contexts can be garbage collected
+  private static bridgeWorkletLoadedContexts = new WeakSet<AudioContext>();
 
   // Metrics
   private lastProcessingTime = 0;
@@ -133,6 +134,21 @@ export class TrackAudioProcessor {
 
   getTrackId(): string {
     return this.trackId;
+  }
+
+  /**
+   * Get the AudioContext this processor was created with.
+   * Used to detect stale processors that need recreation.
+   */
+  getAudioContext(): AudioContext {
+    return this.audioContext;
+  }
+
+  /**
+   * Check if the AudioContext is still valid (not closed)
+   */
+  isContextValid(): boolean {
+    return this.audioContext && this.audioContext.state !== 'closed';
   }
 
   // Get the input node (where audio enters this processor)
@@ -224,30 +240,50 @@ export class TrackAudioProcessor {
    * Receives audio via postMessage from native ASIO bridge
    */
   async setBridgeInput(config: TrackInputConfig): Promise<void> {
+    // Validate AudioContext is in a usable state
+    if (!this.audioContext || this.audioContext.state === 'closed') {
+      console.error(`[TrackAudioProcessor] ${this.trackId} - Cannot set bridge input: AudioContext is closed or invalid`);
+      throw new Error('AudioContext is not valid for creating AudioWorkletNode');
+    }
+
+    // Resume AudioContext if suspended
+    if (this.audioContext.state === 'suspended') {
+      console.log(`[TrackAudioProcessor] ${this.trackId} - Resuming suspended AudioContext`);
+      await this.audioContext.resume();
+    }
+
     // Clean up existing input
     this.disconnectInputSource();
 
     this.inputConfig = config;
     this.inputSourceType = 'bridge';
 
-    // Load bridge worklet if not already loaded
-    if (!TrackAudioProcessor.bridgeWorkletLoaded) {
+    // Load bridge worklet if not already loaded on this AudioContext
+    // Each AudioContext needs its own module registration
+    if (!TrackAudioProcessor.bridgeWorkletLoadedContexts.has(this.audioContext)) {
       try {
         await this.audioContext.audioWorklet.addModule('/audio/bridge-processor.js');
-        TrackAudioProcessor.bridgeWorkletLoaded = true;
-        console.log('[TrackAudioProcessor] Bridge worklet module loaded');
+        TrackAudioProcessor.bridgeWorkletLoadedContexts.add(this.audioContext);
+        console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge worklet module loaded on AudioContext`);
       } catch (err) {
-        console.log('[TrackAudioProcessor] Bridge worklet already loaded or error:', err);
-        TrackAudioProcessor.bridgeWorkletLoaded = true;
+        // Module may already be loaded on this context (e.g., by AudioEngine)
+        console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge worklet already loaded or error:`, err);
+        TrackAudioProcessor.bridgeWorkletLoadedContexts.add(this.audioContext);
       }
     }
 
     // Create AudioWorkletNode for this track's bridge audio
-    this.bridgeWorkletNode = new AudioWorkletNode(this.audioContext, 'bridge-audio-processor', {
-      numberOfInputs: 0,
-      numberOfOutputs: 1,
-      outputChannelCount: [2],
-    });
+    try {
+      this.bridgeWorkletNode = new AudioWorkletNode(this.audioContext, 'bridge-audio-processor', {
+        numberOfInputs: 0,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+    } catch (err) {
+      console.error(`[TrackAudioProcessor] ${this.trackId} - Failed to create AudioWorkletNode:`, err);
+      this.inputSourceType = 'none';
+      throw err;
+    }
 
     // Handle worklet messages (stats)
     this.bridgeWorkletNode.port.onmessage = (event) => {

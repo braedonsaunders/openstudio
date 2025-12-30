@@ -1069,10 +1069,19 @@ export class AudioEngine {
       return null;
     }
 
-    // Return existing processor if it exists
+    // Check existing processor
     let processor = this.trackProcessors.get(trackId);
     if (processor) {
-      return processor;
+      // Check if processor's AudioContext is still valid and matches current context
+      // If the context was recreated (e.g., sample rate change), we need to recreate the processor
+      if (processor.getAudioContext() !== this.audioContext || !processor.isContextValid()) {
+        console.log(`[AudioEngine] Recreating track processor for ${trackId} - AudioContext changed`);
+        processor.dispose();
+        this.trackProcessors.delete(trackId);
+        processor = undefined;
+      } else {
+        return processor;
+      }
     }
 
     // Create new processor
