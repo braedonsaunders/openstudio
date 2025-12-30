@@ -5,6 +5,7 @@ import { cn } from '@/lib/utils';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useNativeBridge } from '@/hooks/useNativeBridge';
+import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import type { UserTrack, TrackAudioSettings, InputChannelConfig } from '@/types';
 import {
   Mic,
@@ -104,6 +105,9 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
     setChannelConfig: setBridgeChannelConfig,
     getSelectedInputDevice: getBridgeSelectedInput,
   } = useNativeBridge();
+
+  // Bridge input level from store (for metering when bridge is active)
+  const bridgeInputLevel = useBridgeAudioStore((s) => s.inputLevel);
 
   const [testingInput, setTestingInput] = useState(false);
   const [inputLevel, setInputLevel] = useState(0);
@@ -667,10 +671,10 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
         </div>
 
         {/* Input Level Test */}
-        {!useBridgeForInput && (
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Level</label>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <label className="text-xs font-medium text-gray-500 dark:text-zinc-400">Input Level</label>
+            {!useBridgeForInput && (
               <button
                 onClick={testingInput ? stopTesting : testInput}
                 className={cn(
@@ -682,18 +686,22 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
               >
                 {testingInput ? 'Stop' : 'Test Input'}
               </button>
-            </div>
-            <div className="h-3 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
-              <div
-                className={cn(
-                  'h-full transition-all duration-75 rounded-full',
-                  inputLevel > 0.8 ? 'bg-red-500' : inputLevel > 0.5 ? 'bg-amber-500' : 'bg-emerald-500'
-                )}
-                style={{ width: `${inputLevel * 100}%` }}
-              />
-            </div>
+            )}
+            {useBridgeForInput && (
+              <span className="text-[10px] text-emerald-400 font-medium">Live</span>
+            )}
           </div>
-        )}
+          <div className="h-3 bg-gray-200 dark:bg-white/5 rounded-full overflow-hidden">
+            <div
+              className={cn(
+                'h-full transition-all duration-75 rounded-full',
+                (useBridgeForInput ? bridgeInputLevel : inputLevel) > 0.8 ? 'bg-red-500' :
+                (useBridgeForInput ? bridgeInputLevel : inputLevel) > 0.5 ? 'bg-amber-500' : 'bg-emerald-500'
+              )}
+              style={{ width: `${(useBridgeForInput ? bridgeInputLevel : inputLevel) * 100}%` }}
+            />
+          </div>
+        </div>
 
         {/* Direct Monitoring */}
         <div className="space-y-2">

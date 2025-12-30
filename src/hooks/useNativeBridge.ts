@@ -110,6 +110,9 @@ export function useNativeBridge() {
       outputPeak: number;
       remoteLevels: [string, number][];
     }) => {
+      // Store input levels in bridge audio store for UI metering
+      useBridgeAudioStore.getState().setInputLevels(data.inputLevel, data.inputPeak);
+
       // Get current user's primary track and update its level
       const roomState = useRoomStore.getState();
       const currentUserId = roomState.currentUser?.id;
