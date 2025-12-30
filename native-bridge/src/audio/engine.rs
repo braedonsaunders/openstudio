@@ -838,13 +838,24 @@ impl AudioEngine {
         let monitoring_enabled = is_monitoring.load(Ordering::Relaxed);
         let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
 
+        // Get track state for arm/mute checks
+        let (is_armed, is_muted) = if let Ok(state) = processing_state.try_read() {
+            (state.track_state.is_armed, state.track_state.is_muted)
+        } else {
+            (false, false)
+        };
+
+        // Only do DRY monitoring if: monitoring enabled AND track armed AND not muted
+        let should_monitor = monitoring_enabled && is_armed && !is_muted;
+
         if should_log {
-            info!("[INPUT] Monitoring: enabled={} volume={:.2}", monitoring_enabled, mon_vol);
+            info!("[INPUT] Monitoring: enabled={} armed={} muted={} -> should_monitor={}",
+                  monitoring_enabled, is_armed, is_muted, should_monitor);
         }
 
         // If monitoring enabled, do DRY monitoring (no effects - effects are in browser)
         // This provides zero-latency monitoring of raw input
-        if monitoring_enabled {
+        if should_monitor {
             let (gain, volume) = if let Ok(state) = processing_state.try_read() {
                 // Apply input gain and monitoring volume only
                 let gain = state.track_state.input_gain_linear();
