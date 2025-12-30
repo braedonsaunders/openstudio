@@ -27,12 +27,26 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     // Log counter
     this.logCounter = 0;
 
+    // Message counter for logging
+    this.messageCount = 0;
+
     // Handle incoming audio from main thread
     this.port.onmessage = (event) => {
       const { type, samples } = event.data;
 
       if (type === 'audio') {
-        this.pushSamples(samples);
+        this.messageCount++;
+        // Log first few messages and then periodically
+        if (this.messageCount <= 3 || this.messageCount % 500 === 0) {
+          console.log('[BridgeProcessor] Received audio:', {
+            messageCount: this.messageCount,
+            samplesLength: samples ? samples.length : 'null',
+            samplesType: samples ? samples.constructor.name : 'null',
+          });
+        }
+        if (samples && samples.length > 0) {
+          this.pushSamples(samples);
+        }
       } else if (type === 'reset') {
         this.reset();
       } else if (type === 'getStats') {
@@ -87,7 +101,8 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
       overruns: this.overruns,
       bufferFill: this.getAvailableSamples() / this.bufferSize,
       samplesReceived: this.samplesReceived,
-      samplesOutput: this.samplesOutput
+      samplesOutput: this.samplesOutput,
+      messageCount: this.messageCount
     });
   }
 
