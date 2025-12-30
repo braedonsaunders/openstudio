@@ -8,7 +8,6 @@ import { useTrackPermissions } from '@/hooks/usePermissions';
 import { Modal } from '@/components/ui/modal';
 import {
   Music2,
-  Plus,
   Trash2,
   Edit2,
   Check,
@@ -17,7 +16,6 @@ import {
   Play,
   ChevronRight,
   Clock,
-  Lock,
   AlertTriangle,
 } from 'lucide-react';
 import type { Song } from '@/types/songs';
@@ -39,14 +37,13 @@ export function SetlistPanel({
     getSongsByRoom,
     getCurrentSong,
     selectSong,
-    createSong,
     updateSong,
     deleteSong,
     reorderSongs,
   } = useSongsStore();
 
   // Permission checks
-  const { canCreate, canEditMetadata, canDelete, canReorder } = useTrackPermissions();
+  const { canEditMetadata, canDelete, canReorder } = useTrackPermissions();
 
   const songs = getSongsByRoom(roomId);
   const currentSong = getCurrentSong();
@@ -55,8 +52,6 @@ export function SetlistPanel({
   const [editingName, setEditingName] = useState('');
   const [editingBpmSongId, setEditingBpmSongId] = useState<string | null>(null);
   const [editingBpm, setEditingBpm] = useState('');
-  const [isCreating, setIsCreating] = useState(false);
-  const [newSongName, setNewSongName] = useState('');
   const [draggedSongId, setDraggedSongId] = useState<string | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
   const [songToDelete, setSongToDelete] = useState<Song | null>(null);
@@ -164,27 +159,6 @@ export function SetlistPanel({
     setEditingBpmSongId(null);
     setEditingBpm('');
   }, []);
-
-  // Create new song
-  const handleCreateSong = useCallback(async () => {
-    if (!newSongName.trim()) return;
-
-    setIsCreating(true);
-    const song = createSong(roomId, newSongName.trim(), userId, userName);
-
-    try {
-      await fetch(`/api/rooms/${roomId}/songs`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(song),
-      });
-    } catch (err) {
-      console.error('Failed to create song:', err);
-    }
-
-    setNewSongName('');
-    setIsCreating(false);
-  }, [newSongName, roomId, userId, userName, createSong]);
 
   // Open delete confirmation modal
   const handleDeleteSong = useCallback((songId: string) => {
@@ -496,36 +470,6 @@ export function SetlistPanel({
                 </div>
               </div>
             ))}
-          </div>
-        )}
-      </div>
-
-      {/* Create New Song */}
-      <div className="px-3 py-3 border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
-        {canCreate ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="text"
-              value={newSongName}
-              onChange={(e) => setNewSongName(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleCreateSong()}
-              placeholder="New song name..."
-              className="flex-1 px-3 py-1.5 text-xs bg-white dark:bg-[#12121a] border border-gray-200 dark:border-white/10 rounded-lg text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-zinc-600 focus:outline-none focus:ring-1 focus:ring-indigo-500"
-              disabled={isCreating}
-            />
-            <button
-              onClick={handleCreateSong}
-              disabled={!newSongName.trim() || isCreating}
-              className="p-1.5 rounded-lg bg-indigo-500 text-white disabled:opacity-50 disabled:cursor-not-allowed hover:bg-indigo-600 transition-colors"
-              title="Create song"
-            >
-              <Plus className="w-4 h-4" />
-            </button>
-          </div>
-        ) : (
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500">
-            <Lock className="w-3 h-3" />
-            <span>You don&apos;t have permission to create songs</span>
           </div>
         )}
       </div>

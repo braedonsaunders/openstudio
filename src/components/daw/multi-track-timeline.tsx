@@ -1676,19 +1676,7 @@ export function MultiTrackTimeline({
 
       {/* Footer */}
       {currentSong && (
-        <div className="h-6 px-3 flex items-center justify-between border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
-          <div className="flex items-center gap-3 text-[10px] text-gray-500 dark:text-zinc-500">
-            {isLyriaSong ? (
-              <span className="flex items-center gap-1">
-                {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')}
-                <span className="text-purple-400">/ ∞</span>
-              </span>
-            ) : (
-              <span>
-                {Math.floor(currentTime / 60)}:{Math.floor(currentTime % 60).toString().padStart(2, '0')} / {Math.floor(songDuration / 60)}:{Math.floor(songDuration % 60).toString().padStart(2, '0')}
-              </span>
-            )}
-          </div>
+        <div className="h-6 px-3 flex items-center justify-end border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
           <div className="flex items-center gap-2 text-[10px]">
             {isLyriaSong && <span className="text-purple-500">● Lyria</span>}
             <span className="text-amber-500">● MIDI</span>

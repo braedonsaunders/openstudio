@@ -261,18 +261,33 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
     closeContextMenu();
   }, [contextMenu, duplicateLoop, currentSong, roomId, userId, userName, addLoopTrack, addTrackToSong, closeContextMenu]);
 
-  // Delete asset handler
+  // Delete asset handler - also removes all instances from timeline
   const handleDeleteAsset = useCallback(() => {
     if (!contextMenu) return;
 
+    const assetId = contextMenu.assetId;
+
+    // Remove all instances from all songs in this room
+    const { getSongsByRoom, removeTrackFromSong } = useSongsStore.getState();
+    const roomSongs = getSongsByRoom(roomId);
+
+    for (const song of roomSongs) {
+      // Find all track references that use this asset
+      const refsToRemove = song.tracks.filter((trackRef) => trackRef.trackId === assetId);
+      for (const ref of refsToRemove) {
+        removeTrackFromSong(song.id, ref.id);
+      }
+    }
+
+    // Then remove the asset itself
     if (contextMenu.type === 'audio') {
-      onTrackRemove(contextMenu.assetId);
+      onTrackRemove(assetId);
     } else {
-      removeLoopTrack(contextMenu.assetId);
+      removeLoopTrack(assetId);
     }
 
     closeContextMenu();
-  }, [contextMenu, onTrackRemove, removeLoopTrack, closeContextMenu]);
+  }, [contextMenu, onTrackRemove, removeLoopTrack, closeContextMenu, roomId]);
 
   // Close context menu on click outside
   useEffect(() => {
