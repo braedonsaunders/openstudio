@@ -9,16 +9,6 @@ interface RoomExitAnimationProps {
   children: React.ReactNode;
 }
 
-// Lightweight ribbon config
-interface AuroraRibbon {
-  id: number;
-  top: string;
-  duration: number;
-  delay: number;
-  colorLight: string;
-  colorDark: string;
-}
-
 // Sparkle config
 interface Sparkle {
   id: number;
@@ -51,18 +41,6 @@ export function RoomExitAnimation({ isExiting, onAnimationComplete, children }: 
     light: ['#f472b6', '#fb923c', '#facc15', '#4ade80', '#22d3ee', '#a78bfa', '#f472b6'],
     dark: ['#ec4899', '#f97316', '#eab308', '#22c55e', '#06b6d4', '#8b5cf6', '#ec4899'],
   }), []);
-
-  // Generate ribbons - CSS animated, no per-frame updates
-  const ribbons = useMemo<AuroraRibbon[]>(() => {
-    return Array.from({ length: 6 }, (_, i) => ({
-      id: i,
-      top: `${12 + i * 14}%`,
-      duration: 2 + i * 0.2,
-      delay: i * 0.08,
-      colorLight: colorPalette.light[i % colorPalette.light.length],
-      colorDark: colorPalette.dark[i % colorPalette.dark.length],
-    }));
-  }, [colorPalette]);
 
   // Colorful sparkles
   const sparkles = useMemo<Sparkle[]>(() => {
@@ -145,43 +123,6 @@ export function RoomExitAnimation({ isExiting, onAnimationComplete, children }: 
               animate={{ opacity: 1 }}
               transition={{ duration: 0.3 }}
             />
-
-            {/* CSS-animated rainbow ribbons */}
-            {ribbons.map((ribbon) => (
-              <motion.div
-                key={ribbon.id}
-                className="absolute left-0 right-0 h-1 rounded-full"
-                style={{ top: ribbon.top }}
-                initial={{ scaleX: 0, opacity: 0 }}
-                animate={{ scaleX: 1, opacity: 1 }}
-                transition={{
-                  duration: 0.6,
-                  delay: ribbon.delay,
-                  ease: [0.34, 1.56, 0.64, 1], // Bouncy easing
-                }}
-              >
-                {/* Main ribbon with CSS animation - uses CSS variables for theme */}
-                <div
-                  className="absolute inset-0 animate-aurora-wave rounded-full ribbon-main"
-                  style={{
-                    '--ribbon-color-light': ribbon.colorLight,
-                    '--ribbon-color-dark': ribbon.colorDark,
-                    animationDuration: `${ribbon.duration}s`,
-                    animationDelay: `${ribbon.delay}s`,
-                  } as React.CSSProperties}
-                />
-                {/* Glow layer */}
-                <div
-                  className="absolute inset-0 h-6 -top-2 blur-lg animate-aurora-wave ribbon-glow"
-                  style={{
-                    '--ribbon-color-light': ribbon.colorLight,
-                    '--ribbon-color-dark': ribbon.colorDark,
-                    animationDuration: `${ribbon.duration}s`,
-                    animationDelay: `${ribbon.delay + 0.05}s`,
-                  } as React.CSSProperties}
-                />
-              </motion.div>
-            ))}
 
             {/* Colorful floating sparkles */}
             {sparkles.map((sparkle) => (
@@ -285,28 +226,24 @@ export function RoomExitAnimation({ isExiting, onAnimationComplete, children }: 
                 👋
               </motion.span>
 
-              {/* Animated text with letter-by-letter color */}
+              {/* Animated text with subtle bouncing letters */}
               <motion.div className="flex items-center gap-0.5">
                 {'Until next time'.split('').map((letter, i) => (
                   <motion.span
                     key={i}
-                    className="text-xl font-medium tracking-wide exit-text-letter"
-                    style={{
-                      '--letter-color-light': colorPalette.light[i % colorPalette.light.length],
-                      '--letter-color-dark': colorPalette.dark[i % colorPalette.dark.length],
-                    } as React.CSSProperties}
+                    className="text-xl font-medium tracking-wide text-[var(--foreground)]/80"
                     initial={{ opacity: 0, y: 10 }}
                     animate={{
                       opacity: 1,
-                      y: [0, -3, 0],
+                      y: [0, -4, 0],
                     }}
                     transition={{
-                      opacity: { delay: 0.3 + i * 0.03, duration: 0.3 },
+                      opacity: { delay: 0.3 + i * 0.02, duration: 0.3 },
                       y: {
-                        delay: 0.5 + i * 0.05,
-                        duration: 0.6,
+                        delay: 0.5 + i * 0.04,
+                        duration: 0.5,
                         repeat: Infinity,
-                        repeatDelay: 1.5,
+                        repeatDelay: 1.8,
                         ease: 'easeInOut'
                       },
                     }}
@@ -315,9 +252,9 @@ export function RoomExitAnimation({ isExiting, onAnimationComplete, children }: 
                   </motion.span>
                 ))}
                 <motion.span
-                  className="text-xl font-medium text-[var(--foreground)]"
+                  className="text-xl font-medium text-[var(--foreground)]/60"
                   initial={{ opacity: 0 }}
-                  animate={{ opacity: [0, 1, 0] }}
+                  animate={{ opacity: [0, 0.8, 0] }}
                   transition={{ delay: 0.8, duration: 1.5, repeat: Infinity }}
                 >
                   ...
@@ -328,72 +265,8 @@ export function RoomExitAnimation({ isExiting, onAnimationComplete, children }: 
         )}
       </AnimatePresence>
 
-      {/* Inject keyframes for CSS-based ribbon animation with theme support */}
+      {/* Inject CSS for theme-aware colors */}
       <style jsx global>{`
-        @keyframes aurora-wave {
-          0%, 100% {
-            transform: translateX(-8%) scaleX(1) scaleY(1);
-            opacity: 0.7;
-          }
-          25% {
-            transform: translateX(4%) scaleX(1.15) scaleY(1.3);
-            opacity: 1;
-          }
-          50% {
-            transform: translateX(8%) scaleX(1.05) scaleY(0.8);
-            opacity: 0.9;
-          }
-          75% {
-            transform: translateX(-4%) scaleX(1.2) scaleY(1.2);
-            opacity: 1;
-          }
-        }
-        .animate-aurora-wave {
-          animation: aurora-wave ease-in-out infinite;
-        }
-
-        /* Theme-aware ribbon colors */
-        .ribbon-main {
-          background: linear-gradient(90deg,
-            transparent 0%,
-            var(--ribbon-color-light) 20%,
-            var(--ribbon-color-light) 50%,
-            var(--ribbon-color-light) 80%,
-            transparent 100%
-          );
-          opacity: 0.6;
-        }
-        .ribbon-glow {
-          background: linear-gradient(90deg,
-            transparent 0%,
-            var(--ribbon-color-light) 30%,
-            var(--ribbon-color-light) 70%,
-            transparent 100%
-          );
-          opacity: 0.3;
-        }
-        :root.dark .ribbon-main,
-        .dark .ribbon-main {
-          background: linear-gradient(90deg,
-            transparent 0%,
-            var(--ribbon-color-dark) 20%,
-            var(--ribbon-color-dark) 50%,
-            var(--ribbon-color-dark) 80%,
-            transparent 100%
-          );
-          opacity: 0.7;
-        }
-        :root.dark .ribbon-glow,
-        .dark .ribbon-glow {
-          background: linear-gradient(90deg,
-            transparent 0%,
-            var(--ribbon-color-dark) 30%,
-            var(--ribbon-color-dark) 70%,
-            transparent 100%
-          );
-          opacity: 0.4;
-        }
-
         /* Theme-aware sparkle colors */
         .sparkle-dot {
           background-color: var(--sparkle-color-light);
@@ -423,17 +296,6 @@ export function RoomExitAnimation({ isExiting, onAnimationComplete, children }: 
         .dark .shape-fill-svg {
           fill: var(--shape-color-dark);
           filter: drop-shadow(0 0 8px var(--shape-color-dark));
-        }
-
-        /* Theme-aware text letter colors */
-        .exit-text-letter {
-          color: var(--letter-color-light);
-          text-shadow: 0 0 8px var(--letter-color-light);
-        }
-        :root.dark .exit-text-letter,
-        .dark .exit-text-letter {
-          color: var(--letter-color-dark);
-          text-shadow: 0 0 12px var(--letter-color-dark);
         }
       `}</style>
     </div>
