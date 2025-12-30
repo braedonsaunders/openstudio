@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, memo } from 'react';
-import { motion } from 'framer-motion';
+import { motion, useAnimationControls } from 'framer-motion';
 import {
   SceneGroundConfig,
   calculateAvatarScale,
@@ -220,6 +220,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
 
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
+  const prevStateRef = useRef<{ isWalking: boolean; isSettling: boolean }>({ isWalking: false, isSettling: false });
+  const controls = useAnimationControls();
 
   // Animation loop
   useEffect(() => {
@@ -354,6 +356,56 @@ export const WalkingCharacter = memo(function WalkingCharacter({
     onPositionUpdate?.(character.id, state.x, state.y);
   }, [character.id, state.x, state.y, onPositionUpdate]);
 
+  // Get idle animation config
+  const idleConfig = idleAnimations[character.idleAnimation];
+
+  // Initialize animation on mount
+  useEffect(() => {
+    if (state.isWalking) {
+      controls.start(
+        { y: [0, -2, 0], rotate: [-0.5, 0.5, -0.5] },
+        { duration: 0.4, repeat: Infinity, ease: 'easeInOut' }
+      );
+    } else if (!state.isSettling) {
+      controls.start(idleConfig.animate, idleConfig.transition as never);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Handle animation state transitions with proper control
+  useEffect(() => {
+    const prev = prevStateRef.current;
+    const wasWalking = prev.isWalking;
+    const wasSettling = prev.isSettling;
+
+    // Update ref for next comparison
+    prevStateRef.current = { isWalking: state.isWalking, isSettling: state.isSettling };
+
+    // Walking -> Settling: stop current animation and ease to neutral
+    if (wasWalking && !state.isWalking && state.isSettling) {
+      controls.stop();
+      controls.start({
+        y: 0,
+        rotate: 0
+      }, {
+        duration: 0.15,
+        ease: 'easeOut'
+      });
+    }
+    // Settling -> Idle: start idle animation
+    else if (wasSettling && !state.isSettling && !state.isWalking) {
+      controls.start(idleConfig.animate, idleConfig.transition as never);
+    }
+    // Idle -> Walking: stop idle and start walk animation
+    else if (!wasWalking && state.isWalking) {
+      controls.stop();
+      controls.start(
+        { y: [0, -2, 0], rotate: [-0.5, 0.5, -0.5] },
+        { duration: 0.4, repeat: Infinity, ease: 'easeInOut' }
+      );
+    }
+  }, [state.isWalking, state.isSettling, controls, idleConfig]);
+
   // Calculate scale based on Y position
   const scale = calculateAvatarScale(state.y, groundConfig);
   const zIndex = calculateAvatarZIndex(state.y, groundConfig);
@@ -365,30 +417,6 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   // Base size for avatar (will be scaled) - larger for lobby presence
   const baseSize = 120;
 
-  // Get idle animation config
-  const idleConfig = idleAnimations[character.idleAnimation];
-
-  // Determine animation based on state: walking -> settling -> idle
-  const getAnimationConfig = () => {
-    if (state.isWalking) {
-      return {
-        animate: { y: [0, -1.5, 0], rotate: [-0.5, 0.5, -0.5] },
-        transition: { duration: 0.5, repeat: Infinity, ease: 'easeInOut' as const },
-      };
-    }
-    if (state.isSettling) {
-      // Smooth transition to neutral position before idle animation starts
-      return {
-        animate: { y: 0, rotate: 0 },
-        transition: { duration: 0.15, ease: 'easeOut' as const },
-      };
-    }
-    // Idle state
-    return idleConfig;
-  };
-
-  const animConfig = getAnimationConfig();
-
   return (
     <motion.div
       className="absolute pointer-events-none"
@@ -398,10 +426,6 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         zIndex,
         transform: `translate(-50%, -100%)`, // Anchor at bottom center
       }}
-      animate={{
-        x: 0,
-        y: 0,
-      }}
     >
       <motion.div
         style={{
@@ -409,8 +433,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           height: baseSize * scale,
           transform: `scaleX(${state.facingRight ? 1 : -1})`,
         }}
-        animate={animConfig.animate}
-        transition={animConfig.transition}
+        animate={controls}
+        initial={{ y: 0, rotate: 0 }}
       >
         {/* Character Image */}
         {character.fullBodyUrl ? (
