@@ -453,6 +453,7 @@ export class NativeBridge {
       monitoringVolume?: number;
     }
   ): void {
+    console.log('[NativeBridge] updateTrackState:', { trackId, ...state });
     // Rust serde uses rename_all = "camelCase" so we send camelCase
     this.send({
       type: 'updateTrackState',
