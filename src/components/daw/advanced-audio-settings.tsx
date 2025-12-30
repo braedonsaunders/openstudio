@@ -162,7 +162,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
       if (updates.inputDeviceId !== undefined && isInitialized) {
         try {
           const newSettings = { ...track.audioSettings, ...updates };
-          await recaptureWithSettings(newSettings);
+          await recaptureWithSettings(track.id, newSettings);
           console.log('[AdvancedAudioSettings] Recaptured audio with new device');
         } catch (err) {
           console.error('[AdvancedAudioSettings] Failed to recapture:', err);
@@ -181,7 +181,7 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
       if (isInitialized) {
         try {
           const newSettings = { ...track.audioSettings, channelConfig: config };
-          await recaptureWithSettings(newSettings);
+          await recaptureWithSettings(track.id, newSettings);
           console.log('[AdvancedAudioSettings] Recaptured audio with new channel config:', config);
         } catch (err) {
           console.error('[AdvancedAudioSettings] Failed to recapture with new channel config:', err);

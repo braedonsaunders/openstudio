@@ -229,13 +229,15 @@ export function useAudioEngine() {
   }, []);
 
   // Recapture audio with new settings (e.g., when user changes device or channel config)
-  const recaptureWithSettings = useCallback(async (trackSettings: TrackAudioSettings) => {
+  // This sets up the MediaStream input for the TrackAudioProcessor
+  const recaptureWithSettings = useCallback(async (trackId: string, trackSettings: TrackAudioSettings) => {
     if (!globalEngine) {
       console.warn('[useAudioEngine] Cannot recapture: engine not initialized');
       return null;
     }
 
     console.log('[useAudioEngine] Recapturing audio with new settings:', {
+      trackId,
       deviceId: trackSettings.inputDeviceId,
       channelConfig: trackSettings.channelConfig,
     });
@@ -246,7 +248,17 @@ export function useAudioEngine() {
       sampleRate: trackSettings.sampleRate,
     };
 
+    // Get the media stream
     const stream = await globalEngine.captureLocalAudio(captureOptions);
+
+    // Set up TrackAudioProcessor with this stream
+    if (stream && trackId) {
+      await globalEngine.setTrackMediaStreamInput(trackId, stream, {
+        channelConfig: trackSettings.channelConfig,
+      });
+      console.log(`[useAudioEngine] Connected MediaStream to TrackAudioProcessor for ${trackId}`);
+    }
+
     return stream;
   }, []);
 
