@@ -214,18 +214,115 @@ function BeachScene({ isDark }: { isDark: boolean }) {
           </div>
         )), [])}
 
-        {/* Palm trees at back corners */}
-        <svg className="absolute top-[5%] left-[3%]" width="50" height="80" viewBox="0 0 80 160" style={{ opacity: 0.7 }}>
-          <path d="M38 160 Q40 120 42 80 Q44 40 42 20" stroke={isDark ? '#5d4037' : '#8B4513'} strokeWidth="8" fill="none" />
-          <path d="M42 25 Q25 15 8 30" stroke={isDark ? '#1b5e20' : '#228B22'} strokeWidth="3" fill="none" />
-          <path d="M42 25 Q55 10 75 25" stroke={isDark ? '#1b5e20' : '#228B22'} strokeWidth="3" fill="none" />
-          <path d="M42 22 Q30 5 15 15" stroke={isDark ? '#2e7d32' : '#2E8B57'} strokeWidth="2" fill="none" />
-        </svg>
-        <svg className="absolute top-[8%] right-[5%]" width="45" height="70" viewBox="0 0 80 160" style={{ opacity: 0.6 }}>
-          <path d="M38 160 Q40 120 42 80 Q44 40 42 20" stroke={isDark ? '#5d4037' : '#8B4513'} strokeWidth="8" fill="none" />
-          <path d="M42 25 Q25 15 8 30" stroke={isDark ? '#1b5e20' : '#228B22'} strokeWidth="3" fill="none" />
-          <path d="M42 25 Q55 10 75 25" stroke={isDark ? '#1b5e20' : '#228B22'} strokeWidth="3" fill="none" />
-        </svg>
+        {/* Palm trees - multiple layers from back to front */}
+        {useMemo(() => {
+          const palmTrees = [
+            // Back row (smaller, distant)
+            { x: 5, bottom: 55, scale: 0.4, zIndex: 1, flip: false },
+            { x: 15, bottom: 52, scale: 0.35, zIndex: 1, flip: true },
+            { x: 85, bottom: 54, scale: 0.38, zIndex: 1, flip: false },
+            { x: 95, bottom: 50, scale: 0.42, zIndex: 1, flip: true },
+            // Middle row
+            { x: 8, bottom: 40, scale: 0.55, zIndex: 2, flip: false },
+            { x: 20, bottom: 38, scale: 0.5, zIndex: 2, flip: true },
+            { x: 80, bottom: 42, scale: 0.52, zIndex: 2, flip: false },
+            { x: 92, bottom: 36, scale: 0.58, zIndex: 2, flip: true },
+            // Front row (largest, foreground)
+            { x: -3, bottom: 15, scale: 0.9, zIndex: 10, flip: false },
+            { x: 12, bottom: 20, scale: 0.75, zIndex: 9, flip: true },
+            { x: 88, bottom: 18, scale: 0.8, zIndex: 9, flip: false },
+            { x: 103, bottom: 12, scale: 0.95, zIndex: 10, flip: true },
+          ];
+
+          const trunkColor = isDark ? '#4a3728' : '#8B4513';
+          const trunkHighlight = isDark ? '#5d4037' : '#a0522d';
+          const frondDark = isDark ? '#1b4332' : '#228B22';
+          const frondMid = isDark ? '#2d6a4f' : '#2E8B57';
+          const frondLight = isDark ? '#40916c' : '#3CB371';
+
+          return palmTrees.map((palm, i) => (
+            <div
+              key={`palm-${i}`}
+              className="absolute"
+              style={{
+                left: `${palm.x}%`,
+                bottom: `${palm.bottom}%`,
+                transform: `scaleX(${palm.flip ? -1 : 1})`,
+                zIndex: palm.zIndex,
+              }}
+            >
+              <svg
+                width={120 * palm.scale}
+                height={200 * palm.scale}
+                viewBox="0 0 120 200"
+                style={{ overflow: 'visible' }}
+              >
+                {/* Trunk with curve and texture */}
+                <path
+                  d="M55 200 Q52 160 54 120 Q58 80 55 50 Q52 30 58 15"
+                  stroke={trunkColor}
+                  strokeWidth="12"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M58 200 Q56 160 57 120 Q60 80 58 50 Q56 32 60 18"
+                  stroke={trunkHighlight}
+                  strokeWidth="6"
+                  fill="none"
+                  strokeLinecap="round"
+                />
+                {/* Trunk rings */}
+                {[180, 150, 120, 90, 65, 45].map((y, ri) => (
+                  <ellipse
+                    key={ri}
+                    cx="56"
+                    cy={y}
+                    rx="7"
+                    ry="2"
+                    fill="none"
+                    stroke={isDark ? '#3d2817' : '#6b4423'}
+                    strokeWidth="1"
+                    opacity="0.5"
+                  />
+                ))}
+                {/* Coconuts */}
+                <circle cx="52" cy="22" r="5" fill={isDark ? '#5d4037' : '#8B4513'} />
+                <circle cx="62" cy="20" r="4" fill={isDark ? '#4a3728' : '#a0522d'} />
+                <circle cx="56" cy="26" r="4.5" fill={isDark ? '#5d4037' : '#8B4513'} />
+                {/* Palm fronds - layered */}
+                {/* Back fronds */}
+                <path d="M58 15 Q30 -20 -20 10" stroke={frondDark} strokeWidth="3" fill="none" />
+                <path d="M58 15 Q80 -25 130 5" stroke={frondDark} strokeWidth="3" fill="none" />
+                <path d="M58 15 Q20 -10 -10 30" stroke={frondDark} strokeWidth="2.5" fill="none" />
+                <path d="M58 15 Q90 -15 120 25" stroke={frondDark} strokeWidth="2.5" fill="none" />
+                {/* Middle fronds */}
+                <path d="M58 15 Q25 5 -15 40" stroke={frondMid} strokeWidth="3" fill="none" />
+                <path d="M58 15 Q85 0 125 35" stroke={frondMid} strokeWidth="3" fill="none" />
+                <path d="M58 15 Q40 -30 10 -15" stroke={frondMid} strokeWidth="2.5" fill="none" />
+                <path d="M58 15 Q75 -35 105 -20" stroke={frondMid} strokeWidth="2.5" fill="none" />
+                {/* Front fronds */}
+                <path d="M58 15 Q35 20 0 55" stroke={frondLight} strokeWidth="3.5" fill="none" />
+                <path d="M58 15 Q80 15 115 50" stroke={frondLight} strokeWidth="3.5" fill="none" />
+                <path d="M58 15 Q55 -20 58 -40" stroke={frondLight} strokeWidth="3" fill="none" />
+                <path d="M58 15 Q30 10 5 45" stroke={frondLight} strokeWidth="2" fill="none" />
+                <path d="M58 15 Q85 5 110 40" stroke={frondLight} strokeWidth="2" fill="none" />
+                {/* Frond leaf details */}
+                {[-20, -10, 0, 10, 20, 30, 40].map((offset, li) => (
+                  <g key={`leaf-${li}`}>
+                    <path
+                      d={`M${30 + offset * 0.5} ${25 + Math.abs(offset) * 0.3} Q${25 + offset * 0.4} ${30 + Math.abs(offset) * 0.2} ${20 + offset * 0.3} ${35}`}
+                      stroke={frondLight}
+                      strokeWidth="1"
+                      fill="none"
+                      opacity="0.6"
+                    />
+                  </g>
+                ))}
+              </svg>
+            </div>
+          ));
+        }, [isDark])}
 
         {/* Footprints at various depths */}
         {useMemo(() => Array.from({ length: 6 }, (_, i) => (
@@ -873,39 +970,71 @@ function ForestScene({ isDark }: { isDark: boolean }) {
 
   // Tree configurations for the forest surrounding the clearing
   const trees = useMemo(() => ({
-    // Back row - smallest, furthest trees (at horizon)
+    // Far back row - distant silhouette trees (smallest, at horizon)
+    farBackRow: [
+      { x: -5, scale: 0.18, variant: 'pine' as const },
+      { x: 0, scale: 0.22, variant: 'oak' as const },
+      { x: 5, scale: 0.2, variant: 'pine' as const },
+      { x: 10, scale: 0.24, variant: 'birch' as const },
+      { x: 15, scale: 0.19, variant: 'pine' as const },
+      { x: 20, scale: 0.23, variant: 'oak' as const },
+      { x: 25, scale: 0.21, variant: 'pine' as const },
+      { x: 30, scale: 0.25, variant: 'birch' as const },
+      { x: 35, scale: 0.2, variant: 'pine' as const },
+      // Center gap for clearing view
+      { x: 65, scale: 0.21, variant: 'pine' as const },
+      { x: 70, scale: 0.24, variant: 'birch' as const },
+      { x: 75, scale: 0.19, variant: 'pine' as const },
+      { x: 80, scale: 0.23, variant: 'oak' as const },
+      { x: 85, scale: 0.2, variant: 'pine' as const },
+      { x: 90, scale: 0.25, variant: 'birch' as const },
+      { x: 95, scale: 0.22, variant: 'pine' as const },
+      { x: 100, scale: 0.24, variant: 'oak' as const },
+      { x: 105, scale: 0.19, variant: 'pine' as const },
+    ],
+    // Back row - larger background trees
     backRow: [
-      { x: 2, scale: 0.25, variant: 'pine' as const },
-      { x: 8, scale: 0.28, variant: 'oak' as const },
-      { x: 14, scale: 0.22, variant: 'birch' as const },
-      { x: 20, scale: 0.26, variant: 'pine' as const },
+      { x: -8, scale: 0.38, variant: 'oak' as const },
+      { x: -2, scale: 0.42, variant: 'pine' as const },
+      { x: 5, scale: 0.35, variant: 'birch' as const },
+      { x: 12, scale: 0.4, variant: 'pine' as const },
+      { x: 18, scale: 0.36, variant: 'oak' as const },
+      { x: 25, scale: 0.44, variant: 'pine' as const },
+      { x: 32, scale: 0.38, variant: 'willow' as const },
       // Gap for clearing center
-      { x: 80, scale: 0.24, variant: 'pine' as const },
-      { x: 86, scale: 0.27, variant: 'oak' as const },
-      { x: 92, scale: 0.23, variant: 'birch' as const },
-      { x: 98, scale: 0.25, variant: 'pine' as const },
+      { x: 68, scale: 0.36, variant: 'willow' as const },
+      { x: 75, scale: 0.42, variant: 'pine' as const },
+      { x: 82, scale: 0.38, variant: 'oak' as const },
+      { x: 88, scale: 0.4, variant: 'pine' as const },
+      { x: 95, scale: 0.35, variant: 'birch' as const },
+      { x: 102, scale: 0.44, variant: 'pine' as const },
+      { x: 108, scale: 0.4, variant: 'oak' as const },
     ],
     // Middle row - medium trees
     middleRow: [
-      { x: -2, scale: 0.45, variant: 'oak' as const, flip: false },
-      { x: 6, scale: 0.5, variant: 'willow' as const, flip: false },
-      { x: 15, scale: 0.42, variant: 'pine' as const, flip: false },
-      { x: 22, scale: 0.48, variant: 'birch' as const, flip: false },
+      { x: -8, scale: 0.55, variant: 'oak' as const, flip: false },
+      { x: 0, scale: 0.6, variant: 'pine' as const, flip: false },
+      { x: 8, scale: 0.52, variant: 'willow' as const, flip: false },
+      { x: 16, scale: 0.58, variant: 'pine' as const, flip: false },
+      { x: 24, scale: 0.54, variant: 'birch' as const, flip: false },
       // Gap for clearing
-      { x: 78, scale: 0.46, variant: 'birch' as const, flip: true },
-      { x: 85, scale: 0.44, variant: 'pine' as const, flip: true },
-      { x: 94, scale: 0.52, variant: 'willow' as const, flip: true },
-      { x: 102, scale: 0.47, variant: 'oak' as const, flip: true },
+      { x: 76, scale: 0.56, variant: 'birch' as const, flip: true },
+      { x: 84, scale: 0.6, variant: 'pine' as const, flip: true },
+      { x: 92, scale: 0.54, variant: 'willow' as const, flip: true },
+      { x: 100, scale: 0.58, variant: 'pine' as const, flip: true },
+      { x: 108, scale: 0.52, variant: 'oak' as const, flip: true },
     ],
     // Front row - largest trees, framing the scene
     frontRow: [
-      { x: -5, scale: 0.85, variant: 'oak' as const, flip: false },
-      { x: 8, scale: 0.75, variant: 'pine' as const, flip: false },
-      { x: 18, scale: 0.7, variant: 'willow' as const, flip: false },
+      { x: -10, scale: 0.95, variant: 'oak' as const, flip: false },
+      { x: 2, scale: 0.85, variant: 'pine' as const, flip: false },
+      { x: 12, scale: 0.78, variant: 'willow' as const, flip: false },
+      { x: 22, scale: 0.82, variant: 'pine' as const, flip: false },
       // Gap for clearing
-      { x: 82, scale: 0.72, variant: 'willow' as const, flip: true },
-      { x: 92, scale: 0.78, variant: 'pine' as const, flip: true },
-      { x: 105, scale: 0.88, variant: 'oak' as const, flip: true },
+      { x: 78, scale: 0.8, variant: 'pine' as const, flip: true },
+      { x: 88, scale: 0.76, variant: 'willow' as const, flip: true },
+      { x: 98, scale: 0.88, variant: 'pine' as const, flip: true },
+      { x: 110, scale: 0.98, variant: 'oak' as const, flip: true },
     ],
   }), []);
 
@@ -923,62 +1052,93 @@ function ForestScene({ isDark }: { isDark: boolean }) {
     <div className="absolute inset-0 overflow-hidden">
       {/* Sky/Canopy backdrop */}
       <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
-        {/* Sky gradient - visible through canopy gaps */}
-        <div className={`absolute inset-0 ${
-          isDark
-            ? 'bg-gradient-to-b from-slate-950 via-indigo-950 to-emerald-950'
-            : 'bg-gradient-to-b from-sky-300 via-emerald-200 to-emerald-300'
-        }`} />
-
-        {/* Dense canopy layer */}
+        {/* Sky gradient - blue for day, sunset/purple for night */}
         <div
-          className={`absolute inset-0 ${isDark ? 'opacity-90' : 'opacity-70'}`}
+          className="absolute inset-0"
           style={{
             background: isDark
-              ? 'radial-gradient(ellipse at 50% 120%, #022c22 0%, #064e3b 40%, #0f766e 100%)'
-              : 'radial-gradient(ellipse at 50% 120%, #15803d 0%, #22c55e 40%, #4ade80 100%)',
+              ? 'linear-gradient(to bottom, #0f0a1e 0%, #1a1035 15%, #2d1b4e 30%, #4a2c6a 50%, #6b3d5c 70%, #1a3a2a 100%)'
+              : 'linear-gradient(to bottom, #60a5fa 0%, #38bdf8 20%, #7dd3fc 40%, #bae6fd 60%, #e0f2fe 80%, #bbf7d0 100%)',
           }}
         />
 
-        {/* Canopy leaf texture */}
+        {/* Sun glow (day) */}
+        {!isDark && (
+          <div
+            className="absolute top-[5%] left-1/2 -translate-x-1/2 w-32 h-32 rounded-full"
+            style={{
+              background: 'radial-gradient(circle, rgba(253, 224, 71, 0.6) 0%, rgba(251, 191, 36, 0.3) 30%, transparent 70%)',
+              boxShadow: '0 0 80px 40px rgba(253, 224, 71, 0.3)',
+            }}
+          />
+        )}
+
+        {/* Sunset glow at horizon (night) */}
+        {isDark && (
+          <div
+            className="absolute bottom-0 left-0 right-0 h-[40%]"
+            style={{
+              background: 'linear-gradient(to top, rgba(107, 61, 92, 0.5) 0%, rgba(74, 44, 106, 0.3) 50%, transparent 100%)',
+            }}
+          />
+        )}
+
+        {/* Stars visible through canopy gaps (night) */}
+        {isDark && <StarField count={40} maxTop={70} />}
+
+        {/* Moon (night) */}
+        {isDark && (
+          <motion.div
+            className="absolute top-[8%] right-[20%] w-10 h-10 rounded-full"
+            style={{
+              background: 'radial-gradient(circle at 30% 30%, #fef9c3 0%, #fde68a 50%, #fcd34d 100%)',
+              boxShadow: '0 0 40px 15px rgba(254, 249, 195, 0.4), 0 0 80px 30px rgba(254, 240, 138, 0.2)',
+            }}
+            animate={{ opacity: [0.8, 1, 0.8] }}
+            transition={{ duration: 6, repeat: Infinity }}
+          />
+        )}
+
+        {/* Light canopy overlay - semi-transparent to show sky */}
+        <div
+          className={`absolute inset-0 ${isDark ? 'opacity-60' : 'opacity-40'}`}
+          style={{
+            background: isDark
+              ? 'radial-gradient(ellipse at 50% 150%, #022c22 0%, #064e3b 30%, transparent 70%)'
+              : 'radial-gradient(ellipse at 50% 150%, #15803d 0%, #22c55e 30%, transparent 70%)',
+          }}
+        />
+
+        {/* Canopy leaf texture - sparse to show more sky */}
         <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          {useMemo(() => Array.from({ length: 25 }, (_, i) => {
-            const x = (i % 5) * 25 + Math.random() * 15;
-            const y = Math.floor(i / 5) * 25 + Math.random() * 15;
+          {useMemo(() => Array.from({ length: 18 }, (_, i) => {
+            const x = (i % 6) * 20 + Math.random() * 10;
+            const y = Math.floor(i / 6) * 35 + Math.random() * 10;
             return (
               <ellipse
                 key={i}
                 cx={`${x}%`}
                 cy={`${y}%`}
-                rx="12%"
-                ry="15%"
+                rx="10%"
+                ry="12%"
                 fill={isDark ? '#052e16' : '#166534'}
-                opacity={0.3 + Math.random() * 0.3}
+                opacity={0.25 + Math.random() * 0.25}
               />
             );
           }), [isDark])}
         </svg>
 
-        {/* Stars visible through canopy gaps (night) */}
-        {isDark && <StarField count={30} maxTop={90} />}
-
-        {/* Moon glow through trees (night) */}
-        {isDark && (
-          <motion.div
-            className="absolute top-[15%] right-[25%] w-16 h-16 rounded-full"
-            style={{
-              background: 'radial-gradient(circle, rgba(226, 232, 240, 0.3) 0%, transparent 70%)',
-              boxShadow: '0 0 60px 30px rgba(226, 232, 240, 0.15)',
-            }}
-            animate={{ opacity: [0.5, 0.7, 0.5] }}
-            transition={{ duration: 6, repeat: Infinity }}
-          />
-        )}
-
         {/* Sun rays through canopy (day) */}
         {!isDark && <SunRays />}
 
-        {/* Back row trees (at horizon) */}
+        {/* Far back row trees (distant silhouettes at horizon) */}
+        <div className="absolute bottom-0 left-0 right-0 h-[60%]">
+          {trees.farBackRow.map((tree, i) => (
+            <ForestTree key={`farback-${i}`} x={tree.x} scale={tree.scale} variant={tree.variant} isDark={isDark} />
+          ))}
+        </div>
+
+        {/* Back row trees (larger, in front of far back) */}
         <div className="absolute bottom-0 left-0 right-0 h-[80%]">
           {trees.backRow.map((tree, i) => (
             <ForestTree key={`back-${i}`} x={tree.x} scale={tree.scale} variant={tree.variant} isDark={isDark} />
