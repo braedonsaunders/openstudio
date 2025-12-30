@@ -298,20 +298,48 @@ export class RealtimeRoomManager {
 
   async disconnect(): Promise<void> {
     if (this.channel) {
-      try {
-        await this.channel.untrack();
-      } catch (err) {
-        console.log('[Realtime] Untrack during disconnect:', err);
-      }
-      try {
-        await supabase.removeChannel(this.channel);
-      } catch (err) {
-        console.log('[Realtime] Remove channel during disconnect:', err);
-      }
+      const channelToRemove = this.channel;
+      const roomIdToCleanup = this.roomId;
+
+      // Immediately clear references so we don't block
       activeChannels.delete(this.roomId);
       this.channel = null;
+      this.listeners.clear();
+
+      // Fire-and-forget cleanup with timeout to prevent hanging
+      // This runs in the background so the UI doesn't wait
+      const cleanupWithTimeout = async () => {
+        const CLEANUP_TIMEOUT = 2000; // 2 seconds max
+
+        try {
+          await Promise.race([
+            (async () => {
+              try {
+                await channelToRemove.untrack();
+              } catch (err) {
+                // Expected if channel is already closed
+              }
+              try {
+                await supabase.removeChannel(channelToRemove);
+              } catch (err) {
+                // Expected if channel is already removed or in bad state
+              }
+            })(),
+            new Promise((_, reject) =>
+              setTimeout(() => reject(new Error('Cleanup timeout')), CLEANUP_TIMEOUT)
+            ),
+          ]);
+        } catch (err) {
+          // Cleanup timed out or failed - this is fine, just log it
+          console.log('[Realtime] Channel cleanup completed (may have timed out):', roomIdToCleanup);
+        }
+      };
+
+      // Don't await - let it run in the background
+      cleanupWithTimeout();
+    } else {
+      this.listeners.clear();
     }
-    this.listeners.clear();
   }
 
   // Broadcast events to all users
