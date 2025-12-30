@@ -894,7 +894,34 @@ export async function getUserAvatarCanvas(userId: string): Promise<UserAvatarCan
     throw error;
   }
 
-  return data ? transformUserAvatarCanvas(data) : null;
+  if (!data) return null;
+
+  const canvas = transformUserAvatarCanvas(data);
+
+  // Generate fresh signed URLs from stored R2 keys
+  const [freshFullBodyUrl, freshHeadshotUrl] = await Promise.all([
+    canvas.fullBodyUrl ? getSignedUrlFromKeyOrUrl(canvas.fullBodyUrl) : null,
+    canvas.headshotUrl ? getSignedUrlFromKeyOrUrl(canvas.headshotUrl) : null,
+  ]);
+
+  // Refresh thumbnail URLs if present
+  let freshThumbnailUrls = canvas.thumbnailUrls;
+  if (canvas.thumbnailUrls) {
+    const [xs, sm, md, lg] = await Promise.all([
+      canvas.thumbnailUrls.xs ? getSignedUrlFromKeyOrUrl(canvas.thumbnailUrls.xs) : null,
+      canvas.thumbnailUrls.sm ? getSignedUrlFromKeyOrUrl(canvas.thumbnailUrls.sm) : null,
+      canvas.thumbnailUrls.md ? getSignedUrlFromKeyOrUrl(canvas.thumbnailUrls.md) : null,
+      canvas.thumbnailUrls.lg ? getSignedUrlFromKeyOrUrl(canvas.thumbnailUrls.lg) : null,
+    ]);
+    freshThumbnailUrls = { xs, sm, md, lg };
+  }
+
+  return {
+    ...canvas,
+    fullBodyUrl: freshFullBodyUrl,
+    headshotUrl: freshHeadshotUrl,
+    thumbnailUrls: freshThumbnailUrls,
+  };
 }
 
 export async function saveUserAvatarCanvas(
@@ -946,9 +973,33 @@ export async function getPublicAvatarUrls(userId: string): Promise<{
     throw error;
   }
 
-  return data ? {
-    fullBodyUrl: data.full_body_url as string | null,
-    headshotUrl: data.headshot_url as string | null,
-    thumbnailUrls: data.thumbnail_urls as UserAvatarCanvas['thumbnailUrls'],
-  } : null;
+  if (!data) return null;
+
+  const fullBodyKey = data.full_body_url as string | null;
+  const headshotKey = data.headshot_url as string | null;
+  const thumbnailKeys = data.thumbnail_urls as UserAvatarCanvas['thumbnailUrls'];
+
+  // Generate fresh signed URLs from stored R2 keys
+  const [freshFullBodyUrl, freshHeadshotUrl] = await Promise.all([
+    fullBodyKey ? getSignedUrlFromKeyOrUrl(fullBodyKey) : null,
+    headshotKey ? getSignedUrlFromKeyOrUrl(headshotKey) : null,
+  ]);
+
+  // Refresh thumbnail URLs if present
+  let freshThumbnailUrls: UserAvatarCanvas['thumbnailUrls'] = null;
+  if (thumbnailKeys) {
+    const [xs, sm, md, lg] = await Promise.all([
+      thumbnailKeys.xs ? getSignedUrlFromKeyOrUrl(thumbnailKeys.xs) : null,
+      thumbnailKeys.sm ? getSignedUrlFromKeyOrUrl(thumbnailKeys.sm) : null,
+      thumbnailKeys.md ? getSignedUrlFromKeyOrUrl(thumbnailKeys.md) : null,
+      thumbnailKeys.lg ? getSignedUrlFromKeyOrUrl(thumbnailKeys.lg) : null,
+    ]);
+    freshThumbnailUrls = { xs, sm, md, lg };
+  }
+
+  return {
+    fullBodyUrl: freshFullBodyUrl,
+    headshotUrl: freshHeadshotUrl,
+    thumbnailUrls: freshThumbnailUrls,
+  };
 }
