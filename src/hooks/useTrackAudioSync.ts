@@ -84,16 +84,20 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           lastState.monitoringEnabled !== currentState.monitoringEnabled;
 
         if (stateChanged) {
-          // Send raw state to TrackAudioProcessor - it handles its own monitoring calculation
-          // The TrackAudioProcessor calculates: shouldMonitor = isArmed && monitoringEnabled
-          // Mute is handled separately by muteGainNode in the signal chain
+          // For bridge mode: JS monitors WET audio when directMonitoring is OFF
+          // (Native bridge handles DRY monitoring when directMonitoring is ON)
+          // For web audio mode: monitoringEnabled controls all monitoring
+          const jsMonitoringEnabled = useBridge
+            ? !currentState.monitoringEnabled  // Invert for WET when direct is OFF
+            : currentState.monitoringEnabled;  // Use as-is for web audio
+
           updateTrackState(track.id, {
             isArmed: currentState.isArmed,
             isMuted: currentState.isMuted,
             isSolo: currentState.isSolo,
             volume: currentState.volume,
             inputGain: currentState.inputGainDb,
-            monitoringEnabled: currentState.monitoringEnabled,
+            monitoringEnabled: jsMonitoringEnabled,
           });
         }
 
