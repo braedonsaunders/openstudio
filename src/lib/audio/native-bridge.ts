@@ -336,8 +336,11 @@ export class NativeBridge {
       const timestamp = Number(view.getBigUint64(5, true)); // little-endian
 
       // Parse samples (f32 little-endian)
+      // Header is 13 bytes, but Float32Array requires 4-byte alignment
+      // So we slice the buffer to create a new aligned ArrayBuffer
       const headerSize = 13;
-      const samplesData = new Float32Array(data, headerSize);
+      const samplesBuffer = data.slice(headerSize);
+      const samplesData = new Float32Array(samplesBuffer);
 
       // Emit audio data event
       this.emit('audioData', {

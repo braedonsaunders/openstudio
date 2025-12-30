@@ -126,6 +126,9 @@ export function useNativeBridge() {
           // Update track level for waveform visualization
           tracksState.setTrackLevel(primaryTrackId, data.inputLevel);
         }
+
+        // Also update room store audioLevels for fallback (components check this too)
+        roomState.setAudioLevel('local', data.inputLevel);
       }
 
       // Also update the global local level in audio store
