@@ -451,6 +451,17 @@ export class AudioEngine {
 
     console.log('[AudioEngine] Enabling bridge audio mode');
 
+    // Ensure AudioContext is running (may be suspended after recreation)
+    if (this.audioContext.state === 'suspended') {
+      console.log('[AudioEngine] Resuming suspended AudioContext for bridge audio');
+      try {
+        await this.audioContext.resume();
+        console.log('[AudioEngine] AudioContext resumed, state:', this.audioContext.state);
+      } catch (err) {
+        console.error('[AudioEngine] Failed to resume AudioContext:', err);
+      }
+    }
+
     // IMPORTANT: Save current effects settings before disposing the processor
     // This ensures effects are preserved when switching to bridge audio
     const savedEffectsSettings = this.localEffectsProcessor?.getSettings() ?? null;
@@ -471,9 +482,19 @@ export class AudioEngine {
     const bufferSize = 256;
     this.bridgeSourceNode = this.audioContext.createScriptProcessor(bufferSize, 0, 2);
 
+    // Counter for onaudioprocess logging
+    let processCounter = 0;
+
     this.bridgeSourceNode.onaudioprocess = (event) => {
       const outputL = event.outputBuffer.getChannelData(0);
       const outputR = event.outputBuffer.getChannelData(1);
+
+      // Log occasionally to confirm callback is running
+      if (processCounter++ % 500 === 0) {
+        console.log('[AudioEngine] onaudioprocess running, bufferQueueLen:', this.bridgeAudioBuffer.length,
+          'monitorGain:', this.localMonitorGain?.gain.value,
+          'armGain:', this.localArmGain?.gain.value);
+      }
 
       // Try to get samples from the buffer
       if (this.bridgeAudioBuffer.length > 0) {
@@ -929,9 +950,13 @@ export class AudioEngine {
   }
 
   setMonitoringEnabled(enabled: boolean): void {
+    console.log('[AudioEngine] setMonitoringEnabled:', enabled, 'hasGainNode:', !!this.localMonitorGain);
     this.monitoringEnabled = enabled;
     if (this.localMonitorGain) {
       this.localMonitorGain.gain.value = enabled ? 1 : 0;
+      console.log('[AudioEngine] monitorGain.value set to:', this.localMonitorGain.gain.value);
+    } else {
+      console.warn('[AudioEngine] localMonitorGain is null, cannot set monitoring gain');
     }
   }
 
