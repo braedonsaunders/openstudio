@@ -54,7 +54,7 @@ impl BridgeServer {
         let mut last_level_update = Instant::now();
         let level_interval = std::time::Duration::from_millis(50);
 
-        // Handle incoming messages with periodic level updates
+        // Handle incoming messages with periodic level updates and audio streaming
         loop {
             // Check if we should send level update
             if last_level_update.elapsed() >= level_interval {
@@ -77,6 +77,37 @@ impl BridgeServer {
                     }
                 }
                 last_level_update = Instant::now();
+            }
+
+            // Stream raw audio to browser for WebRTC broadcast
+            // Read audio samples and send as binary WebSocket message
+            {
+                let app = self.state.lock().await;
+                if app.audio_engine.is_running() {
+                    // Get up to 1024 stereo samples at a time
+                    let samples = app.audio_engine.get_browser_stream_audio(2048);
+                    if !samples.is_empty() {
+                        // Create binary message: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
+                        let header = AudioMessageHeader {
+                            msg_type: 1, // 1 = local capture to browser
+                            sample_count: samples.len() as u32,
+                            timestamp: SystemTime::now()
+                                .duration_since(UNIX_EPOCH)
+                                .unwrap()
+                                .as_millis() as u64,
+                        };
+
+                        let mut binary_data = Vec::with_capacity(AudioMessageHeader::SIZE + samples.len() * 4);
+                        binary_data.extend_from_slice(&header.to_bytes());
+                        for sample in &samples {
+                            binary_data.extend_from_slice(&sample.to_le_bytes());
+                        }
+
+                        if write.send(Message::Binary(binary_data)).await.is_err() {
+                            break;
+                        }
+                    }
+                }
             }
 
             // Use timeout to allow periodic level updates even when no messages arrive

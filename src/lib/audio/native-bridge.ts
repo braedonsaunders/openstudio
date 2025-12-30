@@ -55,6 +55,15 @@ type NativeMessage =
   | { type: 'backingTrackPosition'; time: number }
   | { type: 'backingTrackEnded' };
 
+// === Audio Data Types ===
+
+export interface BridgeAudioData {
+  msgType: number; // 1 = local capture from native bridge
+  sampleCount: number;
+  timestamp: number;
+  samples: Float32Array; // Stereo interleaved samples
+}
+
 // === Event Types ===
 
 export type BridgeEventType =
@@ -64,6 +73,7 @@ export type BridgeEventType =
   | 'levels'
   | 'audioStatus'
   | 'effectsMetering'
+  | 'audioData'
   | 'error';
 
 type BridgeEventData = {
@@ -73,6 +83,7 @@ type BridgeEventData = {
   levels: BridgeLevels;
   audioStatus: BridgeAudioStatus;
   effectsMetering: EffectsMetering;
+  audioData: BridgeAudioData;
   error: { code: string; message: string };
 };
 
@@ -108,6 +119,7 @@ export class NativeBridge {
       'levels',
       'audioStatus',
       'effectsMetering',
+      'audioData',
       'error',
     ];
     for (const type of eventTypes) {
@@ -151,14 +163,21 @@ export class NativeBridge {
           console.log('[NativeBridge] Connected to native audio bridge');
         };
 
+        this.ws.binaryType = 'arraybuffer';
         this.ws.onmessage = (event) => {
-          this.handleMessage(event.data);
+          if (event.data instanceof ArrayBuffer) {
+            // Binary message - audio data
+            this.handleBinaryMessage(event.data);
+          } else {
+            // Text message - JSON
+            this.handleMessage(event.data);
 
-          // First message should be welcome - mark as connected and resolve
-          if (!this.isConnected) {
-            this.isConnected = true;
-            cleanup();
-            resolve(true);
+            // First message should be welcome - mark as connected and resolve
+            if (!this.isConnected) {
+              this.isConnected = true;
+              cleanup();
+              resolve(true);
+            }
           }
         };
 
@@ -299,6 +318,36 @@ export class NativeBridge {
       }
     } catch (e) {
       console.error('[NativeBridge] Failed to parse message:', e);
+    }
+  }
+
+  /**
+   * Handle binary audio data from native bridge
+   * Format: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
+   */
+  private handleBinaryMessage(data: ArrayBuffer): void {
+    try {
+      const view = new DataView(data);
+
+      // Parse header (13 bytes total)
+      // Note: Rust uses little-endian by default with to_le_bytes
+      const msgType = view.getUint8(0);
+      const sampleCount = view.getUint32(1, true); // little-endian
+      const timestamp = Number(view.getBigUint64(5, true)); // little-endian
+
+      // Parse samples (f32 little-endian)
+      const headerSize = 13;
+      const samplesData = new Float32Array(data, headerSize);
+
+      // Emit audio data event
+      this.emit('audioData', {
+        msgType,
+        sampleCount,
+        timestamp,
+        samples: samplesData,
+      });
+    } catch (e) {
+      console.error('[NativeBridge] Failed to parse binary message:', e);
     }
   }
 
