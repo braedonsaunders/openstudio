@@ -7,6 +7,9 @@ import {
   getNativeBridgeDownloadUrl,
 } from '@/lib/audio/native-bridge';
 import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
+import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useAudioStore } from '@/stores/audio-store';
+import { useRoomStore } from '@/stores/room-store';
 
 interface BridgeDevice {
   id: string;
@@ -88,12 +91,40 @@ export function useNativeBridge() {
       s.setError(data);
     };
 
+    // Handle audio levels from native bridge - update track levels for waveform display
+    const handleLevels = (data: {
+      inputLevel: number;
+      inputPeak: number;
+      outputLevel: number;
+      outputPeak: number;
+      remoteLevels: [string, number][];
+    }) => {
+      // Get current user's primary track and update its level
+      const roomState = useRoomStore.getState();
+      const currentUserId = roomState.currentUser?.id;
+
+      if (currentUserId) {
+        const tracksState = useUserTracksStore.getState();
+        const userTracks = tracksState.getTracksByUser(currentUserId);
+
+        if (userTracks.length > 0) {
+          const primaryTrackId = userTracks[0].id;
+          // Update track level for waveform visualization
+          tracksState.setTrackLevel(primaryTrackId, data.inputLevel);
+        }
+      }
+
+      // Also update the global local level in audio store
+      useAudioStore.getState().setLocalLevel(data.inputLevel);
+    };
+
     // Register all listeners
     nativeBridge.on('connected', handleConnected);
     nativeBridge.on('disconnected', handleDisconnected);
     nativeBridge.on('audioStatus', handleAudioStatus);
     nativeBridge.on('devices', handleDevices);
     nativeBridge.on('error', handleError);
+    nativeBridge.on('levels', handleLevels);
 
     console.log('[useNativeBridge] Event listeners registered, checking availability...');
 
@@ -118,6 +149,7 @@ export function useNativeBridge() {
       nativeBridge.off('audioStatus', handleAudioStatus);
       nativeBridge.off('devices', handleDevices);
       nativeBridge.off('error', handleError);
+      nativeBridge.off('levels', handleLevels);
       initialized.current = false;
     };
   }, []); // Empty dependency array - run once
@@ -184,6 +216,32 @@ export function useNativeBridge() {
     nativeBridge.setSampleRate(state.sampleRate);
     nativeBridge.setChannelConfig(state.inputChannelConfig);
     nativeBridge.startAudio();
+
+    // Send initial track state after starting audio
+    const roomState = useRoomStore.getState();
+    const currentUserId = roomState.currentUser?.id;
+    if (currentUserId) {
+      const tracksState = useUserTracksStore.getState();
+      const userTracks = tracksState.getTracksByUser(currentUserId);
+      if (userTracks.length > 0) {
+        const track = userTracks[0];
+        console.log('[useNativeBridge] Sending initial track state to bridge:', track.id);
+        nativeBridge.updateTrackState(track.id, {
+          isArmed: track.isArmed,
+          isMuted: track.isMuted,
+          isSolo: track.isSolo,
+          volume: track.volume,
+          inputGainDb: track.audioSettings.inputGain || 0,
+          monitoringEnabled: track.audioSettings.directMonitoring ?? true,
+          monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
+        });
+
+        // Also send effects
+        if (track.audioSettings.effects) {
+          nativeBridge.updateEffects(track.id, track.audioSettings.effects);
+        }
+      }
+    }
   }, []);
 
   // Stop audio

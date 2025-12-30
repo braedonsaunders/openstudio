@@ -2,11 +2,13 @@
 
 import { useEffect, useRef } from 'react';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import { useAudioEngine } from './useAudioEngine';
+import { nativeBridge } from '@/lib/audio/native-bridge';
 
 /**
  * Hook that synchronizes user track state (mute, solo, volume, effects)
- * with the audio engine.
+ * with the audio engine AND native bridge (when active).
  *
  * Call this hook in a component that has access to the audio engine
  * (e.g., DAWLayout or a track component).
@@ -18,6 +20,9 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
     isMuted: boolean;
     isSolo: boolean;
     volume: number;
+    inputGainDb: number;
+    monitoringEnabled: boolean;
+    monitoringVolume: number;
     effects: unknown;
   } | null>(null);
 
@@ -52,10 +57,17 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         isMuted: isEffectivelyMuted,
         isSolo: primaryTrack.isSolo,
         volume: primaryTrack.volume,
+        inputGainDb: primaryTrack.audioSettings.inputGain || 0,
+        monitoringEnabled: primaryTrack.audioSettings.directMonitoring ?? true,
+        monitoringVolume: primaryTrack.audioSettings.monitoringVolume ?? 1,
         effects: primaryTrack.audioSettings.effects,
       };
 
       const lastState = lastSyncRef.current;
+
+      // Check if native bridge is active
+      const bridgeState = useBridgeAudioStore.getState();
+      const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
 
       // Apply armed state if changed
       // When not armed, audio is blocked from processing/monitoring
@@ -77,6 +89,38 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       if (!lastState || lastState.effects !== currentState.effects) {
         if (currentState.effects) {
           updateLocalEffects(currentState.effects);
+        }
+      }
+
+      // Sync to native bridge if active
+      if (useBridge) {
+        const needsTrackStateUpdate =
+          !lastState ||
+          lastState.isArmed !== currentState.isArmed ||
+          lastState.isMuted !== currentState.isMuted ||
+          lastState.isSolo !== currentState.isSolo ||
+          lastState.volume !== currentState.volume ||
+          lastState.inputGainDb !== currentState.inputGainDb ||
+          lastState.monitoringEnabled !== currentState.monitoringEnabled ||
+          lastState.monitoringVolume !== currentState.monitoringVolume;
+
+        if (needsTrackStateUpdate) {
+          nativeBridge.updateTrackState(primaryTrack.id, {
+            isArmed: currentState.isArmed,
+            isMuted: currentState.isMuted,
+            isSolo: currentState.isSolo,
+            volume: currentState.volume,
+            inputGainDb: currentState.inputGainDb,
+            monitoringEnabled: currentState.monitoringEnabled,
+            monitoringVolume: currentState.monitoringVolume,
+          });
+        }
+
+        // Sync effects to native bridge
+        if (!lastState || lastState.effects !== currentState.effects) {
+          if (currentState.effects) {
+            nativeBridge.updateEffects(primaryTrack.id, currentState.effects);
+          }
         }
       }
 
