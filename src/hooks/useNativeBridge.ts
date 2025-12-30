@@ -294,11 +294,30 @@ export function useNativeBridge() {
     // Pre-cache audio engine reference for zero-latency access in audio callbacks
     // This MUST happen before audio starts flowing
     if (!ensureAudioEngineReady()) {
-      console.warn('[useNativeBridge] Audio engine not ready, waiting...');
-      // Wait a bit and retry
-      await new Promise(resolve => setTimeout(resolve, 100));
-      if (!ensureAudioEngineReady()) {
-        console.error('[useNativeBridge] Audio engine still not ready after waiting');
+      console.warn('[useNativeBridge] Audio engine not ready, initializing...');
+
+      // Import and initialize the audio engine dynamically
+      // This ensures the engine exists before we try to use it
+      try {
+        const { AudioEngine } = await import('@/lib/audio/audio-engine');
+        const engine = new AudioEngine({
+          sampleRate: state.sampleRate,
+          bufferSize: state.bufferSize,
+          autoJitterBuffer: true,
+          enableProcessing: true,
+        });
+        await engine.initialize();
+
+        // Expose on window for the native bridge audio handler
+        if (typeof window !== 'undefined') {
+          (window as any).__openStudioAudioEngine = engine;
+        }
+
+        console.log('[useNativeBridge] Audio engine initialized successfully');
+        ensureAudioEngineReady();
+      } catch (err) {
+        console.error('[useNativeBridge] Failed to initialize audio engine:', err);
+        return; // Don't proceed without engine
       }
     }
 
