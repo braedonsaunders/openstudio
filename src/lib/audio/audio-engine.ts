@@ -64,9 +64,8 @@ export class AudioEngine {
   private midiMixGain: GainNode | null = null;
 
   // Native bridge audio source (replaces localSourceNode when bridge is active)
-  private bridgeSourceNode: ScriptProcessorNode | null = null;
-  private bridgeAudioBuffer: Float32Array[] = []; // Ring buffer of audio chunks
-  private bridgeReadIndex: number = 0;
+  private bridgeWorkletNode: AudioWorkletNode | null = null;
+  private bridgeWorkletReady: boolean = false;
   private useBridgeAudio: boolean = false;
   private stemMixState: StemMixState = {
     vocals: { enabled: true, volume: 1 },
@@ -440,8 +439,9 @@ export class AudioEngine {
 
   /**
    * Enable native bridge audio mode.
-   * This creates a ScriptProcessorNode that receives audio from the native bridge
+   * This creates an AudioWorkletNode that receives audio from the native bridge
    * and routes it through the same effects chain as local microphone audio.
+   * AudioWorklet runs on a dedicated audio thread for consistent timing.
    */
   async enableBridgeAudio(): Promise<void> {
     if (!this.audioContext || !this.masterGain) {
@@ -449,7 +449,7 @@ export class AudioEngine {
       return;
     }
 
-    console.log('[AudioEngine] Enabling bridge audio mode');
+    console.log('[AudioEngine] Enabling bridge audio mode with AudioWorklet');
 
     // Ensure AudioContext is running (may be suspended after recreation)
     if (this.audioContext.state === 'suspended') {
@@ -470,67 +470,47 @@ export class AudioEngine {
     }
 
     this.useBridgeAudio = true;
-    this.bridgeAudioBuffer = [];
-    this.bridgeReadIndex = 0;
 
     // Clean up any existing local source
     this.localSourceNode?.disconnect();
     this.localSourceNode = null;
 
-    // Create ScriptProcessorNode for bridge audio
-    // Buffer size of 256 for low latency while maintaining stability
-    const bufferSize = 256;
-    this.bridgeSourceNode = this.audioContext.createScriptProcessor(bufferSize, 0, 2);
+    // Load bridge audio worklet if not already loaded
+    try {
+      await this.audioContext.audioWorklet.addModule('/audio/bridge-processor.js');
+      console.log('[AudioEngine] Bridge audio worklet loaded');
+    } catch (err) {
+      // Module may already be loaded, which is fine
+      console.log('[AudioEngine] Bridge audio worklet already loaded or error:', err);
+    }
 
-    // Counter for onaudioprocess logging
-    let processCounter = 0;
+    // Create AudioWorkletNode for bridge audio
+    // This runs on the audio thread for consistent timing
+    this.bridgeWorkletNode = new AudioWorkletNode(this.audioContext, 'bridge-audio-processor', {
+      numberOfInputs: 0,
+      numberOfOutputs: 1,
+      outputChannelCount: [2], // Stereo output
+    });
 
-    this.bridgeSourceNode.onaudioprocess = (event) => {
-      const outputL = event.outputBuffer.getChannelData(0);
-      const outputR = event.outputBuffer.getChannelData(1);
-
-      processCounter++;
-
-      // Try to get samples from the buffer
-      if (this.bridgeAudioBuffer.length > 0) {
-        const samples = this.bridgeAudioBuffer.shift()!;
-
-        // Deinterleave stereo samples
-        const frameCount = Math.min(samples.length / 2, outputL.length);
-        for (let i = 0; i < frameCount; i++) {
-          outputL[i] = samples[i * 2] || 0;
-          outputR[i] = samples[i * 2 + 1] || 0;
-        }
-
-        // Fill remaining with zeros if needed
-        for (let i = frameCount; i < outputL.length; i++) {
-          outputL[i] = 0;
-          outputR[i] = 0;
-        }
-
-        // Log occasionally when we have data - include gain states for debugging
-        if (processCounter % 500 === 0) {
-          const outputPeak = Math.max(...outputL.map(Math.abs));
-          console.log('[AudioEngine] onaudioprocess - processed audio, outputPeak:', outputPeak.toFixed(4),
-            'remainingBuffer:', this.bridgeAudioBuffer.length,
-            'armGain:', this.localArmGain?.gain.value,
-            'monitorGain:', this.localMonitorGain?.gain.value,
-            'contextState:', this.audioContext?.state);
-        }
-      } else {
-        // No data - output silence
-        outputL.fill(0);
-        outputR.fill(0);
-
-        // Log occasionally when buffer is empty
-        if (processCounter % 500 === 0) {
-          console.log('[AudioEngine] onaudioprocess - buffer empty, outputting silence',
-            'contextState:', this.audioContext?.state);
-        }
+    // Handle messages from worklet (stats, etc.)
+    this.bridgeWorkletNode.port.onmessage = (event) => {
+      const { type, underruns, overruns, bufferFill } = event.data;
+      if (type === 'stats') {
+        // Log stats periodically
+        console.log('[AudioEngine] Bridge worklet stats:', {
+          underruns,
+          overruns,
+          bufferFill: (bufferFill * 100).toFixed(1) + '%',
+          armGain: this.localArmGain?.gain.value,
+          monitorGain: this.localMonitorGain?.gain.value,
+        });
       }
     };
 
-    // Set up the audio chain: bridgeSource -> inputGainNode (dB) -> inputGain -> armGain -> effects -> ...
+    this.bridgeWorkletReady = true;
+    console.log('[AudioEngine] Bridge AudioWorklet created');
+
+    // Set up the audio chain: bridgeWorklet -> inputGain -> armGain -> effects -> ...
     // We need to create the same chain as captureLocalAudio but with bridge source
 
     // Clean up existing nodes
@@ -558,9 +538,9 @@ export class AudioEngine {
     this.localMonitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
 
     // Connect the chain
-    // bridgeSource -> inputGain -> analyser
-    // bridgeSource -> inputGain -> armGain -> effects -> muteGain -> monitorGain -> masterGain
-    this.bridgeSourceNode.connect(this.localInputGain);
+    // bridgeWorklet -> inputGain -> analyser
+    // bridgeWorklet -> inputGain -> armGain -> effects -> muteGain -> monitorGain -> masterGain
+    this.bridgeWorkletNode.connect(this.localInputGain);
     this.localInputGain.connect(this.localAnalyser);
     this.localInputGain.connect(this.localArmGain);
 
@@ -600,15 +580,14 @@ export class AudioEngine {
   disableBridgeAudio(): void {
     console.log('[AudioEngine] Disabling bridge audio mode');
     this.useBridgeAudio = false;
+    this.bridgeWorkletReady = false;
 
-    if (this.bridgeSourceNode) {
-      this.bridgeSourceNode.disconnect();
-      this.bridgeSourceNode.onaudioprocess = null;
-      this.bridgeSourceNode = null;
+    if (this.bridgeWorkletNode) {
+      // Tell worklet to reset its buffer
+      this.bridgeWorkletNode.port.postMessage({ type: 'reset' });
+      this.bridgeWorkletNode.disconnect();
+      this.bridgeWorkletNode = null;
     }
-
-    this.bridgeAudioBuffer = [];
-    this.bridgeReadIndex = 0;
   }
 
   // Counter for bridge audio logging
@@ -617,13 +596,18 @@ export class AudioEngine {
   /**
    * Push audio samples from native bridge into the audio engine.
    * Called when we receive binary audio data from the WebSocket.
+   * Sends samples to the AudioWorklet via postMessage for processing.
    * @param samples Interleaved stereo Float32Array samples
    */
   pushBridgeAudio(samples: Float32Array): void {
-    if (!this.useBridgeAudio) {
+    if (!this.useBridgeAudio || !this.bridgeWorkletReady || !this.bridgeWorkletNode) {
       // Log occasionally if bridge mode not enabled
       if (this.bridgeAudioLogCounter++ % 500 === 0) {
-        console.warn('[AudioEngine] pushBridgeAudio called but useBridgeAudio=false');
+        console.warn('[AudioEngine] pushBridgeAudio called but bridge not ready:', {
+          useBridgeAudio: this.useBridgeAudio,
+          bridgeWorkletReady: this.bridgeWorkletReady,
+          hasBridgeWorkletNode: !!this.bridgeWorkletNode,
+        });
       }
       return;
     }
@@ -633,28 +617,19 @@ export class AudioEngine {
       return;
     }
 
-    // CRITICAL: Clone the samples array to prevent reuse issues
-    // The original Float32Array from WebSocket may be reused/cleared
-    const clonedSamples = new Float32Array(samples);
+    // Send samples to the AudioWorklet for buffering and playback
+    // The worklet runs on the audio thread and handles timing
+    this.bridgeWorkletNode.port.postMessage({
+      type: 'audio',
+      samples: samples, // Float32Array is transferable
+    });
 
-    // Add to buffer queue
-    // Limit buffer size to prevent memory growth (keep last ~100ms of audio)
-    const maxBufferChunks = 10;
-    if (this.bridgeAudioBuffer.length > maxBufferChunks) {
-      // Drop oldest chunk if buffer is getting too full
-      this.bridgeAudioBuffer.shift();
-    }
-
-    this.bridgeAudioBuffer.push(clonedSamples);
-
-    // Log occasionally to confirm audio is flowing (AFTER pushing)
+    // Log occasionally to confirm audio is flowing
     if (this.bridgeAudioLogCounter++ % 500 === 0) {
-      const peak = clonedSamples.reduce((max, s) => Math.max(max, Math.abs(s)), 0);
-      console.log('[AudioEngine] pushBridgeAudio:', {
-        sampleCount: clonedSamples.length,
+      const peak = samples.reduce((max, s) => Math.max(max, Math.abs(s)), 0);
+      console.log('[AudioEngine] pushBridgeAudio -> worklet:', {
+        sampleCount: samples.length,
         peak: peak.toFixed(4),
-        bufferQueueLenAfterPush: this.bridgeAudioBuffer.length,
-        hasBridgeSourceNode: !!this.bridgeSourceNode,
         armGain: this.localArmGain?.gain.value,
         monitorGain: this.localMonitorGain?.gain.value,
         contextState: this.audioContext?.state,
