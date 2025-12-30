@@ -244,13 +244,8 @@ export function useNativeBridge() {
       channelConfig: state.inputChannelConfig,
     });
 
-    // Enable bridge audio mode in the audio engine
-    // This routes incoming bridge audio through Web Audio effects chain + WebRTC
-    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-      console.log('[useNativeBridge] Enabling bridge audio mode in audio engine');
-      await (window as any).__openStudioAudioEngine.enableBridgeAudio();
-    }
-
+    // IMPORTANT: Configure native bridge BEFORE enabling browser bridge audio
+    // This ensures sample rates match when the ScriptProcessorNode is created
     if (deviceId) {
       nativeBridge.setInputDevice(deviceId);
       nativeBridge.setOutputDevice(deviceId);
@@ -260,6 +255,18 @@ export function useNativeBridge() {
     nativeBridge.setSampleRate(state.sampleRate);
     nativeBridge.setChannelConfig(state.inputChannelConfig);
     nativeBridge.startAudio();
+
+    // Small delay to let native bridge initialize with correct sample rate
+    await new Promise(resolve => setTimeout(resolve, 50));
+
+    // NOW enable bridge audio mode in the audio engine
+    // This creates the ScriptProcessorNode that will receive audio from native bridge
+    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+      const engine = (window as any).__openStudioAudioEngine;
+      const audioCtx = engine.getAudioContext?.();
+      console.log('[useNativeBridge] Enabling bridge audio mode in audio engine. AudioContext sampleRate:', audioCtx?.sampleRate, 'Native bridge sampleRate:', state.sampleRate);
+      await engine.enableBridgeAudio();
+    }
 
     // Send initial track state after starting audio
     const roomState = useRoomStore.getState();
@@ -361,11 +368,45 @@ export function useNativeBridge() {
   }, []);
 
   // Set sample rate
-  const setSampleRate = useCallback((rate: 44100 | 48000) => {
+  const setSampleRate = useCallback(async (rate: 44100 | 48000) => {
     const store = useBridgeAudioStore.getState();
     store.setSampleRate(rate);
     if (store.isConnected) {
       nativeBridge.setSampleRate(rate);
+
+      // When sample rate changes, we need to restart the bridge audio chain
+      // The ScriptProcessorNode may be in a bad state due to rate mismatch
+      if (store.isRunning && typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+        console.log('[useNativeBridge] Sample rate changed, restarting bridge audio chain');
+        const engine = (window as any).__openStudioAudioEngine;
+
+        // Disable and re-enable to recreate the ScriptProcessorNode
+        engine.disableBridgeAudio();
+
+        // Small delay to let the native bridge restart with new rate
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        await engine.enableBridgeAudio();
+
+        // Re-sync track state after restarting
+        const roomState = useRoomStore.getState();
+        const currentUserId = roomState.currentUser?.id;
+        if (currentUserId) {
+          const tracksState = useUserTracksStore.getState();
+          const userTracks = tracksState.getTracksByUser(currentUserId);
+          if (userTracks.length > 0) {
+            const track = userTracks[0];
+            engine.setLocalTrackArmed(track.isArmed);
+            engine.setLocalTrackMuted(track.isMuted);
+            engine.setLocalTrackVolume(track.volume);
+            const shouldSoftwareMonitor = track.isArmed && !track.isMuted;
+            engine.setMonitoringEnabled(shouldSoftwareMonitor);
+            if (track.audioSettings.effects) {
+              engine.updateLocalEffects(track.audioSettings.effects);
+            }
+          }
+        }
+      }
     }
   }, []);
 
