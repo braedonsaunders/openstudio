@@ -13,13 +13,16 @@ import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
 
 // Import audio engine for bridge audio processing
-// We use a lazy import pattern to avoid circular dependencies
-let audioEngineModule: typeof import('./useAudioEngine') | null = null;
-const getAudioEngine = async () => {
-  if (!audioEngineModule) {
-    audioEngineModule = await import('./useAudioEngine');
+// We cache the engine reference for synchronous access in the hot audio path
+let cachedAudioEngine: any = null;
+
+// Pre-fetch the audio engine reference (call this before audio starts)
+const ensureAudioEngineReady = () => {
+  if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+    cachedAudioEngine = (window as any).__openStudioAudioEngine;
+    return true;
   }
-  return audioEngineModule;
+  return false;
 };
 
 interface BridgeDevice {
@@ -152,29 +155,40 @@ export function useNativeBridge() {
     let audioDataCounter = 0;
 
     // Handle raw audio data from native bridge
+    // CRITICAL: This must be synchronous for real-time audio performance!
     // Routes audio to track processors for effects processing + WebRTC broadcast
-    const handleAudioData = async (data: BridgeAudioData) => {
+    const handleAudioData = (data: BridgeAudioData) => {
+      // Log occasionally
       if (audioDataCounter++ % 500 === 0) {
         console.log('[useNativeBridge] handleAudioData - samples:', data.samples?.length,
-          'trackId:', data.trackId || 'default');
+          'trackId:', data.trackId || 'default', 'hasEngine:', !!cachedAudioEngine);
+      }
+
+      // Use cached engine reference for zero-overhead access
+      // Falls back to window reference if cache is stale
+      const engine = cachedAudioEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+      if (!engine) {
+        if (audioDataCounter % 500 === 1) {
+          console.warn('[useNativeBridge] Audio dropped: engine not ready');
+        }
+        return;
+      }
+
+      // Update cache if it was stale
+      if (!cachedAudioEngine) {
+        cachedAudioEngine = engine;
       }
 
       try {
-        await getAudioEngine();
-        if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-          const engine = (window as any).__openStudioAudioEngine;
-
-          if (data.trackId) {
-            engine.pushTrackBridgeAudio(data.trackId, data.samples);
-          } else {
-            // No trackId - route to primary track
-            const primaryTrackId = engine.getPrimaryTrackId?.();
-            if (primaryTrackId) {
-              engine.pushTrackBridgeAudio(primaryTrackId, data.samples);
-            } else if (audioDataCounter % 500 === 1) {
-              // Log warning when audio is dropped (only occasionally to avoid spam)
-              console.warn('[useNativeBridge] Audio dropped: no trackId and no primary track');
-            }
+        if (data.trackId) {
+          engine.pushTrackBridgeAudio(data.trackId, data.samples);
+        } else {
+          // No trackId - route to primary track
+          const primaryTrackId = engine.getPrimaryTrackId?.();
+          if (primaryTrackId) {
+            engine.pushTrackBridgeAudio(primaryTrackId, data.samples);
+          } else if (audioDataCounter % 500 === 1) {
+            console.warn('[useNativeBridge] Audio dropped: no trackId and no primary track');
           }
         }
       } catch (e) {
@@ -262,6 +276,17 @@ export function useNativeBridge() {
       return;
     }
 
+    // Pre-cache audio engine reference for zero-latency access in audio callbacks
+    // This MUST happen before audio starts flowing
+    if (!ensureAudioEngineReady()) {
+      console.warn('[useNativeBridge] Audio engine not ready, waiting...');
+      // Wait a bit and retry
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (!ensureAudioEngineReady()) {
+        console.error('[useNativeBridge] Audio engine still not ready after waiting');
+      }
+    }
+
     // For ASIO, use same device for input and output
     // If input not set or different from output, use output device for both
     const deviceId = state.selectedOutputDeviceId;
@@ -271,6 +296,7 @@ export function useNativeBridge() {
       bufferSize: state.bufferSize,
       sampleRate: state.sampleRate,
       channelConfig: state.inputChannelConfig,
+      engineCached: !!cachedAudioEngine,
     });
 
     // Ensure AudioContext sample rate matches the user's selection
@@ -281,6 +307,8 @@ export function useNativeBridge() {
       if (audioCtx?.sampleRate && audioCtx.sampleRate !== state.sampleRate) {
         console.log(`[useNativeBridge] AudioContext rate (${audioCtx.sampleRate}) differs from UI (${state.sampleRate}). Changing to match.`);
         await engine.changeSampleRate(state.sampleRate);
+        // Re-cache engine after sample rate change (context was recreated)
+        ensureAudioEngineReady();
       }
     }
 
@@ -443,6 +471,8 @@ export function useNativeBridge() {
     if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
       console.log('[useNativeBridge] Changing AudioContext sample rate to', rate);
       await (window as any).__openStudioAudioEngine.changeSampleRate(rate);
+      // Re-cache engine reference after context recreation
+      ensureAudioEngineReady();
     }
 
     // Update native bridge sample rate

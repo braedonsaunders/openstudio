@@ -11,6 +11,7 @@ import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAuthStore } from '@/stores/auth-store';
 import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
 import { usePermissionsStore } from '@/stores/permissions-store';
+import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import type { QualityPresetName, OpusEncodingSettings } from '@/types';
 import { useAudioEngine } from './useAudioEngine';
 import { useStatsTracker } from './useStatsTracker';
@@ -62,6 +63,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     seekTo,
     updateFromStats,
     destroyEngine,
+    // For connecting MediaStream to TrackAudioProcessor for monitoring
+    getOrCreateTrackProcessor,
+    setTrackMediaStreamInput,
+    updateTrackState,
   } = useAudioEngine();
 
   // Stats tracking for gamification
@@ -291,6 +296,37 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       // Start audio capture with track settings (device, channel config, etc.)
       const stream = await startCapture(trackSettings);
+
+      // Connect MediaStream to TrackAudioProcessor for each track (web audio monitoring)
+      // This allows users to hear themselves through the effects chain when monitoring is enabled
+      // NOTE: Only do this when NOT using native bridge (bridge handles its own audio routing)
+      const bridgeState = useBridgeAudioStore.getState();
+      const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge;
+
+      if (!useBridge && stream) {
+        for (const track of userTracks) {
+          // Create/get the track processor
+          getOrCreateTrackProcessor(track.id, track.audioSettings);
+
+          // Connect the MediaStream to the processor
+          await setTrackMediaStreamInput(track.id, stream, {
+            channelConfig: track.audioSettings.channelConfig,
+          });
+
+          // Set the track state with monitoring enabled
+          const shouldMonitor = track.isArmed && !track.isMuted && (track.audioSettings.directMonitoring ?? true);
+          updateTrackState(track.id, {
+            isArmed: track.isArmed,
+            isMuted: track.isMuted,
+            isSolo: track.isSolo,
+            volume: track.volume,
+            inputGain: track.audioSettings.inputGain || 0,
+            monitoringEnabled: shouldMonitor,
+          });
+
+          console.log(`[useRoom] Connected MediaStream to track ${track.id}, monitoring: ${shouldMonitor}`);
+        }
+      }
 
       // Initialize Cloudflare Calls
       const cloudflare = new CloudflareCalls(roomId, user.id);
@@ -828,7 +864,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // This prevents the user from being stuck in "Joining..." forever
       setJoining(false);
     }
-  }, [roomId, initialize, startCapture, addRemoteStream, removeRemoteStream, updateFromStats, loadBackingTrack, playBackingTrack, pauseBackingTrack, seekTo, options]);
+  }, [roomId, initialize, startCapture, addRemoteStream, removeRemoteStream, updateFromStats, loadBackingTrack, playBackingTrack, pauseBackingTrack, seekTo, options, getOrCreateTrackProcessor, setTrackMediaStreamInput, updateTrackState]);
 
   // Leave room
   const leave = useCallback(async () => {
