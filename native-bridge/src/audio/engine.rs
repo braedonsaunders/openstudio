@@ -230,34 +230,32 @@ impl AudioEngine {
             return Ok(());
         }
 
-        // Re-fetch device to get fresh handle
         let input_device_id = self.config.input_device_id.clone();
+        let is_asio = input_device_id.as_ref().map(|id| id.starts_with("asio:")).unwrap_or(false);
 
+        // For ASIO, we need to do everything in one go to keep the host alive
+        // The ASIO host owns the devices, so we can't store devices separately
+        if is_asio {
+            return self.start_asio();
+        }
+
+        // Non-ASIO path: fetch devices normally
         if let Some(ref device_id) = input_device_id {
-            info!("Fetching device: {}", device_id);
+            info!("Fetching input device: {}", device_id);
             self.input_device = Some(AudioDevice::get_by_id(device_id)?);
         } else if self.input_device.is_none() {
             self.input_device = Some(AudioDevice::default_input()?);
         }
 
-        let input_device = self.input_device.as_ref().unwrap();
+        let output_device_id = self.config.output_device_id.clone();
+        if let Some(ref device_id) = output_device_id {
+            self.output_device = Some(AudioDevice::get_by_id(device_id)?);
+        } else if self.output_device.is_none() {
+            self.output_device = Some(AudioDevice::default_output()?);
+        }
 
-        // For ASIO, input and output MUST be the same device instance
-        // ASIO uses unified I/O - you can't have separate input/output devices
-        let is_asio = input_device_id.as_ref().map(|id| id.starts_with("asio:")).unwrap_or(false);
-        let output_device = if is_asio {
-            info!("ASIO mode: using same device for input and output");
-            input_device
-        } else {
-            // Non-ASIO: can use separate output device
-            let output_device_id = self.config.output_device_id.clone();
-            if let Some(ref device_id) = output_device_id {
-                self.output_device = Some(AudioDevice::get_by_id(device_id)?);
-            } else if self.output_device.is_none() {
-                self.output_device = Some(AudioDevice::default_output()?);
-            }
-            self.output_device.as_ref().unwrap()
-        };
+        let input_device = self.input_device.as_ref().unwrap();
+        let output_device = self.output_device.as_ref().unwrap();
 
         // Get default configs from devices (works with WASAPI)
         let input_default_config = input_device.device.default_input_config()
@@ -451,6 +449,158 @@ impl AudioEngine {
         );
 
         Ok(())
+    }
+
+    /// Start ASIO audio streams
+    /// ASIO requires keeping the host alive while using devices
+    #[cfg(target_os = "windows")]
+    fn start_asio(&mut self) -> Result<()> {
+        use cpal::traits::{DeviceTrait, HostTrait};
+
+        let device_id = self.config.input_device_id.as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No ASIO device selected"))?;
+
+        info!("Starting ASIO with device: {}", device_id);
+
+        // Get ASIO host and keep it alive throughout this function
+        let asio_host = cpal::host_from_id(cpal::HostId::Asio)
+            .map_err(|e| anyhow::anyhow!("Failed to get ASIO host: {}", e))?;
+
+        // Find the device by name
+        let device_name = device_id.strip_prefix("asio:").unwrap_or(device_id);
+        let device = asio_host.devices()
+            .map_err(|e| anyhow::anyhow!("Failed to enumerate ASIO devices: {}", e))?
+            .find(|d| {
+                d.name().ok()
+                    .map(|n| n.replace(' ', "_").to_lowercase() == device_name.replace(' ', "_").to_lowercase())
+                    .unwrap_or(false)
+            })
+            .ok_or_else(|| anyhow::anyhow!("ASIO device not found: {}", device_id))?;
+
+        let device_name_display = device.name().unwrap_or_else(|_| "Unknown".to_string());
+        info!("Found ASIO device: {}", device_name_display);
+
+        // Get configs immediately while device is valid
+        let input_config = device.default_input_config()
+            .map_err(|e| anyhow::anyhow!("Failed to get ASIO input config: {}", e))?;
+        let output_config = device.default_output_config()
+            .map_err(|e| anyhow::anyhow!("Failed to get ASIO output config: {}", e))?;
+
+        info!("ASIO input config: {:?}", input_config);
+        info!("ASIO output config: {:?}", output_config);
+
+        let buffer_size_samples = self.config.buffer_size as u32;
+        let sample_rate = self.config.sample_rate as u32;
+
+        let stream_input_config = cpal::StreamConfig {
+            channels: input_config.channels(),
+            sample_rate: cpal::SampleRate(sample_rate),
+            buffer_size: cpal::BufferSize::Fixed(buffer_size_samples),
+        };
+
+        let stream_output_config = cpal::StreamConfig {
+            channels: output_config.channels().min(2),
+            sample_rate: cpal::SampleRate(sample_rate),
+            buffer_size: cpal::BufferSize::Fixed(buffer_size_samples),
+        };
+
+        let input_channels = stream_input_config.channels as usize;
+        let input_sample_format = input_config.sample_format();
+        let output_sample_format = output_config.sample_format();
+
+        info!("ASIO sample formats - input: {:?}, output: {:?}", input_sample_format, output_sample_format);
+
+        // Build input stream
+        let levels = self.levels.clone();
+        let input_stream: cpal::Stream = match input_sample_format {
+            SampleFormat::F32 => {
+                device.build_input_stream(
+                    &stream_input_config,
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let level = data.chunks(input_channels)
+                            .map(|frame| frame.first().copied().unwrap_or(0.0).abs())
+                            .fold(0.0_f32, f32::max);
+                        if let Ok(mut lvl) = levels.try_write() {
+                            lvl.input_level = level;
+                            lvl.input_peak = lvl.input_peak.max(level);
+                        }
+                    },
+                    |err| { error!("ASIO input error: {}", err); },
+                    None,
+                )?
+            }
+            SampleFormat::I32 => {
+                device.build_input_stream(
+                    &stream_input_config,
+                    move |data: &[i32], _: &cpal::InputCallbackInfo| {
+                        let level = data.chunks(input_channels)
+                            .map(|frame| {
+                                let sample = frame.first().copied().unwrap_or(0);
+                                (sample as f32 / i32::MAX as f32).abs()
+                            })
+                            .fold(0.0_f32, f32::max);
+                        if let Ok(mut lvl) = levels.try_write() {
+                            lvl.input_level = level;
+                            lvl.input_peak = lvl.input_peak.max(level);
+                        }
+                    },
+                    |err| { error!("ASIO input error: {}", err); },
+                    None,
+                )?
+            }
+            _ => return Err(anyhow::anyhow!("Unsupported ASIO input format: {:?}", input_sample_format)),
+        };
+
+        // Build output stream from SAME device
+        let output_levels = self.levels.clone();
+        let output_stream: cpal::Stream = match output_sample_format {
+            SampleFormat::F32 => {
+                device.build_output_stream(
+                    &stream_output_config,
+                    move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                        for sample in data.iter_mut() { *sample = 0.0; }
+                        if let Ok(mut lvl) = output_levels.try_write() {
+                            lvl.output_level = 0.0;
+                        }
+                    },
+                    |err| { error!("ASIO output error: {}", err); },
+                    None,
+                )?
+            }
+            SampleFormat::I32 => {
+                device.build_output_stream(
+                    &stream_output_config,
+                    move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
+                        for sample in data.iter_mut() { *sample = 0; }
+                        if let Ok(mut lvl) = output_levels.try_write() {
+                            lvl.output_level = 0.0;
+                        }
+                    },
+                    |err| { error!("ASIO output error: {}", err); },
+                    None,
+                )?
+            }
+            _ => return Err(anyhow::anyhow!("Unsupported ASIO output format: {:?}", output_sample_format)),
+        };
+
+        // Start streams
+        input_stream.play()?;
+        output_stream.play()?;
+
+        self.input_stream = Some(input_stream);
+        self.output_stream = Some(output_stream);
+        self.is_running.store(true, Ordering::SeqCst);
+
+        let latency_ms = (buffer_size_samples as f32 / sample_rate as f32) * 1000.0;
+        info!("ASIO audio started: {} @ {}Hz, {}samples ({:.1}ms latency)",
+            device_name_display, sample_rate, buffer_size_samples, latency_ms * 2.0);
+
+        Ok(())
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    fn start_asio(&mut self) -> Result<()> {
+        Err(anyhow::anyhow!("ASIO is only available on Windows"))
     }
 
     /// Stop audio streams
