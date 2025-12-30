@@ -99,6 +99,8 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       if (!lastState ||
           (lastState.isArmed !== currentState.isArmed) ||
           (lastState.isMuted !== currentState.isMuted)) {
+        console.log('[useTrackAudioSync] Setting software monitoring:', shouldSoftwareMonitor,
+          '(armed:', currentState.isArmed, 'muted:', currentState.isMuted, ')');
         setLocalMonitoring(shouldSoftwareMonitor);
       }
 
