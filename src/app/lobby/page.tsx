@@ -304,7 +304,7 @@ function ChatMessage({ message, isDark }: { message: LobbyMessage; isDark: boole
 }
 
 // Lobby chat panel
-function LobbyChat({ isDark }: { isDark: boolean }) {
+function LobbyChat({ isDark, className }: { isDark: boolean; className?: string }) {
   const { messages, sendMessage, isConnected } = useLobbyStore();
   const [input, setInput] = useState('');
   const [isExpanded, setIsExpanded] = useState(true);
@@ -322,14 +322,14 @@ function LobbyChat({ isDark }: { isDark: boolean }) {
 
   return (
     <div
-      className={`rounded-xl overflow-hidden ${
+      className={`rounded-xl overflow-hidden flex flex-col ${
         isDark ? 'bg-gray-800/80 border border-white/10' : 'bg-white border border-gray-200'
-      }`}
+      } ${className || ''}`}
     >
       {/* Header */}
       <button
         onClick={() => setIsExpanded(!isExpanded)}
-        className={`w-full flex items-center justify-between p-3 ${
+        className={`w-full flex items-center justify-between p-3 flex-shrink-0 ${
           isDark ? 'hover:bg-white/5' : 'hover:bg-gray-50'
         } transition-colors`}
       >
@@ -356,13 +356,13 @@ function LobbyChat({ isDark }: { isDark: boolean }) {
       <AnimatePresence>
         {isExpanded && (
           <motion.div
-            initial={{ height: 0 }}
-            animate={{ height: 'auto' }}
-            exit={{ height: 0 }}
-            className="overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex-1 min-h-0 flex flex-col overflow-hidden"
           >
             {/* Messages */}
-            <div className={`h-48 overflow-y-auto px-3 ${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
+            <div className={`flex-1 min-h-0 overflow-y-auto px-3 ${isDark ? 'bg-gray-900/50' : 'bg-gray-50'}`}>
               {messages.length === 0 ? (
                 <div className={`flex items-center justify-center h-full text-sm ${isDark ? 'text-gray-500' : 'text-gray-400'}`}>
                   No messages yet. Say hello!
@@ -376,7 +376,7 @@ function LobbyChat({ isDark }: { isDark: boolean }) {
             </div>
 
             {/* Input */}
-            <div className="p-2 flex gap-2">
+            <div className="p-2 flex gap-2 flex-shrink-0">
               <Input
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
@@ -780,9 +780,9 @@ export default function LobbyPage() {
         {/* Two Column Layout */}
         <div className="flex flex-col lg:flex-row gap-4">
           {/* Left Sidebar - Online Users & Chat */}
-          <div className="lg:w-72 space-y-4 lg:sticky lg:top-20 lg:self-start">
+          <div className="lg:w-72 flex flex-col gap-4 lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
             <OnlineUsersPanel isDark={isDark} />
-            <LobbyChat isDark={isDark} />
+            <LobbyChat isDark={isDark} className="flex-1 min-h-0" />
           </div>
 
           {/* Main Content - Rooms */}
