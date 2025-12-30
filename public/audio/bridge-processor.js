@@ -18,7 +18,7 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     this.overruns = 0;
     this.samplesReceived = 0;
     this.samplesOutput = 0;
-    this.lastStatsTime = currentTime;
+    this.lastStatsTime = 0; // Will be set on first process() call
 
     // For smooth underrun handling
     this.lastSampleL = 0;

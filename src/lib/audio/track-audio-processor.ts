@@ -441,10 +441,20 @@ export class TrackAudioProcessor {
   }
 
   private calculateLevel(analyser: AnalyserNode): number {
-    const data = new Uint8Array(analyser.frequencyBinCount);
-    analyser.getByteFrequencyData(data);
-    const sum = data.reduce((acc, val) => acc + val, 0);
-    return sum / data.length / 255;
+    // Use time-domain data for accurate peak level metering
+    // This matches the approach in audio-engine.ts for consistency
+    const data = new Uint8Array(analyser.fftSize);
+    analyser.getByteTimeDomainData(data);
+
+    // Find peak deviation from center (128)
+    let peak = 0;
+    for (let i = 0; i < data.length; i++) {
+      const deviation = Math.abs(data[i] - 128);
+      if (deviation > peak) peak = deviation;
+    }
+
+    // Normalize to 0-1 range
+    return peak / 128;
   }
 
   // Get processing metrics

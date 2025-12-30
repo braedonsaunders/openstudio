@@ -442,45 +442,9 @@ export class NativeBridge {
     });
   }
 
-  /**
-   * Set channel configuration for a specific track (multi-track mode)
-   * Each track can have its own channel routing from the audio interface
-   */
-  setTrackChannelConfig(trackId: string, config: InputChannelConfig): void {
-    this.send({
-      type: 'setTrackChannelConfig',
-      trackId,
-      channelCount: config.channelCount,
-      leftChannel: config.leftChannel,
-      rightChannel: config.rightChannel,
-    });
-  }
-
-  /**
-   * Configure multiple tracks at once (multi-track mode)
-   * More efficient than calling setTrackChannelConfig multiple times
-   */
-  setMultiTrackConfig(tracks: TrackChannelConfig[]): void {
-    this.send({
-      type: 'setMultiTrackConfig',
-      tracks: tracks.map(t => ({
-        trackId: t.trackId,
-        channelCount: t.channelCount,
-        leftChannel: t.leftChannel,
-        rightChannel: t.rightChannel,
-      })),
-    });
-  }
-
-  /**
-   * Remove a track from multi-track configuration
-   */
-  removeTrackConfig(trackId: string): void {
-    this.send({
-      type: 'removeTrackConfig',
-      trackId,
-    });
-  }
+  // Note: Multi-track channel config is handled in the browser, not the native bridge.
+  // The native bridge captures audio as a single stream; per-track channel routing
+  // is done by TrackAudioProcessor in the browser's Web Audio API.
 
   /**
    * Start audio capture and playback

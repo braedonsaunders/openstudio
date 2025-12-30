@@ -124,15 +124,8 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
             });
           }
 
-          // Sync channel config if changed
-          const channelChanged = !lastState ||
-            lastState.channelConfig.channelCount !== currentState.channelConfig.channelCount ||
-            lastState.channelConfig.leftChannel !== currentState.channelConfig.leftChannel ||
-            lastState.channelConfig.rightChannel !== currentState.channelConfig.rightChannel;
-
-          if (channelChanged) {
-            nativeBridge.setTrackChannelConfig(track.id, currentState.channelConfig);
-          }
+          // Note: Channel config is now handled at the global level via setChannelConfig()
+          // Native bridge uses single-track audio capture; multi-track is handled in browser
         }
 
         lastSyncRef.current.set(track.id, currentState);
