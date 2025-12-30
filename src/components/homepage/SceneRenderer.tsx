@@ -370,8 +370,8 @@ function CampfireScene({ isDark }: { isDark: boolean }) {
           </svg>
         )), [isDark])}
 
-        {/* Campfire - positioned in mid-ground */}
-        <div className="absolute left-1/2 -translate-x-1/2" style={{ top: '25%' }}>
+        {/* Campfire - positioned at bottom, below content card */}
+        <div className="absolute left-1/2 -translate-x-1/2" style={{ top: '65%' }}>
           <svg width="100" height="80" viewBox="0 0 120 100">
             {/* Log base */}
             <rect x="25" y="75" width="70" height="12" rx="6" fill="#78350f" transform="rotate(-6 60 80)" />
@@ -410,8 +410,8 @@ function CampfireScene({ isDark }: { isDark: boolean }) {
 
         {/* Sitting logs around campfire */}
         {useMemo(() => [
-          { x: 30, y: 35, rotation: -15, scale: 0.6 },
-          { x: 62, y: 38, rotation: 20, scale: 0.55 },
+          { x: 30, y: 72, rotation: -15, scale: 0.7 },
+          { x: 62, y: 75, rotation: 20, scale: 0.65 },
         ].map((log, i) => (
           <div
             key={i}
