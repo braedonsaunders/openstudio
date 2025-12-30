@@ -58,7 +58,7 @@ export default function RoomPage() {
   const router = useRouter();
   const roomId = params.roomId as string;
 
-  const { user, profile, avatar, instruments: userInstruments, isInitialized } = useAuthStore();
+  const { user, profile, instruments: userInstruments, isInitialized } = useAuthStore();
   const { presets, loadPresets, selectedPresets, togglePresetSelection, getSelectedPresets, incrementUseCount } = useSavedTracksStore();
   const { addTrack, addMidiTrack } = useUserTracksStore();
 
