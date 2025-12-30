@@ -1296,10 +1296,10 @@ export function SceneRenderer({
     // Minimum distance between characters
     const MIN_SPAWN_DISTANCE = 12;
 
-    // ONLY spawn in bottom 30% of screen - no exceptions
-    const SPAWN_MIN_Y = 70;
+    // ONLY spawn in bottom 15% of screen - no exceptions
+    const SPAWN_MIN_Y = 85;
 
-    // Create spawn points ONLY in bottom 30% of screen
+    // Create spawn points ONLY in bottom 15% of screen
     const spawnPoints: Array<{ x: number; y: number }> = [];
     const spacing = 8;
 
