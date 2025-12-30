@@ -367,14 +367,14 @@ export function useNativeBridge() {
 
           // IMPORTANT: Set track state BEFORE enabling audio input
           // This ensures monitoring is enabled before audio starts flowing
-          const shouldMonitor = track.isArmed && !track.isMuted;
+          // Send raw monitoringEnabled - TrackAudioProcessor handles its own calculation
           engine.updateTrackState(track.id, {
             isArmed: track.isArmed,
             isMuted: track.isMuted,
             isSolo: track.isSolo,
             volume: track.volume,
             inputGain: track.audioSettings.inputGain || 0,
-            monitoringEnabled: shouldMonitor,
+            monitoringEnabled: track.audioSettings.directMonitoring ?? true,
           });
 
           if (track.audioSettings.effects) {
@@ -386,7 +386,7 @@ export function useNativeBridge() {
           const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
           await engine.setTrackBridgeInput(track.id, { channelConfig });
 
-          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, monitoring: ${shouldMonitor}`);
+          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${track.audioSettings.directMonitoring ?? true}`);
         }
       }
     }
@@ -523,14 +523,14 @@ export function useNativeBridge() {
               engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 
               // Set track state BEFORE enabling audio input
-              const shouldMonitor = track.isArmed && !track.isMuted;
+              // Send raw monitoringEnabled - TrackAudioProcessor handles its own calculation
               engine.updateTrackState(track.id, {
                 isArmed: track.isArmed,
                 isMuted: track.isMuted,
                 isSolo: track.isSolo,
                 volume: track.volume,
                 inputGain: track.audioSettings.inputGain || 0,
-                monitoringEnabled: shouldMonitor,
+                monitoringEnabled: track.audioSettings.directMonitoring ?? true,
               });
 
               if (track.audioSettings.effects) {

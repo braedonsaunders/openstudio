@@ -84,15 +84,16 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           lastState.monitoringEnabled !== currentState.monitoringEnabled;
 
         if (stateChanged) {
-          const shouldMonitor = currentState.isArmed && !currentState.isMuted && currentState.monitoringEnabled;
-
+          // Send raw state to TrackAudioProcessor - it handles its own monitoring calculation
+          // The TrackAudioProcessor calculates: shouldMonitor = isArmed && monitoringEnabled
+          // Mute is handled separately by muteGainNode in the signal chain
           updateTrackState(track.id, {
             isArmed: currentState.isArmed,
             isMuted: currentState.isMuted,
             isSolo: currentState.isSolo,
             volume: currentState.volume,
             inputGain: currentState.inputGainDb,
-            monitoringEnabled: shouldMonitor,
+            monitoringEnabled: currentState.monitoringEnabled,
           });
         }
 
