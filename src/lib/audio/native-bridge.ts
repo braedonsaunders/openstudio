@@ -259,6 +259,22 @@ export class NativeBridge {
     this.listeners.get(event)?.delete(callback);
   }
 
+  /**
+   * Remove all listeners for a specific event type.
+   * Useful for ensuring only one handler exists (e.g., audioData handler).
+   */
+  removeAllListeners<T extends BridgeEventType>(event: T): void {
+    this.listeners.get(event)?.clear();
+  }
+
+  /**
+   * Get the number of listeners for a specific event type.
+   * Useful for debugging duplicate listener issues.
+   */
+  getListenerCount<T extends BridgeEventType>(event: T): number {
+    return this.listeners.get(event)?.size ?? 0;
+  }
+
   private emit<T extends BridgeEventType>(event: T, data: BridgeEventData[T]): void {
     this.listeners.get(event)?.forEach((callback) => callback(data));
   }
