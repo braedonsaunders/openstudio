@@ -15,14 +15,14 @@ use anyhow::Result;
 use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::SampleFormat;
 use ringbuf::{
-    traits::{Consumer, Producer, Split},
+    traits::{Consumer, Observer, Producer, Split},
     HeapRb, HeapCons, HeapProd,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
-use tracing::{debug, error, info, warn};
+use tracing::{error, info, warn};
 
 /// Debug frame counter for periodic logging
 static INPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
@@ -765,7 +765,7 @@ impl AudioEngine {
         is_monitoring: &Arc<AtomicBool>,
         monitoring_volume: &Arc<AtomicU32>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
-        effects_metering: &Arc<RwLock<EffectsMetering>>,
+        _effects_metering: &Arc<RwLock<EffectsMetering>>,
     ) {
         let frame_num = INPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
         let should_log = frame_num % 7500 == 0; // Log every 7500 frames (~every 10s at 64 samples/48kHz)
