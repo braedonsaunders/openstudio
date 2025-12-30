@@ -19,10 +19,14 @@ use ringbuf::{
     HeapRb, HeapCons, HeapProd,
 };
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
-use tracing::{error, info};
+use tracing::{debug, error, info, warn};
+
+/// Debug frame counter for periodic logging
+static INPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
+static OUTPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
 
 /// Ring buffer size for local audio (samples, stereo)
 const LOCAL_RING_BUFFER_SIZE: usize = 8192;
@@ -713,6 +717,9 @@ impl AudioEngine {
         processing_state: &Arc<RwLock<AudioProcessingState>>,
         effects_metering: &Arc<RwLock<EffectsMetering>>,
     ) {
+        let frame_num = INPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+        let should_log = frame_num % 500 == 0; // Log every 500 frames (~every 0.67s at 64 samples/48kHz)
+
         // Get channel config
         let (left_ch, right_ch, is_stereo) = if let Ok(state) = processing_state.try_read() {
             let left = state.channel_config.left_channel as usize;
@@ -722,6 +729,17 @@ impl AudioEngine {
         } else {
             (0, 1, true)
         };
+
+        if should_log {
+            info!("[INPUT] Frame {} | data_len={} input_ch={} left_ch={} right_ch={} stereo={}",
+                  frame_num, data.len(), input_channels, left_ch, right_ch, is_stereo);
+        }
+
+        // Check if we're getting any signal from raw input
+        let raw_peak: f32 = data.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
+        if should_log {
+            info!("[INPUT] Raw input peak: {:.6}", raw_peak);
+        }
 
         // Extract selected channels to stereo
         let mut stereo_buffer: Vec<f32> = Vec::with_capacity(data.len() / input_channels * 2);
@@ -743,11 +761,20 @@ impl AudioEngine {
             lvl.input_peak = lvl.input_peak.max(level);
         }
 
-        // If monitoring enabled, process and send to output
-        if is_monitoring.load(Ordering::Relaxed) {
-            let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
+        if should_log {
+            info!("[INPUT] Extracted stereo peak: {:.6} | buffer_size={}", level, stereo_buffer.len());
+        }
 
-            if let Ok(mut state) = processing_state.try_write() {
+        let monitoring_enabled = is_monitoring.load(Ordering::Relaxed);
+        let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
+
+        if should_log {
+            info!("[INPUT] Monitoring: enabled={} volume={:.2}", monitoring_enabled, mon_vol);
+        }
+
+        // If monitoring enabled, process and send to output
+        if monitoring_enabled {
+            let (gain, volume) = if let Ok(mut state) = processing_state.try_write() {
                 // Apply input gain
                 let gain = state.track_state.input_gain_linear();
                 for sample in stereo_buffer.iter_mut() {
@@ -770,14 +797,39 @@ impl AudioEngine {
                 for sample in stereo_buffer.iter_mut() {
                     *sample *= volume * mon_vol;
                 }
+                (gain, volume)
+            } else {
+                if should_log {
+                    warn!("[INPUT] Could not acquire processing state lock!");
+                }
+                (1.0, 1.0)
+            };
+
+            // Calculate level after processing
+            let processed_peak: f32 = stereo_buffer.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
+            if should_log {
+                info!("[INPUT] After processing: gain={:.2} vol={:.2} peak={:.6}", gain, volume, processed_peak);
             }
 
             // Push to ring buffer
+            let mut pushed = 0;
             if let Ok(mut prod) = producer.try_lock() {
                 for sample in stereo_buffer.iter() {
-                    let _ = prod.try_push(*sample);
+                    if prod.try_push(*sample).is_ok() {
+                        pushed += 1;
+                    }
+                }
+            } else {
+                if should_log {
+                    warn!("[INPUT] Could not acquire producer lock!");
                 }
             }
+
+            if should_log {
+                info!("[INPUT] Pushed {} samples to ring buffer", pushed);
+            }
+        } else if should_log {
+            info!("[INPUT] Monitoring DISABLED - not sending to output");
         }
     }
 
@@ -790,16 +842,36 @@ impl AudioEngine {
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
+        let frame_num = OUTPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
+        let should_log = frame_num % 500 == 0;
+
+        if should_log {
+            info!("[OUTPUT] Frame {} | output_buffer_len={}", frame_num, data.len());
+        }
+
         // Clear output
         for sample in data.iter_mut() {
             *sample = 0.0;
         }
 
         // Mix local audio
+        let mut local_samples = 0;
+        let mut local_peak = 0.0_f32;
         if let Ok(mut cons) = local_consumer.try_lock() {
             for sample in data.iter_mut() {
-                *sample += cons.try_pop().unwrap_or(0.0);
+                let s = cons.try_pop().unwrap_or(0.0);
+                if s != 0.0 {
+                    local_samples += 1;
+                    local_peak = local_peak.max(s.abs());
+                }
+                *sample += s;
             }
+        } else if should_log {
+            warn!("[OUTPUT] Could not acquire local_consumer lock!");
+        }
+
+        if should_log {
+            info!("[OUTPUT] Local audio: non_zero_samples={} peak={:.6}", local_samples, local_peak);
         }
 
         // Mix remote user audio
@@ -854,6 +926,10 @@ impl AudioEngine {
             *sample *= master_vol;
         }
 
+        if should_log {
+            info!("[OUTPUT] Master volume: {:.2}", master_vol);
+        }
+
         // Soft clip to prevent harsh clipping
         for sample in data.iter_mut() {
             *sample = sample.tanh();
@@ -866,6 +942,13 @@ impl AudioEngine {
             lvl.output_peak = lvl.output_peak.max(level);
             lvl.remote_levels = remote_levels_vec;
             lvl.backing_level = backing_level;
+        }
+
+        if should_log {
+            info!("[OUTPUT] Final output peak: {:.6}", level);
+            // Also log first few samples to verify they're not all zero
+            let first_samples: Vec<String> = data.iter().take(8).map(|s| format!("{:.6}", s)).collect();
+            info!("[OUTPUT] First 8 samples: [{}]", first_samples.join(", "));
         }
     }
 
