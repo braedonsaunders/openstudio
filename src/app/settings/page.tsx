@@ -61,7 +61,6 @@ export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const {
     profile,
-    avatar,
     instruments,
     updateProfile,
     addInstrument,
