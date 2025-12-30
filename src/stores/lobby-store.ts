@@ -183,17 +183,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   disconnect: async () => {
     const { channel, roomChannels } = get();
 
-    // Disconnect from lobby
-    if (channel) {
-      await channel.untrack();
-      await supabase.removeChannel(channel);
-    }
-
-    // Disconnect from all room channels
-    for (const [, roomChannel] of roomChannels) {
-      await supabase.removeChannel(roomChannel);
-    }
-
+    // Immediately update state so UI doesn't wait
     set({
       isConnected: false,
       channel: null,
@@ -202,6 +192,49 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
       roomPresence: new Map(),
       totalOnline: 0,
     });
+
+    // Fire-and-forget cleanup with timeout to prevent hanging
+    const cleanupWithTimeout = async () => {
+      const CLEANUP_TIMEOUT = 2000; // 2 seconds max
+
+      try {
+        await Promise.race([
+          (async () => {
+            // Disconnect from lobby
+            if (channel) {
+              try {
+                await channel.untrack();
+              } catch {
+                // Expected if channel is already closed
+              }
+              try {
+                await supabase.removeChannel(channel);
+              } catch {
+                // Expected if channel is already removed
+              }
+            }
+
+            // Disconnect from all room channels
+            for (const [, roomChannel] of roomChannels) {
+              try {
+                await supabase.removeChannel(roomChannel);
+              } catch {
+                // Expected if channel is already removed
+              }
+            }
+          })(),
+          new Promise((_, reject) =>
+            setTimeout(() => reject(new Error('Cleanup timeout')), CLEANUP_TIMEOUT)
+          ),
+        ]);
+      } catch {
+        // Cleanup timed out or failed - this is fine
+        console.log('[Lobby] Channel cleanup completed (may have timed out)');
+      }
+    };
+
+    // Don't await - let it run in the background
+    cleanupWithTimeout();
   },
 
   sendMessage: (content: string) => {
