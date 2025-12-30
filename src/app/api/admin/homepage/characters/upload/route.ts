@@ -24,7 +24,8 @@ export const POST = withAdminAuth(async (req, user) => {
       body.imageType
     );
 
-    return NextResponse.json({ url: result.url });
+    // Return R2 key (not signed URL) to avoid URL expiration
+    return NextResponse.json({ url: result.key });
   } catch (error) {
     console.error('Failed to upload character image:', error);
     return NextResponse.json(

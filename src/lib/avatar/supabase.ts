@@ -950,7 +950,7 @@ export async function getPublicAvatarUrls(userId: string): Promise<{
       thumbnailKeys.md ? getSignedUrlFromKeyOrUrl(thumbnailKeys.md) : null,
       thumbnailKeys.lg ? getSignedUrlFromKeyOrUrl(thumbnailKeys.lg) : null,
     ]);
-    freshThumbnailUrls = { xs, sm, md, lg };
+    freshThumbnailUrls = { xs, sm, md, lg } as UserAvatarCanvas['thumbnailUrls'];
   }
 
   return {

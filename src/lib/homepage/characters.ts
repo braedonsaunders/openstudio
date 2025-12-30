@@ -2,6 +2,7 @@
 
 import { supabaseAuth } from '@/lib/supabase/auth';
 import { getAdminSupabase } from '@/lib/supabase/server';
+import { getSignedUrlFromKeyOrUrl } from '@/lib/storage/r2';
 import type {
   HomepageCharacter,
   CreateHomepageCharacterRequest,
@@ -36,6 +37,29 @@ function transformCharacter(data: Record<string, unknown>): HomepageCharacter {
   };
 }
 
+/**
+ * Refresh character URLs to use fresh signed URLs from R2 keys
+ */
+async function refreshCharacterUrls(character: HomepageCharacter): Promise<HomepageCharacter> {
+  const [freshFullBodyUrl, freshThumbnailUrl] = await Promise.all([
+    character.fullBodyUrl ? getSignedUrlFromKeyOrUrl(character.fullBodyUrl) : null,
+    character.thumbnailUrl ? getSignedUrlFromKeyOrUrl(character.thumbnailUrl) : null,
+  ]);
+
+  return {
+    ...character,
+    fullBodyUrl: freshFullBodyUrl,
+    thumbnailUrl: freshThumbnailUrl,
+  };
+}
+
+/**
+ * Refresh URLs for multiple characters in parallel
+ */
+async function refreshCharactersUrls(characters: HomepageCharacter[]): Promise<HomepageCharacter[]> {
+  return Promise.all(characters.map(refreshCharacterUrls));
+}
+
 // ============================================
 // PUBLIC FUNCTIONS
 // ============================================
@@ -55,7 +79,8 @@ export async function getActiveCharacters(): Promise<HomepageCharacter[]> {
     return [];
   }
 
-  return (data || []).map(transformCharacter);
+  const characters = (data || []).map(transformCharacter);
+  return refreshCharactersUrls(characters);
 }
 
 /**
@@ -74,7 +99,8 @@ export async function getCharactersForScene(scene: HomepageSceneType): Promise<H
     return [];
   }
 
-  return (data || []).map(transformCharacter);
+  const characters = (data || []).map(transformCharacter);
+  return refreshCharactersUrls(characters);
 }
 
 // ============================================
@@ -98,7 +124,8 @@ export async function getAllCharacters(): Promise<HomepageCharacter[]> {
     throw new Error(`Failed to fetch all characters: ${error.message}`);
   }
 
-  return (data || []).map(transformCharacter);
+  const characters = (data || []).map(transformCharacter);
+  return refreshCharactersUrls(characters);
 }
 
 /**
@@ -120,7 +147,8 @@ export async function getCharacterById(id: string): Promise<HomepageCharacter | 
     throw new Error(`Failed to fetch character: ${error.message}`);
   }
 
-  return transformCharacter(data);
+  const character = transformCharacter(data);
+  return refreshCharacterUrls(character);
 }
 
 /**
