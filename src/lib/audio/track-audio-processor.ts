@@ -310,9 +310,27 @@ export class TrackAudioProcessor {
   /**
    * Push audio samples to bridge worklet (called from native bridge WebSocket)
    */
+  private pushCounter = 0;
   pushBridgeAudio(samples: Float32Array): void {
+    this.pushCounter++;
+
     if (this.inputSourceType !== 'bridge' || !this.bridgeWorkletNode) {
+      if (this.pushCounter <= 5 || this.pushCounter % 500 === 0) {
+        console.warn(`[TrackAudioProcessor] ${this.trackId.slice(-8)} pushBridgeAudio BLOCKED:`, {
+          pushCounter: this.pushCounter,
+          inputSourceType: this.inputSourceType,
+          hasWorklet: !!this.bridgeWorkletNode,
+        });
+      }
       return;
+    }
+
+    // Log occasionally to confirm messages are being posted
+    if (this.pushCounter <= 5 || this.pushCounter % 500 === 0) {
+      console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} pushBridgeAudio:`, {
+        pushCounter: this.pushCounter,
+        samplesLength: samples.length,
+      });
     }
 
     this.bridgeWorkletNode.port.postMessage({
