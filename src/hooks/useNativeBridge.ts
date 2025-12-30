@@ -327,6 +327,16 @@ export function useNativeBridge() {
       }
     }
 
+    // Get track info BEFORE starting audio to determine channel config
+    const roomState = useRoomStore.getState();
+    const currentUserId = roomState.currentUser?.id;
+    const tracksState = currentUserId ? useUserTracksStore.getState() : null;
+    const userTracks = tracksState && currentUserId ? tracksState.getTracksByUser(currentUserId) : [];
+    const primaryTrack = userTracks.length > 0 ? userTracks[0] : null;
+
+    // Determine channel config - use primary track's config if available, otherwise global
+    const channelConfigToUse = primaryTrack?.audioSettings.channelConfig || state.inputChannelConfig;
+
     // Configure native bridge
     if (deviceId) {
       nativeBridge.setInputDevice(deviceId);
@@ -335,7 +345,9 @@ export function useNativeBridge() {
 
     nativeBridge.setBufferSize(state.bufferSize);
     nativeBridge.setSampleRate(state.sampleRate);
-    nativeBridge.setChannelConfig(state.inputChannelConfig);
+    // IMPORTANT: Set channel config BEFORE startAudio - setting it after would
+    // cause native bridge to stop/restart ASIO, losing audio
+    nativeBridge.setChannelConfig(channelConfigToUse);
     nativeBridge.startAudio();
 
     // Small delay to let native bridge initialize with correct sample rate
@@ -351,23 +363,10 @@ export function useNativeBridge() {
     // NOTE: Native bridge only supports single-track audio capture. Multi-track is handled
     // entirely in the browser - all tracks share the same audio input from the bridge,
     // and effects/mixing are processed per-track in the browser.
-    const roomState = useRoomStore.getState();
-    const currentUserId = roomState.currentUser?.id;
-    if (currentUserId) {
-      const tracksState = useUserTracksStore.getState();
-      const userTracks = tracksState.getTracksByUser(currentUserId);
-
-      // Use the primary track's channel config for the native bridge
-      if (userTracks.length > 0) {
-        const primaryTrack = userTracks[0];
-
-        // Send channel config for native bridge (single-track capture)
-        if (primaryTrack.audioSettings.channelConfig) {
-          nativeBridge.setChannelConfig(primaryTrack.audioSettings.channelConfig);
-        }
-
-        // Send primary track state to native bridge for direct monitoring
-        nativeBridge.updateTrackState(primaryTrack.id, {
+    if (currentUserId && primaryTrack) {
+      // Send primary track state to native bridge for direct monitoring
+      // (channel config was already set above BEFORE startAudio)
+      nativeBridge.updateTrackState(primaryTrack.id, {
           isArmed: primaryTrack.isArmed,
           isMuted: primaryTrack.isMuted,
           isSolo: primaryTrack.isSolo,
@@ -412,7 +411,6 @@ export function useNativeBridge() {
           console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, directMonitoring: ${directMonitoring}, jsMonitoring: ${!directMonitoring}`);
         }
       }
-    }
   }, []);
 
   // Stop audio
