@@ -408,6 +408,8 @@ export class TrackAudioProcessor {
 
     if (updates.isArmed !== undefined && updates.isArmed !== prevArmed) {
       this.updateArmState();
+      // Also update monitoring since it depends on arm state
+      this.updateMonitoringState();
     }
 
     if (updates.monitoringEnabled !== undefined && updates.monitoringEnabled !== prevMonitoring) {
