@@ -638,12 +638,12 @@ export default function LobbyPage() {
   const totalMusicians = filteredRooms.reduce((sum, r) => sum + (r.activeUsers || 0), 0);
 
   return (
-    <div className={`min-h-screen relative ${isDark ? 'bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900' : 'bg-gradient-to-b from-sky-100 via-blue-50 to-white'}`}>
+    <div className={`h-screen flex flex-col overflow-hidden relative ${isDark ? 'bg-gradient-to-b from-slate-900 via-indigo-950 to-slate-900' : 'bg-gradient-to-b from-sky-100 via-blue-50 to-white'}`}>
       {/* Animated background */}
       {isDark ? <Stars /> : <Clouds />}
 
       {/* Header */}
-      <header className={`sticky top-0 z-50 backdrop-blur-xl ${isDark ? 'bg-slate-900/80 border-b border-white/10' : 'bg-white/80 border-b border-gray-200'}`}>
+      <header className={`flex-shrink-0 z-50 backdrop-blur-xl ${isDark ? 'bg-slate-900/80 border-b border-white/10' : 'bg-white/80 border-b border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
           <a href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
@@ -662,9 +662,9 @@ export default function LobbyPage() {
       </header>
 
       {/* Main Content */}
-      <main className="relative z-10 max-w-7xl mx-auto px-4 py-4">
+      <main className="relative z-10 flex-1 min-h-0 overflow-hidden max-w-7xl w-full mx-auto px-4 py-4 flex flex-col">
         {/* Compact Hero */}
-        <div className={`rounded-xl p-4 mb-4 ${isDark ? 'bg-gradient-to-r from-indigo-900/50 via-purple-900/50 to-pink-900/50 border border-white/10' : 'bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border border-gray-200'}`}>
+        <div className={`flex-shrink-0 rounded-xl p-4 mb-4 ${isDark ? 'bg-gradient-to-r from-indigo-900/50 via-purple-900/50 to-pink-900/50 border border-white/10' : 'bg-gradient-to-r from-indigo-50 via-purple-50 to-pink-50 border border-gray-200'}`}>
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
             <div>
               {user && profile && (
@@ -778,15 +778,15 @@ export default function LobbyPage() {
         </div>
 
         {/* Two Column Layout */}
-        <div className="flex flex-col lg:flex-row gap-4">
+        <div className="flex-1 min-h-0 flex flex-col lg:flex-row gap-4 overflow-hidden">
           {/* Left Sidebar - Online Users & Chat */}
-          <div className="lg:w-72 flex flex-col gap-4 lg:sticky lg:top-20 lg:h-[calc(100vh-6rem)]">
+          <div className="lg:w-72 flex flex-col gap-4 min-h-0">
             <OnlineUsersPanel isDark={isDark} />
             <LobbyChat isDark={isDark} className="flex-1 min-h-0" />
           </div>
 
           {/* Main Content - Rooms */}
-          <div className="flex-1 min-w-0">
+          <div className="flex-1 min-w-0 min-h-0 overflow-y-auto">
             {/* Search and Filters */}
             <div className="mb-4 space-y-3">
               <div className="flex gap-2">
