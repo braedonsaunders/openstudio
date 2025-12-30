@@ -32,11 +32,11 @@ const qualityIcons = {
 };
 
 const qualityLabels = {
-  tight: 'Tight Jamming',
-  good: 'Good to Jam',
-  loose: 'Loose Jamming',
+  tight: 'Excellent',
+  good: 'Good',
+  loose: 'Playable',
   difficult: 'Difficult',
-  impossible: 'Too High Latency',
+  impossible: 'Unstable',
 };
 
 export function JamCompatibilityIndicator({
@@ -49,55 +49,55 @@ export function JamCompatibilityIndicator({
   const hasOptimizations = compatibility.autoOptimizations.length > 0;
 
   return (
-    <div className={cn('rounded-xl border overflow-hidden', className)}>
+    <div className={cn('rounded-lg border overflow-hidden', className)}>
       {/* Header */}
       <button
         onClick={() => setExpanded(!expanded)}
         className={cn(
-          'w-full px-4 py-3 flex items-center justify-between',
+          'w-full px-3 py-2 flex items-center justify-between',
           getJamQualityBgColor(compatibility.quality),
           'hover:brightness-95 transition-all'
         )}
       >
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <div className={cn(
-            'w-8 h-8 rounded-full flex items-center justify-center',
+            'w-6 h-6 rounded-full flex items-center justify-center',
             compatibility.canJam ? 'bg-white/50' : 'bg-red-500/20',
             getJamQualityColor(compatibility.quality)
           )}>
             {qualityIcons[compatibility.quality]}
           </div>
 
-          <div className="text-left">
-            <div className={cn(
-              'font-medium',
-              getJamQualityColor(compatibility.quality)
-            )}>
-              {qualityLabels[compatibility.quality]}
-            </div>
-            <div className="text-xs text-gray-600 dark:text-zinc-400">
-              Group latency: {compatibility.maxGroupLatency}ms
-              {compatibility.suggestedBpmMax && (
-                <span className="ml-2">
-                  Max BPM: ~{compatibility.suggestedBpmMax}
-                </span>
-              )}
-            </div>
+          <div className={cn(
+            'font-medium text-sm',
+            getJamQualityColor(compatibility.quality)
+          )}>
+            {qualityLabels[compatibility.quality]}
+          </div>
+
+          <div className="flex items-center gap-1.5 text-[11px] text-gray-500 dark:text-zinc-400">
+            <span className="font-mono">{compatibility.maxGroupLatency}ms</span>
+            {compatibility.suggestedBpmMax && (
+              <>
+                <span className="text-gray-300 dark:text-zinc-600">·</span>
+                <span>≤{compatibility.suggestedBpmMax} BPM</span>
+              </>
+            )}
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           {hasOptimizations && !expanded && (
-            <div className="flex items-center gap-1 px-2 py-1 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-xs">
-              <Lightbulb className="w-3 h-3" />
-              <span>{compatibility.autoOptimizations.length} suggestions</span>
+            <div className="flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[10px]">
+              <Lightbulb className="w-2.5 h-2.5" />
+              <span>{compatibility.autoOptimizations.length}</span>
             </div>
           )}
 
           {expanded ? (
-            <ChevronUp className="w-5 h-5 text-gray-400" />
+            <ChevronUp className="w-4 h-4 text-gray-400" />
           ) : (
-            <ChevronDown className="w-5 h-5 text-gray-400" />
+            <ChevronDown className="w-4 h-4 text-gray-400" />
           )}
         </div>
       </button>
@@ -112,66 +112,57 @@ export function JamCompatibilityIndicator({
             className="border-t border-gray-200 dark:border-white/10"
           >
             {/* Recommendation */}
-            <div className="px-4 py-3 bg-gray-50 dark:bg-white/5">
-              <p className="text-sm text-gray-700 dark:text-zinc-300">
+            <div className="px-3 py-2 bg-gray-50 dark:bg-white/5">
+              <p className="text-xs text-gray-600 dark:text-zinc-400">
                 {compatibility.recommendation}
               </p>
             </div>
 
             {/* Auto-optimizations */}
             {hasOptimizations && (
-              <div className="px-4 py-3 space-y-2">
-                <div className="text-xs font-medium text-gray-500 dark:text-zinc-500 mb-2">
-                  Suggested Optimizations
-                </div>
-
+              <div className="px-3 py-2 space-y-1.5">
                 {compatibility.autoOptimizations.map((opt, index) => (
                   <div
                     key={`${opt.type}-${index}`}
-                    className="flex items-center justify-between p-2 rounded-lg bg-gray-100 dark:bg-white/5"
+                    className="flex items-center justify-between p-1.5 rounded-md bg-gray-100 dark:bg-white/5"
                   >
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       <div className={cn(
-                        'w-6 h-6 rounded-full flex items-center justify-center',
+                        'w-5 h-5 rounded-full flex items-center justify-center',
                         opt.automatic
                           ? 'bg-emerald-500/20 text-emerald-500'
                           : 'bg-amber-500/20 text-amber-500'
                       )}>
                         {opt.automatic ? (
-                          <Zap className="w-3 h-3" />
+                          <Zap className="w-2.5 h-2.5" />
                         ) : (
-                          <Lightbulb className="w-3 h-3" />
+                          <Lightbulb className="w-2.5 h-2.5" />
                         )}
                       </div>
-                      <div>
-                        <div className="text-sm text-gray-900 dark:text-white">
-                          {opt.description}
-                        </div>
-                        <div className="text-xs text-gray-500 dark:text-zinc-500">
-                          {opt.automatic ? 'Will apply automatically' : 'Requires approval'}
-                        </div>
-                      </div>
+                      <span className="text-xs text-gray-700 dark:text-zinc-300">
+                        {opt.description}
+                      </span>
                     </div>
 
                     {!opt.automatic && !opt.applied && (
                       <div className="flex items-center gap-1">
                         <button
                           onClick={() => onAcceptOptimization?.(opt.type)}
-                          className="px-2 py-1 text-xs rounded bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
+                          className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-500 text-white hover:bg-emerald-600 transition-colors"
                         >
                           Apply
                         </button>
                         <button
                           onClick={() => onDismissOptimization?.(opt.type)}
-                          className="px-2 py-1 text-xs rounded bg-gray-300 dark:bg-white/10 text-gray-700 dark:text-zinc-300 hover:bg-gray-400 dark:hover:bg-white/20 transition-colors"
+                          className="px-1.5 py-0.5 text-[10px] rounded bg-gray-300 dark:bg-white/10 text-gray-600 dark:text-zinc-400 hover:bg-gray-400 dark:hover:bg-white/20 transition-colors"
                         >
-                          Dismiss
+                          Skip
                         </button>
                       </div>
                     )}
 
                     {opt.applied && (
-                      <span className="px-2 py-1 text-xs rounded bg-emerald-500/20 text-emerald-500">
+                      <span className="px-1.5 py-0.5 text-[10px] rounded bg-emerald-500/20 text-emerald-500">
                         Applied
                       </span>
                     )}
@@ -179,48 +170,6 @@ export function JamCompatibilityIndicator({
                 ))}
               </div>
             )}
-
-            {/* Tips based on quality */}
-            <div className="px-4 py-3 border-t border-gray-200 dark:border-white/10">
-              <div className="text-xs font-medium text-gray-500 dark:text-zinc-500 mb-2">
-                Tips for Better Jamming
-              </div>
-              <ul className="text-xs text-gray-600 dark:text-zinc-400 space-y-1">
-                {compatibility.quality === 'tight' && (
-                  <>
-                    <li>• You&apos;re in great shape! Play any genre, any tempo.</li>
-                    <li>• Consider using Studio Quality preset for best audio.</li>
-                  </>
-                )}
-                {compatibility.quality === 'good' && (
-                  <>
-                    <li>• Great for most music. Fast tempos work well.</li>
-                    <li>• Consider Low Latency preset for tighter sync.</li>
-                  </>
-                )}
-                {compatibility.quality === 'loose' && (
-                  <>
-                    <li>• Best for slower tempos and ambient music.</li>
-                    <li>• Jazz, ballads, and atmospheric music work well.</li>
-                    <li>• Enable Ultra Low Latency preset if possible.</li>
-                  </>
-                )}
-                {compatibility.quality === 'difficult' && (
-                  <>
-                    <li>• Try turn-taking mode: one person plays at a time.</li>
-                    <li>• Slow ambient music may still work.</li>
-                    <li>• Check if anyone can use a wired connection.</li>
-                  </>
-                )}
-                {compatibility.quality === 'impossible' && (
-                  <>
-                    <li>• Real-time jamming isn&apos;t possible at this latency.</li>
-                    <li>• Try: wired connections, closer server region.</li>
-                    <li>• Consider recording and sharing instead.</li>
-                  </>
-                )}
-              </ul>
-            </div>
           </motion.div>
         )}
       </AnimatePresence>
