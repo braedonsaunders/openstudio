@@ -13,6 +13,7 @@ import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
 import { usePermissionsStore } from '@/stores/permissions-store';
 import type { QualityPresetName, OpusEncodingSettings } from '@/types';
 import { useAudioEngine } from './useAudioEngine';
+import { useStatsTracker } from './useStatsTracker';
 import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
@@ -62,6 +63,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     updateFromStats,
     destroyEngine,
   } = useAudioEngine();
+
+  // Stats tracking for gamification
+  const {
+    startSession: statsStartSession,
+    endSession: statsEndSession,
+    trackCollaborator,
+    trackMessage,
+    trackRoomCreated,
+  } = useStatsTracker();
 
   // Join room - returns true on success, false on failure
   const join = useCallback(async (userName: string, instrument?: string): Promise<boolean> => {
@@ -347,6 +357,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         setConnected(true);
         setJoining(false);
 
+        // Start stats tracking session
+        statsStartSession(roomId, instrument);
+
         // First user to connect becomes master by default
         // This ensures playback controls work immediately
         // Will be corrected by presence:sync if needed
@@ -388,6 +401,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         Object.values(state).flat().forEach((u) => {
           if (u.id !== user.id) {
             addUser(u);
+            // Track existing users as collaborators
+            trackCollaborator(u.id);
           }
         });
 
@@ -413,6 +428,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             addUser(u);
             options.onUserJoined?.(u);
             hasNewUsers = true;
+            // Track collaborator for stats
+            trackCollaborator(u.id);
           }
         });
 
@@ -815,6 +832,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   // Leave room
   const leave = useCallback(async () => {
+    // End stats tracking session before cleanup
+    await statsEndSession();
+
     // Get current user before disconnecting
     const currentUserId = userIdRef.current;
 
@@ -860,7 +880,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Use getState() to access reset
     useRoomStore.getState().reset();
     usePermissionsStore.getState().reset();
-  }, [roomId, destroyEngine]);
+  }, [roomId, destroyEngine, statsEndSession]);
 
   // Master controls - BULLETPROOF with fresh state
   const play = useCallback(async () => {
@@ -1233,7 +1253,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       content: trimmedMessage,
       timestamp: new Date().toISOString(),
     });
-  }, []);
+
+    // Track message for stats
+    trackMessage();
+  }, [trackMessage]);
 
   // Mute user
   const muteUser = useCallback((userId: string, muted: boolean) => {
