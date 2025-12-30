@@ -508,11 +508,14 @@ export class AudioEngine {
           outputR[i] = 0;
         }
 
-        // Log occasionally when we have data
+        // Log occasionally when we have data - include gain states for debugging
         if (processCounter % 500 === 0) {
           const outputPeak = Math.max(...outputL.map(Math.abs));
           console.log('[AudioEngine] onaudioprocess - processed audio, outputPeak:', outputPeak.toFixed(4),
-            'remainingBuffer:', this.bridgeAudioBuffer.length);
+            'remainingBuffer:', this.bridgeAudioBuffer.length,
+            'armGain:', this.localArmGain?.gain.value,
+            'monitorGain:', this.localMonitorGain?.gain.value,
+            'contextState:', this.audioContext?.state);
         }
       } else {
         // No data - output silence
@@ -521,7 +524,8 @@ export class AudioEngine {
 
         // Log occasionally when buffer is empty
         if (processCounter % 500 === 0) {
-          console.log('[AudioEngine] onaudioprocess - buffer empty, outputting silence');
+          console.log('[AudioEngine] onaudioprocess - buffer empty, outputting silence',
+            'contextState:', this.audioContext?.state);
         }
       }
     };
@@ -624,6 +628,15 @@ export class AudioEngine {
       return;
     }
 
+    // Validate samples
+    if (!samples || samples.length === 0) {
+      return;
+    }
+
+    // CRITICAL: Clone the samples array to prevent reuse issues
+    // The original Float32Array from WebSocket may be reused/cleared
+    const clonedSamples = new Float32Array(samples);
+
     // Add to buffer queue
     // Limit buffer size to prevent memory growth (keep last ~100ms of audio)
     const maxBufferChunks = 10;
@@ -632,18 +645,19 @@ export class AudioEngine {
       this.bridgeAudioBuffer.shift();
     }
 
-    this.bridgeAudioBuffer.push(samples);
+    this.bridgeAudioBuffer.push(clonedSamples);
 
     // Log occasionally to confirm audio is flowing (AFTER pushing)
     if (this.bridgeAudioLogCounter++ % 500 === 0) {
-      const peak = samples.reduce((max, s) => Math.max(max, Math.abs(s)), 0);
+      const peak = clonedSamples.reduce((max, s) => Math.max(max, Math.abs(s)), 0);
       console.log('[AudioEngine] pushBridgeAudio:', {
-        sampleCount: samples.length,
+        sampleCount: clonedSamples.length,
         peak: peak.toFixed(4),
         bufferQueueLenAfterPush: this.bridgeAudioBuffer.length,
         hasBridgeSourceNode: !!this.bridgeSourceNode,
         armGain: this.localArmGain?.gain.value,
         monitorGain: this.localMonitorGain?.gain.value,
+        contextState: this.audioContext?.state,
       });
     }
   }

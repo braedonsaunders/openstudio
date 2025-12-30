@@ -815,22 +815,15 @@ impl AudioEngine {
             info!("[INPUT] Extracted stereo peak: {:.6} | buffer_size={}", level, stereo_buffer.len());
         }
 
-        // Stream RAW audio to browser for WebRTC broadcast (BEFORE effects)
+        // Stream RAW audio to browser for WET monitoring (BEFORE effects)
         // The browser will apply effects using Web Audio, ensuring single effects codebase
+        // ALWAYS stream to browser when audio is running - the browser's audio chain
+        // has its own gain gates (armGain, monitorGain) to control output
         if let Some(browser_prod) = browser_stream_producer {
             if let Ok(mut prod) = browser_prod.try_lock() {
-                // Only send if track is armed (active)
-                let is_armed = if let Ok(state) = processing_state.try_read() {
-                    state.track_state.is_armed
-                } else {
-                    false
-                };
-
-                if is_armed {
-                    let pushed = prod.push_slice(&stereo_buffer);
-                    if should_log {
-                        info!("[INPUT] Streamed {} raw samples to browser", pushed);
-                    }
+                let pushed = prod.push_slice(&stereo_buffer);
+                if should_log {
+                    info!("[INPUT] Streamed {} raw samples to browser (always on)", pushed);
                 }
             }
         }
