@@ -96,6 +96,12 @@ export function useAudioEngine() {
       globalEngine = engine;
       setInitialized(true);
 
+      // Expose engine globally for native bridge audio integration
+      // This allows the native bridge to push audio samples directly
+      if (typeof window !== 'undefined') {
+        (window as any).__openStudioAudioEngine = engine;
+      }
+
       // Start performance monitoring
       // Note: We get fresh state inside the interval to avoid stale closures
       if (!performanceIntervalRef.current) {
@@ -602,6 +608,26 @@ export function useAudioEngine() {
     return globalEngine?.getMasterGain() || null;
   }, []);
 
+  // Native bridge audio methods
+  const enableBridgeAudio = useCallback(async () => {
+    if (!globalEngine) {
+      await initialize();
+    }
+    await globalEngine?.enableBridgeAudio();
+  }, [initialize]);
+
+  const disableBridgeAudio = useCallback(() => {
+    globalEngine?.disableBridgeAudio();
+  }, []);
+
+  const pushBridgeAudio = useCallback((samples: Float32Array) => {
+    globalEngine?.pushBridgeAudio(samples);
+  }, []);
+
+  const isBridgeAudioEnabled = useCallback((): boolean => {
+    return globalEngine?.isBridgeAudioEnabled() ?? false;
+  }, []);
+
   return {
     isInitialized,
     isPlaying,
@@ -653,5 +679,10 @@ export function useAudioEngine() {
     setOnTrackEnded,
     destroyEngine,
     getMasterGain,
+    // Native bridge audio
+    enableBridgeAudio,
+    disableBridgeAudio,
+    pushBridgeAudio,
+    isBridgeAudioEnabled,
   };
 }
