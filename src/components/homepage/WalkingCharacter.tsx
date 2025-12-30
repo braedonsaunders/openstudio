@@ -15,6 +15,61 @@ interface WalkingCharacterProps {
   groundConfig: SceneGroundConfig;
   containerWidth: number;
   containerHeight: number;
+  onPositionUpdate?: (id: string, x: number, y: number) => void;
+  getOtherPositions?: (excludeId: string) => Array<{ x: number; y: number }>;
+}
+
+// Minimum distance between characters (in percentage units)
+const MIN_CHARACTER_DISTANCE = 8;
+
+// Check if a position would collide with any other character
+function wouldCollide(
+  x: number,
+  y: number,
+  otherPositions: Array<{ x: number; y: number }>
+): boolean {
+  for (const other of otherPositions) {
+    const dx = x - other.x;
+    const dy = y - other.y;
+    const distance = Math.sqrt(dx * dx + dy * dy);
+    if (distance < MIN_CHARACTER_DISTANCE) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Find a position that avoids collisions
+function findNonCollidingPosition(
+  baseX: number,
+  baseY: number,
+  otherPositions: Array<{ x: number; y: number }>,
+  walkableArea: { minX: number; maxX: number; minY: number; maxY: number },
+  maxAttempts: number = 8
+): { x: number; y: number } {
+  // If no collision at base position, use it
+  if (!wouldCollide(baseX, baseY, otherPositions)) {
+    return { x: baseX, y: baseY };
+  }
+
+  // Try different directions to find a non-colliding spot
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const angle = (attempt / maxAttempts) * Math.PI * 2;
+    const distance = MIN_CHARACTER_DISTANCE + Math.random() * 5;
+    const newX = baseX + Math.cos(angle) * distance;
+    const newY = baseY + Math.sin(angle) * distance;
+
+    // Clamp to walkable area
+    const clampedX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, newX));
+    const clampedY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, newY));
+
+    if (!wouldCollide(clampedX, clampedY, otherPositions)) {
+      return { x: clampedX, y: clampedY };
+    }
+  }
+
+  // If all attempts fail, return the base position anyway
+  return { x: baseX, y: baseY };
 }
 
 interface CharacterState {
@@ -140,6 +195,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   groundConfig,
   containerWidth,
   containerHeight,
+  onPositionUpdate,
+  getOtherPositions,
 }: WalkingCharacterProps) {
   const [state, setState] = useState<CharacterState>(() => {
     // Start with a biased position (towards bottom, avoiding UI)
@@ -236,8 +293,19 @@ export const WalkingCharacter = memo(function WalkingCharacter({
 
           // Calculate new position and clamp to walkable area
           const { walkableArea } = groundConfig;
-          const newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
-          const newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
+          let newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
+          let newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
+
+          // Check for collisions with other characters
+          const otherPositions = getOtherPositions?.(character.id) ?? [];
+          if (wouldCollide(newX, newY, otherPositions)) {
+            // Stop walking if we would collide
+            return {
+              ...prev,
+              isWalking: false,
+              idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
+            };
+          }
 
           return {
             ...prev,
@@ -261,12 +329,21 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             // Get valid position that avoids UI zone
             const validPos = getValidPosition(baseX, baseY, walkableArea);
 
+            // Also check for collisions with other characters when selecting target
+            const otherPositions = getOtherPositions?.(character.id) ?? [];
+            const nonCollidingPos = findNonCollidingPosition(
+              validPos.x,
+              validPos.y,
+              otherPositions,
+              walkableArea
+            );
+
             return {
               ...prev,
-              targetX: validPos.x,
-              targetY: validPos.y,
+              targetX: nonCollidingPos.x,
+              targetY: nonCollidingPos.y,
               isWalking: true,
-              facingRight: validPos.x > prev.x,
+              facingRight: nonCollidingPos.x > prev.x,
               walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
             };
           }
@@ -288,7 +365,12 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [character.walkSpeed, groundConfig]);
+  }, [character.walkSpeed, groundConfig, getOtherPositions]);
+
+  // Report position updates to parent for collision tracking
+  useEffect(() => {
+    onPositionUpdate?.(character.id, state.x, state.y);
+  }, [character.id, state.x, state.y, onPositionUpdate]);
 
   // Calculate scale based on Y position
   const scale = calculateAvatarScale(state.y, groundConfig);

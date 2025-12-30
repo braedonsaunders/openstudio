@@ -435,6 +435,7 @@ function DayScene() {
 
       {/* Layer 8: Picnic blanket - slides up from bottom */}
       <motion.div
+        className="absolute inset-0 pointer-events-none"
         initial={{ y: '120%', opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: '120%', opacity: 0 }}
@@ -762,6 +763,7 @@ function NightScene() {
 
       {/* Layer 8: Campfire - slides up from bottom */}
       <motion.div
+        className="absolute inset-0 pointer-events-none"
         initial={{ y: '80%', opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         exit={{ y: '80%', opacity: 0 }}
