@@ -109,6 +109,9 @@ export class NativeBridge {
   private version: string | null = null;
   private driverType: string | null = null;
 
+  // Track last sent channel config to avoid redundant restarts
+  private lastChannelConfig: { channelCount: number; leftChannel: number; rightChannel?: number } | null = null;
+
   // Singleton instance
   private static instance: NativeBridge | null = null;
 
@@ -233,6 +236,8 @@ export class NativeBridge {
       this.ws = null;
     }
     this.isConnected = false;
+    // Reset cached config so next connection will properly configure
+    this.lastChannelConfig = null;
   }
 
   /**
@@ -448,8 +453,45 @@ export class NativeBridge {
 
   /**
    * Set channel configuration (global - for single track mode)
+   * Only sends if config has actually changed to avoid unnecessary ASIO restarts
    */
   setChannelConfig(config: InputChannelConfig): void {
+    // Check if config has changed to avoid redundant ASIO restarts
+    const last = this.lastChannelConfig;
+    if (
+      last &&
+      last.channelCount === config.channelCount &&
+      last.leftChannel === config.leftChannel &&
+      last.rightChannel === config.rightChannel
+    ) {
+      console.log('[NativeBridge] setChannelConfig: config unchanged, skipping');
+      return;
+    }
+
+    this.lastChannelConfig = {
+      channelCount: config.channelCount,
+      leftChannel: config.leftChannel,
+      rightChannel: config.rightChannel,
+    };
+
+    this.send({
+      type: 'setChannelConfig',
+      channelCount: config.channelCount,
+      leftChannel: config.leftChannel,
+      rightChannel: config.rightChannel,
+    });
+  }
+
+  /**
+   * Force send channel config even if unchanged (for initial setup)
+   */
+  forceSetChannelConfig(config: InputChannelConfig): void {
+    this.lastChannelConfig = {
+      channelCount: config.channelCount,
+      leftChannel: config.leftChannel,
+      rightChannel: config.rightChannel,
+    };
+
     this.send({
       type: 'setChannelConfig',
       channelCount: config.channelCount,

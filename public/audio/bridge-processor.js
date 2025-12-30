@@ -7,9 +7,19 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     super();
 
     // Ring buffer for stereo audio (interleaved L/R samples)
-    // Size: ~100ms at 48kHz = 4800 stereo frames = 9600 samples
-    this.bufferSize = 9600;
+    // Size is dynamic based on ASIO buffer size:
+    // - Default: ~100ms at 48kHz = 4800 stereo frames = 9600 samples
+    // - With ASIO buffer: asioBuffer * 40 (20 callbacks * 2 for stereo)
+    // - Minimum 4800 samples (~50ms) for WebSocket jitter absorption
+    const asioBufferSize = options?.processorOptions?.asioBufferSize || 128;
+    // Calculate buffer: ~20 ASIO callbacks worth, minimum 50ms at 48kHz
+    const calculatedSize = Math.max(asioBufferSize * 40, 4800);
+    // Round up to nearest power of 2 for efficient modulo operations
+    this.bufferSize = Math.pow(2, Math.ceil(Math.log2(calculatedSize)));
     this.buffer = new Float32Array(this.bufferSize);
+
+    console.log('[BridgeProcessor] Initialized with buffer size:', this.bufferSize,
+      '(ASIO buffer:', asioBufferSize, ')');
     this.writePos = 0;
     this.readPos = 0;
 
@@ -68,17 +78,28 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     const len = samples.length;
     this.samplesReceived += len;
 
-    for (let i = 0; i < len; i++) {
-      const nextWritePos = (this.writePos + 1) % this.bufferSize;
+    // Process samples in stereo pairs to maintain L/R alignment
+    for (let i = 0; i < len; i += 2) {
+      // Check if we have room for a stereo pair (2 samples)
+      const spaceAvailable = this.bufferSize - this.getAvailableSamples() - 1;
 
-      if (nextWritePos === this.readPos) {
-        // Buffer full - drop oldest samples
-        this.readPos = (this.readPos + 1) % this.bufferSize;
-        this.overruns++;
+      if (spaceAvailable < 2) {
+        // Buffer full - drop oldest stereo pair to maintain alignment
+        this.readPos = (this.readPos + 2) % this.bufferSize;
+        this.overruns += 2;
       }
 
+      // Write left sample
       this.buffer[this.writePos] = samples[i];
-      this.writePos = nextWritePos;
+      this.writePos = (this.writePos + 1) % this.bufferSize;
+
+      // Write right sample (handle mono input by duplicating left)
+      if (i + 1 < len) {
+        this.buffer[this.writePos] = samples[i + 1];
+      } else {
+        this.buffer[this.writePos] = samples[i]; // Duplicate left for mono
+      }
+      this.writePos = (this.writePos + 1) % this.bufferSize;
     }
   }
 
