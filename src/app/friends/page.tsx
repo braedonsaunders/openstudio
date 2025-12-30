@@ -21,7 +21,6 @@ import {
   Clock,
   Check,
   X,
-  MessageSquare,
   ExternalLink,
   Loader2,
 } from 'lucide-react';
@@ -50,13 +49,23 @@ export default function FriendsPage() {
   const [followers, setFollowers] = useState<UserProfile[]>([]);
   const [following, setFollowing] = useState<UserProfile[]>([]);
   const [selectedUser, setSelectedUser] = useState<UserProfile | null>(null);
+  const [pendingAction, setPendingAction] = useState<string | null>(null);
 
-  // Fetch followers and following
+  // Fetch followers and following counts on mount, and full list when tab is active
+  useEffect(() => {
+    if (user) {
+      // Always fetch counts for stats display
+      getFollowers(user.id).then(setFollowers).catch(console.error);
+      getFollowing(user.id).then(setFollowing).catch(console.error);
+    }
+  }, [user]);
+
+  // Refresh when switching to these tabs
   useEffect(() => {
     if (user && activeTab === 'followers') {
-      getFollowers(user.id).then(setFollowers);
+      getFollowers(user.id).then(setFollowers).catch(console.error);
     } else if (user && activeTab === 'following') {
-      getFollowing(user.id).then(setFollowing);
+      getFollowing(user.id).then(setFollowing).catch(console.error);
     }
   }, [user, activeTab]);
 
@@ -88,36 +97,78 @@ export default function FriendsPage() {
   }, [searchQuery, user, friends]);
 
   const handleAcceptRequest = async (friendId: string) => {
-    await acceptFriendRequest(friendId);
-    await refreshFriends();
+    setPendingAction(`accept-${friendId}`);
+    try {
+      await acceptFriendRequest(friendId);
+      await refreshFriends();
+    } catch (error) {
+      console.error('Failed to accept friend request:', error);
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   const handleDeclineRequest = async (friendId: string) => {
-    await removeFriend(friendId);
-    await refreshFriends();
+    setPendingAction(`decline-${friendId}`);
+    try {
+      await removeFriend(friendId);
+      await refreshFriends();
+    } catch (error) {
+      console.error('Failed to decline friend request:', error);
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   const handleSendRequest = async (userId: string) => {
-    await sendFriendRequest(userId);
-    // Remove from search results
-    setSearchResults(prev => prev.filter(u => u.id !== userId));
+    setPendingAction(`send-${userId}`);
+    try {
+      await sendFriendRequest(userId);
+      // Remove from search results
+      setSearchResults(prev => prev.filter(u => u.id !== userId));
+    } catch (error) {
+      console.error('Failed to send friend request:', error);
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   const handleRemoveFriend = async (friendId: string) => {
-    await removeFriend(friendId);
-    setSelectedUser(null);
+    setPendingAction(`remove-${friendId}`);
+    try {
+      await removeFriend(friendId);
+      setSelectedUser(null);
+    } catch (error) {
+      console.error('Failed to remove friend:', error);
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   const handleFollow = async (userId: string) => {
     if (!user) return;
-    await followUser(user.id, userId);
-    setFollowing(prev => [...prev, searchResults.find(u => u.id === userId)!]);
+    setPendingAction(`follow-${userId}`);
+    try {
+      await followUser(user.id, userId);
+      setFollowing(prev => [...prev, searchResults.find(u => u.id === userId)!]);
+    } catch (error) {
+      console.error('Failed to follow user:', error);
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   const handleUnfollow = async (userId: string) => {
     if (!user) return;
-    await unfollowUser(user.id, userId);
-    setFollowing(prev => prev.filter(u => u.id !== userId));
+    setPendingAction(`unfollow-${userId}`);
+    try {
+      await unfollowUser(user.id, userId);
+      setFollowing(prev => prev.filter(u => u.id !== userId));
+    } catch (error) {
+      console.error('Failed to unfollow user:', error);
+    } finally {
+      setPendingAction(null);
+    }
   };
 
   if (!profile) {
@@ -216,22 +267,13 @@ export default function FriendsPage() {
                   key={friend.id}
                   user={friend}
                   actions={
-                    <>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => router.push(`/profile/${friend.username}`)}
-                      >
-                        <ExternalLink className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setSelectedUser(friend)}
-                      >
-                        <MessageSquare className="w-4 h-4" />
-                      </Button>
-                    </>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => router.push(`/profile/${friend.username}`)}
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                    </Button>
                   }
                   onClick={() => setSelectedUser(friend)}
                 />
@@ -260,16 +302,26 @@ export default function FriendsPage() {
                       <Button
                         size="sm"
                         onClick={() => handleAcceptRequest(requester.id)}
+                        disabled={pendingAction?.startsWith(`accept-${requester.id}`) || pendingAction?.startsWith(`decline-${requester.id}`)}
                       >
-                        <Check className="w-4 h-4 mr-1" />
+                        {pendingAction === `accept-${requester.id}` ? (
+                          <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                        ) : (
+                          <Check className="w-4 h-4 mr-1" />
+                        )}
                         Accept
                       </Button>
                       <Button
                         variant="ghost"
                         size="sm"
                         onClick={() => handleDeclineRequest(requester.id)}
+                        disabled={pendingAction?.startsWith(`accept-${requester.id}`) || pendingAction?.startsWith(`decline-${requester.id}`)}
                       >
-                        <X className="w-4 h-4" />
+                        {pendingAction === `decline-${requester.id}` ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <X className="w-4 h-4" />
+                        )}
                       </Button>
                     </>
                   }
@@ -312,8 +364,13 @@ export default function FriendsPage() {
                           <Button
                             size="sm"
                             onClick={() => handleSendRequest(searchUser.id)}
+                            disabled={pendingAction === `send-${searchUser.id}`}
                           >
-                            <UserPlus className="w-4 h-4 mr-1" />
+                            {pendingAction === `send-${searchUser.id}` ? (
+                              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+                            ) : (
+                              <UserPlus className="w-4 h-4 mr-1" />
+                            )}
                             Add Friend
                           </Button>
                         }
@@ -389,8 +446,13 @@ export default function FriendsPage() {
                         variant="ghost"
                         size="sm"
                         onClick={() => handleUnfollow(followedUser.id)}
+                        disabled={pendingAction === `unfollow-${followedUser.id}`}
                       >
-                        <UserMinus className="w-4 h-4" />
+                        {pendingAction === `unfollow-${followedUser.id}` ? (
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                          <UserMinus className="w-4 h-4" />
+                        )}
                       </Button>
                       <Button
                         variant="ghost"
@@ -449,8 +511,13 @@ export default function FriendsPage() {
               <Button
                 variant="outline"
                 onClick={() => handleRemoveFriend(selectedUser.id)}
+                disabled={pendingAction === `remove-${selectedUser.id}`}
               >
-                <UserMinus className="w-4 h-4 mr-2" />
+                {pendingAction === `remove-${selectedUser.id}` ? (
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                ) : (
+                  <UserMinus className="w-4 h-4 mr-2" />
+                )}
                 Unfriend
               </Button>
             </div>
