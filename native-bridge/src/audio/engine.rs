@@ -846,12 +846,16 @@ impl AudioEngine {
             (false, false, false)
         };
 
-        // Only do DRY monitoring if: monitoring enabled AND track armed AND not muted
-        let should_monitor = monitoring_enabled && is_armed && !is_muted;
+        // DRY monitoring (native bridge passthrough) is controlled by:
+        // - monitoring_enabled (Direct Monitoring toggle) - user wants to hear hardware bypass
+        // - !is_muted - track isn't muted
+        // Note: ARM is NOT required for DRY monitoring - it's hardware bypass for hearing yourself
+        // ARM only affects software monitoring (browser WET path with effects)
+        let should_monitor = monitoring_enabled && !is_muted;
 
         if should_log {
-            info!("[INPUT] Monitoring: enabled={} armed={} muted={} -> should_monitor={}",
-                  monitoring_enabled, is_armed, is_muted, should_monitor);
+            info!("[INPUT] DRY Monitoring: enabled={} muted={} -> should_monitor={} (armed={} for info only)",
+                  monitoring_enabled, is_muted, should_monitor, is_armed);
         }
 
         // If monitoring enabled, do DRY monitoring (no effects - effects are in browser)

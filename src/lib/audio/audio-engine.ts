@@ -461,7 +461,15 @@ export class AudioEngine {
       this.localMuteGain.connect(this.broadcastMixerGain);
     }
 
-    console.log('[AudioEngine] Bridge audio enabled, signal chain connected');
+    console.log('[AudioEngine] Bridge audio enabled, signal chain connected. Gain values:', {
+      inputGain: this.localInputGain.gain.value,
+      armGain: this.localArmGain.gain.value,
+      muteGain: this.localMuteGain.gain.value,
+      monitorGain: this.localMonitorGain.gain.value,
+      localTrackArmed: this.localTrackArmed,
+      localTrackMuted: this.localTrackMuted,
+      monitoringEnabled: this.monitoringEnabled,
+    });
   }
 
   /**
@@ -481,13 +489,35 @@ export class AudioEngine {
     this.bridgeReadIndex = 0;
   }
 
+  // Counter for bridge audio logging
+  private bridgeAudioLogCounter = 0;
+
   /**
    * Push audio samples from native bridge into the audio engine.
    * Called when we receive binary audio data from the WebSocket.
    * @param samples Interleaved stereo Float32Array samples
    */
   pushBridgeAudio(samples: Float32Array): void {
-    if (!this.useBridgeAudio) return;
+    if (!this.useBridgeAudio) {
+      // Log occasionally if bridge mode not enabled
+      if (this.bridgeAudioLogCounter++ % 500 === 0) {
+        console.warn('[AudioEngine] pushBridgeAudio called but useBridgeAudio=false');
+      }
+      return;
+    }
+
+    // Log occasionally to confirm audio is flowing
+    if (this.bridgeAudioLogCounter++ % 500 === 0) {
+      const peak = samples.reduce((max, s) => Math.max(max, Math.abs(s)), 0);
+      console.log('[AudioEngine] pushBridgeAudio:', {
+        sampleCount: samples.length,
+        peak: peak.toFixed(4),
+        bufferQueueLen: this.bridgeAudioBuffer.length,
+        armGain: this.localArmGain?.gain.value,
+        muteGain: this.localMuteGain?.gain.value,
+        monitorGain: this.localMonitorGain?.gain.value,
+      });
+    }
 
     // Add to buffer queue
     // Limit buffer size to prevent memory growth (keep last ~100ms of audio)
