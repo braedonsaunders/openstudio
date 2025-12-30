@@ -406,9 +406,9 @@ impl BridgeServer {
                 // The user_id is encoded in the first 32 bytes after header
                 // For now, we'll handle this when we add WebRTC support
                 // The samples would be pushed to the appropriate user's ring buffer
-                let app = self.state.lock().await;
+                let _app = self.state.lock().await;
                 // Would extract user_id from binary format and call:
-                // app.audio_engine.push_remote_audio(&user_id, &samples);
+                // _app.audio_engine.push_remote_audio(&user_id, &samples);
                 let _ = samples; // Prevent unused warning for now
             } else if header.msg_type == 1 {
                 // Backing track audio - route to backing track buffer
