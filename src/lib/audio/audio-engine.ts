@@ -221,6 +221,16 @@ export class AudioEngine {
       this.disableBridgeAudio();
     }
 
+    // CRITICAL: Dispose all track processors before closing context
+    // This prevents race conditions where useTrackAudioSync triggers
+    // processor recreation during the sample rate change
+    console.log('[AudioEngine] Disposing', this.trackProcessors.size, 'track processors for sample rate change');
+    for (const processor of this.trackProcessors.values()) {
+      processor.dispose();
+    }
+    this.trackProcessors.clear();
+    this.primaryTrackId = null;
+
     // Clean up local audio nodes
     this.localSourceNode?.disconnect();
     this.localAnalyser?.disconnect();

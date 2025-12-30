@@ -196,6 +196,15 @@ export function useNativeBridge() {
       }
     };
 
+    // CRITICAL: Clear any existing audioData listeners before adding new one
+    // This prevents duplicate handlers during React Strict Mode or Fast Refresh
+    // which can cause audio to be processed multiple times or routed incorrectly
+    const existingAudioDataListeners = nativeBridge.getListenerCount('audioData');
+    if (existingAudioDataListeners > 0) {
+      console.warn('[useNativeBridge] Clearing', existingAudioDataListeners, 'existing audioData listeners');
+      nativeBridge.removeAllListeners('audioData');
+    }
+
     // Register all listeners
     nativeBridge.on('connected', handleConnected);
     nativeBridge.on('disconnected', handleDisconnected);
@@ -205,7 +214,7 @@ export function useNativeBridge() {
     nativeBridge.on('levels', handleLevels);
     nativeBridge.on('audioData', handleAudioData);
 
-    console.log('[useNativeBridge] Event listeners registered, checking availability...');
+    console.log('[useNativeBridge] Event listeners registered (audioData listeners: 1), checking availability...');
 
     // Check if bridge is available - the 'connected' event handler will request devices
     const checkAvailability = async () => {
