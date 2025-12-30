@@ -262,7 +262,7 @@ export class AudioEngine {
       }
     }
 
-    console.log('[AudioEngine] Sample rate changed to', this.audioContext?.sampleRate);
+    console.log('[AudioEngine] Sample rate changed to', this.config.sampleRate);
   }
 
   async captureLocalAudio(options: CaptureAudioOptions = {}): Promise<MediaStream> {
