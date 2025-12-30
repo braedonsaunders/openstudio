@@ -94,49 +94,74 @@ const WALK_DURATION_MIN = 2000; // Short walks between stops
 const WALK_DURATION_MAX = 4000; // Not too long walks
 const SETTLING_DURATION = 300; // Pause to let spring animation settle
 
-// Center UI exclusion zone (percentage of screen) - characters avoid this area
-// This is where the main "Play Together" UI panel sits
-const UI_EXCLUSION_ZONE = {
-  minX: 20, // Left boundary
-  maxX: 80, // Right boundary
-  minY: 15, // Top boundary (in ground-relative %)
-  maxY: 55, // Bottom boundary (in ground-relative %)
+// Content card exclusion zone - characters walk AROUND this, never through it
+// The card is centered (max-w-2xl = ~672px), positioned in the upper-middle area
+const CONTENT_CARD_ZONE = {
+  minX: 18, // Left edge of card (percentage)
+  maxX: 82, // Right edge of card (percentage)
+  minY: 15, // Top edge of card (percentage)
+  maxY: 58, // Bottom edge of card (percentage)
 };
 
-// Check if a position is inside the UI exclusion zone
-function isInExclusionZone(x: number, y: number): boolean {
+// Check if a point is inside the content card exclusion zone
+function isInsideCardZone(x: number, y: number): boolean {
   return (
-    x >= UI_EXCLUSION_ZONE.minX &&
-    x <= UI_EXCLUSION_ZONE.maxX &&
-    y >= UI_EXCLUSION_ZONE.minY &&
-    y <= UI_EXCLUSION_ZONE.maxY
+    x >= CONTENT_CARD_ZONE.minX &&
+    x <= CONTENT_CARD_ZONE.maxX &&
+    y >= CONTENT_CARD_ZONE.minY &&
+    y <= CONTENT_CARD_ZONE.maxY
   );
 }
 
-// Get a valid position that avoids the UI zone, biased towards the bottom
+// Check if a line segment from (x1,y1) to (x2,y2) crosses the card zone
+function pathCrossesCardZone(x1: number, y1: number, x2: number, y2: number): boolean {
+  // Check if either endpoint is inside the card
+  if (isInsideCardZone(x1, y1) || isInsideCardZone(x2, y2)) {
+    return true;
+  }
+
+  // Check if the path crosses the card zone (simplified line-box intersection)
+  // Sample points along the path
+  const steps = 10;
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const px = x1 + (x2 - x1) * t;
+    const py = y1 + (y2 - y1) * t;
+    if (isInsideCardZone(px, py)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// Get a valid position that avoids the content card
 function getValidPosition(
   baseX: number,
   baseY: number,
   walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
 ): { x: number; y: number } {
+  // Clamp to walkable area
   let x = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, baseX));
   let y = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, baseY));
 
-  // If in exclusion zone, push to sides or bottom
-  if (isInExclusionZone(x, y)) {
-    // Decide: go left, right, or below
-    const goLeft = x < 50;
-    const goBelow = y > (UI_EXCLUSION_ZONE.minY + UI_EXCLUSION_ZONE.maxY) / 2;
+  // If inside the card zone, push to nearest edge
+  if (isInsideCardZone(x, y)) {
+    // Find nearest edge to push to
+    const distToLeft = x - CONTENT_CARD_ZONE.minX;
+    const distToRight = CONTENT_CARD_ZONE.maxX - x;
+    const distToTop = y - CONTENT_CARD_ZONE.minY;
+    const distToBottom = CONTENT_CARD_ZONE.maxY - y;
 
-    if (goBelow) {
-      // Push below the UI
-      y = UI_EXCLUSION_ZONE.maxY + 5 + Math.random() * 20;
-    } else if (goLeft) {
-      // Push to left side
-      x = UI_EXCLUSION_ZONE.minX - 5 - Math.random() * 10;
+    const minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
+
+    if (minDist === distToLeft) {
+      x = CONTENT_CARD_ZONE.minX - 3;
+    } else if (minDist === distToRight) {
+      x = CONTENT_CARD_ZONE.maxX + 3;
+    } else if (minDist === distToTop) {
+      y = CONTENT_CARD_ZONE.minY - 3;
     } else {
-      // Push to right side
-      x = UI_EXCLUSION_ZONE.maxX + 5 + Math.random() * 10;
+      y = CONTENT_CARD_ZONE.maxY + 3;
     }
 
     // Re-clamp to walkable area
@@ -147,26 +172,38 @@ function getValidPosition(
   return { x, y };
 }
 
-// Generate a position biased towards the bottom of the walkable area
+// Generate a position biased towards walking zones (avoiding the card)
 function getBiasedPosition(
   walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
 ): { x: number; y: number } {
-  // 70% chance to be in bottom half, 30% chance to be anywhere
-  const biasToBottom = Math.random() < 0.7;
+  // Define valid walking zones around the card
+  const zones = [
+    // Bottom zone (below card) - most common
+    { minX: walkableArea.minX, maxX: walkableArea.maxX, minY: CONTENT_CARD_ZONE.maxY + 2, maxY: walkableArea.maxY, weight: 5 },
+    // Left zone (left of card)
+    { minX: walkableArea.minX, maxX: CONTENT_CARD_ZONE.minX - 2, minY: walkableArea.minY, maxY: walkableArea.maxY, weight: 2 },
+    // Right zone (right of card)
+    { minX: CONTENT_CARD_ZONE.maxX + 2, maxX: walkableArea.maxX, minY: walkableArea.minY, maxY: walkableArea.maxY, weight: 2 },
+    // Top zone (above card) - rare
+    { minX: walkableArea.minX, maxX: walkableArea.maxX, minY: walkableArea.minY, maxY: CONTENT_CARD_ZONE.minY - 2, weight: 1 },
+  ];
 
-  let x: number;
-  let y: number;
+  // Pick a zone based on weights
+  const totalWeight = zones.reduce((sum, z) => sum + z.weight, 0);
+  let r = Math.random() * totalWeight;
+  let selectedZone = zones[0];
 
-  if (biasToBottom) {
-    // Bottom 40% of walkable area
-    const bottomStart = walkableArea.minY + (walkableArea.maxY - walkableArea.minY) * 0.6;
-    x = walkableArea.minX + Math.random() * (walkableArea.maxX - walkableArea.minX);
-    y = bottomStart + Math.random() * (walkableArea.maxY - bottomStart);
-  } else {
-    // Anywhere in walkable area
-    x = walkableArea.minX + Math.random() * (walkableArea.maxX - walkableArea.minX);
-    y = walkableArea.minY + Math.random() * (walkableArea.maxY - walkableArea.minY);
+  for (const zone of zones) {
+    r -= zone.weight;
+    if (r <= 0) {
+      selectedZone = zone;
+      break;
+    }
   }
+
+  // Generate position within selected zone
+  const x = selectedZone.minX + Math.random() * (selectedZone.maxX - selectedZone.minX);
+  const y = selectedZone.minY + Math.random() * (selectedZone.maxY - selectedZone.minY);
 
   return getValidPosition(x, y, walkableArea);
 }
@@ -321,6 +358,16 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           let newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
           let newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
 
+          // Stop if about to enter the content card zone
+          if (isInsideCardZone(newX, newY)) {
+            return {
+              ...prev,
+              isWalking: false,
+              isSettling: true,
+              settlingTimer: SETTLING_DURATION,
+            };
+          }
+
           const otherPositions = getOtherPositions?.(character.id) ?? [];
           if (wouldCollide(newX, newY, otherPositions)) {
             return {
@@ -355,27 +402,46 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             const { walkableArea } = groundConfig;
             const maxStepX = 12;
             const maxStepY = 10;
-            const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
-            const offsetY = (Math.random() - 0.3) * 2 * maxStepY;
-            const baseX = prev.x + offsetX;
-            const baseY = prev.y + offsetY;
-
-            const validPos = getValidPosition(baseX, baseY, walkableArea);
             const otherPositions = getOtherPositions?.(character.id) ?? [];
-            const nonCollidingPos = findNonCollidingPosition(
-              validPos.x,
-              validPos.y,
-              otherPositions,
-              walkableArea
-            );
+
+            // Try multiple times to find a valid target that doesn't cross the card
+            let bestTarget: { x: number; y: number } | null = null;
+            for (let attempt = 0; attempt < 8; attempt++) {
+              const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
+              const offsetY = (Math.random() - 0.3) * 2 * maxStepY;
+              const baseX = prev.x + offsetX;
+              const baseY = prev.y + offsetY;
+
+              const validPos = getValidPosition(baseX, baseY, walkableArea);
+              const nonCollidingPos = findNonCollidingPosition(
+                validPos.x,
+                validPos.y,
+                otherPositions,
+                walkableArea
+              );
+
+              // Check if this path would cross the card zone
+              if (!pathCrossesCardZone(prev.x, prev.y, nonCollidingPos.x, nonCollidingPos.y)) {
+                bestTarget = nonCollidingPos;
+                break;
+              }
+            }
+
+            // If no valid path found, stay idle a bit longer
+            if (!bestTarget) {
+              return {
+                ...prev,
+                idleTimer: IDLE_DURATION_MIN * 0.5, // Try again soon
+              };
+            }
 
             return {
               ...prev,
-              targetX: nonCollidingPos.x,
-              targetY: nonCollidingPos.y,
+              targetX: bestTarget.x,
+              targetY: bestTarget.y,
               isWalking: true,
               isSettling: false,
-              facingRight: nonCollidingPos.x > prev.x,
+              facingRight: bestTarget.x > prev.x,
               walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
             };
           }
