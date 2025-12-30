@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useAuthStore } from '@/stores/auth-store';
@@ -8,7 +8,7 @@ import { saveChatMessage, getRoomChatMessages } from '@/lib/supabase/auth';
 import { useChatPermissions } from '@/hooks/usePermissions';
 import { UserAvatar } from '@/components/avatar/UserAvatar';
 import { REACTION_TYPES, type ReactionType } from '@/types/user';
-import { Send, MessageSquare, Link2, Video, VideoOff, X, ExternalLink, Mic, MicOff, Phone, PhoneOff, ChevronLeft, Headphones, Lock } from 'lucide-react';
+import { Send, MessageSquare, Link2, X, ExternalLink, Headphones, Lock } from 'lucide-react';
 import { AudioChatPanel } from './audio-chat-panel';
 import { useAudioChatStore } from '@/stores/audio-chat-store';
 
@@ -49,7 +49,7 @@ function parseMessageContent(content: string): React.ReactNode {
 
 export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelProps) {
   // Permission checks
-  const { canSendMessages, canShareLinks, canVoice, canVideo, canReact } = useChatPermissions();
+  const { canSendMessages, canShareLinks, canVoice } = useChatPermissions();
 
   const [message, setMessage] = useState('');
   const [showReactions, setShowReactions] = useState<string | null>(null);
@@ -57,21 +57,12 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
   const [linkUrl, setLinkUrl] = useState('');
   const [linkTitle, setLinkTitle] = useState('');
 
-  // Video chat state
-  const [showVideoChat, setShowVideoChat] = useState(false);
   // Audio chat state
   const [showAudioChat, setShowAudioChat] = useState(false);
   const { isConnected: isAudioChatConnected } = useAudioChatStore();
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [isVideoEnabled, setIsVideoEnabled] = useState(true);
-  const [isAudioEnabled, setIsAudioEnabled] = useState(true);
-  const [isConnected, setIsConnected] = useState(false);
-  const [isConnecting, setIsConnecting] = useState(false);
-  const [videoError, setVideoError] = useState<string | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const linkInputRef = useRef<HTMLInputElement>(null);
-  const localVideoRef = useRef<HTMLVideoElement>(null);
   const { messages, currentUser, addMessage } = useRoomStore();
   const { profile, avatar, user } = useAuthStore();
 
@@ -110,22 +101,6 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
       linkInputRef.current.focus();
     }
   }, [showLinkInput]);
-
-  // Initialize video when connected
-  useEffect(() => {
-    if (localVideoRef.current && localStream) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
-
-  // Cleanup video on unmount or when leaving video chat
-  useEffect(() => {
-    return () => {
-      if (localStream) {
-        localStream.getTracks().forEach((track) => track.stop());
-      }
-    };
-  }, [localStream]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -201,60 +176,6 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   };
 
-  // Video chat functions
-  const startVideoChat = useCallback(async () => {
-    setIsConnecting(true);
-    setVideoError(null);
-
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          width: { ideal: 640 },
-          height: { ideal: 480 },
-          frameRate: { ideal: 30 },
-        },
-        audio: true,
-      });
-
-      setLocalStream(stream);
-      setIsConnected(true);
-    } catch (err) {
-      console.error('Failed to get media devices:', err);
-      setVideoError('Failed to access camera/microphone. Please check permissions.');
-    } finally {
-      setIsConnecting(false);
-    }
-  }, []);
-
-  const endVideoChat = useCallback(() => {
-    if (localStream) {
-      localStream.getTracks().forEach((track) => track.stop());
-      setLocalStream(null);
-    }
-    setIsConnected(false);
-    setShowVideoChat(false);
-  }, [localStream]);
-
-  const toggleVideo = useCallback(() => {
-    if (localStream) {
-      const videoTrack = localStream.getVideoTracks()[0];
-      if (videoTrack) {
-        videoTrack.enabled = !videoTrack.enabled;
-        setIsVideoEnabled(videoTrack.enabled);
-      }
-    }
-  }, [localStream]);
-
-  const toggleAudio = useCallback(() => {
-    if (localStream) {
-      const audioTrack = localStream.getAudioTracks()[0];
-      if (audioTrack) {
-        audioTrack.enabled = !audioTrack.enabled;
-        setIsAudioEnabled(audioTrack.enabled);
-      }
-    }
-  }, [localStream]);
-
   // Audio Chat View
   if (showAudioChat) {
     return (
@@ -267,199 +188,32 @@ export function ChatPanel({ roomId, onSendMessage, onSendReaction }: ChatPanelPr
     );
   }
 
-  // Video Chat View
-  if (showVideoChat) {
-    return (
-      <div className="h-full flex flex-col">
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-white/5">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => {
-                if (isConnected) endVideoChat();
-                else setShowVideoChat(false);
-              }}
-              className="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/10 rounded-lg transition-colors"
-            >
-              <ChevronLeft className="w-4 h-4" />
-            </button>
-            <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Video Chat</span>
-            {isConnected && (
-              <span className="px-1.5 py-0.5 text-[10px] font-medium bg-green-500/20 text-green-500 rounded-full">
-                Live
-              </span>
-            )}
-          </div>
-        </div>
-
-        {/* Video Area */}
-        <div className="flex-1 flex flex-col bg-gray-100 dark:bg-gray-950">
-          {!isConnected ? (
-            // Pre-call state
-            <div className="flex-1 flex flex-col items-center justify-center gap-4 p-4">
-              <div className="w-16 h-16 rounded-full bg-indigo-500/20 flex items-center justify-center">
-                <Video className="w-8 h-8 text-indigo-400" />
-              </div>
-              <div className="text-center">
-                <h3 className="text-sm font-medium text-gray-900 dark:text-white mb-1">Start Video Chat</h3>
-                <p className="text-xs text-gray-500 dark:text-gray-400 max-w-[200px]">
-                  Connect via video with musicians in this room
-                </p>
-              </div>
-              {videoError && (
-                <div className="px-3 py-2 bg-red-500/20 border border-red-500/30 rounded-lg">
-                  <p className="text-xs text-red-400">{videoError}</p>
-                </div>
-              )}
-              <button
-                onClick={startVideoChat}
-                disabled={isConnecting}
-                className={cn(
-                  'flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all',
-                  isConnecting
-                    ? 'bg-gray-700 text-gray-400 cursor-wait'
-                    : 'neon-button text-white'
-                )}
-              >
-                {isConnecting ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Connecting...</span>
-                  </>
-                ) : (
-                  <>
-                    <Phone className="w-4 h-4" />
-                    <span>Join</span>
-                  </>
-                )}
-              </button>
-              <p className="text-[10px] text-gray-400 dark:text-gray-500 text-center">
-                Video is separate from audio
-              </p>
-            </div>
-          ) : (
-            // In-call state
-            <>
-              {/* Video display */}
-              <div className="flex-1 relative bg-gray-200 dark:bg-gray-900 m-2 rounded-xl overflow-hidden">
-                <video
-                  ref={localVideoRef}
-                  autoPlay
-                  playsInline
-                  muted
-                  className={cn(
-                    'w-full h-full object-cover',
-                    !isVideoEnabled && 'hidden'
-                  )}
-                />
-                {!isVideoEnabled && (
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="w-16 h-16 rounded-full bg-gray-300 dark:bg-gray-700 flex items-center justify-center text-xl font-bold text-gray-900 dark:text-white">
-                      {currentUser?.name?.charAt(0).toUpperCase() || 'U'}
-                    </div>
-                  </div>
-                )}
-                <div className="absolute bottom-2 left-2 px-2 py-1 bg-black/50 rounded-lg">
-                  <span className="text-[10px] font-medium text-white">You</span>
-                </div>
-                {!isAudioEnabled && (
-                  <div className="absolute top-2 right-2 p-1 bg-red-500/80 rounded-lg">
-                    <MicOff className="w-3 h-3 text-white" />
-                  </div>
-                )}
-              </div>
-
-              {/* Waiting message */}
-              <div className="px-4 py-2 text-center">
-                <p className="text-[10px] text-gray-500">Waiting for others to join...</p>
-              </div>
-
-              {/* Controls */}
-              <div className="flex items-center justify-center gap-2 px-4 py-3 border-t border-gray-200 dark:border-white/5">
-                <button
-                  onClick={toggleAudio}
-                  className={cn(
-                    'p-3 rounded-full transition-colors',
-                    isAudioEnabled
-                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'
-                      : 'bg-red-500 text-white hover:bg-red-600'
-                  )}
-                  title={isAudioEnabled ? 'Mute' : 'Unmute'}
-                >
-                  {isAudioEnabled ? <Mic className="w-4 h-4" /> : <MicOff className="w-4 h-4" />}
-                </button>
-
-                <button
-                  onClick={toggleVideo}
-                  className={cn(
-                    'p-3 rounded-full transition-colors',
-                    isVideoEnabled
-                      ? 'bg-gray-200 dark:bg-gray-700 text-gray-900 dark:text-white hover:bg-gray-300 dark:hover:bg-gray-600'
-                      : 'bg-red-500 text-white hover:bg-red-600'
-                  )}
-                  title={isVideoEnabled ? 'Turn off camera' : 'Turn on camera'}
-                >
-                  {isVideoEnabled ? <Video className="w-4 h-4" /> : <VideoOff className="w-4 h-4" />}
-                </button>
-
-                <button
-                  onClick={endVideoChat}
-                  className="p-3 rounded-full bg-red-500 text-white hover:bg-red-600 transition-colors"
-                  title="End call"
-                >
-                  <PhoneOff className="w-4 h-4" />
-                </button>
-              </div>
-            </>
-          )}
-        </div>
-      </div>
-    );
-  }
-
   // Regular Chat View
   return (
     <div className="h-full flex flex-col">
-      {/* Header with Voice/Video Chat Buttons */}
+      {/* Header with Voice Chat Button */}
       <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-white/5">
         <span className="text-xs font-medium text-gray-500 dark:text-zinc-500">Chat</span>
-        <div className="flex items-center gap-1">
-          {/* Voice Chat Button */}
-          <button
-            onClick={() => canVoice && setShowAudioChat(true)}
-            disabled={!canVoice}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-lg transition-colors',
-              !canVoice
-                ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
-                : isAudioChatConnected
-                  ? 'bg-emerald-500/20 text-emerald-500'
-                  : 'text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10'
-            )}
-            title={canVoice ? 'Voice chat' : 'You don\'t have permission for voice chat'}
-          >
-            <Headphones className="w-3.5 h-3.5" />
-            <span>Voice</span>
-            {isAudioChatConnected && (
-              <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
-            )}
-          </button>
-          {/* Video Chat Button */}
-          <button
-            onClick={() => canVideo && setShowVideoChat(true)}
-            disabled={!canVideo}
-            className={cn(
-              'flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-lg transition-colors',
-              !canVideo
-                ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
-                : 'text-indigo-500 dark:text-indigo-400 hover:bg-indigo-500/10'
-            )}
-            title={canVideo ? 'Start video chat' : 'You don\'t have permission for video chat'}
-          >
-            <Video className="w-3.5 h-3.5" />
-            <span>Video</span>
-          </button>
-        </div>
+        {/* Voice Chat Button */}
+        <button
+          onClick={() => canVoice && setShowAudioChat(true)}
+          disabled={!canVoice}
+          className={cn(
+            'flex items-center gap-1.5 px-2 py-1 text-xs font-medium rounded-lg transition-colors',
+            !canVoice
+              ? 'text-gray-400 dark:text-zinc-600 cursor-not-allowed'
+              : isAudioChatConnected
+                ? 'bg-emerald-500/20 text-emerald-500'
+                : 'text-emerald-500 dark:text-emerald-400 hover:bg-emerald-500/10'
+          )}
+          title={canVoice ? 'Voice chat' : 'You don\'t have permission for voice chat'}
+        >
+          <Headphones className="w-3.5 h-3.5" />
+          <span>Voice</span>
+          {isAudioChatConnected && (
+            <span className="w-1.5 h-1.5 bg-emerald-500 rounded-full animate-pulse" />
+          )}
+        </button>
       </div>
 
       {/* Messages List */}
