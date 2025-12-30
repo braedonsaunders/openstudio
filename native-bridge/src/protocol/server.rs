@@ -110,9 +110,11 @@ impl BridgeServer {
                 }
             }
 
-            // Use timeout to allow periodic level updates even when no messages arrive
+            // Use short timeout to ensure audio is sent frequently
+            // Browser's ScriptProcessorNode at 48kHz/256 buffer runs ~187 times/sec
+            // We need to send audio at least that fast to avoid buffer starvation
             let msg = tokio::time::timeout(
-                std::time::Duration::from_millis(10),
+                std::time::Duration::from_millis(2),
                 read.next()
             ).await;
 

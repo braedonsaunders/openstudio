@@ -996,9 +996,11 @@ export class AudioEngine {
    * When not armed, blocks all audio from being processed or monitored
    */
   setLocalTrackArmed(armed: boolean): void {
+    console.log('[AudioEngine] setLocalTrackArmed:', armed, 'hasArmGain:', !!this.localArmGain);
     this.localTrackArmed = armed;
     if (this.localArmGain && this.audioContext) {
       this.localArmGain.gain.setTargetAtTime(armed ? 1 : 0, this.audioContext.currentTime, 0.01);
+      console.log('[AudioEngine] armGain.value set to:', armed ? 1 : 0);
     }
   }
 
