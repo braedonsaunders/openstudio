@@ -368,26 +368,10 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   // Get idle animation config
   const idleConfig = idleAnimations[character.idleAnimation];
 
-  // Determine animation based on state: walking -> settling -> idle
-  const getAnimationConfig = () => {
-    if (state.isWalking) {
-      return {
-        animate: { y: [0, -1.5, 0], rotate: [-0.5, 0.5, -0.5] },
-        transition: { duration: 0.5, repeat: Infinity, ease: 'easeInOut' as const },
-      };
-    }
-    if (state.isSettling) {
-      // Smooth transition to neutral position before idle animation starts
-      return {
-        animate: { y: 0, rotate: 0 },
-        transition: { duration: 0.15, ease: 'easeOut' as const },
-      };
-    }
-    // Idle state
-    return idleConfig;
-  };
-
-  const animConfig = getAnimationConfig();
+  // When walking, no bounce animation - the position change IS the walk
+  // When idle or settling, use idle animation (settling just delays the start)
+  const isAnimating = !state.isWalking && !state.isSettling;
+  const animConfig = isAnimating ? idleConfig : { animate: { y: 0, rotate: 0 }, transition: { duration: 0.2 } };
 
   return (
     <motion.div
