@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useMemo, memo } from 'react';
+import { useState, useEffect, useRef, useMemo, memo, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { SCENE_CONFIGS } from './scene-config';
 import { SceneSelector } from './SceneSelector';
@@ -1191,6 +1191,25 @@ export function SceneRenderer({
   const containerRef = useRef<HTMLDivElement>(null);
   const [containerSize, setContainerSize] = useState({ width: 0, height: 0 });
 
+  // Shared position registry for collision avoidance
+  const characterPositionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
+
+  // Callback for characters to update their position
+  const updateCharacterPosition = useCallback((id: string, x: number, y: number) => {
+    characterPositionsRef.current.set(id, { x, y });
+  }, []);
+
+  // Callback to get other characters' positions for collision avoidance
+  const getOtherCharacterPositions = useCallback((excludeId: string) => {
+    const positions: Array<{ x: number; y: number }> = [];
+    characterPositionsRef.current.forEach((pos, id) => {
+      if (id !== excludeId) {
+        positions.push(pos);
+      }
+    });
+    return positions;
+  }, []);
+
   // Track previous values using refs - updated synchronously
   const prevSceneRef = useRef<HomepageSceneType>(currentScene);
   const prevThemeRef = useRef<boolean>(isDark);
@@ -1358,6 +1377,8 @@ export function SceneRenderer({
             groundConfig={sceneConfig.ground}
             containerWidth={containerSize.width}
             containerHeight={containerSize.height}
+            onPositionUpdate={updateCharacterPosition}
+            getOtherPositions={getOtherCharacterPositions}
           />
         ))}
       </AnimatePresence>
