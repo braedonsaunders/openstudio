@@ -6,6 +6,7 @@ import { Button } from '../ui/button';
 import { Input } from '../ui/input';
 import { Progress } from '../ui/progress';
 import { Modal } from '../ui/modal';
+import { useStatsTracker } from '@/hooks/useStatsTracker';
 import {
   Upload,
   X,
@@ -32,6 +33,7 @@ interface UploadModalProps {
 type UploadState = 'idle' | 'selected' | 'uploading' | 'success' | 'error';
 
 export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModalProps) {
+  const { trackTrackUpload } = useStatsTracker();
   const [file, setFile] = useState<File | null>(null);
   const [name, setName] = useState('');
   const [artist, setArtist] = useState('');
@@ -158,6 +160,9 @@ export function UploadModal({ isOpen, onClose, onUpload, className }: UploadModa
 
       setUploadProgress(100);
       setUploadState('success');
+
+      // Track upload for stats
+      trackTrackUpload();
 
       // Close modal after success
       setTimeout(() => {

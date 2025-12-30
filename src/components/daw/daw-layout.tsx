@@ -9,6 +9,7 @@ import { useTrackPersistence } from '@/hooks/useTrackPersistence';
 import { useTrackAudioSync } from '@/hooks/useTrackAudioSync';
 import { useSessionTempoSync } from '@/hooks/use-session-tempo-sync';
 import { useTempoRealtimeBroadcast } from '@/hooks/useTempoRealtimeBroadcast';
+import { useStatsTracker } from '@/hooks/useStatsTracker';
 import { useLoopPlayback } from '@/hooks/useLoopPlayback';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
@@ -138,6 +139,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume, currentTime } = useAudioStore();
+
+  // Stats tracking
+  const { trackStemSeparation } = useStatsTracker();
 
   // Song system - the primary track/playback system
   const { getCurrentSong } = useSongsStore();
@@ -925,6 +929,8 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
             stems: status.stems,
           });
           useRoomStore.getState().setStemsAvailable(true);
+          // Track stem separation for stats
+          trackStemSeparation();
         } else if (status.status === 'failed') {
           throw new Error(status.error);
         }
@@ -934,7 +940,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     } finally {
       setIsSeparating(false);
     }
-  }, [currentTrack]);
+  }, [currentTrack, trackStemSeparation]);
 
   const handleToggleStem = useCallback((stem: StemType, enabled: boolean) => {
     toggleStem(stem, enabled);

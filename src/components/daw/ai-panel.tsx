@@ -9,6 +9,7 @@ import { useSongsStore } from '@/stores/songs-store';
 import { useRoomStore } from '@/stores/room-store';
 import { useShallow } from 'zustand/shallow';
 import { useAIPermissions } from '@/hooks/usePermissions';
+import { useStatsTracker } from '@/hooks/useStatsTracker';
 import { Slider } from '../ui/slider';
 import {
   Sparkles,
@@ -38,6 +39,7 @@ import { DEFAULT_LYRIA_CONFIG, type LyriaTrackConfig } from '@/types/songs';
 
 export function AIPanel() {
   const { canGenerateMusic } = useAIPermissions();
+  const { trackAIGeneration } = useStatsTracker();
 
   // Use session tempo store as single source of truth for BPM/key
   const roomBpm = useSessionTempoStore(selectTempo);
@@ -170,8 +172,11 @@ export function AIPanel() {
     // Clear the new song name input
     setNewSongName('');
 
+    // Track AI generation for stats
+    trackAIGeneration();
+
     console.log('[AIPanel] Created Lyria song:', song.name);
-  }, [roomId, currentUser, getCurrentConfig, selectedStyle, createSong, addTrackToSong, lyriaVolume, newSongName]);
+  }, [roomId, currentUser, getCurrentConfig, selectedStyle, createSong, addTrackToSong, lyriaVolume, newSongName, trackAIGeneration]);
 
   // Add Lyria track to current song
   const handleAddToCurrentSong = useCallback(() => {

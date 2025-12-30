@@ -25,6 +25,7 @@ import { Modal } from '@/components/ui/modal';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { useAuthStore } from '@/stores/auth-store';
+import { useStatsTracker } from '@/hooks/useStatsTracker';
 import { createRoom, ROOM_GENRES, MAX_USER_OPTIONS } from '@/lib/rooms/service';
 import type { RoomRules, RoomColor, RoomIcon } from '@/types';
 import { ROOM_COLORS, ROOM_ICONS } from '@/types';
@@ -46,6 +47,7 @@ const DEFAULT_RULES: RoomRules = {
 export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
   const router = useRouter();
   const { user, profile } = useAuthStore();
+  const { trackRoomCreated } = useStatsTracker();
 
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
@@ -121,6 +123,9 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
         },
         user.id
       );
+
+      // Track room creation for stats
+      trackRoomCreated(room.id);
 
       onClose();
       router.push(`/room/${room.id}`);
