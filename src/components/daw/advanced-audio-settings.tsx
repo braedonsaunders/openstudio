@@ -438,31 +438,10 @@ export function AdvancedAudioSettingsPopover({ track, onClose }: AdvancedAudioSe
         {/* Device Selection (only for direct input) */}
         {track.audioSettings.inputMode === 'microphone' && (
           <>
-            {/* Bridge Device Selection (when bridge is active) */}
+            {/* Bridge Channel Selection (when bridge is active) */}
+            {/* Note: Device is already selected in main Audio Settings - only show channel config here */}
             {useBridgeForInput ? (
               <>
-                <div className="space-y-2">
-                  <label className="text-xs font-medium text-gray-500 dark:text-zinc-400 flex items-center gap-1.5">
-                    <Zap className="w-3 h-3 text-indigo-400" />
-                    Bridge Input Device
-                  </label>
-                  <div className="relative">
-                    <select
-                      value={bridgeSelectedInputId || ''}
-                      onChange={(e) => setBridgeInputDevice(e.target.value)}
-                      className={selectClassName}
-                    >
-                      <option value="">Select bridge input...</option>
-                      {bridgeInputDevices.map((device) => (
-                        <option key={device.id} value={device.id}>
-                          {device.name} ({device.channels.length}ch)
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="absolute right-2 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-500 dark:text-zinc-500 pointer-events-none" />
-                  </div>
-                </div>
-
                 {/* Bridge Channel Selection */}
                 {bridgeSelectedDevice && bridgeChannels.length > 0 && (
                   <div className="space-y-2">
