@@ -145,10 +145,20 @@ export function useNativeBridge() {
       useAudioStore.getState().setLocalLevel(data.inputLevel);
     };
 
+    // Counter for audioData logging
+    let audioDataCounter = 0;
+
     // Handle raw audio data from native bridge
     // This is the core of the bridge integration - raw ASIO audio is sent here
     // and routed through Web Audio effects chain + WebRTC for broadcast
     const handleAudioData = async (data: BridgeAudioData) => {
+      // Log occasionally to confirm audio data is being received
+      if (audioDataCounter++ % 500 === 0) {
+        console.log('[useNativeBridge] handleAudioData called, samples:', data.samples?.length,
+          'hasEngine:', !!(window as any).__openStudioAudioEngine,
+          'bridgeEnabled:', (window as any).__openStudioAudioEngine?.isBridgeAudioEnabled?.());
+      }
+
       // Get audio engine and push samples
       // The audio engine will process through effects and route to WebRTC
       try {
@@ -159,7 +169,7 @@ export function useNativeBridge() {
           (window as any).__openStudioAudioEngine.pushBridgeAudio(data.samples);
         }
       } catch (e) {
-        // Silently ignore - audio engine may not be ready yet
+        console.error('[useNativeBridge] handleAudioData error:', e);
       }
     };
 
@@ -390,11 +400,21 @@ export function useNativeBridge() {
   // Also syncs audio-store to keep all sample rate settings consistent
   const setSampleRate = useCallback(async (rate: 44100 | 48000) => {
     const store = useBridgeAudioStore.getState();
+    const wasRunning = store.isRunning;
     store.setSampleRate(rate);
 
     // Also update audio-store to keep sample rates in sync across all stores
     // This ensures any future AudioEngine initialization uses the correct rate
     useAudioStore.getState().setSettings({ sampleRate: rate });
+
+    // If bridge is running, stop it first before changing sample rate
+    // The native bridge needs a full stop/start cycle to apply sample rate changes
+    if (store.isConnected && wasRunning) {
+      console.log('[useNativeBridge] Stopping bridge audio before sample rate change');
+      nativeBridge.stopAudio();
+      // Give the native bridge time to stop cleanly
+      await new Promise(resolve => setTimeout(resolve, 100));
+    }
 
     // Change the AudioContext sample rate (recreates it)
     if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
@@ -404,11 +424,26 @@ export function useNativeBridge() {
 
     // Update native bridge sample rate
     if (store.isConnected) {
+      console.log('[useNativeBridge] Setting native bridge sample rate to', rate);
       nativeBridge.setSampleRate(rate);
 
-      // If bridge is running, restart it with new rate
-      if (store.isRunning) {
+      // If bridge was running, restart it with new rate
+      if (wasRunning) {
         console.log('[useNativeBridge] Restarting bridge audio with new sample rate');
+
+        // Small delay to ensure sample rate is applied
+        await new Promise(resolve => setTimeout(resolve, 50));
+
+        // Restart audio on native bridge
+        nativeBridge.startAudio();
+
+        // Wait for audio to start
+        await new Promise(resolve => setTimeout(resolve, 100));
+
+        // Note: We don't need to call enableBridgeAudio() here because
+        // changeSampleRate() already re-enabled it with the new AudioContext.
+        // Calling it again would clear the audio buffer.
+
         // Re-sync track state after the audio engine was recreated
         const roomState = useRoomStore.getState();
         const currentUserId = roomState.currentUser?.id;
@@ -417,12 +452,26 @@ export function useNativeBridge() {
           const userTracks = tracksState.getTracksByUser(currentUserId);
           if (userTracks.length > 0) {
             const track = userTracks[0];
+
+            // Send track state to native bridge
+            nativeBridge.updateTrackState(track.id, {
+              isArmed: track.isArmed,
+              isMuted: track.isMuted,
+              isSolo: track.isSolo,
+              volume: track.volume,
+              inputGainDb: track.audioSettings.inputGain || 0,
+              monitoringEnabled: track.audioSettings.directMonitoring ?? true,
+              monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
+            });
+
+            // Sync to audio engine
             const engine = (window as any).__openStudioAudioEngine;
             if (engine) {
               engine.setLocalTrackArmed(track.isArmed);
               engine.setLocalTrackMuted(track.isMuted);
               engine.setLocalTrackVolume(track.volume);
               const shouldSoftwareMonitor = track.isArmed && !track.isMuted;
+              console.log('[useNativeBridge] After sample rate change - setting software monitoring:', shouldSoftwareMonitor);
               engine.setMonitoringEnabled(shouldSoftwareMonitor);
               if (track.audioSettings.effects) {
                 engine.updateLocalEffects(track.audioSettings.effects);

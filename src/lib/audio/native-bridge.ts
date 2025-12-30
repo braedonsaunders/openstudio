@@ -321,6 +321,9 @@ export class NativeBridge {
     }
   }
 
+  // Counter for binary message logging
+  private binaryMessageCounter = 0;
+
   /**
    * Handle binary audio data from native bridge
    * Format: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
@@ -341,6 +344,12 @@ export class NativeBridge {
       const headerSize = 13;
       const samplesBuffer = data.slice(headerSize);
       const samplesData = new Float32Array(samplesBuffer);
+
+      // Log occasionally to confirm binary messages are being received
+      if (this.binaryMessageCounter++ % 500 === 0) {
+        console.log('[NativeBridge] handleBinaryMessage - samples:', samplesData.length,
+          'listeners:', this.listeners.get('audioData')?.size);
+      }
 
       // Emit audio data event
       this.emit('audioData', {
