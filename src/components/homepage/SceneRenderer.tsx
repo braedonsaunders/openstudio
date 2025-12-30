@@ -1296,33 +1296,28 @@ export function SceneRenderer({
     // Minimum distance between characters
     const MIN_SPAWN_DISTANCE = 15;
 
-    // UI zone that characters should avoid (center card area)
-    const UI_ZONE = { minX: 18, maxX: 82, minY: 10, maxY: 58 };
+    // UI zone - characters spawn below this
+    const UI_ZONE_BOTTOM = 60;
 
-    // Helper to check if point is in UI zone
-    const isInUIZone = (x: number, y: number) =>
-      x >= UI_ZONE.minX && x <= UI_ZONE.maxX && y >= UI_ZONE.minY && y <= UI_ZONE.maxY;
-
-    // Create a grid of ALL points in walkable area, then filter out UI zone
+    // Create spawn points only in bottom portion of walkable area
     const spawnPoints: Array<{ x: number; y: number }> = [];
     const spacing = 10;
 
+    // Only spawn below the UI zone (bottom portion of screen)
+    const minSpawnY = Math.max(UI_ZONE_BOTTOM, walkableArea.minY + (walkableArea.maxY - walkableArea.minY) * 0.5);
+
     for (let x = walkableArea.minX + 5; x <= walkableArea.maxX - 5; x += spacing) {
-      for (let y = walkableArea.minY + 5; y <= walkableArea.maxY - 5; y += spacing) {
-        // Only add points that are OUTSIDE the UI zone
-        if (!isInUIZone(x, y)) {
-          spawnPoints.push({ x, y });
-        }
+      for (let y = minSpawnY; y <= walkableArea.maxY - 3; y += spacing) {
+        spawnPoints.push({ x, y });
       }
     }
 
-    // Sort by distance from center-bottom for more natural distribution
-    const centerX = 50;
-    const bottomY = walkableArea.maxY;
+    // Sort by Y position (bottom first) then spread across X from center
     spawnPoints.sort((a, b) => {
-      const distA = Math.abs(a.x - centerX) + Math.abs(a.y - bottomY);
-      const distB = Math.abs(b.x - centerX) + Math.abs(b.y - bottomY);
-      return distA - distB;
+      // Prioritize bottom positions (higher Y = more towards bottom)
+      if (Math.abs(a.y - b.y) > 3) return b.y - a.y;
+      // Then spread from center outward
+      return Math.abs(a.x - 50) - Math.abs(b.x - 50);
     });
 
     // Assign each character to a spawn point, ensuring minimum distance
