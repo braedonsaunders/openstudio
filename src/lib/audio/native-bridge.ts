@@ -61,7 +61,16 @@ export interface BridgeAudioData {
   msgType: number; // 1 = local capture from native bridge
   sampleCount: number;
   timestamp: number;
+  trackId?: string; // Track identifier for multi-track audio
   samples: Float32Array; // Stereo interleaved samples
+}
+
+// Multi-track channel configuration
+export interface TrackChannelConfig {
+  trackId: string;
+  channelCount: 1 | 2;
+  leftChannel: number;
+  rightChannel?: number;
 }
 
 // === Event Types ===
@@ -326,28 +335,41 @@ export class NativeBridge {
 
   /**
    * Handle binary audio data from native bridge
-   * Format: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
+   * Format v1 (msgType=1): [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
+   * Format v2 (msgType=2): [msg_type: u8][sample_count: u32][timestamp: u64][track_id_len: u8][track_id: utf8][samples: f32...]
    */
   private handleBinaryMessage(data: ArrayBuffer): void {
     try {
       const view = new DataView(data);
 
-      // Parse header (13 bytes total)
+      // Parse header base (13 bytes)
       // Note: Rust uses little-endian by default with to_le_bytes
       const msgType = view.getUint8(0);
       const sampleCount = view.getUint32(1, true); // little-endian
       const timestamp = Number(view.getBigUint64(5, true)); // little-endian
 
+      let headerSize = 13;
+      let trackId: string | undefined;
+
+      // Multi-track format includes track ID
+      if (msgType === 2) {
+        const trackIdLen = view.getUint8(13);
+        if (trackIdLen > 0) {
+          const trackIdBytes = new Uint8Array(data, 14, trackIdLen);
+          trackId = new TextDecoder().decode(trackIdBytes);
+        }
+        headerSize = 14 + trackIdLen;
+      }
+
       // Parse samples (f32 little-endian)
-      // Header is 13 bytes, but Float32Array requires 4-byte alignment
-      // So we slice the buffer to create a new aligned ArrayBuffer
-      const headerSize = 13;
+      // Need to slice buffer for proper alignment
       const samplesBuffer = data.slice(headerSize);
       const samplesData = new Float32Array(samplesBuffer);
 
       // Log occasionally to confirm binary messages are being received
       if (this.binaryMessageCounter++ % 500 === 0) {
         console.log('[NativeBridge] handleBinaryMessage - samples:', samplesData.length,
+          'trackId:', trackId || 'none',
           'listeners:', this.listeners.get('audioData')?.size);
       }
 
@@ -356,6 +378,7 @@ export class NativeBridge {
         msgType,
         sampleCount,
         timestamp,
+        trackId,
         samples: samplesData,
       });
     } catch (e) {
@@ -408,7 +431,7 @@ export class NativeBridge {
   }
 
   /**
-   * Set channel configuration
+   * Set channel configuration (global - for single track mode)
    */
   setChannelConfig(config: InputChannelConfig): void {
     this.send({
@@ -416,6 +439,46 @@ export class NativeBridge {
       channelCount: config.channelCount,
       leftChannel: config.leftChannel,
       rightChannel: config.rightChannel,
+    });
+  }
+
+  /**
+   * Set channel configuration for a specific track (multi-track mode)
+   * Each track can have its own channel routing from the audio interface
+   */
+  setTrackChannelConfig(trackId: string, config: InputChannelConfig): void {
+    this.send({
+      type: 'setTrackChannelConfig',
+      trackId,
+      channelCount: config.channelCount,
+      leftChannel: config.leftChannel,
+      rightChannel: config.rightChannel,
+    });
+  }
+
+  /**
+   * Configure multiple tracks at once (multi-track mode)
+   * More efficient than calling setTrackChannelConfig multiple times
+   */
+  setMultiTrackConfig(tracks: TrackChannelConfig[]): void {
+    this.send({
+      type: 'setMultiTrackConfig',
+      tracks: tracks.map(t => ({
+        trackId: t.trackId,
+        channelCount: t.channelCount,
+        leftChannel: t.leftChannel,
+        rightChannel: t.rightChannel,
+      })),
+    });
+  }
+
+  /**
+   * Remove a track from multi-track configuration
+   */
+  removeTrackConfig(trackId: string): void {
+    this.send({
+      type: 'removeTrackConfig',
+      trackId,
     });
   }
 

@@ -647,6 +647,100 @@ export function useAudioEngine() {
     return globalEngine?.getAudioContext()?.sampleRate ?? null;
   }, []);
 
+  // ==========================================
+  // Multi-Track Audio Processor Methods
+  // ==========================================
+
+  // Get or create a track audio processor
+  const getOrCreateTrackProcessor = useCallback((
+    trackId: string,
+    settings?: TrackAudioSettings
+  ) => {
+    return globalEngine?.getOrCreateTrackProcessor(trackId, settings) ?? null;
+  }, []);
+
+  // Get an existing track processor
+  const getTrackProcessor = useCallback((trackId: string) => {
+    return globalEngine?.getTrackProcessor(trackId);
+  }, []);
+
+  // Remove a track processor
+  const removeTrackProcessor = useCallback((trackId: string) => {
+    globalEngine?.removeTrackProcessor(trackId);
+  }, []);
+
+  // Update track state (arm, mute, solo, volume, etc.)
+  const updateTrackState = useCallback((
+    trackId: string,
+    state: Partial<import('@/lib/audio/track-audio-processor').TrackAudioState>
+  ) => {
+    globalEngine?.updateTrackState(trackId, state);
+  }, []);
+
+  // Update track effects
+  const updateTrackEffects = useCallback((
+    trackId: string,
+    effects: Partial<import('@/types').ExtendedEffectsChain>
+  ) => {
+    globalEngine?.updateTrackEffects(trackId, effects);
+  }, []);
+
+  // Get track levels (input and output)
+  const getTrackLevels = useCallback((trackId: string) => {
+    return globalEngine?.getTrackLevels(trackId) ?? { input: 0, output: 0 };
+  }, []);
+
+  // Get track metrics (levels, effects metering, etc.)
+  const getTrackMetrics = useCallback((trackId: string) => {
+    return globalEngine?.getTrackMetrics(trackId);
+  }, []);
+
+  // Set up MediaStream input for a track (web audio mode)
+  const setTrackMediaStreamInput = useCallback(async (
+    trackId: string,
+    stream: MediaStream,
+    config: import('@/lib/audio/track-audio-processor').TrackInputConfig
+  ) => {
+    await globalEngine?.setTrackMediaStreamInput(trackId, stream, config);
+  }, []);
+
+  // Set up bridge input for a track (native bridge mode)
+  const setTrackBridgeInput = useCallback(async (
+    trackId: string,
+    config: import('@/lib/audio/track-audio-processor').TrackInputConfig
+  ) => {
+    await globalEngine?.setTrackBridgeInput(trackId, config);
+  }, []);
+
+  // Push bridge audio to a specific track
+  const pushTrackBridgeAudio = useCallback((trackId: string, samples: Float32Array) => {
+    globalEngine?.pushTrackBridgeAudio(trackId, samples);
+  }, []);
+
+  // Enable multi-track bridge audio mode
+  const enableMultiTrackBridgeAudio = useCallback(async (
+    trackConfigs: Array<{
+      trackId: string;
+      config: import('@/lib/audio/track-audio-processor').TrackInputConfig;
+      settings?: TrackAudioSettings;
+    }>
+  ) => {
+    if (!globalEngine) {
+      await initialize();
+    }
+    await globalEngine?.enableMultiTrackBridgeAudio(trackConfigs);
+  }, [initialize]);
+
+  // Disable multi-track bridge audio
+  const disableMultiTrackBridgeAudio = useCallback(() => {
+    globalEngine?.disableMultiTrackBridgeAudio();
+  }, []);
+
+  // Update broadcast connections (call after adding new tracks)
+  const updateBroadcastConnections = useCallback(() => {
+    globalEngine?.updateBroadcastConnections();
+  }, []);
+
   return {
     isInitialized,
     isPlaying,
@@ -707,5 +801,19 @@ export function useAudioEngine() {
     // Sample rate control
     changeSampleRate,
     getAudioContextSampleRate,
+    // Multi-track audio processors
+    getOrCreateTrackProcessor,
+    getTrackProcessor,
+    removeTrackProcessor,
+    updateTrackState,
+    updateTrackEffects,
+    getTrackLevels,
+    getTrackMetrics,
+    setTrackMediaStreamInput,
+    setTrackBridgeInput,
+    pushTrackBridgeAudio,
+    enableMultiTrackBridgeAudio,
+    disableMultiTrackBridgeAudio,
+    updateBroadcastConnections,
   };
 }

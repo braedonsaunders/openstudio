@@ -4,7 +4,8 @@
 import { AdaptiveJitterBuffer } from './jitter-buffer';
 import { ExtendedEffectsProcessor } from './effects/extended-effects-processor';
 import { MasterEffectsProcessor, type MasterEffectsChain } from './effects/master-effects-processor';
-import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, ExtendedEffectsChain } from '@/types';
+import { TrackAudioProcessor, type TrackAudioState, type TrackInputConfig } from './track-audio-processor';
+import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, ExtendedEffectsChain, TrackAudioSettings } from '@/types';
 
 export interface CaptureAudioOptions {
   deviceId?: string;
@@ -80,6 +81,11 @@ export class AudioEngine {
     gainNode: GainNode;
     stream: MediaStream;
   }> = new Map();
+
+  // Multi-track audio processors - each user track gets its own processor
+  private trackProcessors: Map<string, TrackAudioProcessor> = new Map();
+  private primaryTrackId: string | null = null; // For backward compatibility with single-track API
+
   private isPlaying = false;
   private playbackStartTime = 0;
   private playbackOffset = 0;
@@ -1025,10 +1031,12 @@ export class AudioEngine {
 
   /**
    * Update the local track effects (extended - all 35 effects)
+   * Updates the primary track processor
    */
   updateLocalEffects(effects: Partial<ExtendedEffectsChain>): void {
-    if (this.localEffectsProcessor) {
-      this.localEffectsProcessor.updateSettings(effects);
+    if (this.primaryTrackId) {
+      const processor = this.trackProcessors.get(this.primaryTrackId);
+      processor?.updateEffects(effects);
     }
   }
 
@@ -1037,6 +1045,246 @@ export class AudioEngine {
    */
   getLocalEffectsProcessor(): ExtendedEffectsProcessor | null {
     return this.localEffectsProcessor;
+  }
+
+  // ==========================================
+  // Multi-Track Audio Processor Management
+  // ==========================================
+
+  /**
+   * Create or get a track audio processor for a specific track
+   * Each track gets its own effects chain, gain controls, and routing
+   * @param trackId Unique track identifier
+   * @param settings Optional initial audio settings
+   * @param onEffectsChange Optional callback when effects change
+   * @returns The TrackAudioProcessor instance
+   */
+  getOrCreateTrackProcessor(
+    trackId: string,
+    settings?: TrackAudioSettings,
+    onEffectsChange?: (effects: ExtendedEffectsChain) => void
+  ): TrackAudioProcessor | null {
+    if (!this.audioContext || !this.masterGain) {
+      console.warn('[AudioEngine] Cannot create track processor: AudioContext not initialized');
+      return null;
+    }
+
+    // Return existing processor if it exists
+    let processor = this.trackProcessors.get(trackId);
+    if (processor) {
+      return processor;
+    }
+
+    // Create new processor
+    processor = new TrackAudioProcessor(
+      this.audioContext,
+      trackId,
+      settings,
+      onEffectsChange
+    );
+
+    // Connect track output to master gain
+    processor.connect(this.masterGain);
+
+    // Connect track monitor output to master gain for local monitoring
+    processor.connectMonitor(this.masterGain);
+
+    // If this is the first track, set it as primary for backward compat
+    if (this.trackProcessors.size === 0) {
+      this.primaryTrackId = trackId;
+    }
+
+    this.trackProcessors.set(trackId, processor);
+    console.log(`[AudioEngine] Created track processor for track ${trackId}`);
+
+    return processor;
+  }
+
+  /**
+   * Get an existing track processor
+   */
+  getTrackProcessor(trackId: string): TrackAudioProcessor | undefined {
+    return this.trackProcessors.get(trackId);
+  }
+
+  /**
+   * Remove a track processor and clean up resources
+   */
+  removeTrackProcessor(trackId: string): void {
+    const processor = this.trackProcessors.get(trackId);
+    if (processor) {
+      processor.dispose();
+      this.trackProcessors.delete(trackId);
+
+      // Update primary track if needed
+      if (this.primaryTrackId === trackId) {
+        const remaining = Array.from(this.trackProcessors.keys());
+        this.primaryTrackId = remaining.length > 0 ? remaining[0] : null;
+      }
+
+      console.log(`[AudioEngine] Removed track processor for track ${trackId}`);
+    }
+  }
+
+  /**
+   * Get all track processors
+   */
+  getAllTrackProcessors(): Map<string, TrackAudioProcessor> {
+    return new Map(this.trackProcessors);
+  }
+
+  /**
+   * Set up MediaStream input for a track (web audio mode)
+   * @param trackId The track to set up
+   * @param stream MediaStream from getUserMedia
+   * @param config Channel configuration
+   */
+  async setTrackMediaStreamInput(
+    trackId: string,
+    stream: MediaStream,
+    config: TrackInputConfig
+  ): Promise<void> {
+    const processor = this.trackProcessors.get(trackId);
+    if (!processor) {
+      console.warn(`[AudioEngine] Cannot set input: track ${trackId} not found`);
+      return;
+    }
+
+    await processor.setMediaStreamInput(stream, config);
+    console.log(`[AudioEngine] Set MediaStream input for track ${trackId}`);
+  }
+
+  /**
+   * Set up bridge input for a track (native bridge mode)
+   * @param trackId The track to set up
+   * @param config Channel configuration
+   */
+  async setTrackBridgeInput(trackId: string, config: TrackInputConfig): Promise<void> {
+    const processor = this.trackProcessors.get(trackId);
+    if (!processor) {
+      console.warn(`[AudioEngine] Cannot set bridge input: track ${trackId} not found`);
+      return;
+    }
+
+    await processor.setBridgeInput(config);
+    console.log(`[AudioEngine] Set bridge input for track ${trackId}`);
+  }
+
+  /**
+   * Push bridge audio to a specific track
+   * Called when receiving audio data from native bridge with trackId
+   * @param trackId The target track
+   * @param samples Interleaved stereo samples
+   */
+  pushTrackBridgeAudio(trackId: string, samples: Float32Array): void {
+    const processor = this.trackProcessors.get(trackId);
+    if (processor) {
+      processor.pushBridgeAudio(samples);
+    }
+  }
+
+  /**
+   * Update track state (arm, mute, solo, volume, etc.)
+   * @param trackId The track to update
+   * @param state Partial state to update
+   */
+  updateTrackState(trackId: string, state: Partial<TrackAudioState>): void {
+    const processor = this.trackProcessors.get(trackId);
+    if (processor) {
+      processor.updateState(state);
+    }
+  }
+
+  /**
+   * Update track effects
+   * @param trackId The track to update
+   * @param effects Effects settings
+   */
+  updateTrackEffects(trackId: string, effects: Partial<ExtendedEffectsChain>): void {
+    const processor = this.trackProcessors.get(trackId);
+    if (processor) {
+      processor.updateEffects(effects);
+    }
+  }
+
+  /**
+   * Get audio levels for a track
+   * @returns Object with input and output levels (0-1)
+   */
+  getTrackLevels(trackId: string): { input: number; output: number } {
+    const processor = this.trackProcessors.get(trackId);
+    if (processor) {
+      return {
+        input: processor.getInputLevel(),
+        output: processor.getOutputLevel(),
+      };
+    }
+    return { input: 0, output: 0 };
+  }
+
+  /**
+   * Get metrics for a track (levels, effects metering, etc.)
+   */
+  getTrackMetrics(trackId: string) {
+    const processor = this.trackProcessors.get(trackId);
+    return processor?.getMetrics() ?? null;
+  }
+
+  /**
+   * Set the primary track (for backward compatibility with single-track API)
+   */
+  setPrimaryTrack(trackId: string): void {
+    if (this.trackProcessors.has(trackId)) {
+      this.primaryTrackId = trackId;
+    }
+  }
+
+  /**
+   * Get the primary track ID
+   */
+  getPrimaryTrackId(): string | null {
+    return this.primaryTrackId;
+  }
+
+  /**
+   * Enable multi-track bridge audio mode
+   * Sets up bridge input for all configured tracks
+   * @param trackConfigs Array of track configurations
+   */
+  async enableMultiTrackBridgeAudio(
+    trackConfigs: Array<{ trackId: string; config: TrackInputConfig; settings?: TrackAudioSettings }>
+  ): Promise<void> {
+    if (!this.audioContext || !this.masterGain) {
+      console.warn('[AudioEngine] Cannot enable multi-track bridge: AudioContext not initialized');
+      return;
+    }
+
+    console.log('[AudioEngine] Enabling multi-track bridge audio for', trackConfigs.length, 'tracks');
+
+    for (const { trackId, config, settings } of trackConfigs) {
+      // Create or get processor
+      const processor = this.getOrCreateTrackProcessor(trackId, settings);
+      if (processor) {
+        // Set up bridge input
+        await processor.setBridgeInput(config);
+      }
+    }
+
+    this.useBridgeAudio = true;
+    console.log('[AudioEngine] Multi-track bridge audio enabled');
+  }
+
+  /**
+   * Disable multi-track bridge audio and clean up
+   */
+  disableMultiTrackBridgeAudio(): void {
+    console.log('[AudioEngine] Disabling multi-track bridge audio');
+
+    for (const processor of this.trackProcessors.values()) {
+      processor.disconnectInputSource();
+    }
+
+    this.useBridgeAudio = false;
   }
 
   /**
@@ -1107,16 +1355,15 @@ export class AudioEngine {
 
   /**
    * Create a mixed broadcast stream for WebRTC that combines:
-   * - Local mic/instrument input (after effects processing)
+   * - All armed user tracks (after effects processing)
    * - MIDI loop audio (optional)
    *
-   * This is the stream that should be sent to other participants in a jam session.
+   * This is the stream sent to other participants in a jam session.
    * @param midiStream Optional MediaStream from SoundEngine.enableBroadcast()
-   * @param micVolume Volume for mic input (0-1)
    * @param midiVolume Volume for MIDI audio (0-1)
    * @returns MediaStream containing the mixed audio for WebRTC
    */
-  createBroadcastStream(midiStream?: MediaStream | null, micVolume: number = 1, midiVolume: number = 0.8): MediaStream | null {
+  createBroadcastStream(midiStream?: MediaStream | null, midiVolume: number = 0.8): MediaStream | null {
     if (!this.audioContext) {
       console.warn('[AudioEngine] Cannot create broadcast stream: audio context not initialized');
       return null;
@@ -1129,19 +1376,17 @@ export class AudioEngine {
       this.broadcastMixerGain.connect(this.broadcastDestination);
     }
 
-    // Connect local effects output to broadcast mixer
-    // The signal flow: effectsProcessor -> muteGain -> broadcastMixerGain -> broadcastDestination
-    if (this.localMuteGain && this.broadcastMixerGain) {
-      // Create a separate gain for mic volume in broadcast mix
-      const micBroadcastGain = this.audioContext.createGain();
-      micBroadcastGain.gain.value = micVolume;
-      this.localMuteGain.connect(micBroadcastGain);
-      micBroadcastGain.connect(this.broadcastMixerGain);
+    // Connect all track processor outputs to broadcast mixer
+    // Each track's output goes through its own mute/solo logic
+    if (this.broadcastMixerGain) {
+      for (const processor of this.trackProcessors.values()) {
+        processor.getBroadcastNode().connect(this.broadcastMixerGain);
+      }
+      console.log(`[AudioEngine] Connected ${this.trackProcessors.size} tracks to broadcast mix`);
     }
 
     // Connect MIDI stream to broadcast mixer if provided
     if (midiStream && this.broadcastMixerGain) {
-      // Clean up previous MIDI source if exists
       if (this.midiSourceNode) {
         this.midiSourceNode.disconnect();
       }
@@ -1161,6 +1406,19 @@ export class AudioEngine {
 
     console.log('[AudioEngine] Broadcast stream created');
     return this.broadcastDestination.stream;
+  }
+
+  /**
+   * Reconnect all track processors to broadcast stream
+   * Call this after adding new tracks while broadcast is active
+   */
+  updateBroadcastConnections(): void {
+    if (!this.broadcastMixerGain) return;
+
+    for (const processor of this.trackProcessors.values()) {
+      // Only connect if not already connected
+      processor.getBroadcastNode().connect(this.broadcastMixerGain);
+    }
   }
 
   /**
@@ -1626,9 +1884,14 @@ export class AudioEngine {
     this.levelUpdateInterval = setInterval(() => {
       const levels = new Map<string, number>();
 
-      // Local level
+      // Local level (aggregate of all armed tracks)
       if (this.localAnalyser) {
         levels.set('local', this.calculateLevel(this.localAnalyser));
+      }
+
+      // Per-track levels
+      for (const [trackId, processor] of this.trackProcessors) {
+        levels.set(`track:${trackId}`, processor.getOutputLevel());
       }
 
       // Remote levels
@@ -1785,6 +2048,13 @@ export class AudioEngine {
 
     this.stopBackingTrack();
     this.stopStemmedTrack();
+
+    // Clean up track processors
+    for (const processor of this.trackProcessors.values()) {
+      processor.dispose();
+    }
+    this.trackProcessors.clear();
+    this.primaryTrackId = null;
 
     // Clean up external audio sources
     for (const data of this.externalSources.values()) {
