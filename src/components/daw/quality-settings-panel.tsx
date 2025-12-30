@@ -74,72 +74,54 @@ export function QualitySettingsPanel({
   return (
     <div className={cn('rounded-xl border bg-white dark:bg-zinc-900 overflow-hidden', className)}>
       {/* Header */}
-      <div className="px-4 py-3 border-b border-gray-200 dark:border-white/10">
+      <div className="px-3 py-2 border-b border-gray-200 dark:border-white/10">
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Settings2 className="w-4 h-4 text-indigo-500" />
-            <h4 className="text-sm font-medium text-gray-900 dark:text-white">
-              Audio Quality Settings
+          <div className="flex items-center gap-1.5">
+            <Settings2 className="w-3.5 h-3.5 text-indigo-500" />
+            <h4 className="text-xs font-medium text-gray-900 dark:text-white">
+              Audio Quality
             </h4>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-zinc-500">
-            <span>~{bandwidth} kbps</span>
-            <span>•</span>
+          <div className="flex items-center gap-1.5 text-[10px] text-gray-400 dark:text-zinc-500 font-mono">
+            <span>{bandwidth}kbps</span>
+            <span className="text-gray-300 dark:text-zinc-600">·</span>
             <span>+{encodingLatency.toFixed(1)}ms</span>
           </div>
         </div>
       </div>
 
       {/* Presets */}
-      <div className="p-4 space-y-3">
-        <div className="text-xs font-medium text-gray-500 dark:text-zinc-500">
-          Quality Preset
-        </div>
-
-        <div className="space-y-2">
+      <div className="p-3">
+        <div className="grid grid-cols-2 gap-1.5">
           {presets.map((preset) => (
             <button
               key={preset.id}
               onClick={() => onPresetChange(preset.id)}
               className={cn(
-                'relative flex items-center gap-3 w-full p-3 rounded-lg border transition-all text-left',
+                'relative flex items-center gap-2 w-full px-2.5 py-2 rounded-lg border transition-all text-left',
                 activePreset === preset.id
                   ? 'border-indigo-500 bg-indigo-500/10'
                   : 'border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
               )}
             >
               {activePreset === preset.id && (
-                <div className="absolute top-3 right-3">
-                  <Check className="w-4 h-4 text-indigo-500" />
+                <div className="absolute top-1.5 right-1.5">
+                  <Check className="w-3 h-3 text-indigo-500" />
                 </div>
               )}
 
-              <div className={cn(
-                'w-8 h-8 rounded-full flex items-center justify-center shrink-0',
-                activePreset === preset.id
-                  ? 'bg-indigo-500/20 text-indigo-500'
-                  : 'bg-gray-100 dark:bg-white/10 text-gray-500 dark:text-zinc-400'
-              )}>
-                {presetIcons[preset.id]}
-              </div>
-
-              <div className="flex-1 pr-6">
-                <div className="flex items-center gap-2">
-                  <span className="text-base">{preset.icon}</span>
-                  <span className={cn(
-                    'font-medium text-sm',
-                    activePreset === preset.id
-                      ? 'text-indigo-600 dark:text-indigo-400'
-                      : 'text-gray-900 dark:text-white'
-                  )}>
-                    {preset.name}
-                  </span>
-                  <span className="text-xs text-gray-400 dark:text-zinc-500 ml-auto">
-                    {preset.encoding.bitrate}kbps • {preset.encoding.frameSize}ms
-                  </span>
+              <span className="text-sm">{preset.icon}</span>
+              <div className="flex-1 min-w-0 pr-4">
+                <div className={cn(
+                  'font-medium text-xs truncate',
+                  activePreset === preset.id
+                    ? 'text-indigo-600 dark:text-indigo-400'
+                    : 'text-gray-900 dark:text-white'
+                )}>
+                  {preset.name}
                 </div>
-                <div className="text-xs text-gray-500 dark:text-zinc-500 mt-0.5">
-                  {preset.description}
+                <div className="text-[10px] text-gray-400 dark:text-zinc-500">
+                  {preset.encoding.bitrate}k · {preset.encoding.frameSize}ms
                 </div>
               </div>
             </button>
@@ -148,25 +130,23 @@ export function QualitySettingsPanel({
       </div>
 
       {/* Quick settings */}
-      <div className="px-4 pb-4 space-y-3">
+      <div className="px-3 pb-3 space-y-2">
         {/* Jitter Buffer Mode */}
         <div>
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-zinc-500">
-              <span>Jitter Buffer Mode</span>
-              <Tooltip content="Controls how much audio is buffered to handle network variability. Lower = less latency, Higher = more stable.">
-                <Info className="w-3 h-3" />
-              </Tooltip>
-            </div>
+          <div className="flex items-center gap-1 mb-1.5">
+            <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-500">Buffer</span>
+            <Tooltip content="Controls how much audio is buffered to handle network variability.">
+              <Info className="w-2.5 h-2.5 text-gray-400" />
+            </Tooltip>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-1">
             {(['live-jamming', 'balanced', 'stable'] as const).map((mode) => (
               <button
                 key={mode}
                 onClick={() => onJitterModeChange(mode)}
                 className={cn(
-                  'flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all',
+                  'flex-1 px-2 py-1.5 text-[10px] font-medium rounded-md transition-all',
                   jitterMode === mode
                     ? 'bg-indigo-500 text-white'
                     : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/20'
@@ -182,23 +162,23 @@ export function QualitySettingsPanel({
 
         {/* Low Latency Mode */}
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-1 text-xs font-medium text-gray-500 dark:text-zinc-500">
-            <span>Low Latency Mode</span>
-            <Tooltip content="Bypasses effects chain when no effects are enabled for minimum latency.">
-              <Info className="w-3 h-3" />
+          <div className="flex items-center gap-1">
+            <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-500">Low Latency</span>
+            <Tooltip content="Bypasses effects chain for minimum latency.">
+              <Info className="w-2.5 h-2.5 text-gray-400" />
             </Tooltip>
           </div>
 
           <button
             onClick={() => onLowLatencyModeChange(!lowLatencyMode)}
             className={cn(
-              'relative w-11 h-6 rounded-full transition-colors',
+              'relative w-9 h-5 rounded-full transition-colors',
               lowLatencyMode ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-white/20'
             )}
           >
             <motion.div
-              className="absolute top-1 left-1 w-4 h-4 bg-white rounded-full shadow-sm"
-              animate={{ x: lowLatencyMode ? 20 : 0 }}
+              className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
+              animate={{ x: lowLatencyMode ? 16 : 0 }}
               transition={{ type: 'spring', stiffness: 500, damping: 30 }}
             />
           </button>
@@ -208,15 +188,15 @@ export function QualitySettingsPanel({
       {/* Advanced settings toggle */}
       <button
         onClick={() => setShowAdvanced(!showAdvanced)}
-        className="w-full px-4 py-3 flex items-center justify-between border-t border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
+        className="w-full px-3 py-2 flex items-center justify-between border-t border-gray-200 dark:border-white/10 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
       >
-        <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">
-          Advanced Settings
+        <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-400">
+          Advanced
         </span>
         {showAdvanced ? (
-          <ChevronUp className="w-4 h-4 text-gray-400" />
+          <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-gray-400" />
+          <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
         )}
       </button>
 
@@ -229,15 +209,15 @@ export function QualitySettingsPanel({
             exit={{ height: 0, opacity: 0 }}
             className="border-t border-gray-200 dark:border-white/10"
           >
-            <div className="p-4 space-y-4">
+            <div className="p-3 space-y-3">
               {/* Bitrate */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-500 dark:text-zinc-500">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-medium text-gray-500 dark:text-zinc-500">
                     Bitrate
                   </label>
-                  <span className="text-xs text-gray-700 dark:text-zinc-300 font-mono">
-                    {effectiveSettings.bitrate} kbps
+                  <span className="text-[10px] text-gray-700 dark:text-zinc-300 font-mono">
+                    {effectiveSettings.bitrate}k
                   </span>
                 </div>
                 <input
@@ -252,24 +232,18 @@ export function QualitySettingsPanel({
                     }
                     onCustomSettingsChange?.({ ...customSettings, bitrate });
                   }}
-                  className="w-full h-2 bg-gray-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500"
+                  className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500"
                 />
-                <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-                  <span>24k</span>
-                  <span>128k</span>
-                  <span>256k</span>
-                  <span>510k</span>
-                </div>
               </div>
 
               {/* Frame Size */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-500 dark:text-zinc-500">
-                    Frame Size
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-medium text-gray-500 dark:text-zinc-500">
+                    Frame
                   </label>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-1">
                   {([10, 20] as const).map((size) => (
                     <button
                       key={size}
@@ -280,25 +254,22 @@ export function QualitySettingsPanel({
                         onCustomSettingsChange?.({ ...customSettings, frameSize: size });
                       }}
                       className={cn(
-                        'flex-1 px-3 py-2 text-xs font-medium rounded-lg transition-all',
+                        'flex-1 px-2 py-1 text-[10px] font-medium rounded-md transition-all',
                         effectiveSettings.frameSize === size
                           ? 'bg-indigo-500 text-white'
                           : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-zinc-400'
                       )}
                     >
-                      {size}ms {size === 10 ? '(Low Latency)' : '(Better Quality)'}
+                      {size}ms
                     </button>
                   ))}
                 </div>
               </div>
 
               {/* FEC and DTX */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-white/5">
-                  <div>
-                    <div className="text-xs font-medium text-gray-700 dark:text-zinc-300">FEC</div>
-                    <div className="text-[10px] text-gray-500 dark:text-zinc-500">Error correction</div>
-                  </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                <div className="flex items-center justify-between p-1.5 rounded-md bg-gray-50 dark:bg-white/5">
+                  <span className="text-[10px] font-medium text-gray-600 dark:text-zinc-400">FEC</span>
                   <button
                     onClick={() => {
                       if (activePreset !== 'custom') {
@@ -307,23 +278,20 @@ export function QualitySettingsPanel({
                       onCustomSettingsChange?.({ ...customSettings, fec: !effectiveSettings.fec });
                     }}
                     className={cn(
-                      'relative w-9 h-5 rounded-full transition-colors',
+                      'relative w-7 h-4 rounded-full transition-colors',
                       effectiveSettings.fec ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-white/20'
                     )}
                   >
                     <motion.div
-                      className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
-                      animate={{ x: effectiveSettings.fec ? 16 : 0 }}
+                      className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow-sm"
+                      animate={{ x: effectiveSettings.fec ? 12 : 0 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                     />
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-white/5">
-                  <div>
-                    <div className="text-xs font-medium text-gray-700 dark:text-zinc-300">DTX</div>
-                    <div className="text-[10px] text-gray-500 dark:text-zinc-500">Save bandwidth</div>
-                  </div>
+                <div className="flex items-center justify-between p-1.5 rounded-md bg-gray-50 dark:bg-white/5">
+                  <span className="text-[10px] font-medium text-gray-600 dark:text-zinc-400">DTX</span>
                   <button
                     onClick={() => {
                       if (activePreset !== 'custom') {
@@ -332,23 +300,20 @@ export function QualitySettingsPanel({
                       onCustomSettingsChange?.({ ...customSettings, dtx: !effectiveSettings.dtx });
                     }}
                     className={cn(
-                      'relative w-9 h-5 rounded-full transition-colors',
+                      'relative w-7 h-4 rounded-full transition-colors',
                       effectiveSettings.dtx ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-white/20'
                     )}
                   >
                     <motion.div
-                      className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
-                      animate={{ x: effectiveSettings.dtx ? 16 : 0 }}
+                      className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow-sm"
+                      animate={{ x: effectiveSettings.dtx ? 12 : 0 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                     />
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-white/5">
-                  <div>
-                    <div className="text-xs font-medium text-gray-700 dark:text-zinc-300">CBR</div>
-                    <div className="text-[10px] text-gray-500 dark:text-zinc-500">Constant bitrate</div>
-                  </div>
+                <div className="flex items-center justify-between p-1.5 rounded-md bg-gray-50 dark:bg-white/5">
+                  <span className="text-[10px] font-medium text-gray-600 dark:text-zinc-400">CBR</span>
                   <button
                     onClick={() => {
                       if (activePreset !== 'custom') {
@@ -357,23 +322,20 @@ export function QualitySettingsPanel({
                       onCustomSettingsChange?.({ ...customSettings, cbr: !effectiveSettings.cbr });
                     }}
                     className={cn(
-                      'relative w-9 h-5 rounded-full transition-colors',
+                      'relative w-7 h-4 rounded-full transition-colors',
                       effectiveSettings.cbr ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-white/20'
                     )}
                   >
                     <motion.div
-                      className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
-                      animate={{ x: effectiveSettings.cbr ? 16 : 0 }}
+                      className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow-sm"
+                      animate={{ x: effectiveSettings.cbr ? 12 : 0 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                     />
                   </button>
                 </div>
 
-                <div className="flex items-center justify-between p-2 rounded-lg bg-gray-50 dark:bg-white/5">
-                  <div>
-                    <div className="text-xs font-medium text-gray-700 dark:text-zinc-300">In-band FEC</div>
-                    <div className="text-[10px] text-gray-500 dark:text-zinc-500">Voice redundancy</div>
-                  </div>
+                <div className="flex items-center justify-between p-1.5 rounded-md bg-gray-50 dark:bg-white/5">
+                  <span className="text-[10px] font-medium text-gray-600 dark:text-zinc-400">IFEC</span>
                   <button
                     onClick={() => {
                       if (activePreset !== 'custom') {
@@ -382,13 +344,13 @@ export function QualitySettingsPanel({
                       onCustomSettingsChange?.({ ...customSettings, inbandFec: !effectiveSettings.inbandFec });
                     }}
                     className={cn(
-                      'relative w-9 h-5 rounded-full transition-colors',
+                      'relative w-7 h-4 rounded-full transition-colors',
                       effectiveSettings.inbandFec ? 'bg-indigo-500' : 'bg-gray-300 dark:bg-white/20'
                     )}
                   >
                     <motion.div
-                      className="absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow-sm"
-                      animate={{ x: effectiveSettings.inbandFec ? 16 : 0 }}
+                      className="absolute top-0.5 left-0.5 w-3 h-3 bg-white rounded-full shadow-sm"
+                      animate={{ x: effectiveSettings.inbandFec ? 12 : 0 }}
                       transition={{ type: 'spring', stiffness: 500, damping: 30 }}
                     />
                   </button>
@@ -397,12 +359,12 @@ export function QualitySettingsPanel({
 
               {/* Complexity */}
               <div>
-                <div className="flex items-center justify-between mb-2">
-                  <label className="text-xs font-medium text-gray-500 dark:text-zinc-500">
-                    Encoder Complexity
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-[10px] font-medium text-gray-500 dark:text-zinc-500">
+                    Complexity
                   </label>
-                  <span className="text-xs text-gray-700 dark:text-zinc-300 font-mono">
-                    {effectiveSettings.complexity}/10
+                  <span className="text-[10px] text-gray-700 dark:text-zinc-300 font-mono">
+                    {effectiveSettings.complexity}
                   </span>
                 </div>
                 <input
@@ -416,12 +378,8 @@ export function QualitySettingsPanel({
                     }
                     onCustomSettingsChange?.({ ...customSettings, complexity: parseInt(e.target.value) });
                   }}
-                  className="w-full h-2 bg-gray-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-4 [&::-webkit-slider-thumb]:h-4 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500"
+                  className="w-full h-1.5 bg-gray-200 dark:bg-white/10 rounded-full appearance-none cursor-pointer [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-indigo-500"
                 />
-                <div className="flex justify-between text-[10px] text-gray-400 mt-1">
-                  <span>Fast (low CPU)</span>
-                  <span>Best Quality (high CPU)</span>
-                </div>
               </div>
             </div>
           </motion.div>
