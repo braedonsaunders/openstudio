@@ -1073,14 +1073,15 @@ export interface SessionRecord {
 export async function startSession(
   userId: string,
   roomId: string,
-  instrument?: string
+  _instrument?: string
 ): Promise<SessionRecord> {
+  // Note: instrument and collaborator_ids columns may not exist in the schema
+  // We only insert the core fields that definitely exist
   const { data, error } = await supabaseAuth
     .from('session_history')
     .insert({
       user_id: userId,
       room_id: roomId,
-      instrument,
       joined_at: new Date().toISOString(),
     })
     .select()
@@ -1095,7 +1096,7 @@ export async function startSession(
     joinedAt: data.joined_at,
     leftAt: data.left_at,
     durationSeconds: data.duration_seconds,
-    instrument: data.instrument,
+    instrument: data.instrument || _instrument,
     collaboratorIds: data.collaborator_ids || [],
   };
 }
