@@ -70,17 +70,28 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     const len = samples.length;
     this.samplesReceived += len;
 
-    for (let i = 0; i < len; i++) {
-      const nextWritePos = (this.writePos + 1) % this.bufferSize;
+    // Process samples in stereo pairs to maintain L/R alignment
+    for (let i = 0; i < len; i += 2) {
+      // Check if we have room for a stereo pair (2 samples)
+      const spaceAvailable = this.bufferSize - this.getAvailableSamples() - 1;
 
-      if (nextWritePos === this.readPos) {
-        // Buffer full - drop oldest samples
-        this.readPos = (this.readPos + 1) % this.bufferSize;
-        this.overruns++;
+      if (spaceAvailable < 2) {
+        // Buffer full - drop oldest stereo pair to maintain alignment
+        this.readPos = (this.readPos + 2) % this.bufferSize;
+        this.overruns += 2;
       }
 
+      // Write left sample
       this.buffer[this.writePos] = samples[i];
-      this.writePos = nextWritePos;
+      this.writePos = (this.writePos + 1) % this.bufferSize;
+
+      // Write right sample (handle mono input by duplicating left)
+      if (i + 1 < len) {
+        this.buffer[this.writePos] = samples[i + 1];
+      } else {
+        this.buffer[this.writePos] = samples[i]; // Duplicate left for mono
+      }
+      this.writePos = (this.writePos + 1) % this.bufferSize;
     }
   }
 
