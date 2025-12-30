@@ -224,10 +224,18 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   const lastTimeRef = useRef<number>(0);
 
   // Use motion values with springs for smooth animation transitions
-  const targetY = useMotionValue(0);
+  const targetBounceY = useMotionValue(0);
   const targetRotate = useMotionValue(0);
-  const springY = useSpring(targetY, { stiffness: 400, damping: 30 });
+  const springBounceY = useSpring(targetBounceY, { stiffness: 400, damping: 30 });
   const springRotate = useSpring(targetRotate, { stiffness: 400, damping: 30 });
+
+  // Motion values for position - springs smooth out the movement
+  const initialPixelX = ((initialPosition?.x ?? state.x) / 100) * containerWidth;
+  const initialPixelY = ((initialPosition?.y ?? state.y) / 100) * containerHeight;
+  const targetPosX = useMotionValue(initialPixelX);
+  const targetPosY = useMotionValue(initialPixelY);
+  const springPosX = useSpring(targetPosX, { stiffness: 120, damping: 20 });
+  const springPosY = useSpring(targetPosY, { stiffness: 120, damping: 20 });
 
   // Track bounce animation phase
   const bouncePhaseRef = useRef(0);
@@ -250,24 +258,24 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         bouncePhaseRef.current += deltaTime * 0.015; // ~400ms cycle
         const bounce = Math.sin(bouncePhaseRef.current) * -2;
         const wobble = Math.sin(bouncePhaseRef.current) * 0.5;
-        targetY.set(bounce);
+        targetBounceY.set(bounce);
         targetRotate.set(wobble);
       } else if (state.isSettling) {
         // Settling: spring back to neutral (springs handle this automatically)
-        targetY.set(0);
+        targetBounceY.set(0);
         targetRotate.set(0);
       } else {
         // Idle animation based on character type
-        const idleSpeed = idleConfig.transition.duration as number || 1.2;
+        const idleSpeed = (idleConfig.transition.duration as number) || 1.2;
         bouncePhaseRef.current += deltaTime * (0.001 / (idleSpeed / 2));
 
         const animateProps = idleConfig.animate;
         if (animateProps.y) {
           const yRange = Array.isArray(animateProps.y) ? animateProps.y : [0];
           const maxY = Math.min(...yRange); // Most negative value
-          targetY.set(Math.sin(bouncePhaseRef.current) * Math.abs(maxY));
+          targetBounceY.set(Math.sin(bouncePhaseRef.current) * Math.abs(maxY));
         } else {
-          targetY.set(0);
+          targetBounceY.set(0);
         }
         if (animateProps.rotate) {
           const rotRange = Array.isArray(animateProps.rotate) ? animateProps.rotate : [0];
@@ -277,6 +285,12 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           targetRotate.set(0);
         }
       }
+
+      // Update position spring targets
+      const pixelX = (state.x / 100) * containerWidth;
+      const pixelY = (state.y / 100) * containerHeight;
+      targetPosX.set(pixelX);
+      targetPosY.set(pixelY);
 
       // Update position state
       setState(prev => {
@@ -383,7 +397,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [character.walkSpeed, groundConfig, getOtherPositions, state.isWalking, state.isSettling, targetY, targetRotate, idleConfig]);
+  }, [character.walkSpeed, groundConfig, getOtherPositions, state.isWalking, state.isSettling, state.x, state.y, containerWidth, containerHeight, targetBounceY, targetRotate, targetPosX, targetPosY, idleConfig]);
 
   // Report position updates to parent for collision tracking
   useEffect(() => {
@@ -394,10 +408,6 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   const scale = calculateAvatarScale(state.y, groundConfig);
   const zIndex = calculateAvatarZIndex(state.y, groundConfig);
 
-  // Convert percentage to pixels
-  const pixelX = (state.x / 100) * containerWidth;
-  const pixelY = (state.y / 100) * containerHeight;
-
   // Base size for avatar (will be scaled) - larger for lobby presence
   const baseSize = 120;
 
@@ -405,8 +415,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
     <motion.div
       className="absolute pointer-events-none"
       style={{
-        left: pixelX,
-        top: pixelY,
+        left: springPosX,
+        top: springPosY,
         zIndex,
         transform: `translate(-50%, -100%)`, // Anchor at bottom center
       }}
@@ -416,7 +426,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           width: baseSize * scale,
           height: baseSize * scale,
           transform: `scaleX(${state.facingRight ? 1 : -1})`,
-          y: springY,
+          y: springBounceY,
           rotate: springRotate,
         }}
       >

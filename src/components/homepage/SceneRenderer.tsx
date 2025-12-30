@@ -1294,47 +1294,43 @@ export function SceneRenderer({
     const placedPositions: Array<{ x: number; y: number }> = [];
 
     // Minimum distance between characters
-    const MIN_SPAWN_DISTANCE = 12;
+    const MIN_SPAWN_DISTANCE = 15;
 
-    // Exclude center UI zone - characters spawn around it
-    const UI_ZONE = { minX: 20, maxX: 80, minY: 15, maxY: 55 };
+    // UI zone that characters should avoid (center card area)
+    const UI_ZONE = { minX: 18, maxX: 82, minY: 10, maxY: 58 };
 
-    // Create a grid of potential spawn points around the UI zone
+    // Helper to check if point is in UI zone
+    const isInUIZone = (x: number, y: number) =>
+      x >= UI_ZONE.minX && x <= UI_ZONE.maxX && y >= UI_ZONE.minY && y <= UI_ZONE.maxY;
+
+    // Create a grid of ALL points in walkable area, then filter out UI zone
     const spawnPoints: Array<{ x: number; y: number }> = [];
+    const spacing = 10;
 
-    // Left side points
-    for (let x = walkableArea.minX + 5; x < UI_ZONE.minX - 3; x += MIN_SPAWN_DISTANCE) {
-      for (let y = UI_ZONE.maxY + 5; y < walkableArea.maxY - 5; y += MIN_SPAWN_DISTANCE) {
-        spawnPoints.push({ x, y });
+    for (let x = walkableArea.minX + 5; x <= walkableArea.maxX - 5; x += spacing) {
+      for (let y = walkableArea.minY + 5; y <= walkableArea.maxY - 5; y += spacing) {
+        // Only add points that are OUTSIDE the UI zone
+        if (!isInUIZone(x, y)) {
+          spawnPoints.push({ x, y });
+        }
       }
     }
 
-    // Right side points
-    for (let x = UI_ZONE.maxX + 3; x < walkableArea.maxX - 5; x += MIN_SPAWN_DISTANCE) {
-      for (let y = UI_ZONE.maxY + 5; y < walkableArea.maxY - 5; y += MIN_SPAWN_DISTANCE) {
-        spawnPoints.push({ x, y });
-      }
-    }
-
-    // Bottom center points (below UI)
-    for (let x = UI_ZONE.minX; x < UI_ZONE.maxX; x += MIN_SPAWN_DISTANCE) {
-      for (let y = UI_ZONE.maxY + 8; y < walkableArea.maxY - 5; y += MIN_SPAWN_DISTANCE) {
-        spawnPoints.push({ x, y });
-      }
-    }
-
-    // Shuffle spawn points deterministically based on character IDs
-    const shuffledPoints = [...spawnPoints].sort((a, b) => {
-      return (a.x * 100 + a.y) - (b.x * 100 + b.y);
+    // Sort by distance from center-bottom for more natural distribution
+    const centerX = 50;
+    const bottomY = walkableArea.maxY;
+    spawnPoints.sort((a, b) => {
+      const distA = Math.abs(a.x - centerX) + Math.abs(a.y - bottomY);
+      const distB = Math.abs(b.x - centerX) + Math.abs(b.y - bottomY);
+      return distA - distB;
     });
 
     // Assign each character to a spawn point, ensuring minimum distance
     characters.forEach((character, index) => {
-      // Find the best available spawn point
-      let bestPoint = shuffledPoints[index % shuffledPoints.length];
+      let bestPoint: { x: number; y: number } | null = null;
 
       // Try to find a point that doesn't overlap with already placed characters
-      for (const point of shuffledPoints) {
+      for (const point of spawnPoints) {
         const isFarEnough = placedPositions.every(placed => {
           const dx = point.x - placed.x;
           const dy = point.y - placed.y;
@@ -1345,6 +1341,11 @@ export function SceneRenderer({
           bestPoint = point;
           break;
         }
+      }
+
+      // Fallback: use evenly distributed point if no non-overlapping found
+      if (!bestPoint) {
+        bestPoint = spawnPoints[index % spawnPoints.length] || { x: walkableArea.minX + 10, y: walkableArea.maxY - 10 };
       }
 
       // Add slight variation for natural look (deterministic based on index)
