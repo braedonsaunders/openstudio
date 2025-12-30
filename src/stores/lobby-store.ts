@@ -48,6 +48,7 @@ interface LobbyState {
 
   // Connection state
   isConnected: boolean;
+  currentUser: LobbyUser | null;
   channel: RealtimeChannel | null;
   roomChannels: Map<string, RealtimeChannel>;
 
@@ -69,6 +70,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   totalOnline: 0,
   messages: [],
   isConnected: false,
+  currentUser: null,
   channel: null,
   roomChannels: new Map(),
 
@@ -172,7 +174,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
       await channel.subscribe(async (status) => {
         if (status === 'SUBSCRIBED') {
           await channel.track(user);
-          set({ isConnected: true, channel });
+          set({ isConnected: true, currentUser: user, channel });
         }
       });
     } catch (error) {
@@ -186,6 +188,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
     // Immediately update state so UI doesn't wait
     set({
       isConnected: false,
+      currentUser: null,
       channel: null,
       users: new Map(),
       roomChannels: new Map(),
@@ -238,25 +241,8 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   },
 
   sendMessage: (content: string) => {
-    const { channel } = get();
-    if (!channel || !content.trim()) return;
-
-    // Get current user from presence
-    const presenceState = channel.presenceState();
-    let currentUser: LobbyUser | undefined = undefined;
-
-    for (const presences of Object.values(presenceState)) {
-      for (const presence of presences) {
-        const p = presence as unknown as LobbyUser;
-        if (p.id) {
-          currentUser = p;
-          break;
-        }
-      }
-      if (currentUser) break;
-    }
-
-    if (!currentUser) return;
+    const { channel, currentUser } = get();
+    if (!channel || !currentUser || !content.trim()) return;
 
     const message: LobbyMessage = {
       id: `msg-${currentUser.id}-${Date.now()}`,
