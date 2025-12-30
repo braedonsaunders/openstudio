@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
+import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/auth-store';
 import { useSavedTracksStore } from '@/stores/saved-tracks-store';
 import { Button } from '@/components/ui/button';
@@ -234,7 +235,15 @@ export default function SettingsPage() {
 
         {/* Content */}
         <main className="flex-1 p-6 sm:p-8 min-w-0">
+          <AnimatePresence mode="wait">
             {activeTab === 'profile' && (
+              <motion.div
+                key="profile"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
               <Card className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Profile Information</h2>
                 <div className="space-y-4">
@@ -300,9 +309,17 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Card>
+              </motion.div>
             )}
 
             {activeTab === 'avatar' && (
+              <motion.div
+                key="avatar"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
               <div>
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Customize Avatar</h2>
                 <AvatarCanvasEditor
@@ -313,9 +330,17 @@ export default function SettingsPage() {
                   }}
                 />
               </div>
+              </motion.div>
             )}
 
             {activeTab === 'instruments' && (
+              <motion.div
+                key="instruments"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
               <Card className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Your Instruments</h2>
 
@@ -444,13 +469,29 @@ export default function SettingsPage() {
                   </p>
                 </div>
               </Card>
+              </motion.div>
             )}
 
             {activeTab === 'tracks' && (
+              <motion.div
+                key="tracks"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
               <TracksTab userId={profile.id} />
+              </motion.div>
             )}
 
             {activeTab === 'appearance' && (
+              <motion.div
+                key="appearance"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
               <Card className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Appearance</h2>
                 <div className="space-y-6">
@@ -537,9 +578,17 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Card>
+              </motion.div>
             )}
 
             {activeTab === 'privacy' && (
+              <motion.div
+                key="privacy"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
               <Card className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Privacy Settings</h2>
                 <div className="space-y-6">
@@ -598,9 +647,17 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Card>
+              </motion.div>
             )}
 
             {activeTab === 'notifications' && (
+              <motion.div
+                key="notifications"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
               <Card className="p-6">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-6">Notification Settings</h2>
                 <div className="space-y-6">
@@ -634,7 +691,9 @@ export default function SettingsPage() {
                   </div>
                 </div>
               </Card>
+              </motion.div>
             )}
+          </AnimatePresence>
         </main>
       </div>
     </div>
