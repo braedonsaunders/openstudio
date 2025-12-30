@@ -50,6 +50,17 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       const bridgeState = useBridgeAudioStore.getState();
       const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
 
+      // Debug: Log when sync subscription fires
+      console.log('[useTrackAudioSync] Store change detected:', {
+        trackCount: userTracks.length,
+        useBridge,
+        bridgeState: {
+          isConnected: bridgeState.isConnected,
+          preferNativeBridge: bridgeState.preferNativeBridge,
+          isRunning: bridgeState.isRunning,
+        },
+      });
+
       // Process each track
       for (const track of userTracks) {
         if (!track) continue;
@@ -72,7 +83,25 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         const lastState = lastSyncRef.current.get(track.id);
 
         // Ensure track processor exists
-        getOrCreateTrackProcessor(track.id, track.audioSettings);
+        const processor = getOrCreateTrackProcessor(track.id, track.audioSettings);
+
+        // Debug: Log processor state
+        console.log('[useTrackAudioSync] Processing track:', {
+          trackId: track.id.slice(-8),
+          hasProcessor: !!processor,
+          trackState: {
+            isArmed: track.isArmed,
+            directMonitoring: track.audioSettings.directMonitoring,
+          },
+          currentState: {
+            isArmed: currentState.isArmed,
+            monitoringEnabled: currentState.monitoringEnabled,
+          },
+          lastState: lastState ? {
+            isArmed: lastState.isArmed,
+            monitoringEnabled: lastState.monitoringEnabled,
+          } : null,
+        });
 
         // Sync state to audio engine's track processor
         const stateChanged = !lastState ||
@@ -90,6 +119,14 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           const jsMonitoringEnabled = useBridge
             ? !currentState.monitoringEnabled  // Invert for WET when direct is OFF
             : currentState.monitoringEnabled;  // Use as-is for web audio
+
+          console.log('[useTrackAudioSync] Sending updateTrackState:', {
+            trackId: track.id.slice(-8),
+            isArmed: currentState.isArmed,
+            jsMonitoringEnabled,
+            useBridge,
+            directMonitoring: currentState.monitoringEnabled,
+          });
 
           updateTrackState(track.id, {
             isArmed: currentState.isArmed,

@@ -686,6 +686,11 @@ export function useAudioEngine() {
     trackId: string,
     state: Partial<import('@/lib/audio/track-audio-processor').TrackAudioState>
   ) => {
+    console.log('[useAudioEngine] updateTrackState called:', {
+      trackId: trackId.slice(-8),
+      hasEngine: !!globalEngine,
+      state: { isArmed: state.isArmed, monitoringEnabled: state.monitoringEnabled },
+    });
     globalEngine?.updateTrackState(trackId, state);
   }, []);
 
