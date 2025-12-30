@@ -25,6 +25,60 @@ const ensureAudioEngineReady = () => {
   return false;
 };
 
+// Module-level audio data handler - stable reference, never re-registered
+// This is critical because React effects can re-run and clearing/re-registering
+// the handler would break the audio flow
+let audioDataHandlerRegistered = false;
+let audioDataCounter = 0;
+
+const handleAudioDataStable = (data: BridgeAudioData) => {
+  // Log occasionally
+  if (audioDataCounter++ % 500 === 0) {
+    console.log('[useNativeBridge] handleAudioData - samples:', data.samples?.length,
+      'trackId:', data.trackId || 'default', 'hasEngine:', !!cachedAudioEngine);
+  }
+
+  // Use cached engine reference for zero-overhead access
+  // Falls back to window reference if cache is stale
+  const engine = cachedAudioEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+  if (!engine) {
+    if (audioDataCounter % 500 === 1) {
+      console.warn('[useNativeBridge] Audio dropped: engine not ready');
+    }
+    return;
+  }
+
+  // Update cache if it was stale
+  if (!cachedAudioEngine) {
+    cachedAudioEngine = engine;
+  }
+
+  try {
+    if (data.trackId) {
+      engine.pushTrackBridgeAudio(data.trackId, data.samples);
+    } else {
+      // No trackId - route to primary track
+      const primaryTrackId = engine.getPrimaryTrackId?.();
+      if (primaryTrackId) {
+        engine.pushTrackBridgeAudio(primaryTrackId, data.samples);
+      } else if (audioDataCounter % 500 === 1) {
+        console.warn('[useNativeBridge] Audio dropped: no trackId and no primary track');
+      }
+    }
+  } catch (e) {
+    console.error('[useNativeBridge] handleAudioData error:', e);
+  }
+};
+
+// Register the stable audio handler once (module initialization)
+const ensureAudioHandlerRegistered = () => {
+  if (!audioDataHandlerRegistered) {
+    console.log('[useNativeBridge] Registering stable audioData handler');
+    nativeBridge.on('audioData', handleAudioDataStable);
+    audioDataHandlerRegistered = true;
+  }
+};
+
 interface BridgeDevice {
   id: string;
   name: string;
@@ -151,70 +205,20 @@ export function useNativeBridge() {
       useAudioStore.getState().setLocalLevel(data.inputLevel);
     };
 
-    // Counter for audioData logging
-    let audioDataCounter = 0;
-
-    // Handle raw audio data from native bridge
-    // CRITICAL: This must be synchronous for real-time audio performance!
-    // Routes audio to track processors for effects processing + WebRTC broadcast
-    const handleAudioData = (data: BridgeAudioData) => {
-      // Log occasionally
-      if (audioDataCounter++ % 500 === 0) {
-        console.log('[useNativeBridge] handleAudioData - samples:', data.samples?.length,
-          'trackId:', data.trackId || 'default', 'hasEngine:', !!cachedAudioEngine);
-      }
-
-      // Use cached engine reference for zero-overhead access
-      // Falls back to window reference if cache is stale
-      const engine = cachedAudioEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
-      if (!engine) {
-        if (audioDataCounter % 500 === 1) {
-          console.warn('[useNativeBridge] Audio dropped: engine not ready');
-        }
-        return;
-      }
-
-      // Update cache if it was stale
-      if (!cachedAudioEngine) {
-        cachedAudioEngine = engine;
-      }
-
-      try {
-        if (data.trackId) {
-          engine.pushTrackBridgeAudio(data.trackId, data.samples);
-        } else {
-          // No trackId - route to primary track
-          const primaryTrackId = engine.getPrimaryTrackId?.();
-          if (primaryTrackId) {
-            engine.pushTrackBridgeAudio(primaryTrackId, data.samples);
-          } else if (audioDataCounter % 500 === 1) {
-            console.warn('[useNativeBridge] Audio dropped: no trackId and no primary track');
-          }
-        }
-      } catch (e) {
-        console.error('[useNativeBridge] handleAudioData error:', e);
-      }
-    };
-
-    // CRITICAL: Clear any existing audioData listeners before adding new one
-    // This prevents duplicate handlers during React Strict Mode or Fast Refresh
-    // which can cause audio to be processed multiple times or routed incorrectly
-    const existingAudioDataListeners = nativeBridge.getListenerCount('audioData');
-    if (existingAudioDataListeners > 0) {
-      console.warn('[useNativeBridge] Clearing', existingAudioDataListeners, 'existing audioData listeners');
-      nativeBridge.removeAllListeners('audioData');
-    }
-
-    // Register all listeners
+    // Register all event listeners (except audioData which uses stable module-level handler)
     nativeBridge.on('connected', handleConnected);
     nativeBridge.on('disconnected', handleDisconnected);
     nativeBridge.on('audioStatus', handleAudioStatus);
     nativeBridge.on('devices', handleDevices);
     nativeBridge.on('error', handleError);
     nativeBridge.on('levels', handleLevels);
-    nativeBridge.on('audioData', handleAudioData);
 
-    console.log('[useNativeBridge] Event listeners registered (audioData listeners: 1), checking availability...');
+    // CRITICAL: Use stable module-level handler for audioData
+    // This handler is registered ONCE and never unregistered, preventing audio
+    // interruption when React effects re-run (Strict Mode, Fast Refresh, etc.)
+    ensureAudioHandlerRegistered();
+
+    console.log('[useNativeBridge] Event listeners registered, checking availability...');
 
     // Check if bridge is available - the 'connected' event handler will request devices
     const checkAvailability = async () => {
@@ -232,13 +236,15 @@ export function useNativeBridge() {
     checkAvailability();
 
     return () => {
+      // Unregister effect-local handlers
+      // NOTE: audioData handler is NOT unregistered here - it's a stable module-level
+      // handler that persists to prevent audio interruption during React effect re-runs
       nativeBridge.off('connected', handleConnected);
       nativeBridge.off('disconnected', handleDisconnected);
       nativeBridge.off('audioStatus', handleAudioStatus);
       nativeBridge.off('devices', handleDevices);
       nativeBridge.off('error', handleError);
       nativeBridge.off('levels', handleLevels);
-      nativeBridge.off('audioData', handleAudioData);
       initialized.current = false;
     };
   }, []); // Empty dependency array - run once
@@ -321,6 +327,16 @@ export function useNativeBridge() {
       }
     }
 
+    // Get track info BEFORE starting audio to determine channel config
+    const roomState = useRoomStore.getState();
+    const currentUserId = roomState.currentUser?.id;
+    const tracksState = currentUserId ? useUserTracksStore.getState() : null;
+    const userTracks = tracksState && currentUserId ? tracksState.getTracksByUser(currentUserId) : [];
+    const primaryTrack = userTracks.length > 0 ? userTracks[0] : null;
+
+    // Determine channel config - use primary track's config if available, otherwise global
+    const channelConfigToUse = primaryTrack?.audioSettings.channelConfig || state.inputChannelConfig;
+
     // Configure native bridge
     if (deviceId) {
       nativeBridge.setInputDevice(deviceId);
@@ -329,7 +345,9 @@ export function useNativeBridge() {
 
     nativeBridge.setBufferSize(state.bufferSize);
     nativeBridge.setSampleRate(state.sampleRate);
-    nativeBridge.setChannelConfig(state.inputChannelConfig);
+    // IMPORTANT: Set channel config BEFORE startAudio - setting it after would
+    // cause native bridge to stop/restart ASIO, losing audio
+    nativeBridge.setChannelConfig(channelConfigToUse);
     nativeBridge.startAudio();
 
     // Small delay to let native bridge initialize with correct sample rate
@@ -345,23 +363,10 @@ export function useNativeBridge() {
     // NOTE: Native bridge only supports single-track audio capture. Multi-track is handled
     // entirely in the browser - all tracks share the same audio input from the bridge,
     // and effects/mixing are processed per-track in the browser.
-    const roomState = useRoomStore.getState();
-    const currentUserId = roomState.currentUser?.id;
-    if (currentUserId) {
-      const tracksState = useUserTracksStore.getState();
-      const userTracks = tracksState.getTracksByUser(currentUserId);
-
-      // Use the primary track's channel config for the native bridge
-      if (userTracks.length > 0) {
-        const primaryTrack = userTracks[0];
-
-        // Send channel config for native bridge (single-track capture)
-        if (primaryTrack.audioSettings.channelConfig) {
-          nativeBridge.setChannelConfig(primaryTrack.audioSettings.channelConfig);
-        }
-
-        // Send primary track state to native bridge for direct monitoring
-        nativeBridge.updateTrackState(primaryTrack.id, {
+    if (currentUserId && primaryTrack) {
+      // Send primary track state to native bridge for direct monitoring
+      // (channel config was already set above BEFORE startAudio)
+      nativeBridge.updateTrackState(primaryTrack.id, {
           isArmed: primaryTrack.isArmed,
           isMuted: primaryTrack.isMuted,
           isSolo: primaryTrack.isSolo,
@@ -406,7 +411,6 @@ export function useNativeBridge() {
           console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, directMonitoring: ${directMonitoring}, jsMonitoring: ${!directMonitoring}`);
         }
       }
-    }
   }, []);
 
   // Stop audio
