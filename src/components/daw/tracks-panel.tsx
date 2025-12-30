@@ -571,6 +571,16 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          // Remove all song track references that use this asset first
+                          const { getSongsByRoom, removeTrackFromSong } = useSongsStore.getState();
+                          const roomSongs = getSongsByRoom(roomId);
+                          for (const song of roomSongs) {
+                            const refsToRemove = song.tracks.filter((trackRef) => trackRef.trackId === asset.id);
+                            for (const ref of refsToRemove) {
+                              removeTrackFromSong(song.id, ref.id);
+                            }
+                          }
+                          // Then remove the asset
                           onTrackRemove(asset.id);
                         }}
                         className="p-0.5 text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
@@ -630,6 +640,16 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
+                          // Remove all song track references that use this asset first
+                          const { getSongsByRoom, removeTrackFromSong } = useSongsStore.getState();
+                          const roomSongs = getSongsByRoom(roomId);
+                          for (const song of roomSongs) {
+                            const refsToRemove = song.tracks.filter((trackRef) => trackRef.trackId === asset.id);
+                            for (const ref of refsToRemove) {
+                              removeTrackFromSong(song.id, ref.id);
+                            }
+                          }
+                          // Then remove the asset
                           removeLoopTrack(asset.id);
                         }}
                         className="p-0.5 text-gray-400 dark:text-zinc-600 hover:text-red-500 dark:hover:text-red-400 opacity-0 group-hover:opacity-100 transition-all"
