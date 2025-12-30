@@ -30,6 +30,8 @@ import {
   Music2,
   Hand,
   ChevronDown,
+  MoreVertical,
+  User,
 } from 'lucide-react';
 import { useShallow } from 'zustand/react/shallow';
 import { MetronomeInline } from '@/components/daw/metronome-controls';
@@ -177,7 +179,7 @@ function BpmBadge() {
                 {Math.round(tempo)}
               </span>
             )}
-            <span className="text-xs text-gray-500 dark:text-zinc-400">BPM</span>
+            <span className="text-xs text-gray-500 dark:text-zinc-400 hidden @lg:inline">BPM</span>
           </div>
         </Tooltip>
       </div>
@@ -357,7 +359,7 @@ function KeyBadge() {
               <span className="text-sm text-gray-400 dark:text-zinc-500">Key</span>
             )}
             <ChevronDown className={cn(
-              'w-3 h-3 text-gray-400 dark:text-zinc-500 transition-transform',
+              'w-3 h-3 text-gray-400 dark:text-zinc-500 transition-transform hidden @lg:block',
               showKeyMenu && 'rotate-180'
             )} />
           </button>
@@ -455,6 +457,64 @@ function KeyBadge() {
   );
 }
 
+// =============================================================================
+// Overflow Menu Component - For collapsed controls on small screens
+// =============================================================================
+function OverflowMenu({ onSettingsClick }: { onSettingsClick: () => void }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  // Close on outside click
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClick);
+    return () => document.removeEventListener('mousedown', handleClick);
+  }, [isOpen]);
+
+  return (
+    <div ref={menuRef} className="relative @sm:hidden">
+      <button
+        onClick={() => setIsOpen(!isOpen)}
+        className={cn(
+          'p-2 rounded-lg transition-all',
+          isOpen
+            ? 'bg-gray-200 dark:bg-white/10 text-gray-900 dark:text-white'
+            : 'bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10'
+        )}
+      >
+        <MoreVertical className="w-5 h-5" />
+      </button>
+
+      {isOpen && (
+        <div className="absolute top-full right-0 mt-1 py-1 rounded-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 shadow-xl z-50 min-w-[160px]">
+          <button
+            onClick={() => {
+              onSettingsClick();
+              setIsOpen(false);
+            }}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-all hover:bg-gray-50 dark:hover:bg-white/5"
+          >
+            <Settings className="w-4 h-4 text-gray-400 dark:text-zinc-500" />
+            <span className="text-sm text-gray-700 dark:text-zinc-300">Settings</span>
+          </button>
+          <button
+            onClick={() => setIsOpen(false)}
+            className="w-full flex items-center gap-2 px-3 py-2 text-left transition-all hover:bg-gray-50 dark:hover:bg-white/5"
+          >
+            <User className="w-4 h-4 text-gray-400 dark:text-zinc-500" />
+            <span className="text-sm text-gray-700 dark:text-zinc-300">Profile</span>
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 interface TransportBarProps {
   roomId: string;
   onPlay: () => void;
@@ -534,30 +594,32 @@ export function TransportBar({
   };
 
   return (
-    <header className="h-14 bg-white dark:bg-[#12121a] border-b border-gray-200 dark:border-white/5 flex items-center px-4 gap-4 z-40 shrink-0">
+    <header className="@container h-14 bg-white dark:bg-[#12121a] border-b border-gray-200 dark:border-white/5 flex items-center px-2 @md:px-4 gap-2 @md:gap-4 z-40 shrink-0">
       {/* Logo & Room */}
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-1.5 @sm:gap-3 shrink-0">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20">
+          <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-purple-600 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-500/20 shrink-0">
             <Music className="w-4.5 h-4.5 text-white" />
           </div>
-          <span className="text-base font-semibold text-gray-900 dark:text-white hidden sm:block">OpenStudio</span>
+          <span className="text-base font-semibold text-gray-900 dark:text-white hidden @xl:block">OpenStudio</span>
         </div>
 
-        <div className="h-5 w-px bg-gray-200 dark:bg-white/10" />
+        <div className="h-5 w-px bg-gray-200 dark:bg-white/10 hidden @md:block" />
 
-        <button
-          onClick={handleCopyRoomId}
-          className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/5 transition-colors group"
-        >
-          <span className="text-[10px] text-gray-500 dark:text-zinc-400">Room</span>
-          <span className="text-xs font-mono font-medium text-gray-900 dark:text-white">{roomId}</span>
-          {copied ? (
-            <Check className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
-          ) : (
-            <Copy className="w-3 h-3 text-gray-400 dark:text-zinc-500 group-hover:text-gray-600 dark:group-hover:text-zinc-300 transition-colors" />
-          )}
-        </button>
+        <Tooltip content={`Room: ${roomId}`} position="bottom">
+          <button
+            onClick={handleCopyRoomId}
+            className="flex items-center gap-1.5 px-2 py-1 rounded-lg bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 border border-gray-200 dark:border-white/5 transition-colors group"
+          >
+            <span className="text-[10px] text-gray-500 dark:text-zinc-400 hidden @lg:inline">Room</span>
+            <span className="text-xs font-mono font-medium text-gray-900 dark:text-white hidden @md:inline">{roomId}</span>
+            {copied ? (
+              <Check className="w-3 h-3 text-emerald-500 dark:text-emerald-400" />
+            ) : (
+              <Copy className="w-3 h-3 text-gray-400 dark:text-zinc-500 group-hover:text-gray-600 dark:group-hover:text-zinc-300 transition-colors" />
+            )}
+          </button>
+        </Tooltip>
 
         {/* Connection Status with Performance Tooltip */}
         <Tooltip
@@ -653,21 +715,21 @@ export function TransportBar({
           }
         >
           <div className={cn(
-            'flex items-center gap-1 px-2 py-1 rounded-lg cursor-default transition-colors',
+            'flex items-center gap-1 px-1.5 @md:px-2 py-1 rounded-lg cursor-default transition-colors',
             connectionQuality === 'excellent' && 'bg-emerald-500/10',
             connectionQuality === 'good' && 'bg-emerald-500/10',
             connectionQuality === 'fair' && 'bg-yellow-500/10',
             connectionQuality === 'poor' && 'bg-red-500/10'
           )}>
             <Zap className={cn(
-              'w-3.5 h-3.5',
+              'w-3.5 h-3.5 shrink-0',
               connectionQuality === 'excellent' && 'text-emerald-500 dark:text-emerald-400',
               connectionQuality === 'good' && 'text-emerald-500 dark:text-emerald-400',
               connectionQuality === 'fair' && 'text-yellow-500 dark:text-yellow-400',
               connectionQuality === 'poor' && 'text-red-500 dark:text-red-400'
             )} />
             <span className={cn(
-              'text-xs font-medium',
+              'text-xs font-medium hidden @lg:inline',
               connectionQuality === 'excellent' && 'text-emerald-600 dark:text-emerald-400',
               connectionQuality === 'good' && 'text-emerald-600 dark:text-emerald-400',
               connectionQuality === 'fair' && 'text-yellow-600 dark:text-yellow-400',
@@ -680,14 +742,16 @@ export function TransportBar({
           </div>
         </Tooltip>
 
-        {/* View Switcher */}
-        {activeView && onViewChange && (
-          <MainViewSwitcher
-            activeView={activeView}
-            onViewChange={onViewChange}
-            isMaster={isMaster}
-          />
-        )}
+        {/* View Switcher - hidden on small containers */}
+        <div className="hidden @md:block">
+          {activeView && onViewChange && (
+            <MainViewSwitcher
+              activeView={activeView}
+              onViewChange={onViewChange}
+              isMaster={isMaster}
+            />
+          )}
+        </div>
       </div>
 
       {/* Transport Controls - Center */}
@@ -752,15 +816,21 @@ export function TransportBar({
         </button>
 
         {/* Time Display */}
-        <div className="flex items-center gap-2 ml-4 px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-black/30">
-          <span className="time-display text-lg font-medium text-gray-900 dark:text-white">
+        <div className="hidden @sm:flex items-center gap-2 ml-2 @md:ml-4 px-2 @md:px-3 py-1.5 rounded-lg bg-gray-100 dark:bg-black/30">
+          {/* Full time with ms - only on larger containers */}
+          <span className="time-display text-lg font-medium text-gray-900 dark:text-white hidden @lg:inline">
             {formatTimeDetailed(isLyriaSong ? currentTime : (duration > 0 ? Math.min(currentTime, duration) : currentTime))}
           </span>
-          <span className="text-gray-400 dark:text-zinc-500">/</span>
+          {/* Compact time without ms - on medium containers */}
+          <span className="time-display text-lg font-medium text-gray-900 dark:text-white @lg:hidden">
+            {formatTimeDuration(isLyriaSong ? currentTime : (duration > 0 ? Math.min(currentTime, duration) : currentTime))}
+          </span>
+          {/* Duration - hidden on smaller containers */}
+          <span className="text-gray-400 dark:text-zinc-500 hidden @md:inline">/</span>
           {isLyriaSong ? (
-            <span className="text-sm font-medium text-purple-500 dark:text-purple-400">∞</span>
+            <span className="text-sm font-medium text-purple-500 dark:text-purple-400 hidden @md:inline">∞</span>
           ) : (
-            <span className="time-display text-sm text-gray-500 dark:text-zinc-400">
+            <span className="time-display text-sm text-gray-500 dark:text-zinc-400 hidden @md:inline">
               {formatTimeDuration(duration)}
             </span>
           )}
@@ -768,22 +838,29 @@ export function TransportBar({
       </div>
 
       {/* Right Section - BPM, Key & Controls */}
-      <div className="flex items-center gap-3">
-        {/* Metronome (with full controls when audioContext available) */}
-        {audioContext ? (
-          <MetronomeInline
-            audioContext={audioContext}
-            masterGain={masterGain}
-          />
-        ) : (
-          /* BPM Badge - Interactive with mode switching */
-          <BpmBadge />
-        )}
+      <div className="flex items-center gap-1.5 @sm:gap-2 @md:gap-3 shrink-0">
+        {/* Metronome/BPM (hidden on smallest containers) */}
+        <div className="hidden @sm:block">
+          {audioContext ? (
+            <MetronomeInline
+              audioContext={audioContext}
+              masterGain={masterGain}
+            />
+          ) : (
+            /* BPM Badge - Interactive with mode switching */
+            <BpmBadge />
+          )}
+        </div>
 
-        {/* Key Badge - Interactive with mode switching and key picker */}
-        <KeyBadge />
+        {/* Key Badge (hidden on small containers) */}
+        <div className="hidden @md:block">
+          <KeyBadge />
+        </div>
 
-        <div className="h-5 w-px bg-gray-200 dark:bg-white/10" />
+        <div className="h-5 w-px bg-gray-200 dark:bg-white/10 hidden @sm:block" />
+
+        {/* Overflow Menu (visible only on smallest containers) */}
+        <OverflowMenu onSettingsClick={onSettingsClick} />
 
         {/* Mute Button */}
         <button
@@ -798,26 +875,28 @@ export function TransportBar({
           {isMuted ? <MicOff className="w-5 h-5" /> : <Mic className="w-5 h-5" />}
         </button>
 
-        {/* Settings */}
+        {/* Settings (hidden on smallest containers) */}
         <button
           onClick={onSettingsClick}
-          className="p-2.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white transition-all"
+          className="hidden @sm:block p-2.5 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/10 hover:text-gray-900 dark:hover:text-white transition-all"
         >
           <Settings className="w-5 h-5" />
         </button>
 
-        <div className="h-5 w-px bg-gray-200 dark:bg-white/10" />
+        <div className="h-5 w-px bg-gray-200 dark:bg-white/10 hidden @md:block" />
 
-        {/* User Menu */}
-        <UserMenu />
+        {/* User Menu (hidden on smallest containers) */}
+        <div className="hidden @sm:block">
+          <UserMenu />
+        </div>
 
         {/* Leave */}
         <button
           onClick={onLeave}
-          className="flex items-center gap-2 px-3 py-2 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-red-500/20 hover:text-red-500 dark:hover:text-red-400 transition-all"
+          className="flex items-center gap-2 px-2 @sm:px-3 py-2 rounded-lg bg-gray-100 dark:bg-white/5 text-gray-500 dark:text-zinc-400 hover:bg-red-500/20 hover:text-red-500 dark:hover:text-red-400 transition-all"
         >
           <LogOut className="w-4 h-4" />
-          <span className="text-sm font-medium hidden sm:block">Leave</span>
+          <span className="text-sm font-medium hidden @lg:block">Leave</span>
         </button>
       </div>
     </header>
