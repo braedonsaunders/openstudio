@@ -294,7 +294,6 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
       const decoder = new TextDecoder();
       let buffer = '';
       let totalPrompts = 0;
-      let generatedCount = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -302,67 +301,68 @@ export function ComponentGenerator({ categories, onComponentCreated }: Component
 
         buffer += decoder.decode(value, { stream: true });
 
-        // Parse SSE events from buffer
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // Keep incomplete line in buffer
+        // SSE events are separated by double newlines
+        const events = buffer.split('\n\n');
+        buffer = events.pop() || ''; // Keep incomplete event in buffer
 
-        let eventType = '';
-        let eventData = '';
+        for (const event of events) {
+          if (!event.trim()) continue;
 
-        for (const line of lines) {
-          if (line.startsWith('event: ')) {
-            eventType = line.slice(7);
-          } else if (line.startsWith('data: ')) {
-            eventData = line.slice(6);
+          const lines = event.split('\n');
+          let eventType = '';
+          let eventData = '';
 
-            if (eventType && eventData) {
-              try {
-                const data = JSON.parse(eventData);
+          for (const line of lines) {
+            if (line.startsWith('event: ')) {
+              eventType = line.slice(7);
+            } else if (line.startsWith('data: ')) {
+              eventData = line.slice(6);
+            }
+          }
 
-                switch (eventType) {
-                  case 'status':
-                    setBatchProgress(data.message);
-                    break;
+          if (eventType && eventData) {
+            try {
+              const data = JSON.parse(eventData);
 
-                  case 'prompts':
-                    totalPrompts = data.total;
-                    break;
+              switch (eventType) {
+                case 'status':
+                  setBatchProgress(data.message);
+                  break;
 
-                  case 'result':
-                    generatedCount = data.generatedCount;
-                    // Add result as it streams in
-                    setBatchResults((prev) => [
-                      ...prev,
-                      {
-                        prompt: data.prompt,
-                        image: data.image,
-                        componentIdBase: data.componentIdBase,
-                        suggestedName: data.suggestedName,
-                        selected: true, // Select by default
-                      },
-                    ]);
-                    setBatchProgress(`Generated ${generatedCount} of ${totalPrompts} images`);
-                    break;
+                case 'prompts':
+                  totalPrompts = data.total;
+                  break;
 
-                  case 'image_error':
-                    console.warn(`Failed to generate image ${data.index + 1}: ${data.error}`);
-                    break;
+                case 'result':
+                  // Add result as it streams in
+                  setBatchResults((prev) => [
+                    ...prev,
+                    {
+                      prompt: data.prompt,
+                      image: data.image,
+                      componentIdBase: data.componentIdBase,
+                      suggestedName: data.suggestedName,
+                      selected: true,
+                    },
+                  ]);
+                  setBatchProgress(`Generated ${data.generatedCount} of ${totalPrompts} images`);
+                  break;
 
-                  case 'complete':
-                    setBatchProgress(`Completed: ${data.generatedCount} of ${data.requestedCount} images`);
-                    break;
+                case 'image_error':
+                  console.warn(`Failed to generate image ${data.index + 1}: ${data.error}`);
+                  break;
 
-                  case 'error':
-                    toast.error(`Batch generation failed: ${data.error}`);
-                    setBatchProgress('');
-                    break;
-                }
-              } catch (e) {
-                console.warn('Failed to parse SSE data:', eventData, e);
+                case 'complete':
+                  setBatchProgress(`Completed: ${data.generatedCount} of ${data.requestedCount} images`);
+                  break;
+
+                case 'error':
+                  toast.error(`Batch generation failed: ${data.error}`);
+                  setBatchProgress('');
+                  break;
               }
-
-              eventType = '';
-              eventData = '';
+            } catch (e) {
+              console.warn('Failed to parse SSE data:', eventData, e);
             }
           }
         }
