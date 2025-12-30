@@ -1428,316 +1428,1130 @@ function ForestScene({ isDark }: { isDark: boolean }) {
 }
 
 // ============================================
-// STUDIO SCENE - Day & Night (Ground-dominant pseudo-3D)
+// STUDIO SCENE - Professional Recording Studio
 // ============================================
+
+// Mixing console component
+const MixingConsole = memo(function MixingConsole({ isDark, scale }: { isDark: boolean; scale: number }) {
+  const consoleColor = isDark ? '#27272a' : '#3f3f46';
+  const faderColor = isDark ? '#52525b' : '#71717a';
+  const ledGreen = '#22c55e';
+  const ledYellow = '#eab308';
+  const ledRed = '#ef4444';
+
+  return (
+    <div style={{ transform: `scale(${scale})` }}>
+      <svg width="200" height="80" viewBox="0 0 200 80">
+        {/* Console body */}
+        <rect x="0" y="20" width="200" height="60" rx="4" fill={consoleColor} />
+        <rect x="5" y="25" width="190" height="50" rx="2" fill={isDark ? '#1c1c1e' : '#52525b'} />
+
+        {/* Channel strips */}
+        {Array.from({ length: 12 }).map((_, i) => (
+          <g key={i} transform={`translate(${12 + i * 15}, 30)`}>
+            {/* Fader track */}
+            <rect x="0" y="0" width="8" height="40" rx="1" fill={isDark ? '#0a0a0a' : '#27272a'} />
+            {/* Fader knob */}
+            <motion.rect
+              x="-1"
+              width="10"
+              height="8"
+              rx="1"
+              fill={faderColor}
+              animate={{ y: [10 + Math.random() * 15, 5 + Math.random() * 20, 10 + Math.random() * 15] }}
+              transition={{ duration: 2 + Math.random(), repeat: Infinity, delay: i * 0.1 }}
+            />
+            {/* LED meter */}
+            {[0, 1, 2, 3, 4].map((led) => (
+              <motion.rect
+                key={led}
+                x="10"
+                y={32 - led * 7}
+                width="3"
+                height="5"
+                rx="0.5"
+                fill={led < 3 ? ledGreen : led < 4 ? ledYellow : ledRed}
+                animate={{ opacity: [0.2, led < 3 ? 1 : led < 4 ? 0.8 : 0.6, 0.2] }}
+                transition={{ duration: 0.3, repeat: Infinity, delay: i * 0.05 + led * 0.05 }}
+              />
+            ))}
+          </g>
+        ))}
+
+        {/* Master section */}
+        <rect x="185" y="28" width="10" height="44" rx="2" fill={isDark ? '#dc2626' : '#ef4444'} opacity="0.8" />
+      </svg>
+    </div>
+  );
+});
+
+// Studio speaker/monitor component
+const StudioMonitor = memo(function StudioMonitor({
+  x,
+  y,
+  scale,
+  side,
+  isDark,
+}: {
+  x: number;
+  y: number;
+  scale: number;
+  side: 'left' | 'right';
+  isDark: boolean;
+}) {
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: `${x}%`,
+        top: `${y}%`,
+        transform: `scale(${scale}) ${side === 'right' ? 'scaleX(-1)' : ''}`,
+        zIndex: Math.floor(y / 10),
+      }}
+    >
+      <svg width="50" height="80" viewBox="0 0 50 80">
+        {/* Speaker cabinet */}
+        <rect x="2" y="0" width="46" height="80" rx="3" fill={isDark ? '#18181b' : '#27272a'} />
+        <rect x="5" y="3" width="40" height="74" rx="2" fill={isDark ? '#0a0a0a' : '#1c1c1e'} />
+
+        {/* Tweeter */}
+        <circle cx="25" cy="18" r="8" fill={isDark ? '#27272a' : '#3f3f46'} />
+        <circle cx="25" cy="18" r="5" fill={isDark ? '#52525b' : '#71717a'} />
+        <motion.circle
+          cx="25"
+          cy="18"
+          r="3"
+          fill={isDark ? '#a1a1aa' : '#d4d4d8'}
+          animate={{ scale: [1, 1.1, 1] }}
+          transition={{ duration: 0.1, repeat: Infinity }}
+        />
+
+        {/* Woofer */}
+        <circle cx="25" cy="52" r="18" fill={isDark ? '#27272a' : '#3f3f46'} />
+        <circle cx="25" cy="52" r="14" fill={isDark ? '#3f3f46' : '#52525b'} />
+        <motion.circle
+          cx="25"
+          cy="52"
+          r="10"
+          fill={isDark ? '#52525b' : '#71717a'}
+          animate={{ scale: [1, 1.02, 1] }}
+          transition={{ duration: 0.15, repeat: Infinity }}
+        />
+        <circle cx="25" cy="52" r="4" fill={isDark ? '#71717a' : '#a1a1aa'} />
+
+        {/* Power LED */}
+        <motion.circle
+          cx="25"
+          cy="75"
+          r="2"
+          fill="#22c55e"
+          animate={{ opacity: [0.6, 1, 0.6] }}
+          transition={{ duration: 2, repeat: Infinity }}
+        />
+      </svg>
+    </div>
+  );
+});
+
+// Stage light / spotlight component
+const StageLight = memo(function StageLight({
+  x,
+  color,
+  intensity,
+  isDark,
+}: {
+  x: number;
+  color: string;
+  intensity: number;
+  isDark: boolean;
+}) {
+  return (
+    <div
+      className="absolute top-0"
+      style={{ left: `${x}%`, transform: 'translateX(-50%)' }}
+    >
+      {/* Light fixture */}
+      <div
+        className="w-8 h-6 rounded-b-lg"
+        style={{
+          background: isDark ? '#27272a' : '#3f3f46',
+          boxShadow: `0 4px 20px ${color}${Math.round(intensity * 255).toString(16).padStart(2, '0')}`,
+        }}
+      />
+      {/* Light beam */}
+      <motion.div
+        className="absolute top-6 left-1/2 -translate-x-1/2"
+        style={{
+          width: 0,
+          height: 0,
+          borderLeft: '40px solid transparent',
+          borderRight: '40px solid transparent',
+          borderTop: `120px solid ${color}`,
+          opacity: isDark ? intensity * 0.4 : intensity * 0.2,
+          filter: 'blur(10px)',
+        }}
+        animate={{
+          opacity: isDark ? [intensity * 0.3, intensity * 0.5, intensity * 0.3] : [intensity * 0.15, intensity * 0.25, intensity * 0.15],
+        }}
+        transition={{ duration: 3 + Math.random() * 2, repeat: Infinity }}
+      />
+    </div>
+  );
+});
+
+// Instrument stand (guitar/keyboard)
+const InstrumentStand = memo(function InstrumentStand({
+  x,
+  y,
+  type,
+  scale,
+  isDark,
+}: {
+  x: number;
+  y: number;
+  type: 'guitar' | 'keyboard' | 'drums';
+  scale: number;
+  isDark: boolean;
+}) {
+  return (
+    <div
+      className="absolute"
+      style={{
+        left: `${x}%`,
+        top: `${y}%`,
+        transform: `scale(${scale})`,
+        zIndex: Math.floor(y / 10),
+        opacity: 0.6 + scale * 0.3,
+      }}
+    >
+      {type === 'guitar' && (
+        <svg width="30" height="70" viewBox="0 0 30 70">
+          {/* Stand */}
+          <path d="M15 70 L15 45" stroke={isDark ? '#52525b' : '#71717a'} strokeWidth="2" />
+          <path d="M5 70 L15 60 L25 70" stroke={isDark ? '#52525b' : '#71717a'} strokeWidth="2" fill="none" />
+          {/* Guitar body */}
+          <ellipse cx="15" cy="35" rx="12" ry="8" fill={isDark ? '#92400e' : '#b45309'} />
+          <ellipse cx="15" cy="28" rx="10" ry="6" fill={isDark ? '#78350f' : '#92400e'} />
+          <circle cx="15" cy="32" r="3" fill={isDark ? '#1c1917' : '#292524'} />
+          {/* Neck */}
+          <rect x="13" y="5" width="4" height="25" fill={isDark ? '#78350f' : '#92400e'} />
+          <rect x="12" y="0" width="6" height="6" rx="1" fill={isDark ? '#52525b' : '#71717a'} />
+        </svg>
+      )}
+      {type === 'keyboard' && (
+        <svg width="80" height="40" viewBox="0 0 80 40">
+          {/* Stand legs */}
+          <path d="M10 40 L15 25" stroke={isDark ? '#52525b' : '#71717a'} strokeWidth="2" />
+          <path d="M70 40 L65 25" stroke={isDark ? '#52525b' : '#71717a'} strokeWidth="2" />
+          {/* Keyboard body */}
+          <rect x="5" y="10" width="70" height="18" rx="2" fill={isDark ? '#18181b' : '#27272a'} />
+          {/* White keys */}
+          {Array.from({ length: 14 }).map((_, i) => (
+            <rect key={i} x={8 + i * 5} y="14" width="4" height="12" rx="0.5" fill="#fafafa" />
+          ))}
+          {/* Black keys */}
+          {[0, 1, 3, 4, 5, 7, 8, 10, 11, 12].map((i) => (
+            <rect key={i} x={11 + i * 5} y="14" width="3" height="7" rx="0.5" fill="#18181b" />
+          ))}
+        </svg>
+      )}
+      {type === 'drums' && (
+        <svg width="60" height="50" viewBox="0 0 60 50">
+          {/* Hi-hat */}
+          <ellipse cx="10" cy="15" rx="8" ry="3" fill={isDark ? '#a1a1aa' : '#d4d4d8'} />
+          <path d="M10 18 L10 45" stroke={isDark ? '#52525b' : '#71717a'} strokeWidth="1.5" />
+          {/* Snare */}
+          <ellipse cx="30" cy="35" rx="12" ry="5" fill={isDark ? '#52525b' : '#71717a'} />
+          <rect x="18" y="35" width="24" height="10" fill={isDark ? '#dc2626' : '#ef4444'} />
+          <ellipse cx="30" cy="45" rx="12" ry="4" fill={isDark ? '#52525b' : '#71717a'} />
+          {/* Cymbal */}
+          <ellipse cx="50" cy="12" rx="10" ry="4" fill={isDark ? '#fbbf24' : '#fcd34d'} />
+          <path d="M50 16 L50 45" stroke={isDark ? '#52525b' : '#71717a'} strokeWidth="1.5" />
+        </svg>
+      )}
+    </div>
+  );
+});
+
+// Vinyl record / turntable
+const Turntable = memo(function Turntable({ x, y, scale, isDark }: { x: number; y: number; scale: number; isDark: boolean }) {
+  return (
+    <motion.div
+      className="absolute"
+      style={{
+        left: `${x}%`,
+        top: `${y}%`,
+        transform: `scale(${scale})`,
+        zIndex: Math.floor(y / 10),
+      }}
+    >
+      <svg width="50" height="50" viewBox="0 0 50 50">
+        {/* Turntable base */}
+        <rect x="0" y="5" width="50" height="40" rx="3" fill={isDark ? '#18181b' : '#27272a'} />
+        {/* Platter */}
+        <motion.g
+          animate={{ rotate: 360 }}
+          transition={{ duration: 2, repeat: Infinity, ease: 'linear' }}
+          style={{ transformOrigin: '25px 25px' }}
+        >
+          <circle cx="25" cy="25" r="18" fill={isDark ? '#0a0a0a' : '#1c1c1e'} />
+          {/* Vinyl grooves */}
+          {[14, 11, 8, 5].map((r, i) => (
+            <circle key={i} cx="25" cy="25" r={r} fill="none" stroke={isDark ? '#27272a' : '#3f3f46'} strokeWidth="0.5" />
+          ))}
+          {/* Label */}
+          <circle cx="25" cy="25" r="5" fill={isDark ? '#dc2626' : '#ef4444'} />
+        </motion.g>
+        {/* Tonearm */}
+        <path d="M42 10 L42 20 L30 28" stroke={isDark ? '#a1a1aa' : '#d4d4d8'} strokeWidth="1.5" fill="none" />
+        <circle cx="42" cy="10" r="3" fill={isDark ? '#52525b' : '#71717a'} />
+      </svg>
+    </motion.div>
+  );
+});
+
 function StudioScene({ isDark }: { isDark: boolean }) {
   const config = SCENE_CONFIGS.studio.ground;
 
+  // Stage light configurations
+  const stageLights = useMemo(() => [
+    { x: 15, color: '#8b5cf6', intensity: 0.7 },
+    { x: 30, color: '#ec4899', intensity: 0.6 },
+    { x: 50, color: '#22d3ee', intensity: 0.8 },
+    { x: 70, color: '#ec4899', intensity: 0.6 },
+    { x: 85, color: '#8b5cf6', intensity: 0.7 },
+  ], []);
+
+  // Instruments and equipment
+  const instruments = useMemo(() => [
+    { x: 12, y: 35, type: 'guitar' as const, scale: 0.5 },
+    { x: 88, y: 38, type: 'guitar' as const, scale: 0.55 },
+    { x: 15, y: 60, type: 'keyboard' as const, scale: 0.6 },
+    { x: 85, y: 65, type: 'drums' as const, scale: 0.65 },
+  ], []);
+
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Stage back wall */}
+      {/* Back wall */}
       <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
-        <div className={`absolute inset-0 ${
-          isDark
-            ? 'bg-gradient-to-b from-zinc-900 via-zinc-800 to-zinc-700'
-            : 'bg-gradient-to-b from-slate-300 via-slate-400 to-slate-500'
-        }`} />
-
-        {/* Acoustic panel pattern on back wall */}
-        <div className={`absolute inset-0 ${isDark ? 'opacity-10' : 'opacity-8'}`} style={{
-          backgroundImage: `repeating-linear-gradient(0deg, transparent, transparent 25px, ${isDark ? '#3f3f46' : '#94a3b8'} 25px, ${isDark ? '#3f3f46' : '#94a3b8'} 27px)`,
-        }} />
-
-        {/* LED strip at top */}
-        <motion.div
-          className="absolute top-0 left-0 right-0 h-1"
-          style={{ background: `linear-gradient(90deg, #8b5cf6, #ec4899, #8b5cf6)` }}
-          animate={{ boxShadow: ['0 0 10px #8b5cf6', '0 0 20px #ec4899', '0 0 10px #8b5cf6'] }}
-          transition={{ duration: 2, repeat: Infinity }}
+        {/* Wall gradient */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: isDark
+              ? 'linear-gradient(to bottom, #0a0a0a 0%, #18181b 30%, #27272a 70%, #3f3f46 100%)'
+              : 'linear-gradient(to bottom, #27272a 0%, #3f3f46 30%, #52525b 70%, #71717a 100%)',
+          }}
         />
 
-        {/* Stage monitors at back */}
-        {[-1, 1].map((side) => (
-          <div
-            key={side}
-            className={`absolute bottom-[10%] w-8 h-14 rounded border flex flex-col items-center justify-center gap-1 ${
-              isDark ? 'bg-zinc-800 border-zinc-600' : 'bg-slate-600 border-slate-500'
-            }`}
-            style={{ [side < 0 ? 'left' : 'right']: '15%' }}
-          >
-            <div className={`w-3 h-3 rounded-full ${isDark ? 'bg-zinc-700' : 'bg-slate-500'}`} />
-            <div className={`w-5 h-5 rounded-full ${isDark ? 'bg-zinc-700' : 'bg-slate-500'}`} />
-          </div>
-        ))}
-
-        {/* VU meters on back wall */}
-        <div className="absolute bottom-[25%] left-1/2 -translate-x-1/2 flex gap-3">
-          {[0, 1].map((ch) => (
-            <div key={ch} className="flex gap-0.5">
-              {Array.from({ length: 8 }).map((_, i) => (
-                <motion.div
-                  key={i}
-                  className="w-1.5 h-2 rounded-sm"
+        {/* Acoustic panels - detailed foam pattern */}
+        <div className="absolute inset-0 opacity-30">
+          {useMemo(() => Array.from({ length: 8 }).map((_, row) => (
+            <div key={row} className="flex justify-around" style={{ marginTop: row === 0 ? '5%' : '2%' }}>
+              {Array.from({ length: 6 }).map((_, col) => (
+                <div
+                  key={col}
+                  className="rounded"
                   style={{
-                    backgroundColor: '#27272a',
+                    width: '12%',
+                    height: 20,
+                    background: isDark
+                      ? `linear-gradient(135deg, #27272a 25%, #1c1c1e 50%, #27272a 75%)`
+                      : `linear-gradient(135deg, #52525b 25%, #3f3f46 50%, #52525b 75%)`,
+                    boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.3)',
                   }}
-                  animate={{ backgroundColor: i < 5 ? ['#27272a', '#22c55e', '#27272a'] : i < 7 ? ['#27272a', '#eab308', '#27272a'] : ['#27272a', '#ef4444', '#27272a'] }}
-                  transition={{ duration: 0.3, repeat: Infinity, delay: (ch * 8 + i) * 0.05 }}
                 />
               ))}
             </div>
-          ))}
+          )), [isDark])}
         </div>
+
+        {/* Neon accent strips */}
+        <motion.div
+          className="absolute top-0 left-0 right-0 h-1"
+          style={{
+            background: 'linear-gradient(90deg, #8b5cf6, #ec4899, #22d3ee, #ec4899, #8b5cf6)',
+          }}
+          animate={{
+            boxShadow: [
+              '0 0 20px #8b5cf6, 0 0 40px #8b5cf680',
+              '0 0 30px #ec4899, 0 0 60px #ec489980',
+              '0 0 20px #22d3ee, 0 0 40px #22d3ee80',
+              '0 0 30px #ec4899, 0 0 60px #ec489980',
+              '0 0 20px #8b5cf6, 0 0 40px #8b5cf680',
+            ],
+          }}
+          transition={{ duration: 4, repeat: Infinity }}
+        />
+
+        {/* Large studio monitors on back wall */}
+        <StudioMonitor x={12} y={25} scale={0.8} side="left" isDark={isDark} />
+        <StudioMonitor x={88} y={25} scale={0.8} side="right" isDark={isDark} />
+
+        {/* LED VU meter display */}
+        <div className="absolute bottom-[15%] left-1/2 -translate-x-1/2">
+          <div
+            className="flex gap-4 p-3 rounded-lg"
+            style={{
+              background: isDark ? '#0a0a0a' : '#18181b',
+              border: `1px solid ${isDark ? '#27272a' : '#3f3f46'}`,
+            }}
+          >
+            {[0, 1].map((ch) => (
+              <div key={ch} className="flex gap-1">
+                {Array.from({ length: 16 }).map((_, i) => (
+                  <motion.div
+                    key={i}
+                    className="w-2 h-8 rounded-sm"
+                    style={{
+                      background: i < 10 ? '#22c55e' : i < 14 ? '#eab308' : '#ef4444',
+                    }}
+                    animate={{
+                      opacity: [0.2, i < 8 + Math.random() * 6 ? 1 : 0.2, 0.2],
+                      scaleY: [0.3, i < 10 ? 1 : 0.6, 0.3],
+                    }}
+                    transition={{
+                      duration: 0.2 + Math.random() * 0.3,
+                      repeat: Infinity,
+                      delay: ch * 0.1 + i * 0.02,
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Stage lights */}
+        {stageLights.map((light, i) => (
+          <StageLight key={i} {...light} isDark={isDark} />
+        ))}
       </div>
 
-      {/* Stage floor - large performance area */}
+      {/* Stage floor */}
       <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
-        {/* Stage floor with perspective */}
-        <div className={`absolute inset-0 ${
-          isDark
-            ? 'bg-gradient-to-b from-zinc-700 via-zinc-800 to-zinc-900'
-            : 'bg-gradient-to-b from-slate-400 via-slate-500 to-slate-600'
-        }`} />
+        {/* Polished wood floor */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: isDark
+              ? 'linear-gradient(to bottom, #1c1917 0%, #0c0a09 50%, #0a0908 100%)'
+              : 'linear-gradient(to bottom, #44403c 0%, #292524 50%, #1c1917 100%)',
+          }}
+        />
 
-        {/* Floor plank lines */}
-        <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
-          {[0.08, 0.18, 0.32, 0.50, 0.72].map((y, i) => (
+        {/* Floor reflection/shine */}
+        <div
+          className="absolute inset-0 opacity-10"
+          style={{
+            background: 'linear-gradient(to bottom, rgba(255,255,255,0.1) 0%, transparent 30%)',
+          }}
+        />
+
+        {/* Perspective floor lines */}
+        <svg className="absolute inset-0 w-full h-full opacity-15" preserveAspectRatio="none">
+          {/* Horizontal planks */}
+          {[0.1, 0.22, 0.38, 0.58, 0.82].map((y, i) => (
             <line
               key={`h-${i}`}
               x1="0%"
               x2="100%"
               y1={`${y * 100}%`}
               y2={`${y * 100}%`}
-              stroke={isDark ? 'rgba(0,0,0,0.2)' : 'rgba(0,0,0,0.1)'}
+              stroke={isDark ? '#44403c' : '#57534e'}
               strokeWidth="1"
             />
           ))}
-          {[-45, -25, -10, 0, 10, 25, 45].map((offset, i) => (
+          {/* Vertical perspective lines */}
+          {[-60, -35, -15, 0, 15, 35, 60].map((offset, i) => (
             <line
               key={`v-${i}`}
               x1="50%"
               y1="0%"
               x2={`${50 + offset}%`}
               y2="100%"
-              stroke={isDark ? 'rgba(0,0,0,0.15)' : 'rgba(0,0,0,0.08)'}
-              strokeWidth="1"
+              stroke={isDark ? '#44403c' : '#57534e'}
+              strokeWidth="0.5"
             />
           ))}
         </svg>
 
-        {/* Stage edge lights */}
-        <div className="absolute top-0 left-0 right-0 h-1 flex justify-around px-[10%]">
-          {Array.from({ length: 8 }).map((_, i) => (
-            <motion.div
-              key={i}
-              className="w-2 h-2 rounded-full"
-              style={{
-                backgroundColor: i % 2 === 0 ? '#8b5cf6' : '#fbbf24',
-              }}
-              animate={{ boxShadow: [`0 0 6px ${i % 2 === 0 ? '#8b5cf6' : '#fbbf24'}`, `0 0 12px ${i % 2 === 0 ? '#8b5cf6' : '#fbbf24'}`, `0 0 6px ${i % 2 === 0 ? '#8b5cf6' : '#fbbf24'}`] }}
-              transition={{ duration: 2 + (i % 3) * 0.5, repeat: Infinity, delay: i * 0.2 }}
-            />
-          ))}
+        {/* Stage edge LED strip */}
+        <motion.div
+          className="absolute top-0 left-[5%] right-[5%] h-1 rounded-full"
+          style={{
+            background: 'linear-gradient(90deg, #8b5cf6, #ec4899, #22d3ee, #ec4899, #8b5cf6)',
+          }}
+          animate={{
+            boxShadow: [
+              '0 0 10px #8b5cf6, 0 0 20px #8b5cf680',
+              '0 0 15px #22d3ee, 0 0 30px #22d3ee80',
+              '0 0 10px #8b5cf6, 0 0 20px #8b5cf680',
+            ],
+          }}
+          transition={{ duration: 2, repeat: Infinity }}
+        />
+
+        {/* Mixing console */}
+        <div className="absolute bottom-[10%] left-1/2 -translate-x-1/2">
+          <MixingConsole isDark={isDark} scale={0.8} />
         </div>
 
-        {/* Mic stands at different depths */}
-        {useMemo(() => [
-          { x: 25, y: 30, scale: 0.5 },
-          { x: 75, y: 35, scale: 0.55 },
-        ].map((stand, i) => (
-          <div
-            key={i}
-            className="absolute"
-            style={{
-              left: `${stand.x}%`,
-              top: `${stand.y}%`,
-              transform: `scale(${stand.scale})`,
-              opacity: 0.4,
-            }}
-          >
-            <div className={`w-1 h-16 ${isDark ? 'bg-zinc-600' : 'bg-slate-500'}`} />
-            <div className={`w-4 h-3 -mt-1 -ml-1.5 rounded ${isDark ? 'bg-zinc-500' : 'bg-slate-400'}`} />
-          </div>
-        )), [isDark])}
+        {/* Instruments */}
+        {instruments.map((inst, i) => (
+          <InstrumentStand key={i} {...inst} isDark={isDark} />
+        ))}
 
-        {/* Cable runs on floor */}
-        <svg className="absolute inset-0 w-full h-full opacity-20" viewBox="0 0 100 100" preserveAspectRatio="none">
-          <path d="M10 60 Q30 55 50 65 Q70 75 90 70" stroke={isDark ? '#52525b' : '#64748b'} strokeWidth="0.5" fill="none" />
+        {/* Turntables */}
+        <Turntable x={25} y={50} scale={0.6} isDark={isDark} />
+        <Turntable x={75} y={52} scale={0.55} isDark={isDark} />
+
+        {/* Cable runs */}
+        <svg className="absolute inset-0 w-full h-full opacity-30" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <path d="M10 70 Q25 65 40 72 Q55 80 70 75 Q85 70 95 72" stroke={isDark ? '#27272a' : '#44403c'} strokeWidth="0.3" fill="none" />
+          <path d="M5 80 Q20 75 35 82 Q50 88 65 83 Q80 78 90 80" stroke={isDark ? '#27272a' : '#44403c'} strokeWidth="0.3" fill="none" />
+          <path d="M15 85 Q30 82 45 88 Q60 92 75 87" stroke={isDark ? '#dc2626' : '#ef4444'} strokeWidth="0.2" fill="none" opacity="0.5" />
         </svg>
+
+        {/* Smoke/haze effect */}
+        {isDark && (
+          <>
+            <motion.div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: 'radial-gradient(ellipse at 50% 20%, rgba(139, 92, 246, 0.08) 0%, transparent 50%)',
+              }}
+              animate={{ opacity: [0.3, 0.6, 0.3] }}
+              transition={{ duration: 5, repeat: Infinity }}
+            />
+            <motion.div
+              className="absolute inset-0 pointer-events-none"
+              style={{
+                background: 'radial-gradient(ellipse at 30% 40%, rgba(236, 72, 153, 0.06) 0%, transparent 40%)',
+              }}
+              animate={{ opacity: [0.2, 0.5, 0.2], x: [0, 20, 0] }}
+              transition={{ duration: 8, repeat: Infinity }}
+            />
+          </>
+        )}
       </div>
 
-      {/* Recording light */}
-      <div className={`absolute top-3 right-3 flex items-center gap-1.5 px-2 py-1 rounded-full border ${
-        isDark ? 'bg-red-900/40 border-red-500/40' : 'bg-red-100 border-red-300'
-      }`}>
+      {/* Recording indicator */}
+      <div
+        className={`absolute top-3 right-3 flex items-center gap-2 px-3 py-1.5 rounded-full border backdrop-blur-sm ${
+          isDark ? 'bg-red-950/60 border-red-500/50' : 'bg-red-100/90 border-red-300'
+        }`}
+      >
         <motion.div
-          className="w-2 h-2 rounded-full bg-red-500"
-          animate={{ opacity: [0.4, 1, 0.4] }}
+          className="w-2.5 h-2.5 rounded-full bg-red-500"
+          animate={{
+            opacity: [0.4, 1, 0.4],
+            scale: [1, 1.2, 1],
+          }}
           transition={{ duration: 1, repeat: Infinity }}
         />
-        <span className={`text-[10px] font-bold ${isDark ? 'text-red-400' : 'text-red-600'}`}>LIVE</span>
+        <span className={`text-xs font-bold tracking-wider ${isDark ? 'text-red-400' : 'text-red-600'}`}>
+          REC
+        </span>
       </div>
+
+      {/* Floating music notes (subtle) */}
+      {isDark && useMemo(() => Array.from({ length: 6 }).map((_, i) => (
+        <motion.div
+          key={`note-${i}`}
+          className="absolute text-lg pointer-events-none"
+          style={{
+            left: `${20 + i * 12}%`,
+            bottom: '30%',
+            color: ['#8b5cf6', '#ec4899', '#22d3ee'][i % 3],
+            opacity: 0.4,
+          }}
+          animate={{
+            y: [0, -50, -100],
+            x: [0, (i % 2 === 0 ? 20 : -20), 0],
+            opacity: [0, 0.6, 0],
+            rotate: [0, (i % 2 === 0 ? 15 : -15), 0],
+          }}
+          transition={{
+            duration: 5 + i,
+            repeat: Infinity,
+            delay: i * 1.5,
+          }}
+        >
+          {['♪', '♫', '♬'][i % 3]}
+        </motion.div>
+      )), [])}
     </div>
   );
 }
 
 // ============================================
-// SPACE SCENE - Day (nebula) & Night (deep space) (Ground-dominant pseudo-3D)
+// SPACE SCENE - Epic Cosmic Observatory
 // ============================================
+
+// Detailed planet component
+const SpacePlanet = memo(function SpacePlanet({
+  x,
+  y,
+  size,
+  colors,
+  hasRing,
+  ringColor,
+  glowColor,
+  isDark,
+}: {
+  x: number;
+  y: number;
+  size: number;
+  colors: string[];
+  hasRing?: boolean;
+  ringColor?: string;
+  glowColor: string;
+  isDark: boolean;
+}) {
+  return (
+    <div
+      className="absolute"
+      style={{ left: `${x}%`, top: `${y}%`, transform: 'translate(-50%, -50%)' }}
+    >
+      {/* Planet glow */}
+      <div
+        className="absolute rounded-full"
+        style={{
+          width: size * 1.5,
+          height: size * 1.5,
+          left: '50%',
+          top: '50%',
+          transform: 'translate(-50%, -50%)',
+          background: `radial-gradient(circle, ${glowColor}40 0%, transparent 70%)`,
+          filter: 'blur(8px)',
+        }}
+      />
+      {/* Planet body */}
+      <div
+        className="rounded-full relative overflow-hidden"
+        style={{
+          width: size,
+          height: size,
+          background: `linear-gradient(135deg, ${colors.join(', ')})`,
+          boxShadow: `inset -${size/4}px -${size/4}px ${size/2}px rgba(0,0,0,0.4), 0 0 ${size/2}px ${glowColor}30`,
+        }}
+      >
+        {/* Surface details */}
+        <div
+          className="absolute inset-0 opacity-30"
+          style={{
+            background: `radial-gradient(circle at 30% 30%, rgba(255,255,255,0.3) 0%, transparent 50%)`,
+          }}
+        />
+        {/* Atmospheric band */}
+        <div
+          className="absolute w-full opacity-20"
+          style={{
+            height: size * 0.15,
+            top: '40%',
+            background: 'linear-gradient(90deg, transparent, rgba(255,255,255,0.5), transparent)',
+          }}
+        />
+      </div>
+      {/* Ring */}
+      {hasRing && (
+        <div
+          className="absolute left-1/2 top-1/2"
+          style={{
+            width: size * 1.8,
+            height: size * 0.4,
+            transform: 'translate(-50%, -50%) rotateX(75deg)',
+            border: `2px solid ${ringColor}`,
+            borderRadius: '50%',
+            opacity: 0.6,
+            boxShadow: `0 0 10px ${ringColor}40`,
+          }}
+        />
+      )}
+    </div>
+  );
+});
+
+// Nebula cloud component
+const NebulaCloud = memo(function NebulaCloud({
+  x,
+  y,
+  width,
+  height,
+  color1,
+  color2,
+  delay,
+}: {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  color1: string;
+  color2: string;
+  delay: number;
+}) {
+  return (
+    <motion.div
+      className="absolute pointer-events-none"
+      style={{
+        left: `${x}%`,
+        top: `${y}%`,
+        width: `${width}%`,
+        height: `${height}%`,
+        background: `radial-gradient(ellipse at 50% 50%, ${color1}30 0%, ${color2}15 40%, transparent 70%)`,
+        filter: 'blur(20px)',
+      }}
+      animate={{
+        opacity: [0.3, 0.5, 0.3],
+        scale: [1, 1.05, 1],
+      }}
+      transition={{ duration: 8, delay, repeat: Infinity, ease: 'easeInOut' }}
+    />
+  );
+});
+
+// Shooting star component
+const ShootingStar = memo(function ShootingStar({ delay }: { delay: number }) {
+  const startX = useMemo(() => Math.random() * 60 + 10, []);
+  const startY = useMemo(() => Math.random() * 20 + 5, []);
+
+  return (
+    <motion.div
+      className="absolute pointer-events-none"
+      style={{ left: `${startX}%`, top: `${startY}%` }}
+      initial={{ opacity: 0, x: 0, y: 0 }}
+      animate={{
+        opacity: [0, 1, 1, 0],
+        x: [0, 80, 120],
+        y: [0, 40, 60],
+      }}
+      transition={{
+        duration: 1.2,
+        delay,
+        repeat: Infinity,
+        repeatDelay: 15 + Math.random() * 10,
+        ease: 'easeOut',
+      }}
+    >
+      <div
+        className="relative"
+        style={{
+          width: 3,
+          height: 3,
+          borderRadius: '50%',
+          background: 'white',
+          boxShadow: '0 0 6px 2px white',
+        }}
+      >
+        <div
+          className="absolute top-1/2 right-full -translate-y-1/2"
+          style={{
+            width: 40,
+            height: 2,
+            background: 'linear-gradient(to left, white, transparent)',
+          }}
+        />
+      </div>
+    </motion.div>
+  );
+});
+
+// Holographic display panel
+const HoloPanel = memo(function HoloPanel({
+  x,
+  y,
+  scale,
+  type,
+  isDark,
+}: {
+  x: number;
+  y: number;
+  scale: number;
+  type: 'waveform' | 'grid' | 'circular';
+  isDark: boolean;
+}) {
+  const baseColor = isDark ? '#22d3ee' : '#8b5cf6';
+
+  return (
+    <motion.div
+      className="absolute"
+      style={{
+        left: `${x}%`,
+        top: `${y}%`,
+        transform: `scale(${scale})`,
+        zIndex: Math.floor(y / 10),
+      }}
+      animate={{ opacity: [0.6, 0.9, 0.6] }}
+      transition={{ duration: 3, repeat: Infinity }}
+    >
+      <div
+        className="rounded-lg overflow-hidden"
+        style={{
+          width: 80,
+          height: 60,
+          background: `linear-gradient(180deg, ${baseColor}15 0%, transparent 100%)`,
+          border: `1px solid ${baseColor}40`,
+          boxShadow: `0 0 20px ${baseColor}20, inset 0 0 20px ${baseColor}10`,
+        }}
+      >
+        {type === 'waveform' && (
+          <div className="flex items-end justify-around h-full p-2">
+            {Array.from({ length: 12 }).map((_, i) => (
+              <motion.div
+                key={i}
+                className="w-1 rounded-t"
+                style={{ backgroundColor: baseColor }}
+                animate={{
+                  height: ['30%', `${30 + Math.random() * 60}%`, '30%'],
+                }}
+                transition={{
+                  duration: 0.5 + Math.random() * 0.5,
+                  repeat: Infinity,
+                  delay: i * 0.05,
+                }}
+              />
+            ))}
+          </div>
+        )}
+        {type === 'grid' && (
+          <div className="h-full p-2 flex flex-col justify-around">
+            {Array.from({ length: 4 }).map((_, row) => (
+              <div key={row} className="flex justify-around">
+                {Array.from({ length: 6 }).map((_, col) => (
+                  <motion.div
+                    key={col}
+                    className="w-2 h-2 rounded-sm"
+                    style={{ backgroundColor: baseColor }}
+                    animate={{ opacity: [0.3, 1, 0.3] }}
+                    transition={{
+                      duration: 1,
+                      repeat: Infinity,
+                      delay: (row * 6 + col) * 0.1,
+                    }}
+                  />
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+        {type === 'circular' && (
+          <div className="h-full flex items-center justify-center">
+            {[0, 1, 2].map((ring) => (
+              <motion.div
+                key={ring}
+                className="absolute rounded-full border"
+                style={{
+                  width: 20 + ring * 15,
+                  height: 20 + ring * 15,
+                  borderColor: baseColor,
+                  opacity: 0.5 - ring * 0.1,
+                }}
+                animate={{ rotate: [0, ring % 2 === 0 ? 360 : -360] }}
+                transition={{ duration: 8 + ring * 2, repeat: Infinity, ease: 'linear' }}
+              />
+            ))}
+            <motion.div
+              className="w-3 h-3 rounded-full"
+              style={{ backgroundColor: baseColor }}
+              animate={{ scale: [1, 1.3, 1] }}
+              transition={{ duration: 1.5, repeat: Infinity }}
+            />
+          </div>
+        )}
+      </div>
+      {/* Hologram projection lines */}
+      <div
+        className="absolute -bottom-4 left-1/2 -translate-x-1/2"
+        style={{
+          width: 40,
+          height: 20,
+          background: `linear-gradient(to top, ${baseColor}30, transparent)`,
+          clipPath: 'polygon(20% 100%, 80% 100%, 100% 0%, 0% 0%)',
+        }}
+      />
+    </motion.div>
+  );
+});
+
 function SpaceScene({ isDark }: { isDark: boolean }) {
   const config = SCENE_CONFIGS.space.ground;
+
+  // Planet configurations
+  const planets = useMemo(() => [
+    // Large ringed planet (Saturn-like)
+    { x: 78, y: 35, size: 50, colors: ['#f97316', '#ea580c', '#c2410c'], hasRing: true, ringColor: '#fbbf24', glowColor: '#f97316' },
+    // Small blue planet
+    { x: 15, y: 25, size: 20, colors: ['#3b82f6', '#1d4ed8', '#1e40af'], hasRing: false, glowColor: '#60a5fa' },
+    // Purple moon
+    { x: 88, y: 55, size: 15, colors: ['#a855f7', '#7c3aed', '#6d28d9'], hasRing: false, glowColor: '#c084fc' },
+    // Distant red planet
+    { x: 25, y: 50, size: 12, colors: ['#ef4444', '#dc2626', '#991b1b'], hasRing: false, glowColor: '#f87171' },
+  ], []);
+
+  // Nebula configurations
+  const nebulae = useMemo(() => [
+    { x: 5, y: 10, width: 45, height: 50, color1: '#8b5cf6', color2: '#6366f1', delay: 0 },
+    { x: 55, y: 5, width: 40, height: 40, color1: '#ec4899', color2: '#f43f5e', delay: 2 },
+    { x: 30, y: 40, width: 35, height: 35, color1: '#06b6d4', color2: '#0ea5e9', delay: 4 },
+  ], []);
+
+  // Holographic panels
+  const holoPanels = useMemo(() => [
+    { x: 8, y: 25, scale: 0.5, type: 'waveform' as const },
+    { x: 92, y: 28, scale: 0.45, type: 'grid' as const },
+    { x: 5, y: 55, scale: 0.7, type: 'circular' as const },
+    { x: 95, y: 58, scale: 0.65, type: 'waveform' as const },
+  ], []);
 
   return (
     <div className="absolute inset-0 overflow-hidden">
       {/* Deep space background */}
       <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY}%` }}>
-        <div className={`absolute inset-0 ${
-          isDark
-            ? 'bg-gradient-to-b from-black via-indigo-950 to-purple-900'
-            : 'bg-gradient-to-b from-indigo-300 via-purple-200 to-pink-300'
-        }`} />
-
-        <StarField count={isDark ? 50 : 15} />
-
-        {/* Nebula clouds */}
-        <motion.div
-          className={`absolute top-[10%] left-[5%] w-[40%] h-[60%] ${isDark ? 'opacity-20' : 'opacity-30'}`}
-          style={{ background: `radial-gradient(ellipse at 40% 40%, #8b5cf650 0%, transparent 60%)` }}
-          animate={{ opacity: isDark ? [0.15, 0.25, 0.15] : [0.25, 0.35, 0.25] }}
-          transition={{ duration: 6, repeat: Infinity }}
+        {/* Base space gradient */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: isDark
+              ? 'linear-gradient(to bottom, #000000 0%, #0a0a1a 20%, #1a103d 50%, #2d1f5e 80%, #3d2a7a 100%)'
+              : 'linear-gradient(to bottom, #312e81 0%, #4338ca 20%, #6366f1 50%, #818cf8 80%, #a5b4fc 100%)',
+          }}
         />
 
-        {/* Planet at horizon */}
-        <div className="absolute bottom-[5%] right-[12%]">
-          <div
-            className={`w-10 h-10 rounded-full ${
-              isDark
-                ? 'bg-gradient-to-br from-orange-400 via-red-500 to-purple-700'
-                : 'bg-gradient-to-br from-pink-300 via-purple-400 to-indigo-400'
-            }`}
-            style={{ boxShadow: isDark ? '0 0 20px 5px rgba(249, 115, 22, 0.2)' : '0 0 20px 5px rgba(167, 139, 250, 0.3)' }}
+        {/* Dense star field */}
+        <StarField count={isDark ? 80 : 40} maxTop={95} />
+
+        {/* Additional twinkling stars layer */}
+        {useMemo(() => Array.from({ length: 30 }).map((_, i) => (
+          <motion.div
+            key={`twinkle-${i}`}
+            className="absolute rounded-full"
+            style={{
+              left: `${Math.random() * 100}%`,
+              top: `${Math.random() * 90}%`,
+              width: 1 + Math.random() * 2,
+              height: 1 + Math.random() * 2,
+              background: ['#ffffff', '#fef08a', '#bfdbfe', '#c4b5fd'][Math.floor(Math.random() * 4)],
+            }}
+            animate={{
+              opacity: [0.3, 1, 0.3],
+              scale: [0.8, 1.2, 0.8],
+            }}
+            transition={{
+              duration: 1 + Math.random() * 2,
+              repeat: Infinity,
+              delay: Math.random() * 3,
+            }}
           />
-          {/* Planet ring */}
-          <div
-            className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-16 h-3 rounded-full border opacity-40"
-            style={{ borderColor: isDark ? '#f97316' : '#a78bfa', transform: 'translate(-50%, -50%) rotateX(70deg)' }}
+        )), [])}
+
+        {/* Nebula clouds */}
+        {nebulae.map((nebula, i) => (
+          <NebulaCloud key={`nebula-${i}`} {...nebula} />
+        ))}
+
+        {/* Distant galaxy */}
+        <motion.div
+          className="absolute"
+          style={{
+            left: '60%',
+            top: '15%',
+            width: 60,
+            height: 30,
+            background: isDark
+              ? 'radial-gradient(ellipse, rgba(167, 139, 250, 0.4) 0%, rgba(139, 92, 246, 0.2) 30%, transparent 70%)'
+              : 'radial-gradient(ellipse, rgba(251, 191, 36, 0.5) 0%, rgba(245, 158, 11, 0.3) 30%, transparent 70%)',
+            transform: 'rotate(-20deg)',
+            filter: 'blur(3px)',
+          }}
+          animate={{ opacity: [0.4, 0.7, 0.4] }}
+          transition={{ duration: 5, repeat: Infinity }}
+        />
+
+        {/* Planets */}
+        {planets.map((planet, i) => (
+          <SpacePlanet key={`planet-${i}`} {...planet} isDark={isDark} />
+        ))}
+
+        {/* Shooting stars */}
+        <ShootingStar delay={3} />
+        <ShootingStar delay={8} />
+        <ShootingStar delay={15} />
+        <ShootingStar delay={22} />
+
+        {/* Asteroid belt (distant) */}
+        {useMemo(() => Array.from({ length: 20 }).map((_, i) => (
+          <motion.div
+            key={`asteroid-${i}`}
+            className="absolute rounded-full"
+            style={{
+              left: `${35 + i * 3}%`,
+              top: `${65 + Math.sin(i) * 8}%`,
+              width: 2 + Math.random() * 3,
+              height: 2 + Math.random() * 2,
+              background: isDark ? '#64748b' : '#94a3b8',
+              opacity: 0.4 + Math.random() * 0.3,
+            }}
+            animate={{ x: [0, -10, 0] }}
+            transition={{ duration: 20 + i * 2, repeat: Infinity, ease: 'linear' }}
           />
-        </div>
+        )), [isDark])}
       </div>
 
-      {/* Platform surface - floating in space */}
+      {/* Futuristic platform */}
       <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY}%` }}>
-        {/* Platform base with glow */}
-        <div className={`absolute inset-0 ${
-          isDark
-            ? 'bg-gradient-to-b from-slate-800 via-slate-900 to-black'
-            : 'bg-gradient-to-b from-slate-300 via-slate-400 to-slate-500'
-        }`} />
+        {/* Platform base */}
+        <div
+          className="absolute inset-0"
+          style={{
+            background: isDark
+              ? 'linear-gradient(to bottom, #1e1b4b 0%, #0f172a 30%, #020617 100%)'
+              : 'linear-gradient(to bottom, #6366f1 0%, #4f46e5 30%, #3730a3 100%)',
+          }}
+        />
 
         {/* Hexagonal grid pattern */}
         <div
-          className={`absolute inset-0 ${isDark ? 'opacity-15' : 'opacity-10'}`}
+          className="absolute inset-0"
           style={{
-            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cpath fill='${isDark ? '%2364748b' : '%2394a3b8'}' d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9z'/%3E%3C/svg%3E")`,
+            opacity: isDark ? 0.15 : 0.1,
+            backgroundImage: `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='28' height='49' viewBox='0 0 28 49'%3E%3Cpath fill='${isDark ? '%236366f1' : '%23a5b4fc'}' d='M13.99 9.25l13 7.5v15l-13 7.5L1 31.75v-15l12.99-7.5zM3 17.9v12.7l10.99 6.34 11-6.35V17.9l-11-6.34L3 17.9z'/%3E%3C/svg%3E")`,
           }}
         />
 
-        {/* Energy rings at platform center */}
-        <div className="absolute top-[20%] left-1/2 -translate-x-1/2 w-[60%]">
-          {[0, 1, 2].map((ring) => (
+        {/* Circuit line patterns */}
+        <svg className="absolute inset-0 w-full h-full opacity-20" preserveAspectRatio="none">
+          {useMemo(() => Array.from({ length: 8 }).map((_, i) => (
+            <motion.path
+              key={`circuit-${i}`}
+              d={`M${10 + i * 12}% 0% L${10 + i * 12}% ${30 + Math.random() * 20}% L${15 + i * 12}% ${35 + Math.random() * 20}% L${15 + i * 12}% 100%`}
+              stroke={isDark ? '#6366f1' : '#a5b4fc'}
+              strokeWidth="1"
+              fill="none"
+              initial={{ pathLength: 0 }}
+              animate={{ pathLength: [0, 1, 1, 0] }}
+              transition={{ duration: 4, delay: i * 0.5, repeat: Infinity }}
+            />
+          )), [isDark])}
+        </svg>
+
+        {/* Central energy core */}
+        <div className="absolute top-[15%] left-1/2 -translate-x-1/2">
+          {/* Core rings */}
+          {[0, 1, 2, 3].map((ring) => (
             <motion.div
-              key={ring}
-              className="absolute left-1/2 -translate-x-1/2 rounded-full border-2"
+              key={`core-ring-${ring}`}
+              className="absolute left-1/2 -translate-x-1/2 rounded-full"
               style={{
-                width: `${100 + ring * 40}%`,
-                height: 20 + ring * 8,
-                top: -ring * 5,
-                borderColor: '#8b5cf6',
-                opacity: 0.2 - ring * 0.05,
+                width: 100 + ring * 50,
+                height: 12 + ring * 4,
+                top: -ring * 3,
+                border: `2px solid ${isDark ? '#8b5cf6' : '#a5b4fc'}`,
+                opacity: 0.3 - ring * 0.05,
+                boxShadow: `0 0 15px ${isDark ? '#8b5cf6' : '#a5b4fc'}40`,
               }}
-              animate={{ boxShadow: ['0 0 10px #8b5cf6', '0 0 20px #8b5cf6', '0 0 10px #8b5cf6'] }}
-              transition={{ duration: 3 + ring, repeat: Infinity, delay: ring * 0.3 }}
+              animate={{
+                boxShadow: [
+                  `0 0 15px ${isDark ? '#8b5cf6' : '#a5b4fc'}40`,
+                  `0 0 30px ${isDark ? '#8b5cf6' : '#a5b4fc'}60`,
+                  `0 0 15px ${isDark ? '#8b5cf6' : '#a5b4fc'}40`,
+                ],
+              }}
+              transition={{ duration: 2 + ring * 0.5, repeat: Infinity, delay: ring * 0.2 }}
             />
           ))}
+          {/* Core center */}
+          <motion.div
+            className="absolute left-1/2 -translate-x-1/2 w-4 h-4 rounded-full"
+            style={{
+              top: 2,
+              background: isDark ? '#22d3ee' : '#fbbf24',
+              boxShadow: `0 0 20px 10px ${isDark ? '#22d3ee' : '#fbbf24'}50`,
+            }}
+            animate={{ scale: [1, 1.3, 1] }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+          />
         </div>
 
-        {/* Holographic data displays at different depths */}
-        {useMemo(() => [
-          { x: 10, y: 25, scale: 0.5 },
-          { x: 88, y: 30, scale: 0.55 },
-        ].map((holo, i) => (
-          <div
-            key={i}
-            className="absolute"
-            style={{
-              left: `${holo.x}%`,
-              top: `${holo.y}%`,
-              transform: `scale(${holo.scale})`,
-            }}
-          >
-            <div
-              className="w-16 h-12 rounded border"
-              style={{
-                borderColor: '#8b5cf660',
-                background: 'linear-gradient(180deg, #8b5cf620 0%, transparent 100%)',
-              }}
-            >
-              {/* Fake waveform lines */}
-              <div className="flex items-end justify-around h-full p-1">
-                {[0.3, 0.6, 0.8, 0.5, 0.7, 0.4].map((h, j) => (
-                  <motion.div
-                    key={j}
-                    className="w-1 rounded-t"
-                    style={{
-                      height: `${h * 100}%`,
-                      backgroundColor: '#8b5cf6',
-                      opacity: 0.6,
-                    }}
-                    animate={{ height: [`${h * 100}%`, `${h * 60}%`, `${h * 100}%`] }}
-                    transition={{ duration: 1.5 + j * 0.2, repeat: Infinity, delay: j * 0.1 }}
-                  />
-                ))}
-              </div>
-            </div>
-          </div>
-        )), [])}
+        {/* Holographic panels */}
+        {holoPanels.map((panel, i) => (
+          <HoloPanel key={`holo-${i}`} {...panel} isDark={isDark} />
+        ))}
 
-        {/* Platform edge lights */}
+        {/* Platform edge glow */}
         <motion.div
           className="absolute top-0 left-0 right-0 h-1"
           style={{
-            background: 'linear-gradient(90deg, transparent 5%, #8b5cf6 20%, #22d3ee 50%, #8b5cf6 80%, transparent 95%)',
-            opacity: 0.4,
+            background: `linear-gradient(90deg, transparent, ${isDark ? '#22d3ee' : '#fbbf24'} 20%, ${isDark ? '#8b5cf6' : '#a855f7'} 50%, ${isDark ? '#22d3ee' : '#fbbf24'} 80%, transparent)`,
           }}
-          animate={{ boxShadow: ['0 0 15px #8b5cf6', '0 0 25px #22d3ee', '0 0 15px #8b5cf6'] }}
+          animate={{
+            boxShadow: [
+              `0 0 20px ${isDark ? '#22d3ee' : '#fbbf24'}60`,
+              `0 0 40px ${isDark ? '#8b5cf6' : '#a855f7'}80`,
+              `0 0 20px ${isDark ? '#22d3ee' : '#fbbf24'}60`,
+            ],
+          }}
           transition={{ duration: 3, repeat: Infinity }}
         />
+
+        {/* Floor light strips */}
+        {useMemo(() => [20, 40, 60, 80].map((x, i) => (
+          <motion.div
+            key={`strip-${i}`}
+            className="absolute"
+            style={{
+              left: `${x}%`,
+              top: '30%',
+              width: 2,
+              height: '60%',
+              background: `linear-gradient(to bottom, ${isDark ? '#8b5cf6' : '#a5b4fc'}40, transparent)`,
+            }}
+            animate={{ opacity: [0.3, 0.7, 0.3] }}
+            transition={{ duration: 2, delay: i * 0.3, repeat: Infinity }}
+          />
+        )), [isDark])}
+
+        {/* Floating data particles */}
+        {useMemo(() => Array.from({ length: 15 }).map((_, i) => (
+          <motion.div
+            key={`data-${i}`}
+            className="absolute w-1 h-1 rounded-full"
+            style={{
+              left: `${15 + Math.random() * 70}%`,
+              bottom: `${10 + Math.random() * 40}%`,
+              background: isDark ? '#22d3ee' : '#fbbf24',
+              boxShadow: `0 0 4px ${isDark ? '#22d3ee' : '#fbbf24'}`,
+            }}
+            animate={{
+              y: [0, -30, 0],
+              opacity: [0.3, 1, 0.3],
+            }}
+            transition={{
+              duration: 3 + Math.random() * 2,
+              delay: Math.random() * 3,
+              repeat: Infinity,
+            }}
+          />
+        )), [isDark])}
       </div>
 
-      {/* Floating particles */}
-      <Particles color={isDark ? '#a5b4fc' : '#fcd34d'} count={12} />
+      {/* Ambient space particles */}
+      <Particles color={isDark ? '#a5b4fc' : '#fcd34d'} count={15} />
 
-      {/* Shooting stars */}
-      {useMemo(() => [0, 1].map((i) => (
+      {/* Aurora effect at horizon */}
+      {isDark && (
         <motion.div
-          key={i}
-          className="absolute w-1 h-1 bg-white rounded-full"
-          style={{ left: `${15 + i * 40}%`, top: '5%' }}
-          animate={{
-            x: [0, 100, 150],
-            y: [0, 50, 80],
-            opacity: [0, 1, 0],
+          className="absolute left-0 right-0 pointer-events-none"
+          style={{
+            top: `${config.horizonY - 10}%`,
+            height: '20%',
+            background: 'linear-gradient(to top, transparent, rgba(34, 211, 238, 0.1), rgba(139, 92, 246, 0.1), transparent)',
+            filter: 'blur(10px)',
           }}
-          transition={{
-            duration: 1.5,
-            delay: 5 + i * 10,
-            repeat: Infinity,
-            repeatDelay: 20,
-          }}
-        >
-          <div className="w-8 h-0.5 bg-gradient-to-l from-white to-transparent -translate-x-8" />
-        </motion.div>
-      )), [])}
+          animate={{ opacity: [0.3, 0.6, 0.3] }}
+          transition={{ duration: 8, repeat: Infinity }}
+        />
+      )}
     </div>
   );
 }
