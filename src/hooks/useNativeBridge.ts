@@ -51,6 +51,15 @@ export function useNativeBridge() {
     // Get store actions (these are stable)
     const store = useBridgeAudioStore.getState();
 
+    // Sync sample rates between stores on initialization
+    // Use bridge-audio-store as the source of truth since it's the user-facing setting
+    const bridgeSampleRate = store.sampleRate;
+    const audioStoreSampleRate = useAudioStore.getState().settings.sampleRate;
+    if (bridgeSampleRate !== audioStoreSampleRate) {
+      console.log(`[useNativeBridge] Syncing sample rates on init: bridge=${bridgeSampleRate}, audio-store=${audioStoreSampleRate}`);
+      useAudioStore.getState().setSettings({ sampleRate: bridgeSampleRate });
+    }
+
     const handleConnected = (data: { version: string; driverType: string }) => {
       console.log('[useNativeBridge] Connected event received:', data);
       const s = useBridgeAudioStore.getState();
@@ -377,9 +386,14 @@ export function useNativeBridge() {
   }, []);
 
   // Set sample rate - this changes BOTH AudioContext and native bridge
+  // Also syncs the audio-store to keep all sample rate settings consistent
   const setSampleRate = useCallback(async (rate: 44100 | 48000) => {
     const store = useBridgeAudioStore.getState();
     store.setSampleRate(rate);
+
+    // Also update audio-store to keep sample rates in sync across all stores
+    // This ensures the next AudioEngine initialization uses the correct rate
+    useAudioStore.getState().setSettings({ sampleRate: rate });
 
     // Change the AudioContext sample rate (recreates it)
     if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
