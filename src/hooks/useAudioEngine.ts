@@ -668,7 +668,9 @@ export function useAudioEngine() {
     trackId: string,
     settings?: TrackAudioSettings
   ) => {
-    return globalEngine?.getOrCreateTrackProcessor(trackId, settings) ?? null;
+    // Use globalEngine or fall back to window reference (for native bridge initialization)
+    const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+    return engine?.getOrCreateTrackProcessor(trackId, settings) ?? null;
   }, []);
 
   // Get an existing track processor
@@ -678,7 +680,9 @@ export function useAudioEngine() {
 
   // Remove a track processor
   const removeTrackProcessor = useCallback((trackId: string) => {
-    globalEngine?.removeTrackProcessor(trackId);
+    // Use globalEngine or fall back to window reference (for native bridge initialization)
+    const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+    engine?.removeTrackProcessor(trackId);
   }, []);
 
   // Update track state (arm, mute, solo, volume, etc.)
@@ -686,7 +690,15 @@ export function useAudioEngine() {
     trackId: string,
     state: Partial<import('@/lib/audio/track-audio-processor').TrackAudioState>
   ) => {
-    globalEngine?.updateTrackState(trackId, state);
+    // Use globalEngine or fall back to window reference (for native bridge initialization)
+    const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+    console.log('[useAudioEngine] updateTrackState called:', {
+      trackId: trackId.slice(-8),
+      hasEngine: !!engine,
+      fromWindow: !globalEngine && !!engine,
+      state: { isArmed: state.isArmed, monitoringEnabled: state.monitoringEnabled },
+    });
+    engine?.updateTrackState(trackId, state);
   }, []);
 
   // Update track effects
@@ -694,7 +706,9 @@ export function useAudioEngine() {
     trackId: string,
     effects: Partial<import('@/types').ExtendedEffectsChain>
   ) => {
-    globalEngine?.updateTrackEffects(trackId, effects);
+    // Use globalEngine or fall back to window reference (for native bridge initialization)
+    const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+    engine?.updateTrackEffects(trackId, effects);
   }, []);
 
   // Get track levels (input and output)
