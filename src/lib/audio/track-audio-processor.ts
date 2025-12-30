@@ -122,7 +122,7 @@ export class TrackAudioProcessor {
     // Apply initial settings
     if (initialSettings) {
       this.state.inputGain = initialSettings.inputGain ?? 0;
-      this.state.monitoringEnabled = initialSettings.directMonitoring ?? false;
+      this.state.monitoringEnabled = initialSettings.directMonitoring ?? true;
       this.updateInputGain();
       this.updateMonitoringState();
     }

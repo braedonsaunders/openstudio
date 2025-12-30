@@ -345,11 +345,8 @@ export function useNativeBridge() {
           const engine = (window as any).__openStudioAudioEngine;
           engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 
-          // CRITICAL: Set up bridge input for each track processor
-          // This creates the AudioWorklet that receives audio from native bridge
-          const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
-          await engine.setTrackBridgeInput(track.id, { channelConfig });
-
+          // IMPORTANT: Set track state BEFORE enabling audio input
+          // This ensures monitoring is enabled before audio starts flowing
           const shouldMonitor = track.isArmed && !track.isMuted;
           engine.updateTrackState(track.id, {
             isArmed: track.isArmed,
@@ -364,7 +361,12 @@ export function useNativeBridge() {
             engine.updateTrackEffects(track.id, track.audioSettings.effects);
           }
 
-          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}`);
+          // Now set up bridge input - audio can flow after this
+          // This creates the AudioWorklet that receives audio from native bridge
+          const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
+          await engine.setTrackBridgeInput(track.id, { channelConfig });
+
+          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, monitoring: ${shouldMonitor}`);
         }
       }
     }
@@ -498,6 +500,7 @@ export function useNativeBridge() {
             if (engine) {
               engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 
+              // Set track state BEFORE enabling audio input
               const shouldMonitor = track.isArmed && !track.isMuted;
               engine.updateTrackState(track.id, {
                 isArmed: track.isArmed,
@@ -511,6 +514,12 @@ export function useNativeBridge() {
               if (track.audioSettings.effects) {
                 engine.updateTrackEffects(track.id, track.audioSettings.effects);
               }
+
+              // CRITICAL: Re-establish bridge input after AudioContext was recreated
+              // The track processor was recreated with no audio input
+              const channelConfig = track.audioSettings.channelConfig || store.inputChannelConfig;
+              await engine.setTrackBridgeInput(track.id, { channelConfig });
+              console.log(`[useNativeBridge] Re-established bridge input for track ${track.id} after sample rate change`);
             }
           }
         }
