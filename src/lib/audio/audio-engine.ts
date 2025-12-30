@@ -175,6 +175,96 @@ export class AudioEngine {
     this.startLevelMonitoring();
   }
 
+  /**
+   * Change the sample rate by recreating the AudioContext.
+   * This is necessary because AudioContext sample rate is fixed at creation.
+   * All audio nodes will be recreated and state will be restored.
+   */
+  async changeSampleRate(newRate: 44100 | 48000): Promise<void> {
+    if (!this.audioContext) {
+      console.warn('[AudioEngine] Cannot change sample rate: not initialized');
+      return;
+    }
+
+    if (this.audioContext.sampleRate === newRate) {
+      console.log('[AudioEngine] Sample rate already', newRate);
+      return;
+    }
+
+    console.log('[AudioEngine] Changing sample rate from', this.audioContext.sampleRate, 'to', newRate);
+
+    // Save current state
+    const savedState = {
+      useBridgeAudio: this.useBridgeAudio,
+      localTrackArmed: this.localTrackArmed,
+      localTrackMuted: this.localTrackMuted,
+      localTrackVolume: this.localTrackVolume,
+      monitoringEnabled: this.monitoringEnabled,
+      effectsSettings: this.localEffectsProcessor?.getSettings() ?? null,
+      masterEffectsEnabled: this.masterEffectsProcessor?.isEnabled() ?? false,
+      masterEffectsSettings: this.masterEffectsProcessor?.getSettings() ?? null,
+    };
+
+    // Stop level monitoring
+    if (this.levelUpdateInterval) {
+      clearInterval(this.levelUpdateInterval);
+      this.levelUpdateInterval = null;
+    }
+
+    // Disable bridge audio if active
+    if (this.useBridgeAudio) {
+      this.disableBridgeAudio();
+    }
+
+    // Clean up local audio nodes
+    this.localSourceNode?.disconnect();
+    this.localAnalyser?.disconnect();
+    this.localInputGain?.disconnect();
+    this.localArmGain?.disconnect();
+    this.localMuteGain?.disconnect();
+    this.localMonitorGain?.disconnect();
+    this.localEffectsProcessor?.dispose();
+
+    // Clean up master nodes
+    this.masterGain?.disconnect();
+    this.masterEffectsProcessor?.dispose();
+    this.songGain?.disconnect();
+    this.backingTrackGain?.disconnect();
+
+    // Close old context
+    await this.audioContext.close();
+    this.audioContext = null;
+
+    // Update config
+    this.config.sampleRate = newRate;
+
+    // Reinitialize with new sample rate
+    await this.initialize();
+
+    // Restore state
+    this.localTrackArmed = savedState.localTrackArmed;
+    this.localTrackMuted = savedState.localTrackMuted;
+    this.localTrackVolume = savedState.localTrackVolume;
+    this.monitoringEnabled = savedState.monitoringEnabled;
+
+    // Restore master effects
+    if (savedState.masterEffectsSettings) {
+      this.masterEffectsProcessor?.updateSettings(savedState.masterEffectsSettings);
+    }
+    this.masterEffectsProcessor?.setEnabled(savedState.masterEffectsEnabled);
+
+    // Re-enable bridge audio if it was active
+    if (savedState.useBridgeAudio) {
+      await this.enableBridgeAudio();
+      // Restore effects settings to the new processor
+      if (savedState.effectsSettings) {
+        this.localEffectsProcessor?.updateSettings(savedState.effectsSettings);
+      }
+    }
+
+    console.log('[AudioEngine] Sample rate changed to', this.audioContext?.sampleRate);
+  }
+
   async captureLocalAudio(options: CaptureAudioOptions = {}): Promise<MediaStream> {
     const {
       deviceId,

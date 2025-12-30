@@ -244,8 +244,18 @@ export function useNativeBridge() {
       channelConfig: state.inputChannelConfig,
     });
 
-    // IMPORTANT: Configure native bridge BEFORE enabling browser bridge audio
-    // This ensures sample rates match when the ScriptProcessorNode is created
+    // Ensure AudioContext sample rate matches the user's selection
+    // If they differ, recreate the AudioContext with the correct rate
+    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+      const engine = (window as any).__openStudioAudioEngine;
+      const audioCtx = engine.getAudioContext?.();
+      if (audioCtx?.sampleRate && audioCtx.sampleRate !== state.sampleRate) {
+        console.log(`[useNativeBridge] AudioContext rate (${audioCtx.sampleRate}) differs from UI (${state.sampleRate}). Changing to match.`);
+        await engine.changeSampleRate(state.sampleRate);
+      }
+    }
+
+    // Configure native bridge
     if (deviceId) {
       nativeBridge.setInputDevice(deviceId);
       nativeBridge.setOutputDevice(deviceId);
@@ -263,8 +273,7 @@ export function useNativeBridge() {
     // This creates the ScriptProcessorNode that will receive audio from native bridge
     if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
       const engine = (window as any).__openStudioAudioEngine;
-      const audioCtx = engine.getAudioContext?.();
-      console.log('[useNativeBridge] Enabling bridge audio mode in audio engine. AudioContext sampleRate:', audioCtx?.sampleRate, 'Native bridge sampleRate:', state.sampleRate);
+      console.log('[useNativeBridge] Enabling bridge audio mode. Sample rate:', sampleRateToUse);
       await engine.enableBridgeAudio();
     }
 
@@ -367,28 +376,25 @@ export function useNativeBridge() {
     }
   }, []);
 
-  // Set sample rate
+  // Set sample rate - this changes BOTH AudioContext and native bridge
   const setSampleRate = useCallback(async (rate: 44100 | 48000) => {
     const store = useBridgeAudioStore.getState();
     store.setSampleRate(rate);
+
+    // Change the AudioContext sample rate (recreates it)
+    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+      console.log('[useNativeBridge] Changing AudioContext sample rate to', rate);
+      await (window as any).__openStudioAudioEngine.changeSampleRate(rate);
+    }
+
+    // Update native bridge sample rate
     if (store.isConnected) {
       nativeBridge.setSampleRate(rate);
 
-      // When sample rate changes, we need to restart the bridge audio chain
-      // The ScriptProcessorNode may be in a bad state due to rate mismatch
-      if (store.isRunning && typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-        console.log('[useNativeBridge] Sample rate changed, restarting bridge audio chain');
-        const engine = (window as any).__openStudioAudioEngine;
-
-        // Disable and re-enable to recreate the ScriptProcessorNode
-        engine.disableBridgeAudio();
-
-        // Small delay to let the native bridge restart with new rate
-        await new Promise(resolve => setTimeout(resolve, 100));
-
-        await engine.enableBridgeAudio();
-
-        // Re-sync track state after restarting
+      // If bridge is running, restart it with new rate
+      if (store.isRunning) {
+        console.log('[useNativeBridge] Restarting bridge audio with new sample rate');
+        // Re-sync track state after the audio engine was recreated
         const roomState = useRoomStore.getState();
         const currentUserId = roomState.currentUser?.id;
         if (currentUserId) {
@@ -396,13 +402,16 @@ export function useNativeBridge() {
           const userTracks = tracksState.getTracksByUser(currentUserId);
           if (userTracks.length > 0) {
             const track = userTracks[0];
-            engine.setLocalTrackArmed(track.isArmed);
-            engine.setLocalTrackMuted(track.isMuted);
-            engine.setLocalTrackVolume(track.volume);
-            const shouldSoftwareMonitor = track.isArmed && !track.isMuted;
-            engine.setMonitoringEnabled(shouldSoftwareMonitor);
-            if (track.audioSettings.effects) {
-              engine.updateLocalEffects(track.audioSettings.effects);
+            const engine = (window as any).__openStudioAudioEngine;
+            if (engine) {
+              engine.setLocalTrackArmed(track.isArmed);
+              engine.setLocalTrackMuted(track.isMuted);
+              engine.setLocalTrackVolume(track.volume);
+              const shouldSoftwareMonitor = track.isArmed && !track.isMuted;
+              engine.setMonitoringEnabled(shouldSoftwareMonitor);
+              if (track.audioSettings.effects) {
+                engine.updateLocalEffects(track.audioSettings.effects);
+              }
             }
           }
         }
