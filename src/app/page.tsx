@@ -39,7 +39,7 @@ function ThemeToggle() {
   return (
     <motion.button
       onClick={toggleTheme}
-      className={`relative p-2.5 rounded-xl transition-colors ${
+      className={`relative p-2 rounded-xl transition-colors ${
         isDark
           ? 'bg-white/10 hover:bg-white/20 text-white'
           : 'bg-slate-900/10 hover:bg-slate-900/20 text-slate-900'
@@ -54,9 +54,9 @@ function ThemeToggle() {
         transition={{ duration: 0.3, ease: 'easeInOut' }}
       >
         {isDark ? (
-          <Sun className="w-5 h-5" />
+          <Sun className="w-4 h-4" />
         ) : (
-          <Moon className="w-5 h-5" />
+          <Moon className="w-4 h-4" />
         )}
       </motion.div>
     </motion.button>

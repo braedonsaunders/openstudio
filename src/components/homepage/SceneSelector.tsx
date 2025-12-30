@@ -43,12 +43,12 @@ export function SceneSelector({ currentScene, onSceneChange }: SceneSelectorProp
       {/* Trigger Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white/10 backdrop-blur-md border border-white/20 text-white hover:bg-white/20 transition-colors"
+        className="flex items-center gap-1.5 px-2.5 py-2 rounded-xl bg-white/10 backdrop-blur-md border border-white/20 text-white hover:bg-white/20 transition-colors"
       >
-        <span className="text-lg">{SCENE_ICONS[currentScene]}</span>
-        <span className="text-sm font-medium">{currentConfig.name}</span>
+        <span className="text-sm">{SCENE_ICONS[currentScene]}</span>
+        <span className="text-xs font-medium hidden sm:inline">{currentConfig.name}</span>
         <ChevronDown
-          className={`w-4 h-4 transition-transform ${isOpen ? 'rotate-180' : ''}`}
+          className={`w-3.5 h-3.5 transition-transform ${isOpen ? 'rotate-180' : ''}`}
         />
       </button>
 
