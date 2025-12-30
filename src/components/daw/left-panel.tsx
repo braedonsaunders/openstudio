@@ -1,8 +1,8 @@
 'use client';
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
-import { TracksPanel } from './tracks-panel';
+import { TracksPanel, type TracksPanelRef } from './tracks-panel';
 import { LiveChannelsPanel } from './live-channels-panel';
 import type { User, BackingTrack } from '@/types';
 
@@ -33,7 +33,7 @@ interface LeftPanelProps {
   onSplitPositionChange?: (position: number) => void;
 }
 
-export function LeftPanel({
+export const LeftPanel = forwardRef<TracksPanelRef, LeftPanelProps>(function LeftPanel({
   // Tracks props
   onTrackSelect,
   onTrackRemove,
@@ -57,7 +57,7 @@ export function LeftPanel({
   width,
   splitPosition: externalSplitPosition,
   onSplitPositionChange,
-}: LeftPanelProps) {
+}, ref) {
   // Panel split ratio - use external if provided, otherwise local state
   const [localSplitPosition, setLocalSplitPosition] = useState(33);
   const splitPosition = externalSplitPosition ?? localSplitPosition;
@@ -109,6 +109,7 @@ export function LeftPanel({
         style={{ height: `${splitPosition}%` }}
       >
         <TracksPanel
+          ref={ref}
           onTrackSelect={onTrackSelect}
           onTrackRemove={onTrackRemove}
           onUpload={onUpload}
@@ -151,4 +152,4 @@ export function LeftPanel({
       </div>
     </div>
   );
-}
+});

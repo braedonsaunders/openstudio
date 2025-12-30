@@ -168,6 +168,8 @@ interface MultiTrackTimelineProps {
   // View switcher props
   activeView?: MainViewType;
   onViewChange?: (view: MainViewType) => void;
+  // Song creation callback
+  onCreateSong?: () => void;
 }
 
 // MIDI note range for display (C1 to C6 = notes 24-84)
@@ -308,6 +310,7 @@ export function MultiTrackTimeline({
   onStop,
   activeView,
   onViewChange,
+  onCreateSong,
 }: MultiTrackTimelineProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(10); // pixels per second - start zoomed out
@@ -1312,7 +1315,27 @@ export function MultiTrackTimeline({
       </div>
 
       {/* Timeline Area */}
-      {isLyriaSong ? (
+      {!currentSong ? (
+        /* No Song Overlay */
+        <div className="flex-1 relative overflow-hidden bg-gray-100/90 dark:bg-[#0a0a0f]/95">
+          <div className="absolute inset-0 flex flex-col items-center justify-center">
+            <div className="w-14 h-14 rounded-full bg-gray-200/50 dark:bg-white/5 flex items-center justify-center mb-4">
+              <Layers className="w-7 h-7 text-gray-400 dark:text-zinc-600" />
+            </div>
+            <p className="text-sm font-medium text-gray-500 dark:text-zinc-400 mb-1">No song selected</p>
+            <p className="text-xs text-gray-400 dark:text-zinc-600 mb-4">Create a song to start composing</p>
+            {onCreateSong && (
+              <button
+                onClick={onCreateSong}
+                className="px-4 py-2 text-sm font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors flex items-center gap-2"
+              >
+                <Music className="w-4 h-4" />
+                Create Song
+              </button>
+            )}
+          </div>
+        </div>
+      ) : isLyriaSong ? (
         /* Minimal Lyria Timeline Overlay - just animated waveform */
         <div className="flex-1 relative overflow-hidden bg-gray-100 dark:bg-[#0a0a0f]">
           {/* Very subtle gradient */}

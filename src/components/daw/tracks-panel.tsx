@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, useEffect, useMemo } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, useImperativeHandle, forwardRef } from 'react';
 import { cn } from '@/lib/utils';
 import { useRoomStore } from '@/stores/room-store';
 import { useLoopTracksStore } from '@/stores/loop-tracks-store';
@@ -40,7 +40,11 @@ interface TracksPanelProps {
   userName?: string;
 }
 
-export function TracksPanel({
+export interface TracksPanelRef {
+  focusNewSongInput: () => void;
+}
+
+export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function TracksPanel({
   onTrackSelect,
   onTrackRemove,
   onUpload,
@@ -50,7 +54,7 @@ export function TracksPanel({
   roomId,
   userId,
   userName,
-}: TracksPanelProps) {
+}, ref) {
   const { queue, isMaster } = useRoomStore();
   const { getTracksByRoom, addTrack: addLoopTrack, removeTrack: removeLoopTrack, updateTrack: updateLoopTrack } = useLoopTracksStore();
   const sessionTempo = useSessionTempoStore((s) => s.tempo);
@@ -70,6 +74,20 @@ export function TracksPanel({
   const [isCreatingSong, setIsCreatingSong] = useState(false);
   const [newSongName, setNewSongName] = useState('');
   const [hasLoadedSongs, setHasLoadedSongs] = useState(false);
+
+  // Ref for new song input
+  const newSongInputRef = useRef<HTMLInputElement>(null);
+
+  // Expose focus method to parent
+  useImperativeHandle(ref, () => ({
+    focusNewSongInput: () => {
+      setShowSongDropdown(true);
+      // Focus input after dropdown opens
+      setTimeout(() => {
+        newSongInputRef.current?.focus();
+      }, 50);
+    },
+  }), []);
 
   // Context menu state
   const [contextMenu, setContextMenu] = useState<{
@@ -112,16 +130,6 @@ export function TracksPanel({
     }
   }, [roomId, loadSongs]);
 
-  // Create default song if none exist AFTER loading from database
-  useEffect(() => {
-    // Only create default song after we've loaded from DB and confirmed none exist
-    if (hasLoadedSongs && !songsLoading && songs.length === 0 && userId && !isCreatingSong) {
-      setIsCreatingSong(true);
-      // createSong already persists to server via createSongOnServer
-      createSong(roomId, 'Song 1', userId, userName);
-      setIsCreatingSong(false);
-    }
-  }, [hasLoadedSongs, songsLoading, songs.length, roomId, userId, userName, createSong, isCreatingSong]);
 
   // Handler for creating a new song
   const handleCreateSong = useCallback(() => {
@@ -377,6 +385,7 @@ export function TracksPanel({
               <div className="border-t border-gray-100 dark:border-white/5 p-2">
                 <div className="flex items-center gap-2">
                   <input
+                    ref={newSongInputRef}
                     type="text"
                     value={newSongName}
                     onChange={(e) => setNewSongName(e.target.value)}
@@ -400,10 +409,14 @@ export function TracksPanel({
       </div>
 
       {/* Add Track Buttons */}
-      <div className="flex items-center gap-1 px-2 py-1.5 border-b border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
+      <div className={cn(
+        "flex items-center gap-1 px-2 py-1.5 border-b border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0 transition-opacity",
+        songs.length === 0 && "opacity-40 pointer-events-none"
+      )}>
         <button
           onClick={onUpload}
-          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[9px] font-medium transition-colors"
+          disabled={songs.length === 0}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[9px] font-medium transition-colors disabled:cursor-not-allowed"
           title="Upload audio"
         >
           <Upload className="w-2.5 h-2.5" />
@@ -411,7 +424,8 @@ export function TracksPanel({
         </button>
         <button
           onClick={onYouTubeSearch}
-          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[9px] font-medium transition-colors"
+          disabled={songs.length === 0}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-gray-200/50 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 text-gray-600 dark:text-zinc-400 text-[9px] font-medium transition-colors disabled:cursor-not-allowed"
           title="Add from YouTube"
         >
           <Youtube className="w-2.5 h-2.5" />
@@ -419,7 +433,8 @@ export function TracksPanel({
         </button>
         <button
           onClick={() => setShowLoopBrowser(true)}
-          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[9px] font-medium transition-colors"
+          disabled={songs.length === 0}
+          className="flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 text-[9px] font-medium transition-colors disabled:cursor-not-allowed"
           title="Add loop"
         >
           <Repeat className="w-2.5 h-2.5" />
@@ -427,7 +442,8 @@ export function TracksPanel({
         </button>
         <button
           onClick={onAIGenerate}
-          className="p-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-colors"
+          disabled={songs.length === 0}
+          className="p-1 rounded bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 transition-colors disabled:cursor-not-allowed"
           title="AI Generate"
         >
           <Sparkles className="w-3 h-3" />
@@ -451,6 +467,33 @@ export function TracksPanel({
                 <p className="text-xs font-medium text-purple-600 dark:text-purple-400">Lyria AI</p>
                 <p className="text-[10px] text-gray-500 dark:text-zinc-500 mt-0.5">Generative music active</p>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* No Song Overlay - shown when no songs exist */}
+        {songs.length === 0 && hasLoadedSongs && (
+          <div className="absolute inset-0 z-10 bg-gray-100/90 dark:bg-[#0a0a0f]/95 backdrop-blur-[1px] flex flex-col items-center justify-center">
+            <div className="relative flex flex-col items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-gray-200/50 dark:bg-white/5 flex items-center justify-center">
+                <Music className="w-6 h-6 text-gray-400 dark:text-zinc-600" />
+              </div>
+              <div className="text-center">
+                <p className="text-xs font-medium text-gray-500 dark:text-zinc-400">No songs yet</p>
+                <p className="text-[10px] text-gray-400 dark:text-zinc-600 mt-0.5">Create a song to get started</p>
+              </div>
+              <button
+                onClick={() => {
+                  setShowSongDropdown(true);
+                  setTimeout(() => {
+                    newSongInputRef.current?.focus();
+                  }, 50);
+                }}
+                className="mt-1 px-3 py-1.5 text-xs font-medium text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors flex items-center gap-1.5"
+              >
+                <Plus className="w-3.5 h-3.5" />
+                Create Song
+              </button>
             </div>
           </div>
         )}
@@ -676,4 +719,4 @@ export function TracksPanel({
       />
     </div>
   );
-}
+});

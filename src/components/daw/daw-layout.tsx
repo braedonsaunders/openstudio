@@ -22,6 +22,7 @@ import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 import { MenuBar } from './menu-bar';
 import { TransportBar } from './transport-bar';
 import { LeftPanel } from './left-panel';
+import type { TracksPanelRef } from './tracks-panel';
 import { CenterSplitView } from './center-split-view';
 import { PanelDock } from './panel-dock';
 import { ResizeHandle } from './resize-handle';
@@ -249,6 +250,14 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
+
+  // Left panel ref (for focusing song input)
+  const leftPanelRef = useRef<TracksPanelRef>(null);
+
+  // Handler for creating a new song from timeline
+  const handleCreateSong = useCallback(() => {
+    leftPanelRef.current?.focusNewSongInput();
+  }, []);
 
   // Audio analysis - initialize with audio context and analysers from audio engine
   // Analysis modes:
@@ -1055,6 +1064,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       <div className="flex-1 flex min-h-0">
         {/* Left Panel - Tracks (upper 1/3) + Live Channels (lower 2/3) */}
         <LeftPanel
+          ref={leftPanelRef}
           // Tracks (Queue) props
           onTrackSelect={handleTrackSelect}
           onTrackRemove={removeTrack}
@@ -1118,6 +1128,8 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
                 // View switcher props
                 activeView={mainView}
                 onViewChange={setMainView}
+                // Song creation callback
+                onCreateSong={handleCreateSong}
               />
             )}
 

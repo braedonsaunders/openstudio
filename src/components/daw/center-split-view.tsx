@@ -24,6 +24,8 @@ interface CenterSplitViewProps {
   // View switcher props
   activeView?: MainViewType;
   onViewChange?: (view: MainViewType) => void;
+  // Song creation callback
+  onCreateSong?: () => void;
 }
 
 export function CenterSplitView({
@@ -41,6 +43,7 @@ export function CenterSplitView({
   onSplitPositionChange,
   activeView,
   onViewChange,
+  onCreateSong,
 }: CenterSplitViewProps) {
   // Split position - use external if provided, otherwise local state
   const [localSplitPosition, setLocalSplitPosition] = useState(33);
@@ -98,6 +101,7 @@ export function CenterSplitView({
           onStop={onStop}
           activeView={activeView}
           onViewChange={onViewChange}
+          onCreateSong={onCreateSong}
         />
       </div>
 
