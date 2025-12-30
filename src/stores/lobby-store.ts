@@ -241,7 +241,7 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
   },
 
   sendMessage: (content: string) => {
-    const { channel, currentUser } = get();
+    const { channel, currentUser, messages } = get();
     if (!channel || !currentUser || !content.trim()) return;
 
     const message: LobbyMessage = {
@@ -253,6 +253,11 @@ export const useLobbyStore = create<LobbyState>((set, get) => ({
       timestamp: new Date().toISOString(),
       type: 'chat',
     };
+
+    // Add message to local state immediately (broadcast doesn't echo back to sender)
+    set({
+      messages: [...messages.slice(-MAX_MESSAGES + 1), message],
+    });
 
     channel.send({
       type: 'broadcast',
