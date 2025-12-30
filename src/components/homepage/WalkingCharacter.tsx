@@ -454,6 +454,10 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   // Base size for avatar (will be scaled) - larger for lobby presence
   const baseSize = 120;
 
+  // Shadow size scales with character
+  const shadowWidth = baseSize * scale * 0.6;
+  const shadowHeight = baseSize * scale * 0.15;
+
   return (
     <motion.div
       className="absolute pointer-events-none"
@@ -464,6 +468,21 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         transform: `translate(-50%, -100%)`, // Anchor at bottom center
       }}
     >
+      {/* Ground shadow - ellipse at character's feet */}
+      <motion.div
+        className="absolute left-1/2 -translate-x-1/2"
+        style={{
+          bottom: -shadowHeight * 0.3,
+          width: shadowWidth,
+          height: shadowHeight,
+          borderRadius: '50%',
+          background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.15) 50%, transparent 70%)',
+          filter: `blur(${Math.max(2, 4 * scale)}px)`,
+          // Shadow squishes slightly when character bounces
+          scaleY: springBounceY.get() < -2 ? 1.1 : 1,
+        }}
+      />
+
       <motion.div
         style={{
           width: baseSize * scale,
@@ -478,9 +497,10 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           <img
             src={character.fullBodyUrl}
             alt={character.name}
-            className="w-full h-full object-contain drop-shadow-lg"
+            className="w-full h-full object-contain"
             style={{
-              filter: `drop-shadow(0 ${4 * scale}px ${8 * scale}px rgba(0,0,0,0.3))`,
+              // Subtle drop shadow for depth
+              filter: `drop-shadow(0 ${2 * scale}px ${4 * scale}px rgba(0,0,0,0.15))`,
             }}
           />
         ) : (
