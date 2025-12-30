@@ -326,6 +326,12 @@ export function useNativeBridge() {
     // Small delay to let native bridge initialize with correct sample rate
     await new Promise(resolve => setTimeout(resolve, 50));
 
+    // CRITICAL: Set isRunning = true BEFORE setting up track processors
+    // This ensures useTrackAudioSync sees useBridge = true and applies correct
+    // monitoring logic (inverted for bridge mode: WET when directMonitoring is OFF)
+    // The audioStatus callback will confirm this or set it to false if startup fails
+    useBridgeAudioStore.getState().setRunning(true);
+
     // Send initial track state after starting audio
     // NOTE: Native bridge only supports single-track audio capture. Multi-track is handled
     // entirely in the browser - all tracks share the same audio input from the bridge,
@@ -401,6 +407,9 @@ export function useNativeBridge() {
       console.log('[useNativeBridge] Stopping audio');
       nativeBridge.stopAudio();
     }
+
+    // Set isRunning to false immediately (audioStatus callback will confirm)
+    useBridgeAudioStore.getState().setRunning(false);
 
     // Disable bridge audio mode in the audio engine
     if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
