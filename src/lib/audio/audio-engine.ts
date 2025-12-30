@@ -1185,10 +1185,24 @@ export class AudioEngine {
    * @param trackId The target track
    * @param samples Interleaved stereo samples
    */
+  private trackAudioLogCounter = 0;
   pushTrackBridgeAudio(trackId: string, samples: Float32Array): void {
     const processor = this.trackProcessors.get(trackId);
     if (processor) {
       processor.pushBridgeAudio(samples);
+      // Log occasionally to confirm audio is flowing
+      if (this.trackAudioLogCounter++ % 500 === 0) {
+        const state = processor.getState();
+        console.log(`[AudioEngine] pushTrackBridgeAudio -> ${trackId.slice(-8)}`, {
+          samples: samples.length,
+          isArmed: state.isArmed,
+          isMuted: state.isMuted,
+          monitoringEnabled: state.monitoringEnabled,
+          inputSourceType: processor.getInputSourceType(),
+        });
+      }
+    } else if (this.trackAudioLogCounter++ % 500 === 0) {
+      console.warn(`[AudioEngine] pushTrackBridgeAudio: no processor for track ${trackId.slice(-8)}`);
     }
   }
 
