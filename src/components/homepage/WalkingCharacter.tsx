@@ -15,6 +15,7 @@ interface WalkingCharacterProps {
   groundConfig: SceneGroundConfig;
   containerWidth: number;
   containerHeight: number;
+  initialPosition?: { x: number; y: number }; // For distributed spawning
   onPositionUpdate?: (id: string, x: number, y: number) => void;
   getOtherPositions?: (excludeId: string) => Array<{ x: number; y: number }>;
 }
@@ -198,12 +199,13 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   groundConfig,
   containerWidth,
   containerHeight,
+  initialPosition,
   onPositionUpdate,
   getOtherPositions,
 }: WalkingCharacterProps) {
   const [state, setState] = useState<CharacterState>(() => {
-    // Start with a biased position (towards bottom, avoiding UI)
-    const initial = getBiasedPosition(groundConfig.walkableArea);
+    // Use provided initial position or fall back to biased random position
+    const initial = initialPosition || getBiasedPosition(groundConfig.walkableArea);
     return {
       x: initial.x,
       y: initial.y,

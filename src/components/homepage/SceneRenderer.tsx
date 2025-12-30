@@ -1285,6 +1285,82 @@ export function SceneRenderer({
   const backdrop = isDark ? SCENE_BACKDROPS[currentScene].night : SCENE_BACKDROPS[currentScene].day;
   const ground = isDark ? SCENE_GROUNDS[currentScene].night : SCENE_GROUNDS[currentScene].day;
 
+  // Calculate evenly distributed initial positions for characters
+  const characterInitialPositions = useMemo(() => {
+    if (characters.length === 0) return new Map<string, { x: number; y: number }>();
+
+    const { walkableArea } = sceneConfig.ground;
+    const positions = new Map<string, { x: number; y: number }>();
+    const placedPositions: Array<{ x: number; y: number }> = [];
+
+    // Minimum distance between characters
+    const MIN_SPAWN_DISTANCE = 12;
+
+    // Exclude center UI zone - characters spawn around it
+    const UI_ZONE = { minX: 20, maxX: 80, minY: 15, maxY: 55 };
+
+    // Create a grid of potential spawn points around the UI zone
+    const spawnPoints: Array<{ x: number; y: number }> = [];
+
+    // Left side points
+    for (let x = walkableArea.minX + 5; x < UI_ZONE.minX - 3; x += MIN_SPAWN_DISTANCE) {
+      for (let y = UI_ZONE.maxY + 5; y < walkableArea.maxY - 5; y += MIN_SPAWN_DISTANCE) {
+        spawnPoints.push({ x, y });
+      }
+    }
+
+    // Right side points
+    for (let x = UI_ZONE.maxX + 3; x < walkableArea.maxX - 5; x += MIN_SPAWN_DISTANCE) {
+      for (let y = UI_ZONE.maxY + 5; y < walkableArea.maxY - 5; y += MIN_SPAWN_DISTANCE) {
+        spawnPoints.push({ x, y });
+      }
+    }
+
+    // Bottom center points (below UI)
+    for (let x = UI_ZONE.minX; x < UI_ZONE.maxX; x += MIN_SPAWN_DISTANCE) {
+      for (let y = UI_ZONE.maxY + 8; y < walkableArea.maxY - 5; y += MIN_SPAWN_DISTANCE) {
+        spawnPoints.push({ x, y });
+      }
+    }
+
+    // Shuffle spawn points deterministically based on character IDs
+    const shuffledPoints = [...spawnPoints].sort((a, b) => {
+      return (a.x * 100 + a.y) - (b.x * 100 + b.y);
+    });
+
+    // Assign each character to a spawn point, ensuring minimum distance
+    characters.forEach((character, index) => {
+      // Find the best available spawn point
+      let bestPoint = shuffledPoints[index % shuffledPoints.length];
+
+      // Try to find a point that doesn't overlap with already placed characters
+      for (const point of shuffledPoints) {
+        const isFarEnough = placedPositions.every(placed => {
+          const dx = point.x - placed.x;
+          const dy = point.y - placed.y;
+          return Math.sqrt(dx * dx + dy * dy) >= MIN_SPAWN_DISTANCE;
+        });
+
+        if (isFarEnough) {
+          bestPoint = point;
+          break;
+        }
+      }
+
+      // Add slight variation for natural look (deterministic based on index)
+      const offsetX = ((index * 7) % 5) - 2;
+      const offsetY = ((index * 11) % 5) - 2;
+
+      const finalX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, bestPoint.x + offsetX));
+      const finalY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, bestPoint.y + offsetY));
+
+      positions.set(character.id, { x: finalX, y: finalY });
+      placedPositions.push({ x: finalX, y: finalY });
+    });
+
+    return positions;
+  }, [characters, sceneConfig.ground]);
+
   // Dynamic variants based on transition type - computed synchronously
   const sceneVariants = useMemo(() => {
     const { type, direction } = transitionInfo;
@@ -1377,6 +1453,7 @@ export function SceneRenderer({
             groundConfig={sceneConfig.ground}
             containerWidth={containerSize.width}
             containerHeight={containerSize.height}
+            initialPosition={characterInitialPositions.get(character.id)}
             onPositionUpdate={updateCharacterPosition}
             getOtherPositions={getOtherCharacterPositions}
           />
