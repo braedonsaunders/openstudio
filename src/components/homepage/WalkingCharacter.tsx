@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useRef, memo } from 'react';
-import { motion, useAnimationControls } from 'framer-motion';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
 import {
   SceneGroundConfig,
   calculateAvatarScale,
@@ -91,7 +91,7 @@ const IDLE_DURATION_MIN = 3000; // Longer idles - characters hang around
 const IDLE_DURATION_MAX = 7000; // Can stand still quite a while
 const WALK_DURATION_MIN = 2000; // Short walks between stops
 const WALK_DURATION_MAX = 4000; // Not too long walks
-const SETTLING_DURATION = 150; // Brief pause to smooth walk->idle transition
+const SETTLING_DURATION = 300; // Pause to let spring animation settle
 
 // Center UI exclusion zone (percentage of screen) - characters avoid this area
 // This is where the main "Play Together" UI panel sits
@@ -220,10 +220,20 @@ export const WalkingCharacter = memo(function WalkingCharacter({
 
   const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
-  const prevStateRef = useRef<{ isWalking: boolean; isSettling: boolean }>({ isWalking: false, isSettling: false });
-  const controls = useAnimationControls();
 
-  // Animation loop
+  // Use motion values with springs for smooth animation transitions
+  const targetY = useMotionValue(0);
+  const targetRotate = useMotionValue(0);
+  const springY = useSpring(targetY, { stiffness: 400, damping: 30 });
+  const springRotate = useSpring(targetRotate, { stiffness: 400, damping: 30 });
+
+  // Track bounce animation phase
+  const bouncePhaseRef = useRef(0);
+
+  // Get idle animation config
+  const idleConfig = idleAnimations[character.idleAnimation];
+
+  // Combined animation loop for movement AND bounce animation
   useEffect(() => {
     const animate = (currentTime: number) => {
       if (!lastTimeRef.current) {
@@ -232,17 +242,50 @@ export const WalkingCharacter = memo(function WalkingCharacter({
       const deltaTime = currentTime - lastTimeRef.current;
       lastTimeRef.current = currentTime;
 
+      // Update bounce animation based on current state
+      if (state.isWalking) {
+        // Walking bounce: fast, subtle
+        bouncePhaseRef.current += deltaTime * 0.015; // ~400ms cycle
+        const bounce = Math.sin(bouncePhaseRef.current) * -2;
+        const wobble = Math.sin(bouncePhaseRef.current) * 0.5;
+        targetY.set(bounce);
+        targetRotate.set(wobble);
+      } else if (state.isSettling) {
+        // Settling: spring back to neutral (springs handle this automatically)
+        targetY.set(0);
+        targetRotate.set(0);
+      } else {
+        // Idle animation based on character type
+        const idleSpeed = idleConfig.transition.duration as number || 1.2;
+        bouncePhaseRef.current += deltaTime * (0.001 / (idleSpeed / 2));
+
+        const animateProps = idleConfig.animate;
+        if (animateProps.y) {
+          const yRange = Array.isArray(animateProps.y) ? animateProps.y : [0];
+          const maxY = Math.min(...yRange); // Most negative value
+          targetY.set(Math.sin(bouncePhaseRef.current) * Math.abs(maxY));
+        } else {
+          targetY.set(0);
+        }
+        if (animateProps.rotate) {
+          const rotRange = Array.isArray(animateProps.rotate) ? animateProps.rotate : [0];
+          const maxRot = Math.max(...rotRange.map(Math.abs));
+          targetRotate.set(Math.sin(bouncePhaseRef.current) * maxRot);
+        } else {
+          targetRotate.set(0);
+        }
+      }
+
+      // Update position state
       setState(prev => {
         const walkSpeed = WALK_SPEED * character.walkSpeed;
 
         if (prev.isWalking) {
-          // Move towards target
           const dx = prev.targetX - prev.x;
           const dy = prev.targetY - prev.y;
           const distance = Math.sqrt(dx * dx + dy * dy);
 
           if (distance < 1 || prev.walkTimer <= 0) {
-            // Reached target or timer expired - enter settling state for smooth transition
             const { walkableArea } = groundConfig;
             const finalX = distance < 1 ? prev.targetX : prev.x;
             const finalY = distance < 1 ? prev.targetY : prev.y;
@@ -256,19 +299,14 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             };
           }
 
-          // Normalize direction and move
           const moveX = (dx / distance) * walkSpeed * deltaTime;
           const moveY = (dy / distance) * walkSpeed * deltaTime;
-
-          // Calculate new position and clamp to walkable area
           const { walkableArea } = groundConfig;
           let newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
           let newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
 
-          // Check for collisions with other characters
           const otherPositions = getOtherPositions?.(character.id) ?? [];
           if (wouldCollide(newX, newY, otherPositions)) {
-            // Stop walking if we would collide - enter settling state
             return {
               ...prev,
               isWalking: false,
@@ -285,7 +323,6 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             facingRight: dx > 0,
           };
         } else if (prev.isSettling) {
-          // Settling state - smooth transition from walking to idle
           if (prev.settlingTimer <= 0) {
             return {
               ...prev,
@@ -298,21 +335,16 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             settlingTimer: prev.settlingTimer - deltaTime,
           };
         } else {
-          // Idle - count down timer
           if (prev.idleTimer <= 0) {
-            // Start walking to a nearby position (casual strolling, biased bottom)
             const { walkableArea } = groundConfig;
             const maxStepX = 12;
             const maxStepY = 10;
             const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
-            const offsetY = (Math.random() - 0.3) * 2 * maxStepY; // Bias downward
+            const offsetY = (Math.random() - 0.3) * 2 * maxStepY;
             const baseX = prev.x + offsetX;
             const baseY = prev.y + offsetY;
 
-            // Get valid position that avoids UI zone
             const validPos = getValidPosition(baseX, baseY, walkableArea);
-
-            // Also check for collisions with other characters when selecting target
             const otherPositions = getOtherPositions?.(character.id) ?? [];
             const nonCollidingPos = findNonCollidingPosition(
               validPos.x,
@@ -349,62 +381,12 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         cancelAnimationFrame(animationRef.current);
       }
     };
-  }, [character.walkSpeed, groundConfig, getOtherPositions]);
+  }, [character.walkSpeed, groundConfig, getOtherPositions, state.isWalking, state.isSettling, targetY, targetRotate, idleConfig]);
 
   // Report position updates to parent for collision tracking
   useEffect(() => {
     onPositionUpdate?.(character.id, state.x, state.y);
   }, [character.id, state.x, state.y, onPositionUpdate]);
-
-  // Get idle animation config
-  const idleConfig = idleAnimations[character.idleAnimation];
-
-  // Initialize animation on mount
-  useEffect(() => {
-    if (state.isWalking) {
-      controls.start(
-        { y: [0, -2, 0], rotate: [-0.5, 0.5, -0.5] },
-        { duration: 0.4, repeat: Infinity, ease: 'easeInOut' }
-      );
-    } else if (!state.isSettling) {
-      controls.start(idleConfig.animate, idleConfig.transition as never);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // Handle animation state transitions with proper control
-  useEffect(() => {
-    const prev = prevStateRef.current;
-    const wasWalking = prev.isWalking;
-    const wasSettling = prev.isSettling;
-
-    // Update ref for next comparison
-    prevStateRef.current = { isWalking: state.isWalking, isSettling: state.isSettling };
-
-    // Walking -> Settling: stop current animation and ease to neutral
-    if (wasWalking && !state.isWalking && state.isSettling) {
-      controls.stop();
-      controls.start({
-        y: 0,
-        rotate: 0
-      }, {
-        duration: 0.15,
-        ease: 'easeOut'
-      });
-    }
-    // Settling -> Idle: start idle animation
-    else if (wasSettling && !state.isSettling && !state.isWalking) {
-      controls.start(idleConfig.animate, idleConfig.transition as never);
-    }
-    // Idle -> Walking: stop idle and start walk animation
-    else if (!wasWalking && state.isWalking) {
-      controls.stop();
-      controls.start(
-        { y: [0, -2, 0], rotate: [-0.5, 0.5, -0.5] },
-        { duration: 0.4, repeat: Infinity, ease: 'easeInOut' }
-      );
-    }
-  }, [state.isWalking, state.isSettling, controls, idleConfig]);
 
   // Calculate scale based on Y position
   const scale = calculateAvatarScale(state.y, groundConfig);
@@ -432,9 +414,9 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           width: baseSize * scale,
           height: baseSize * scale,
           transform: `scaleX(${state.facingRight ? 1 : -1})`,
+          y: springY,
+          rotate: springRotate,
         }}
-        animate={controls}
-        initial={{ y: 0, rotate: 0 }}
       >
         {/* Character Image */}
         {character.fullBodyUrl ? (
