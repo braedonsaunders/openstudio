@@ -406,7 +406,10 @@ export function useNativeBridge() {
           // Now set up bridge input - audio can flow after this
           // This creates the AudioWorklet that receives audio from native bridge
           const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
-          await engine.setTrackBridgeInput(track.id, { channelConfig });
+          await engine.setTrackBridgeInput(track.id, {
+            channelConfig,
+            asioBufferSize: state.bufferSize,
+          });
 
           console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, directMonitoring: ${directMonitoring}, jsMonitoring: ${!directMonitoring}`);
         }
@@ -566,7 +569,10 @@ export function useNativeBridge() {
               // CRITICAL: Re-establish bridge input after AudioContext was recreated
               // The track processor was recreated with no audio input
               const channelConfig = track.audioSettings.channelConfig || store.inputChannelConfig;
-              await engine.setTrackBridgeInput(track.id, { channelConfig });
+              await engine.setTrackBridgeInput(track.id, {
+                channelConfig,
+                asioBufferSize: store.bufferSize,
+              });
               console.log(`[useNativeBridge] Re-established bridge input for track ${track.id} after sample rate change`);
             }
           }

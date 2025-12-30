@@ -17,6 +17,7 @@ export interface TrackAudioState {
 export interface TrackInputConfig {
   channelConfig: InputChannelConfig;
   deviceId?: string; // For web audio mode
+  asioBufferSize?: number; // ASIO buffer size for dynamic worklet buffer sizing
 }
 
 export interface TrackProcessingMetrics {
@@ -273,11 +274,15 @@ export class TrackAudioProcessor {
     }
 
     // Create AudioWorkletNode for this track's bridge audio
+    // Pass ASIO buffer size for dynamic ring buffer sizing
     try {
       this.bridgeWorkletNode = new AudioWorkletNode(this.audioContext, 'bridge-audio-processor', {
         numberOfInputs: 0,
         numberOfOutputs: 1,
         outputChannelCount: [2],
+        processorOptions: {
+          asioBufferSize: config.asioBufferSize || 128,
+        },
       });
     } catch (err) {
       console.error(`[TrackAudioProcessor] ${this.trackId} - Failed to create AudioWorkletNode:`, err);
