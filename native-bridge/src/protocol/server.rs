@@ -57,6 +57,10 @@ impl BridgeServer {
         // Accumulate audio samples - allows batching multiple ring buffer reads per loop
         // but we send immediately (no artificial delay) for minimum latency
         let mut audio_accumulator: Vec<f32> = Vec::with_capacity(1024);
+        let mut loop_counter: u64 = 0;
+        let mut empty_read_counter: u64 = 0;
+        let mut last_diagnostic = Instant::now();
+        let diagnostic_interval = std::time::Duration::from_secs(2);
 
         // Handle incoming messages with periodic level updates and audio streaming
         loop {
@@ -85,15 +89,29 @@ impl BridgeServer {
 
             // Stream raw audio to browser for WebRTC broadcast
             // Accumulate samples and send in batches to reduce WebSocket overhead
+            loop_counter += 1;
             {
                 let app = self.state.lock().await;
-                if app.audio_engine.is_running() {
+                let is_running = app.audio_engine.is_running();
+                if is_running {
                     // Read available samples into accumulator (up to 1024 at a time)
                     let samples = app.audio_engine.get_browser_stream_audio(1024);
                     if !samples.is_empty() {
                         audio_accumulator.extend_from_slice(&samples);
+                        empty_read_counter = 0; // Reset on successful read
+                    } else {
+                        empty_read_counter += 1;
                     }
+                } else if loop_counter % 1000 == 0 {
+                    warn!("[Server] Audio engine not running (loop {})", loop_counter);
                 }
+            }
+
+            // Periodic diagnostic logging
+            if last_diagnostic.elapsed() >= diagnostic_interval {
+                info!("[Server] Diagnostic: loop={}, empty_reads={}, accumulator_len={}",
+                      loop_counter, empty_read_counter, audio_accumulator.len());
+                last_diagnostic = Instant::now();
             }
 
             // Send accumulated audio immediately for low-latency
