@@ -7,19 +7,6 @@ import type { GenerateImageRequest } from '@/types/avatar';
 // GET /api/admin/avatar/generate - Get available models and presets
 export const GET = withAdminAuth(async (req, user) => {
   try {
-    // Debug: log which env vars are present
-    const envDebug = {
-      hasAccountId: !!process.env.CLOUDFLARE_R2_ACCOUNT_ID,
-      hasApiToken: !!process.env.CLOUDFLARE_API_TOKEN,
-      hasR2AccessKey: !!process.env.CLOUDFLARE_R2_ACCESS_KEY_ID,
-      hasReplicate: !!process.env.REPLICATE_API_TOKEN,
-      hasGemini: !!process.env.GOOGLE_GEMINI_API_KEY,
-      accountIdLength: process.env.CLOUDFLARE_R2_ACCOUNT_ID?.length || 0,
-      apiTokenLength: process.env.CLOUDFLARE_API_TOKEN?.length || 0,
-      r2AccessKeyLength: process.env.CLOUDFLARE_R2_ACCESS_KEY_ID?.length || 0,
-    };
-    console.log('Env debug:', envDebug);
-
     const [presets, providers] = await Promise.all([
       getGenerationPresets(),
       Promise.resolve(getConfiguredProviders()),
@@ -36,7 +23,6 @@ export const GET = withAdminAuth(async (req, user) => {
       models,
       presets,
       providers,
-      debug: envDebug, // Include debug info in response
     });
   } catch (error) {
     console.error('Failed to get generation config:', error);
