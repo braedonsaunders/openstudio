@@ -57,9 +57,9 @@ impl BridgeServer {
         // Accumulate audio samples for batched sending (reduces WebSocket overhead)
         let mut audio_accumulator: Vec<f32> = Vec::with_capacity(1024);
         let mut last_audio_send = Instant::now();
-        // Send audio every 5ms or when we have enough samples (whichever comes first)
-        let audio_send_interval = std::time::Duration::from_millis(5);
-        let min_samples_to_send: usize = 256; // At least 128 stereo frames
+        // Send audio frequently to minimize latency - every 2ms or when we have a buffer's worth
+        // The actual min samples will be set dynamically based on buffer size
+        let audio_send_interval = std::time::Duration::from_millis(2);
 
         // Handle incoming messages with periodic level updates and audio streaming
         loop {
@@ -99,10 +99,11 @@ impl BridgeServer {
                 }
             }
 
-            // Send accumulated audio if we have enough or enough time has passed
+            // Send accumulated audio if we have any and enough time has passed
+            // For low-latency: send as soon as we have audio and 2ms has elapsed
+            // This ensures we don't add unnecessary batching delay for small buffer sizes
             let should_send_audio = !audio_accumulator.is_empty() &&
-                (audio_accumulator.len() >= min_samples_to_send ||
-                 last_audio_send.elapsed() >= audio_send_interval);
+                last_audio_send.elapsed() >= audio_send_interval;
 
             if should_send_audio {
                 // Create binary message: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]

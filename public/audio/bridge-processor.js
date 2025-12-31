@@ -7,15 +7,17 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     super();
 
     // Ring buffer for stereo audio (interleaved L/R samples)
-    // Size needs to absorb WebSocket message bursts without excessive latency.
-    // Native bridge sends audio via WebSocket which can burst (multiple ASIO callbacks
-    // worth of data arriving before worklet can drain). We need ~100ms buffer for jitter
-    // absorption while keeping latency acceptable for live monitoring.
+    // Size must balance two concerns:
+    // 1. Large enough to absorb WebSocket jitter (TCP can have variable latency)
+    // 2. Small enough to keep monitoring latency acceptable
+    // For low-latency monitoring with small ASIO buffers (32-128), we want minimal buffer.
+    // For larger buffers, we can afford more cushion.
     const asioBufferSize = options?.processorOptions?.asioBufferSize || 128;
-    // Calculate buffer: enough to handle ~50 ASIO callbacks worth of burst
-    // This handles WebSocket jitter while keeping latency reasonable
-    const asioBasedSize = asioBufferSize * 100; // 50 callbacks * 2 for stereo
-    const minBufferMs = 100; // Minimum 100ms buffer for jitter absorption
+    // Scale buffer with ASIO size: smaller ASIO = smaller jitter buffer for lower latency
+    // ~20 ASIO callbacks worth of buffer provides jitter absorption without excessive latency
+    const asioBasedSize = asioBufferSize * 40; // 20 callbacks * 2 for stereo
+    // Minimum 30ms buffer for WebSocket jitter (vs 100ms before - much lower latency)
+    const minBufferMs = 30;
     const minBufferSamples = Math.ceil(48000 * minBufferMs / 1000) * 2; // stereo
     const calculatedSize = Math.max(asioBasedSize, minBufferSamples);
     // Round up to nearest power of 2 for efficient modulo operations
