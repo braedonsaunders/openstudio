@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import Replicate from 'replicate';
+import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
 
 // Store separation jobs in memory (use Redis in production)
 const separations = new Map<string, {
@@ -26,6 +27,14 @@ const replicate = new Replicate({
 });
 
 export async function POST(request: NextRequest) {
+  // Rate limiting for expensive AI operations
+  const clientId = getClientIdentifier(request);
+  const rateLimit = checkRateLimit(`sam:${clientId}`, rateLimiters.expensive);
+
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
   try {
     const body = await request.json();
     const { trackId, trackUrl, provider = 'auto' } = body;

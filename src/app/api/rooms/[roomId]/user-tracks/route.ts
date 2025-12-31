@@ -209,6 +209,7 @@ export async function POST(
 }
 
 // PATCH /api/rooms/[roomId]/user-tracks - Update track settings
+// Users can only update their own tracks
 export async function PATCH(
   request: NextRequest,
   context: RouteContext
@@ -217,14 +218,37 @@ export async function PATCH(
 
   try {
     const { roomId } = await context.params;
-    const { trackId, ...updates } = await request.json();
+    const { trackId, requesterId, ...updates } = await request.json();
 
     if (!trackId) {
       return NextResponse.json({ error: 'trackId is required' }, { status: 400 });
     }
 
+    if (!requesterId) {
+      return NextResponse.json({ error: 'requesterId is required' }, { status: 400 });
+    }
+
     if (!supabase) {
       return NextResponse.json({ success: true });
+    }
+
+    // Verify the requester owns this track
+    const { data: track } = await supabase
+      .from('user_tracks')
+      .select('user_id')
+      .eq('id', trackId)
+      .eq('room_id', roomId)
+      .single();
+
+    if (!track) {
+      return NextResponse.json({ error: 'Track not found' }, { status: 404 });
+    }
+
+    if (track.user_id !== requesterId) {
+      return NextResponse.json(
+        { error: 'You can only modify your own tracks' },
+        { status: 403 }
+      );
     }
 
     // Map camelCase to snake_case for database
@@ -288,7 +312,8 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/rooms/[roomId]/user-tracks?trackId=xxx - Remove a user track
+// DELETE /api/rooms/[roomId]/user-tracks?trackId=xxx&requesterId=xxx - Remove a user track
+// Users can only delete their own tracks
 export async function DELETE(
   request: NextRequest,
   context: RouteContext
@@ -299,30 +324,58 @@ export async function DELETE(
     const { roomId } = await context.params;
     const { searchParams } = new URL(request.url);
     const trackId = searchParams.get('trackId');
-    const userId = searchParams.get('userId');
+    const requesterId = searchParams.get('requesterId');
+
+    if (!requesterId) {
+      return NextResponse.json({ error: 'requesterId is required' }, { status: 400 });
+    }
 
     if (!supabase) {
       return NextResponse.json({ success: true });
     }
 
-    let query = supabase
-      .from('user_tracks')
-      .delete()
-      .eq('room_id', roomId);
-
     if (trackId) {
-      query = query.eq('id', trackId);
-    } else if (userId) {
-      query = query.eq('user_id', userId);
+      // Deleting a specific track - verify ownership
+      const { data: track } = await supabase
+        .from('user_tracks')
+        .select('user_id')
+        .eq('id', trackId)
+        .eq('room_id', roomId)
+        .single();
+
+      if (!track) {
+        return NextResponse.json({ error: 'Track not found' }, { status: 404 });
+      }
+
+      if (track.user_id !== requesterId) {
+        return NextResponse.json(
+          { error: 'You can only delete your own tracks' },
+          { status: 403 }
+        );
+      }
+
+      const { error } = await supabase
+        .from('user_tracks')
+        .delete()
+        .eq('id', trackId)
+        .eq('room_id', roomId);
+
+      if (error) {
+        console.error('Error deleting user track:', error);
+        return NextResponse.json({ error: 'Failed to delete user track' }, { status: 500 });
+      }
     } else {
-      return NextResponse.json({ error: 'trackId or userId is required' }, { status: 400 });
-    }
+      // Deleting all tracks for the requester (e.g., when leaving room)
+      const { error } = await supabase
+        .from('user_tracks')
+        .delete()
+        .eq('room_id', roomId)
+        .eq('user_id', requesterId);
 
-    const { error } = await query;
-
-    if (error) {
-      console.error('Error deleting user track:', error);
-      return NextResponse.json({ error: 'Failed to delete user track' }, { status: 500 });
+      if (error) {
+        console.error('Error deleting user tracks:', error);
+        return NextResponse.json({ error: 'Failed to delete user tracks' }, { status: 500 });
+      }
     }
 
     return NextResponse.json({ success: true });

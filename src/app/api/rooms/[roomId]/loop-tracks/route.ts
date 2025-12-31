@@ -70,6 +70,7 @@ export async function POST(
 }
 
 // PATCH - Update a loop track
+// Users can only update their own tracks
 export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -82,10 +83,33 @@ export async function PATCH(
 
     const { roomId } = await params;
     const body = await request.json();
-    const { trackId, ...updates } = body;
+    const { trackId, requesterId, ...updates } = body;
 
     if (!trackId) {
       return NextResponse.json({ error: 'trackId is required' }, { status: 400 });
+    }
+
+    if (!requesterId) {
+      return NextResponse.json({ error: 'requesterId is required' }, { status: 400 });
+    }
+
+    // Verify ownership - only the creator can update their loop track
+    const { data: track } = await supabase
+      .from('room_loop_tracks')
+      .select('created_by')
+      .eq('id', trackId)
+      .eq('room_id', roomId)
+      .single();
+
+    if (!track) {
+      return NextResponse.json({ error: 'Track not found' }, { status: 404 });
+    }
+
+    if (track.created_by !== requesterId) {
+      return NextResponse.json(
+        { error: 'You can only modify your own loop tracks' },
+        { status: 403 }
+      );
     }
 
     const dbUpdates = transformToDb(updates, roomId);
@@ -114,6 +138,7 @@ export async function PATCH(
 }
 
 // DELETE - Remove a loop track
+// Users can only delete their own tracks
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -127,9 +152,33 @@ export async function DELETE(
     const { roomId } = await params;
     const { searchParams } = new URL(request.url);
     const trackId = searchParams.get('trackId');
+    const requesterId = searchParams.get('requesterId');
 
     if (!trackId) {
       return NextResponse.json({ error: 'trackId is required' }, { status: 400 });
+    }
+
+    if (!requesterId) {
+      return NextResponse.json({ error: 'requesterId is required' }, { status: 400 });
+    }
+
+    // Verify ownership - only the creator can delete their loop track
+    const { data: track } = await supabase
+      .from('room_loop_tracks')
+      .select('created_by')
+      .eq('id', trackId)
+      .eq('room_id', roomId)
+      .single();
+
+    if (!track) {
+      return NextResponse.json({ error: 'Track not found' }, { status: 404 });
+    }
+
+    if (track.created_by !== requesterId) {
+      return NextResponse.json(
+        { error: 'You can only delete your own loop tracks' },
+        { status: 403 }
+      );
     }
 
     const { error } = await supabase

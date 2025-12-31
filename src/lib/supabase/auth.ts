@@ -507,10 +507,26 @@ export async function acceptFriendRequest(userId: string, friendId: string): Pro
 }
 
 export async function removeFriend(userId: string, friendId: string): Promise<void> {
-  await supabaseAuth
-    .from('friendships')
-    .delete()
-    .or(`and(user_id.eq.${userId},friend_id.eq.${friendId}),and(user_id.eq.${friendId},friend_id.eq.${userId})`);
+  // Validate UUIDs to prevent filter injection
+  const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  if (!uuidRegex.test(userId) || !uuidRegex.test(friendId)) {
+    throw new Error('Invalid user ID format');
+  }
+
+  // Delete both directions of the friendship using separate queries
+  // This is safer than using .or() with string interpolation
+  await Promise.all([
+    supabaseAuth
+      .from('friendships')
+      .delete()
+      .eq('user_id', userId)
+      .eq('friend_id', friendId),
+    supabaseAuth
+      .from('friendships')
+      .delete()
+      .eq('user_id', friendId)
+      .eq('friend_id', userId),
+  ]);
 }
 
 export async function getFriends(userId: string): Promise<{ friends: UserProfile[]; pending: UserProfile[] }> {
@@ -751,10 +767,18 @@ export async function getAllUsers(limit: number = 50, offset: number = 0): Promi
 }
 
 export async function searchUsers(query: string, limit: number = 20): Promise<UserProfile[]> {
+  // Sanitize search query to prevent filter injection
+  // Remove any special characters that could be used for injection
+  const sanitizedQuery = query.replace(/[%_'"\\;,()]/g, '');
+
+  if (!sanitizedQuery.trim()) {
+    return [];
+  }
+
   const { data, error } = await supabaseAuth
     .from('user_profiles')
     .select('*')
-    .or(`username.ilike.%${query}%,display_name.ilike.%${query}%`)
+    .or(`username.ilike.%${sanitizedQuery}%,display_name.ilike.%${sanitizedQuery}%`)
     .limit(limit);
 
   if (error || !data) return [];

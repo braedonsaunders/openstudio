@@ -4,6 +4,90 @@
 import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
+// ============================================
+// SSRF PROTECTION
+// ============================================
+
+/**
+ * Validate URL to prevent SSRF attacks
+ * Blocks private IPs, localhost, and non-http(s) protocols
+ */
+export function isAllowedUrl(url: string): { allowed: boolean; reason?: string } {
+  try {
+    const parsed = new URL(url);
+
+    // Only allow http and https
+    if (!['http:', 'https:'].includes(parsed.protocol)) {
+      return { allowed: false, reason: 'Only HTTP and HTTPS protocols are allowed' };
+    }
+
+    const hostname = parsed.hostname.toLowerCase();
+
+    // Block localhost variations
+    if (hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '::1') {
+      return { allowed: false, reason: 'Localhost URLs are not allowed' };
+    }
+
+    // Block private IP ranges (RFC 1918)
+    const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/);
+    if (ipv4Match) {
+      const [, a, b] = ipv4Match.map(Number);
+
+      // 10.0.0.0/8
+      if (a === 10) {
+        return { allowed: false, reason: 'Private IP addresses are not allowed' };
+      }
+      // 172.16.0.0/12
+      if (a === 172 && b >= 16 && b <= 31) {
+        return { allowed: false, reason: 'Private IP addresses are not allowed' };
+      }
+      // 192.168.0.0/16
+      if (a === 192 && b === 168) {
+        return { allowed: false, reason: 'Private IP addresses are not allowed' };
+      }
+      // 127.0.0.0/8 (loopback)
+      if (a === 127) {
+        return { allowed: false, reason: 'Loopback addresses are not allowed' };
+      }
+      // 169.254.0.0/16 (link-local / cloud metadata)
+      if (a === 169 && b === 254) {
+        return { allowed: false, reason: 'Link-local addresses are not allowed' };
+      }
+      // 0.0.0.0
+      if (a === 0) {
+        return { allowed: false, reason: 'Invalid IP address' };
+      }
+    }
+
+    // Block common cloud metadata endpoints
+    if (hostname.includes('metadata.google') ||
+        hostname.includes('metadata.azure') ||
+        hostname === '169.254.169.254') {
+      return { allowed: false, reason: 'Cloud metadata endpoints are not allowed' };
+    }
+
+    return { allowed: true };
+  } catch {
+    return { allowed: false, reason: 'Invalid URL format' };
+  }
+}
+
+/**
+ * Fetch from URL with SSRF protection
+ */
+export async function safeFetch(url: string, options?: RequestInit): Promise<Response> {
+  const validation = isAllowedUrl(url);
+  if (!validation.allowed) {
+    throw new Error(`URL validation failed: ${validation.reason}`);
+  }
+
+  return fetch(url, {
+    ...options,
+    // Set a reasonable timeout to prevent hanging
+    signal: AbortSignal.timeout(30000), // 30 second timeout
+  });
+}
+
 const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
 const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
 const R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || '';
@@ -544,14 +628,15 @@ export async function listAvatarComponents(categoryId: string): Promise<string[]
 
 /**
  * Upload avatar image from URL (fetch and re-upload)
+ * Uses safeFetch to prevent SSRF attacks
  */
 export async function uploadAvatarFromUrl(
   imageUrl: string,
   categoryId: string,
   componentId: string
 ): Promise<AvatarUploadResult> {
-  // Fetch the image
-  const response = await fetch(imageUrl);
+  // Fetch the image with SSRF protection
+  const response = await safeFetch(imageUrl);
   if (!response.ok) {
     throw new Error(`Failed to fetch image: ${response.statusText}`);
   }

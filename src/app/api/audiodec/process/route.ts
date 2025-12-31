@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
+import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
 
 // AudioDec (Facebook SAM Audio Dec 2025) Processing API
 // This endpoint handles audio processing requests for stem separation,
@@ -40,6 +41,14 @@ export const audioDecJobs = new Map<string, {
 }>();
 
 export async function POST(request: NextRequest) {
+  // Rate limiting for expensive AI operations
+  const clientId = getClientIdentifier(request);
+  const rateLimit = checkRateLimit(`audiodec:${clientId}`, rateLimiters.expensive);
+
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
   try {
     const body = await request.json();
     const { audioUrl, operation, options = {} } = body;
