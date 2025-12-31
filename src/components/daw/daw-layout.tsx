@@ -233,7 +233,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
 
   // Track persistence - automatically saves track settings changes to database
   // and broadcasts changes to other clients for real-time sync
-  useTrackPersistence(roomId, broadcastUserTrackUpdate);
+  useTrackPersistence(roomId, currentUser?.id, broadcastUserTrackUpdate);
 
   // Sync track audio state (mute/solo/volume/effects) with audio engine
   useTrackAudioSync(currentUser?.id);

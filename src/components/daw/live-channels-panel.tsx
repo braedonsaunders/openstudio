@@ -122,6 +122,7 @@ export function LiveChannelsPanel({
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             trackId,
+            requesterId: currentUser.id,
             userId: currentUser.id,
             isActive: true,
           }),
@@ -134,12 +135,13 @@ export function LiveChannelsPanel({
 
   // Handle deleting an abandoned track
   const handleDeleteTrack = async (trackId: string) => {
+    if (!currentUser) return;
     removeTrack(trackId);
 
     // Delete from database
     if (roomId) {
       try {
-        await fetch(`/api/rooms/${roomId}/user-tracks?trackId=${trackId}`, {
+        await fetch(`/api/rooms/${roomId}/user-tracks?trackId=${trackId}&requesterId=${currentUser.id}`, {
           method: 'DELETE',
         });
       } catch (err) {
