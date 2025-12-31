@@ -34,6 +34,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
   } = useAudioEngine();
 
   const lastSyncRef = useRef<Map<string, TrackSyncState>>(new Map());
+  const bridgeWasRunningRef = useRef<boolean>(false);
 
   // Force sync function - applies current state to all track processors
   const forceSync = (currentUserId: string) => {
@@ -98,10 +99,25 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
   useEffect(() => {
     if (!currentUserId) return;
 
+    // Check if bridge is already running on mount
+    const initialBridgeState = useBridgeAudioStore.getState();
+    const bridgeAlreadyRunning = initialBridgeState.isConnected &&
+                                  initialBridgeState.preferNativeBridge &&
+                                  initialBridgeState.isRunning;
+
+    bridgeWasRunningRef.current = bridgeAlreadyRunning;
+
+    if (bridgeAlreadyRunning) {
+      console.log('[useTrackAudioSync] Bridge already running on mount, forcing sync');
+      lastSyncRef.current.clear();
+      forceSync(currentUserId);
+    }
+
     // Subscribe to bridge store to trigger resync when bridge starts
-    const bridgeUnsubscribe = useBridgeAudioStore.subscribe((bridgeState, prevBridgeState) => {
+    // Note: useBridgeAudioStore doesn't use subscribeWithSelector, so we use a ref to track previous state
+    const bridgeUnsubscribe = useBridgeAudioStore.subscribe((bridgeState) => {
       const nowRunning = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
-      const wasRunning = prevBridgeState?.isConnected && prevBridgeState?.preferNativeBridge && prevBridgeState?.isRunning;
+      const wasRunning = bridgeWasRunningRef.current;
 
       // When bridge starts running, force a full resync
       if (nowRunning && !wasRunning) {
@@ -109,6 +125,8 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         lastSyncRef.current.clear();
         forceSync(currentUserId);
       }
+
+      bridgeWasRunningRef.current = nowRunning;
     });
 
     const unsubscribe = useUserTracksStore.subscribe((state) => {

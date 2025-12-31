@@ -38,7 +38,8 @@ const REMOTE_RING_BUFFER_SIZE: usize = 16384;
 const BACKING_RING_BUFFER_SIZE: usize = 32768;
 
 /// Ring buffer size for streaming to browser (larger for network jitter)
-const BROWSER_STREAM_BUFFER_SIZE: usize = 16384;
+/// Needs to handle WebSocket send delays - 500ms at 48kHz stereo = 48000 samples
+const BROWSER_STREAM_BUFFER_SIZE: usize = 49152;
 
 /// Audio engine configuration
 #[derive(Debug, Clone)]

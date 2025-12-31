@@ -433,6 +433,47 @@ export function useNativeBridge() {
           console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, directMonitoring: ${directMonitoring}, jsMonitoring: ${!directMonitoring}`);
         }
       }
+
+      // CRITICAL: Final state resync after all bridge inputs are set up
+      // The store might have been updated while we were setting up bridge inputs.
+      // Re-read the LATEST track state and apply it to ensure we have correct values.
+      // This catches any state updates that happened during the async setup above.
+      if (currentUserId) {
+        const latestTracksState = useUserTracksStore.getState();
+        const latestUserTracks = latestTracksState.getTracksByUser(currentUserId);
+        const engine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+
+        if (engine) {
+          for (const track of latestUserTracks) {
+            const directMonitoring = track.audioSettings.directMonitoring ?? true;
+            engine.updateTrackState(track.id, {
+              isArmed: track.isArmed,
+              isMuted: track.isMuted,
+              isSolo: track.isSolo,
+              volume: track.volume,
+              inputGain: track.audioSettings.inputGain || 0,
+              monitoringEnabled: !directMonitoring,
+            });
+
+            // Also update native bridge with latest state
+            nativeBridge.updateTrackState(track.id, {
+              isArmed: track.isArmed,
+              isMuted: track.isMuted,
+              isSolo: track.isSolo,
+              volume: track.volume,
+              inputGainDb: track.audioSettings.inputGain || 0,
+              monitoringEnabled: directMonitoring,
+              monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
+            });
+          }
+          const firstTrack = latestUserTracks[0];
+          console.log('[useNativeBridge] Final state resync complete:', {
+            tracks: latestUserTracks.length,
+            firstTrackArmed: firstTrack?.isArmed,
+            firstTrackDirectMonitoring: firstTrack?.audioSettings?.directMonitoring ?? true,
+          });
+        }
+      }
   }, []);
 
   // Stop audio

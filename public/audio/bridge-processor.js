@@ -7,13 +7,19 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     super();
 
     // Ring buffer for stereo audio (interleaved L/R samples)
-    // Size is dynamic based on ASIO buffer size:
-    // - Default: ~100ms at 48kHz = 4800 stereo frames = 9600 samples
-    // - With ASIO buffer: asioBuffer * 40 (20 callbacks * 2 for stereo)
-    // - Minimum 4800 samples (~50ms) for WebSocket jitter absorption
+    // Size must balance two concerns:
+    // 1. Large enough to absorb WebSocket jitter (TCP can have variable latency)
+    // 2. Small enough to keep monitoring latency acceptable
+    // For low-latency monitoring with small ASIO buffers (32-128), we want minimal buffer.
+    // For larger buffers, we can afford more cushion.
     const asioBufferSize = options?.processorOptions?.asioBufferSize || 128;
-    // Calculate buffer: ~20 ASIO callbacks worth, minimum 50ms at 48kHz
-    const calculatedSize = Math.max(asioBufferSize * 40, 4800);
+    // Scale buffer with ASIO size: smaller ASIO = smaller jitter buffer for lower latency
+    // ~20 ASIO callbacks worth of buffer provides jitter absorption without excessive latency
+    const asioBasedSize = asioBufferSize * 40; // 20 callbacks * 2 for stereo
+    // Minimum 30ms buffer for WebSocket jitter (vs 100ms before - much lower latency)
+    const minBufferMs = 30;
+    const minBufferSamples = Math.ceil(48000 * minBufferMs / 1000) * 2; // stereo
+    const calculatedSize = Math.max(asioBasedSize, minBufferSamples);
     // Round up to nearest power of 2 for efficient modulo operations
     this.bufferSize = Math.pow(2, Math.ceil(Math.log2(calculatedSize)));
     this.buffer = new Float32Array(this.bufferSize);
