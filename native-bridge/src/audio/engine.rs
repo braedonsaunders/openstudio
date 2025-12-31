@@ -822,11 +822,17 @@ impl AudioEngine {
         // has its own gain gates (armGain, monitorGain) to control output
         if let Some(browser_prod) = browser_stream_producer {
             if let Ok(mut prod) = browser_prod.try_lock() {
+                let available_space = prod.vacant_len();
                 let pushed = prod.push_slice(&stereo_buffer);
-                if should_log {
-                    info!("[INPUT] Streamed {} raw samples to browser (always on)", pushed);
+                if should_log || pushed < stereo_buffer.len() {
+                    info!("[INPUT] Browser stream: pushed={}/{} space_was={}",
+                          pushed, stereo_buffer.len(), available_space);
                 }
+            } else if should_log {
+                warn!("[INPUT] Browser stream: failed to acquire lock!");
             }
+        } else if should_log {
+            warn!("[INPUT] Browser stream: producer is None!");
         }
 
         // Get monitoring volume from atomic (can be updated independently)
