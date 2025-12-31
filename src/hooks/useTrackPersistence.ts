@@ -21,6 +21,7 @@ export type BroadcastTrackUpdate = (trackId: string, updates: Partial<UserTrack>
  */
 export function useTrackPersistence(
   roomId: string | undefined,
+  userId: string | undefined,
   onBroadcast?: BroadcastTrackUpdate
 ) {
   const pendingUpdates = useRef<Map<string, NodeJS.Timeout>>(new Map());
@@ -30,7 +31,7 @@ export function useTrackPersistence(
 
   // Persist a track to the database
   const persistTrack = useCallback(async (track: UserTrack) => {
-    if (!roomId) return;
+    if (!roomId || !userId) return;
 
     try {
       await fetch(`/api/rooms/${roomId}/user-tracks`, {
@@ -38,6 +39,7 @@ export function useTrackPersistence(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trackId: track.id,
+          requesterId: userId,
           name: track.name,
           color: track.color,
           audioSettings: track.audioSettings,
@@ -51,7 +53,7 @@ export function useTrackPersistence(
     } catch (err) {
       console.error('Failed to persist track:', err);
     }
-  }, [roomId]);
+  }, [roomId, userId]);
 
   // Broadcast track updates to other clients (fast, for real-time sync)
   const broadcastTrack = useCallback((track: UserTrack) => {

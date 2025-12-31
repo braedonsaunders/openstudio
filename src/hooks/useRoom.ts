@@ -215,6 +215,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                   trackId: track.id,
+                  requesterId: user.id,
                   userId: user.id,
                   ownerUserId: user.id,
                   isActive: true,
@@ -895,6 +896,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           trackId: track.id,
+          requesterId: currentUserId,
           isActive: false,
         }),
       }).catch(err => console.error('Failed to mark track as inactive:', err));
