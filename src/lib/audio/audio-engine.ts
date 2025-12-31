@@ -1127,16 +1127,8 @@ export class AudioEngine {
    */
   updateTrackState(trackId: string, state: Partial<TrackAudioState>): void {
     const processor = this.trackProcessors.get(trackId);
-    console.log('[AudioEngine] updateTrackState:', {
-      trackId: trackId.slice(-8),
-      hasProcessor: !!processor,
-      processorCount: this.trackProcessors.size,
-      state: { isArmed: state.isArmed, monitoringEnabled: state.monitoringEnabled },
-    });
     if (processor) {
       processor.updateState(state);
-    } else {
-      console.warn('[AudioEngine] updateTrackState: NO PROCESSOR for track', trackId.slice(-8));
     }
   }
 

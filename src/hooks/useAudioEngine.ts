@@ -692,12 +692,6 @@ export function useAudioEngine() {
   ) => {
     // Use globalEngine or fall back to window reference (for native bridge initialization)
     const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
-    console.log('[useAudioEngine] updateTrackState called:', {
-      trackId: trackId.slice(-8),
-      hasEngine: !!engine,
-      fromWindow: !globalEngine && !!engine,
-      state: { isArmed: state.isArmed, monitoringEnabled: state.monitoringEnabled },
-    });
     engine?.updateTrackState(trackId, state);
   }, []);
 

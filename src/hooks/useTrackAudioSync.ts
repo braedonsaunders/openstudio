@@ -35,8 +35,81 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
 
   const lastSyncRef = useRef<Map<string, TrackSyncState>>(new Map());
 
+  // Force sync function - applies current state to all track processors
+  const forceSync = (currentUserId: string) => {
+    const state = useUserTracksStore.getState();
+    const userTracks = state.getTracksByUser(currentUserId);
+    if (userTracks.length === 0) return;
+
+    const allTracks = state.getAllTracks();
+    const hasSoloedTracks = allTracks.some(t => t.isSolo);
+
+    const bridgeState = useBridgeAudioStore.getState();
+    const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
+
+    console.log('[useTrackAudioSync] Force syncing all tracks, useBridge:', useBridge);
+
+    for (const track of userTracks) {
+      if (!track) continue;
+
+      const isEffectivelyMuted = track.isMuted || (hasSoloedTracks && !track.isSolo);
+      const directMonitoring = track.audioSettings.directMonitoring ?? true;
+      const jsMonitoringEnabled = useBridge ? !directMonitoring : directMonitoring;
+
+      getOrCreateTrackProcessor(track.id, track.audioSettings);
+      updateTrackState(track.id, {
+        isArmed: track.isArmed,
+        isMuted: isEffectivelyMuted,
+        isSolo: track.isSolo,
+        volume: track.volume,
+        inputGain: track.audioSettings.inputGain || 0,
+        monitoringEnabled: jsMonitoringEnabled,
+      });
+
+      console.log(`[useTrackAudioSync] Force synced track ${track.id.slice(-8)}: isArmed=${track.isArmed}, jsMonitoringEnabled=${jsMonitoringEnabled}`);
+
+      if (useBridge) {
+        nativeBridge.updateTrackState(track.id, {
+          isArmed: track.isArmed,
+          isMuted: isEffectivelyMuted,
+          isSolo: track.isSolo,
+          volume: track.volume,
+          inputGainDb: track.audioSettings.inputGain || 0,
+          monitoringEnabled: directMonitoring,
+          monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
+        });
+      }
+
+      // Update lastSyncRef so subsequent subscriptions don't duplicate
+      lastSyncRef.current.set(track.id, {
+        isArmed: track.isArmed,
+        isMuted: isEffectivelyMuted,
+        isSolo: track.isSolo,
+        volume: track.volume,
+        inputGainDb: track.audioSettings.inputGain || 0,
+        monitoringEnabled: directMonitoring,
+        monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
+        effects: track.audioSettings.effects || null,
+        channelConfig: track.audioSettings.channelConfig || { channelCount: 2, leftChannel: 0, rightChannel: 1 },
+      });
+    }
+  };
+
   useEffect(() => {
     if (!currentUserId) return;
+
+    // Subscribe to bridge store to trigger resync when bridge starts
+    const bridgeUnsubscribe = useBridgeAudioStore.subscribe((bridgeState, prevBridgeState) => {
+      const nowRunning = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
+      const wasRunning = prevBridgeState?.isConnected && prevBridgeState?.preferNativeBridge && prevBridgeState?.isRunning;
+
+      // When bridge starts running, force a full resync
+      if (nowRunning && !wasRunning) {
+        console.log('[useTrackAudioSync] Bridge started, triggering force sync');
+        lastSyncRef.current.clear();
+        forceSync(currentUserId);
+      }
+    });
 
     const unsubscribe = useUserTracksStore.subscribe((state) => {
       const userTracks = state.getTracksByUser(currentUserId);
@@ -49,17 +122,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       // Check if native bridge is active
       const bridgeState = useBridgeAudioStore.getState();
       const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
-
-      // Debug: Log when sync subscription fires
-      console.log('[useTrackAudioSync] Store change detected:', {
-        trackCount: userTracks.length,
-        useBridge,
-        bridgeState: {
-          isConnected: bridgeState.isConnected,
-          preferNativeBridge: bridgeState.preferNativeBridge,
-          isRunning: bridgeState.isRunning,
-        },
-      });
 
       // Process each track
       for (const track of userTracks) {
@@ -83,25 +145,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         const lastState = lastSyncRef.current.get(track.id);
 
         // Ensure track processor exists
-        const processor = getOrCreateTrackProcessor(track.id, track.audioSettings);
-
-        // Debug: Log processor state
-        console.log('[useTrackAudioSync] Processing track:', {
-          trackId: track.id.slice(-8),
-          hasProcessor: !!processor,
-          trackState: {
-            isArmed: track.isArmed,
-            directMonitoring: track.audioSettings.directMonitoring,
-          },
-          currentState: {
-            isArmed: currentState.isArmed,
-            monitoringEnabled: currentState.monitoringEnabled,
-          },
-          lastState: lastState ? {
-            isArmed: lastState.isArmed,
-            monitoringEnabled: lastState.monitoringEnabled,
-          } : null,
-        });
+        getOrCreateTrackProcessor(track.id, track.audioSettings);
 
         // Sync state to audio engine's track processor
         const stateChanged = !lastState ||
@@ -119,14 +163,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           const jsMonitoringEnabled = useBridge
             ? !currentState.monitoringEnabled  // Invert for WET when direct is OFF
             : currentState.monitoringEnabled;  // Use as-is for web audio
-
-          console.log('[useTrackAudioSync] Sending updateTrackState:', {
-            trackId: track.id.slice(-8),
-            isArmed: currentState.isArmed,
-            jsMonitoringEnabled,
-            useBridge,
-            directMonitoring: currentState.monitoringEnabled,
-          });
 
           updateTrackState(track.id, {
             isArmed: currentState.isArmed,
@@ -183,6 +219,9 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      bridgeUnsubscribe();
+    };
   }, [currentUserId, getOrCreateTrackProcessor, updateTrackState, updateTrackEffects, removeTrackProcessor]);
 }
