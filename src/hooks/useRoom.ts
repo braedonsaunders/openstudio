@@ -1338,7 +1338,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // Delete from database
     try {
-      await fetch(`/api/rooms/${roomId}/loop-tracks?trackId=${trackId}`, {
+      await fetch(`/api/rooms/${roomId}/loop-tracks?trackId=${trackId}&requesterId=${userIdRef.current}`, {
         method: 'DELETE',
       });
     } catch (err) {
@@ -1358,7 +1358,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       await fetch(`/api/rooms/${roomId}/loop-tracks`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackId, ...updates }),
+        body: JSON.stringify({ trackId, requesterId: userIdRef.current, ...updates }),
       });
     } catch (err) {
       console.error('Failed to update loop track:', err);
