@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
 
 const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
 const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
@@ -20,6 +21,14 @@ const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 export async function POST(request: NextRequest) {
+  // Rate limiting for file uploads
+  const clientId = getClientIdentifier(request);
+  const rateLimit = checkRateLimit(`upload:${clientId}`, rateLimiters.upload);
+
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
   try {
     const { fileName, fileType, fileSize } = await request.json();
 

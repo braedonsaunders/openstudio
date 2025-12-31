@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth } from '@/lib/supabase/server';
-import { uploadAvatarComponentWithThumbnail, uploadAvatarColorVariant } from '@/lib/storage/r2';
+import { uploadAvatarComponentWithThumbnail, uploadAvatarColorVariant, safeFetch } from '@/lib/storage/r2';
 import { processAvatarComponent, createThumbnail, validateAvatarImage } from '@/lib/avatar/image-processor';
 
 interface UploadBody {
@@ -79,9 +79,9 @@ export const POST = withAdminAuth(async (req, user) => {
 
       let buffer: Buffer;
 
-      // Get buffer from URL
+      // Get buffer from URL (with SSRF protection)
       if (imageUrl) {
-        const response = await fetch(imageUrl);
+        const response = await safeFetch(imageUrl);
         if (!response.ok) {
           throw new Error(`Failed to fetch image: ${response.statusText}`);
         }

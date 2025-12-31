@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { withAdminAuth, getAdminSupabase } from '@/lib/supabase/server';
 import { getComponentById } from '@/lib/avatar/supabase';
 import { processAvatarComponent, createThumbnail, applyEraserMask } from '@/lib/avatar/image-processor';
-import { downloadAvatarComponent, uploadAvatarComponentWithThumbnail, getAvatarUrl } from '@/lib/storage/r2';
+import { downloadAvatarComponent, uploadAvatarComponentWithThumbnail, getAvatarUrl, safeFetch } from '@/lib/storage/r2';
 
 interface ReprocessBody {
   componentId: string;
@@ -69,9 +69,9 @@ export const POST = withAdminAuth(async (req, user) => {
       originalBuffer = await downloadAvatarComponent(component.r2Key);
     } catch (err) {
       console.error('Failed to download from R2:', err);
-      // Try fetching from imageUrl as fallback
+      // Try fetching from imageUrl as fallback (with SSRF protection)
       if (component.imageUrl) {
-        const response = await fetch(component.imageUrl);
+        const response = await safeFetch(component.imageUrl);
         if (!response.ok) {
           return NextResponse.json(
             { error: 'Failed to download original image' },

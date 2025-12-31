@@ -211,7 +211,11 @@ export async function GET(request: NextRequest) {
 
     // Search by name, description, or tags
     if (search) {
-      query = query.or(`name.ilike.%${search}%,description.ilike.%${search}%`);
+      // Sanitize search query to prevent filter injection
+      const sanitizedSearch = search.replace(/[%_'"\\;,()]/g, '');
+      if (sanitizedSearch.trim()) {
+        query = query.or(`name.ilike.%${sanitizedSearch}%,description.ilike.%${sanitizedSearch}%`);
+      }
     }
 
     // Order by most recent first
@@ -248,10 +252,13 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// DELETE /api/rooms?id=xxx - Delete a room and all its tracks
+// DELETE /api/rooms?id=xxx&requesterId=xxx - Delete a room and all its tracks
+// Only the room creator or an admin can delete a room
 export async function DELETE(request: NextRequest) {
   const { searchParams } = new URL(request.url);
   const roomId = searchParams.get('id');
+  const requesterId = searchParams.get('requesterId');
+  const isAdminRequest = searchParams.get('admin') === 'true';
 
   if (!roomId) {
     return NextResponse.json(
@@ -277,10 +284,10 @@ export async function DELETE(request: NextRequest) {
   }
 
   try {
-    // First, verify the room exists
+    // First, verify the room exists and get the creator
     const { data: existingRoom, error: fetchError } = await adminSupabase
       .from('rooms')
-      .select('id')
+      .select('id, created_by')
       .eq('id', roomId)
       .single();
 
@@ -289,6 +296,45 @@ export async function DELETE(request: NextRequest) {
         { error: 'Room not found' },
         { status: 404 }
       );
+    }
+
+    // Authorization check: Only room creator or admin can delete
+    if (!isAdminRequest) {
+      // For non-admin requests, verify the requester is the room creator
+      if (!requesterId) {
+        return NextResponse.json(
+          { error: 'requesterId is required for non-admin deletion' },
+          { status: 400 }
+        );
+      }
+
+      if (existingRoom.created_by !== requesterId) {
+        return NextResponse.json(
+          { error: 'Only the room creator can delete this room' },
+          { status: 403 }
+        );
+      }
+    } else {
+      // For admin requests, verify the requester is actually an admin
+      if (!requesterId) {
+        return NextResponse.json(
+          { error: 'requesterId is required for admin verification' },
+          { status: 400 }
+        );
+      }
+
+      const { data: requesterProfile } = await adminSupabase
+        .from('user_profiles')
+        .select('account_type')
+        .eq('id', requesterId)
+        .single();
+
+      if (!requesterProfile || requesterProfile.account_type !== 'admin') {
+        return NextResponse.json(
+          { error: 'Admin privileges required' },
+          { status: 403 }
+        );
+      }
     }
 
     // Delete all R2 files for this room (audio tracks and stems)
