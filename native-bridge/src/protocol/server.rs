@@ -54,12 +54,9 @@ impl BridgeServer {
         let mut last_level_update = Instant::now();
         let level_interval = std::time::Duration::from_millis(50);
 
-        // Accumulate audio samples for batched sending (reduces WebSocket overhead)
+        // Accumulate audio samples - allows batching multiple ring buffer reads per loop
+        // but we send immediately (no artificial delay) for minimum latency
         let mut audio_accumulator: Vec<f32> = Vec::with_capacity(1024);
-        let mut last_audio_send = Instant::now();
-        // Send audio frequently to minimize latency - every 2ms or when we have a buffer's worth
-        // The actual min samples will be set dynamically based on buffer size
-        let audio_send_interval = std::time::Duration::from_millis(2);
 
         // Handle incoming messages with periodic level updates and audio streaming
         loop {
@@ -99,11 +96,10 @@ impl BridgeServer {
                 }
             }
 
-            // Send accumulated audio if we have any and enough time has passed
-            // For low-latency: send as soon as we have audio and 2ms has elapsed
-            // This ensures we don't add unnecessary batching delay for small buffer sizes
-            let should_send_audio = !audio_accumulator.is_empty() &&
-                last_audio_send.elapsed() >= audio_send_interval;
+            // Send accumulated audio immediately for low-latency
+            // No artificial delay - send as soon as we have samples
+            // The accumulator still helps batch multiple ring buffer reads per loop iteration
+            let should_send_audio = !audio_accumulator.is_empty();
 
             if should_send_audio {
                 // Create binary message: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
@@ -137,7 +133,6 @@ impl BridgeServer {
                 }
 
                 audio_accumulator.clear();
-                last_audio_send = Instant::now();
             }
 
             // Use short timeout to ensure audio is sent frequently
