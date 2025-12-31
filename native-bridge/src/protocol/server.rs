@@ -54,6 +54,13 @@ impl BridgeServer {
         let mut last_level_update = Instant::now();
         let level_interval = std::time::Duration::from_millis(50);
 
+        // Accumulate audio samples for batched sending (reduces WebSocket overhead)
+        let mut audio_accumulator: Vec<f32> = Vec::with_capacity(1024);
+        let mut last_audio_send = Instant::now();
+        // Send audio every 5ms or when we have enough samples (whichever comes first)
+        let audio_send_interval = std::time::Duration::from_millis(5);
+        let min_samples_to_send: usize = 256; // At least 128 stereo frames
+
         // Handle incoming messages with periodic level updates and audio streaming
         loop {
             // Check if we should send level update
@@ -80,34 +87,56 @@ impl BridgeServer {
             }
 
             // Stream raw audio to browser for WebRTC broadcast
-            // Read audio samples and send as binary WebSocket message
+            // Accumulate samples and send in batches to reduce WebSocket overhead
             {
                 let app = self.state.lock().await;
                 if app.audio_engine.is_running() {
-                    // Get up to 1024 stereo samples at a time
-                    let samples = app.audio_engine.get_browser_stream_audio(2048);
+                    // Read available samples into accumulator (up to 1024 at a time)
+                    let samples = app.audio_engine.get_browser_stream_audio(1024);
                     if !samples.is_empty() {
-                        // Create binary message: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
-                        let header = AudioMessageHeader {
-                            msg_type: 1, // 1 = local capture to browser
-                            sample_count: samples.len() as u32,
-                            timestamp: SystemTime::now()
-                                .duration_since(UNIX_EPOCH)
-                                .unwrap()
-                                .as_millis() as u64,
-                        };
+                        audio_accumulator.extend_from_slice(&samples);
+                    }
+                }
+            }
 
-                        let mut binary_data = Vec::with_capacity(AudioMessageHeader::SIZE + samples.len() * 4);
-                        binary_data.extend_from_slice(&header.to_bytes());
-                        for sample in &samples {
-                            binary_data.extend_from_slice(&sample.to_le_bytes());
-                        }
+            // Send accumulated audio if we have enough or enough time has passed
+            let should_send_audio = !audio_accumulator.is_empty() &&
+                (audio_accumulator.len() >= min_samples_to_send ||
+                 last_audio_send.elapsed() >= audio_send_interval);
 
-                        if write.send(Message::Binary(binary_data)).await.is_err() {
+            if should_send_audio {
+                // Create binary message: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
+                let header = AudioMessageHeader {
+                    msg_type: 1, // 1 = local capture to browser
+                    sample_count: audio_accumulator.len() as u32,
+                    timestamp: SystemTime::now()
+                        .duration_since(UNIX_EPOCH)
+                        .unwrap()
+                        .as_millis() as u64,
+                };
+
+                let mut binary_data = Vec::with_capacity(AudioMessageHeader::SIZE + audio_accumulator.len() * 4);
+                binary_data.extend_from_slice(&header.to_bytes());
+                for sample in &audio_accumulator {
+                    binary_data.extend_from_slice(&sample.to_le_bytes());
+                }
+
+                // Don't break on send failure - just log and continue
+                // Audio will be lost but connection stays open
+                match write.send(Message::Binary(binary_data)).await {
+                    Ok(_) => {}
+                    Err(e) => {
+                        warn!("Failed to send audio data: {} (samples: {})", e, audio_accumulator.len());
+                        // Check if this is a fatal error (connection closed)
+                        if e.to_string().contains("close") || e.to_string().contains("Connection") {
+                            error!("WebSocket connection lost, stopping audio loop");
                             break;
                         }
                     }
                 }
+
+                audio_accumulator.clear();
+                last_audio_send = Instant::now();
             }
 
             // Use short timeout to ensure audio is sent frequently
