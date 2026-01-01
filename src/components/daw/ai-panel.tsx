@@ -7,6 +7,7 @@ import { useSessionTempoStore, selectTempo, selectKey } from '@/stores/session-t
 import { useLyriaStore } from '@/stores/lyria-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { useRoomStore } from '@/stores/room-store';
+import { useAuthStore } from '@/stores/auth-store';
 import { useShallow } from 'zustand/shallow';
 import { useAIPermissions } from '@/hooks/usePermissions';
 import { useStatsTracker } from '@/hooks/useStatsTracker';
@@ -27,6 +28,9 @@ import {
   Plus,
   Save,
   Trash2,
+  User,
+  Clock,
+  AlertCircle,
 } from 'lucide-react';
 import {
   LYRIA_STYLES,
@@ -41,6 +45,10 @@ export function AIPanel() {
   const { canGenerateMusic } = useAIPermissions();
   const { trackAIGeneration } = useStatsTracker();
 
+  // Auth state
+  const user = useAuthStore((state) => state.user);
+  const profile = useAuthStore((state) => state.profile);
+
   // Use session tempo store as single source of truth for BPM/key
   const roomBpm = useSessionTempoStore(selectTempo);
   const { key: roomKey, scale: roomKeyScale } = useSessionTempoStore(useShallow(selectKey));
@@ -48,8 +56,13 @@ export function AIPanel() {
   // Lyria store state (persists across tab switches)
   const sessionState = useLyriaStore((state) => state.sessionState);
   const error = useLyriaStore((state) => state.error);
+  const errorCode = useLyriaStore((state) => state.errorCode);
+  const rateLimits = useLyriaStore((state) => state.rateLimits);
   const lyriaVolume = useLyriaStore((state) => state.volume);
   const setLyriaVolume = useLyriaStore((state) => state.setVolume);
+
+  // Check if user is authenticated
+  const isAuthenticated = !!user;
 
   // Songs store for creating Lyria songs
   const { createSong, addTrackToSong, getCurrentSong, currentSongId, updateTrackInSong, deleteSong, updateSong } = useSongsStore();
@@ -270,8 +283,32 @@ export function AIPanel() {
       </div>
 
       <div className="flex-1 p-4 space-y-4 overflow-y-auto">
-        {/* Permission Check for AI Generation */}
-        {!canGenerateMusic ? (
+        {/* Authentication Check */}
+        {!isAuthenticated ? (
+          <div className="flex flex-col items-center justify-center py-8 text-center">
+            <div className="w-12 h-12 rounded-full bg-gradient-to-br from-purple-500/20 to-pink-500/20 flex items-center justify-center mb-3">
+              <User className="w-6 h-6 text-purple-400" />
+            </div>
+            <p className="text-sm font-medium text-gray-700 dark:text-zinc-300">Sign In Required</p>
+            <p className="text-xs text-gray-500 dark:text-zinc-500 mt-1 max-w-[200px]">
+              Create a free account to use Lyria AI music generation
+            </p>
+            <div className="mt-4 flex flex-col gap-2 w-full max-w-[180px]">
+              <a
+                href="/auth/signup"
+                className="w-full px-4 py-2 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white text-sm font-medium rounded-xl text-center transition-all"
+              >
+                Create Account
+              </a>
+              <a
+                href="/auth/signin"
+                className="w-full px-4 py-2 bg-gray-200 dark:bg-white/10 text-gray-700 dark:text-zinc-300 text-sm font-medium rounded-xl text-center hover:bg-gray-300 dark:hover:bg-white/20 transition-all"
+              >
+                Sign In
+              </a>
+            </div>
+          </div>
+        ) : !canGenerateMusic ? (
           <div className="flex flex-col items-center justify-center py-8 text-center">
             <div className="w-12 h-12 rounded-full bg-gray-200 dark:bg-white/5 flex items-center justify-center mb-3">
               <Lock className="w-6 h-6 text-gray-400 dark:text-zinc-500" />
@@ -283,10 +320,57 @@ export function AIPanel() {
           </div>
         ) : (
           <>
+            {/* Rate Limit Info */}
+            {rateLimits && (
+              <div className="p-3 rounded-xl bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <Clock className="w-3.5 h-3.5 text-purple-400" />
+                    <span className="text-xs font-medium text-gray-700 dark:text-zinc-300">Daily Limit</span>
+                  </div>
+                  <span className={cn(
+                    "text-[10px] font-medium px-1.5 py-0.5 rounded",
+                    rateLimits.accountType === 'pro' ? "bg-purple-500/20 text-purple-400" :
+                    rateLimits.accountType === 'admin' ? "bg-yellow-500/20 text-yellow-400" :
+                    "bg-gray-200 dark:bg-white/10 text-gray-500 dark:text-zinc-400"
+                  )}>
+                    {rateLimits.accountType.toUpperCase()}
+                  </span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-gradient-to-r from-purple-500 to-pink-500 rounded-full transition-all"
+                      style={{
+                        width: `${Math.max(0, Math.min(100, (rateLimits.dailySecondsRemaining / (rateLimits.dailySecondsLimit || 1800)) * 100))}%`
+                      }}
+                    />
+                  </div>
+                  <span className="text-[10px] text-gray-500 dark:text-zinc-500 whitespace-nowrap">
+                    {Math.round(rateLimits.dailySecondsRemaining / 60)}m left
+                  </span>
+                </div>
+                {rateLimits.dailySecondsRemaining <= 0 && (
+                  <p className="text-[10px] text-orange-400 mt-2">
+                    Daily limit reached. Resets at midnight.
+                    {rateLimits.accountType === 'free' && ' Upgrade to Pro for 8 hours/day.'}
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Error Display */}
             {error && (
-              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs">
-                {error}
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/20 text-red-400 text-xs flex items-start gap-2">
+                <AlertCircle className="w-4 h-4 flex-shrink-0 mt-0.5" />
+                <div>
+                  <p>{error}</p>
+                  {errorCode === 'RATE_LIMIT_EXCEEDED' && (
+                    <p className="mt-1 text-[10px] opacity-80">
+                      Your daily Lyria limit has been reached. Try again tomorrow or upgrade to Pro.
+                    </p>
+                  )}
+                </div>
               </div>
             )}
 
