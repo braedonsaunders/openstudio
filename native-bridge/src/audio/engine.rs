@@ -16,7 +16,7 @@ use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::SampleFormat;
 use ringbuf::{
     traits::{Consumer, Observer, Producer, Split},
-    HeapRb, HeapCons, HeapProd,
+    HeapCons, HeapProd, HeapRb,
 };
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
@@ -186,7 +186,7 @@ impl AudioEngine {
 
         let processing_state = AudioProcessingState {
             effects_chain: EffectsChain::new(),
-            track_state: TrackState::new(),  // Use new() not default() - default() sets volume to 0!
+            track_state: TrackState::new(), // Use new() not default() - default() sets volume to 0!
             channel_config: ChannelConfig::default(),
             sample_rate: 48000,
             master_volume: 1.0,
@@ -265,6 +265,12 @@ impl AudioEngine {
     }
 
     pub fn set_channel_config(&mut self, config: ChannelConfig) -> Result<()> {
+        // Avoid unnecessary restarts when config is unchanged
+        if self.config.channel_config == config {
+            info!("Channel config unchanged, skipping restart");
+            return Ok(());
+        }
+
         self.config.channel_config = config.clone();
         if let Ok(mut state) = self.processing_state.write() {
             state.channel_config = config;
@@ -379,7 +385,8 @@ impl AudioEngine {
                 buffer.is_muted = muted;
                 // Convert delay_ms to samples
                 let sample_rate = self.config.sample_rate as u32;
-                buffer.compensation_delay_samples = (delay_ms * sample_rate as f32 / 1000.0) as usize;
+                buffer.compensation_delay_samples =
+                    (delay_ms * sample_rate as f32 / 1000.0) as usize;
             }
         }
         if let Ok(mut state) = self.processing_state.write() {
@@ -586,7 +593,10 @@ impl AudioEngine {
         let latency_ms = (buffer_size_samples as f32 / sample_rate as f32) * 1000.0;
         info!(
             "Audio started: {} -> {} @ {}Hz ({:.1}ms latency)",
-            input_device.info.name, output_device.info.name, sample_rate, latency_ms * 2.0
+            input_device.info.name,
+            output_device.info.name,
+            sample_rate,
+            latency_ms * 2.0
         );
 
         Ok(())
@@ -711,40 +721,36 @@ impl AudioEngine {
                 |err| error!("Output stream error: {}", err),
                 None,
             )?,
-            SampleFormat::I32 => {
-                device.build_output_stream(
-                    config,
-                    move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
-                        Self::process_output_i32(
-                            data,
-                            &local_consumer,
-                            &remote_buffers,
-                            &backing_consumer,
-                            &levels,
-                            &processing_state,
-                        );
-                    },
-                    |err| error!("Output stream error: {}", err),
-                    None,
-                )?
-            }
-            SampleFormat::I16 => {
-                device.build_output_stream(
-                    config,
-                    move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                        Self::process_output_i16(
-                            data,
-                            &local_consumer,
-                            &remote_buffers,
-                            &backing_consumer,
-                            &levels,
-                            &processing_state,
-                        );
-                    },
-                    |err| error!("Output stream error: {}", err),
-                    None,
-                )?
-            }
+            SampleFormat::I32 => device.build_output_stream(
+                config,
+                move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
+                    Self::process_output_i32(
+                        data,
+                        &local_consumer,
+                        &remote_buffers,
+                        &backing_consumer,
+                        &levels,
+                        &processing_state,
+                    );
+                },
+                |err| error!("Output stream error: {}", err),
+                None,
+            )?,
+            SampleFormat::I16 => device.build_output_stream(
+                config,
+                move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                    Self::process_output_i16(
+                        data,
+                        &local_consumer,
+                        &remote_buffers,
+                        &backing_consumer,
+                        &levels,
+                        &processing_state,
+                    );
+                },
+                |err| error!("Output stream error: {}", err),
+                None,
+            )?,
             _ => {
                 return Err(anyhow::anyhow!(
                     "Unsupported output format: {:?}",
@@ -782,8 +788,15 @@ impl AudioEngine {
         };
 
         if should_log {
-            info!("[INPUT] Frame {} | data_len={} input_ch={} left_ch={} right_ch={} stereo={}",
-                  frame_num, data.len(), input_channels, left_ch, right_ch, is_stereo);
+            info!(
+                "[INPUT] Frame {} | data_len={} input_ch={} left_ch={} right_ch={} stereo={}",
+                frame_num,
+                data.len(),
+                input_channels,
+                left_ch,
+                right_ch,
+                is_stereo
+            );
         }
 
         // Check if we're getting any signal from raw input
@@ -806,14 +819,21 @@ impl AudioEngine {
         }
 
         // Calculate input level
-        let level = stereo_buffer.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
+        let level = stereo_buffer
+            .iter()
+            .map(|s| s.abs())
+            .fold(0.0_f32, f32::max);
         if let Ok(mut lvl) = levels.try_write() {
             lvl.input_level = level;
             lvl.input_peak = lvl.input_peak.max(level);
         }
 
         if should_log {
-            info!("[INPUT] Extracted stereo peak: {:.6} | buffer_size={}", level, stereo_buffer.len());
+            info!(
+                "[INPUT] Extracted stereo peak: {:.6} | buffer_size={}",
+                level,
+                stereo_buffer.len()
+            );
         }
 
         // Stream RAW audio to browser for WET monitoring (BEFORE effects)
@@ -825,8 +845,12 @@ impl AudioEngine {
                 let available_space = prod.vacant_len();
                 let pushed = prod.push_slice(&stereo_buffer);
                 if should_log || pushed < stereo_buffer.len() {
-                    info!("[INPUT] Browser stream: pushed={}/{} space_was={}",
-                          pushed, stereo_buffer.len(), available_space);
+                    info!(
+                        "[INPUT] Browser stream: pushed={}/{} space_was={}",
+                        pushed,
+                        stereo_buffer.len(),
+                        available_space
+                    );
                 }
             } else if should_log {
                 warn!("[INPUT] Browser stream: failed to acquire lock!");
@@ -840,11 +864,16 @@ impl AudioEngine {
 
         // Get all track state including monitoring_enabled from processing state
         // This is updated by UpdateTrackState messages from the browser
-        let (is_armed, is_muted, monitoring_enabled) = if let Ok(state) = processing_state.try_read() {
-            (state.track_state.is_armed, state.track_state.is_muted, state.track_state.monitoring_enabled)
-        } else {
-            (false, false, false)
-        };
+        let (is_armed, is_muted, monitoring_enabled) =
+            if let Ok(state) = processing_state.try_read() {
+                (
+                    state.track_state.is_armed,
+                    state.track_state.is_muted,
+                    state.track_state.monitoring_enabled,
+                )
+            } else {
+                (false, false, false)
+            };
 
         // DRY monitoring (native bridge passthrough) is controlled by:
         // - monitoring_enabled (Direct Monitoring toggle) - user wants to hear hardware bypass
@@ -877,9 +906,15 @@ impl AudioEngine {
             };
 
             // Calculate level after processing
-            let processed_peak: f32 = stereo_buffer.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
+            let processed_peak: f32 = stereo_buffer
+                .iter()
+                .map(|s| s.abs())
+                .fold(0.0_f32, f32::max);
             if should_log {
-                info!("[INPUT] After processing: gain={:.2} vol={:.2} peak={:.6}", gain, volume, processed_peak);
+                info!(
+                    "[INPUT] After processing: gain={:.2} vol={:.2} peak={:.6}",
+                    gain, volume, processed_peak
+                );
             }
 
             // Push to ring buffer
@@ -917,7 +952,11 @@ impl AudioEngine {
         let should_log = frame_num % 7500 == 0;
 
         if should_log {
-            info!("[OUTPUT] Frame {} | output_buffer_len={}", frame_num, data.len());
+            info!(
+                "[OUTPUT] Frame {} | output_buffer_len={}",
+                frame_num,
+                data.len()
+            );
         }
 
         // Clear output
@@ -942,7 +981,10 @@ impl AudioEngine {
         }
 
         if should_log {
-            info!("[OUTPUT] Local audio: non_zero_samples={} peak={:.6}", local_samples, local_peak);
+            info!(
+                "[OUTPUT] Local audio: non_zero_samples={} peak={:.6}",
+                local_samples, local_peak
+            );
         }
 
         // Mix remote user audio
@@ -1018,7 +1060,8 @@ impl AudioEngine {
         if should_log {
             info!("[OUTPUT] Final output peak: {:.6}", level);
             // Also log first few samples to verify they're not all zero
-            let first_samples: Vec<String> = data.iter().take(8).map(|s| format!("{:.6}", s)).collect();
+            let first_samples: Vec<String> =
+                data.iter().take(8).map(|s| format!("{:.6}", s)).collect();
             info!("[OUTPUT] First 8 samples: [{}]", first_samples.join(", "));
         }
     }
