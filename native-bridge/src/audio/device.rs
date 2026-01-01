@@ -51,7 +51,7 @@ pub enum DriverType {
 }
 
 /// Channel configuration for capture
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChannelConfig {
     /// Number of channels (1 = mono, 2 = stereo)
