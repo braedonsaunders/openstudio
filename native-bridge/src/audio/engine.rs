@@ -737,17 +737,12 @@ impl AudioEngine {
         let levels = self.levels.clone();
         let processing_state = self.processing_state.clone();
 
-        // Pre-allocate remote levels buffer BEFORE building stream (allocation happens here, not in callback!)
-        let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
-
         let stream = match sample_format {
             SampleFormat::F32 => device.build_output_stream(
                 config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
                     Self::process_output_f32(
                         data,
-                        &mut remote_levels_buf,
                         &local_consumer,
                         &remote_buffers,
                         &backing_consumer,
@@ -759,19 +754,16 @@ impl AudioEngine {
                 None,
             )?,
             SampleFormat::I32 => {
-                // Pre-allocate conversion buffer and remote levels buffer
+                // Pre-allocate conversion buffer
                 let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
-                let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
 
                 device.build_output_stream(
                     config,
                     move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
                         let mut float_buf = float_buffer.borrow_mut();
-                        let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
                         Self::process_output_i32(
                             data,
                             &mut float_buf,
-                            &mut remote_levels_buf,
                             &local_consumer,
                             &remote_buffers,
                             &backing_consumer,
@@ -784,19 +776,16 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I16 => {
-                // Pre-allocate conversion buffer and remote levels buffer
+                // Pre-allocate conversion buffer
                 let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
-                let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
 
                 device.build_output_stream(
                     config,
                     move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
                         let mut float_buf = float_buffer.borrow_mut();
-                        let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
                         Self::process_output_i16(
                             data,
                             &mut float_buf,
-                            &mut remote_levels_buf,
                             &local_consumer,
                             &remote_buffers,
                             &backing_consumer,
@@ -999,10 +988,10 @@ impl AudioEngine {
     }
 
     /// Process output audio (mix all sources)
-    /// remote_levels_buffer: Pre-allocated buffer for remote user levels. MUST be allocated before ASIO starts!
+    /// NOTE: Remote user levels are NOT tracked inside this callback to avoid String allocations
+    /// that would kill ASIO. Audio mixing still works - just no per-user level metering.
     fn process_output_f32(
         data: &mut [f32],
-        remote_levels_buffer: &mut Vec<(String, f32)>,
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
@@ -1048,38 +1037,20 @@ impl AudioEngine {
             );
         }
 
-        // Mix remote user audio using pre-allocated buffer (no allocation!)
-        remote_levels_buffer.clear();
-
+        // Mix remote user audio (no level tracking to avoid String allocations)
         if let Ok(buffers) = remote_buffers.try_read() {
-            for (user_id, buffer) in buffers.iter() {
+            for (_user_id, buffer) in buffers.iter() {
                 if buffer.is_muted {
                     continue;
                 }
 
                 if let Ok(mut cons) = buffer.consumer.try_lock() {
-                    let mut user_level = 0.0_f32;
                     for sample in data.iter_mut() {
                         let s = cons.try_pop().unwrap_or(0.0) * buffer.volume;
-                        user_level = user_level.max(s.abs());
                         *sample += s;
-                    }
-                    // Check if this user_id already exists in buffer to avoid String allocation
-                    let found = remote_levels_buffer.iter_mut().find(|(id, _)| id == user_id);
-                    if let Some((_, level)) = found {
-                        *level = user_level;
-                    } else {
-                        // Only allocate String if this is a new user (happens once per user, not per callback)
-                        remote_levels_buffer.push((user_id.clone(), user_level));
                     }
                 }
             }
-        }
-
-        // Copy levels to shared state
-        if let Ok(mut lvl) = levels.try_write() {
-            lvl.remote_levels.clear();
-            lvl.remote_levels.extend(remote_levels_buffer.iter().cloned());
         }
 
         // Mix backing track
@@ -1146,11 +1117,9 @@ impl AudioEngine {
 
     /// Process I32 output - converts to F32, processes, converts back
     /// float_buffer: Pre-allocated buffer for F32 conversion. MUST be allocated before ASIO starts!
-    /// remote_levels_buffer: Pre-allocated buffer for remote user levels. MUST be allocated before ASIO starts!
     fn process_output_i32(
         data: &mut [i32],
         float_buffer: &mut Vec<f32>,
-        remote_levels_buffer: &mut Vec<(String, f32)>,
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
@@ -1162,7 +1131,6 @@ impl AudioEngine {
 
         Self::process_output_f32(
             float_buffer,
-            remote_levels_buffer,
             local_consumer,
             remote_buffers,
             backing_consumer,
@@ -1178,11 +1146,9 @@ impl AudioEngine {
 
     /// Process I16 output - converts to F32, processes, converts back
     /// float_buffer: Pre-allocated buffer for F32 conversion. MUST be allocated before ASIO starts!
-    /// remote_levels_buffer: Pre-allocated buffer for remote user levels. MUST be allocated before ASIO starts!
     fn process_output_i16(
         data: &mut [i16],
         float_buffer: &mut Vec<f32>,
-        remote_levels_buffer: &mut Vec<(String, f32)>,
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
@@ -1194,7 +1160,6 @@ impl AudioEngine {
 
         Self::process_output_f32(
             float_buffer,
-            remote_levels_buffer,
             local_consumer,
             remote_buffers,
             backing_consumer,
@@ -1368,16 +1333,11 @@ impl AudioEngine {
 
         let output_stream = match output_sample_format {
             SampleFormat::F32 => {
-                // Pre-allocate remote levels buffer
-                let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
-
                 device.build_output_stream(
                     &stream_output_config,
                     move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                        let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
                         Self::process_output_f32(
                             data,
-                            &mut remote_levels_buf,
                             &local_consumer,
                             &remote_buffers,
                             &backing_consumer,
@@ -1396,19 +1356,16 @@ impl AudioEngine {
                 let levels_out = self.levels.clone();
                 let processing_state_out = self.processing_state.clone();
 
-                // Pre-allocate conversion buffer and remote levels buffer
+                // Pre-allocate conversion buffer
                 let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
-                let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
 
                 device.build_output_stream(
                     &stream_output_config,
                     move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
                         let mut float_buf = float_buffer.borrow_mut();
-                        let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
                         Self::process_output_i32(
                             data,
                             &mut float_buf,
-                            &mut remote_levels_buf,
                             &local_consumer,
                             &remote_buffers,
                             &backing_consumer,
