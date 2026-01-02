@@ -1464,6 +1464,7 @@ export class CloudflareCalls {
             action: 'close',
             sessionId: sessionIdToClose,
             roomId: this.roomId,
+            userId: this.userId,
           }),
         });
       } catch (error) {
