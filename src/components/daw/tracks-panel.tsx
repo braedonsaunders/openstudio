@@ -677,7 +677,7 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="text-xs text-gray-700 dark:text-zinc-300 truncate">
-                        {isSeparating ? `Separating... ${separationProgress}%` : asset.name}
+                        {isSeparating ? 'Separating...' : asset.name}
                       </div>
                     </div>
                     {!isSeparating && asset.clipCount > 0 && (
