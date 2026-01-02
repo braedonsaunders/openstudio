@@ -30,6 +30,7 @@ import {
   useWorldVisibility,
   useVisibilityAwareAnimationFrame,
   useMusicalWorld,
+  usePositionBroadcast,
   usePositionReceiver,
   useStalePositionCleanup,
   useInterpolatedPosition,
@@ -204,6 +205,7 @@ function DAWWalkingAvatar({
   audioLevels,
   tempoMultiplier,
   onPositionUpdate,
+  onStateUpdate,
   getOtherPositions,
 }: {
   user: User;
@@ -217,6 +219,7 @@ function DAWWalkingAvatar({
   audioLevels: Map<string, number>;
   tempoMultiplier: number;
   onPositionUpdate?: (id: string, x: number, y: number) => void;
+  onStateUpdate?: (state: EntityState) => void;
   getOtherPositions?: (excludeId: string) => Array<{ x: number; y: number }>;
 }) {
   const [showPopup, setShowPopup] = useState(false);
@@ -251,6 +254,11 @@ function DAWWalkingAvatar({
   useEffect(() => {
     onPositionUpdate?.(user.id, walkState.x, walkState.y);
   }, [user.id, walkState.x, walkState.y, onPositionUpdate]);
+
+  // Broadcast state updates for position sync
+  useEffect(() => {
+    onStateUpdate?.(walkState);
+  }, [walkState, onStateUpdate]);
 
   // Walking animation loop (runs continuously)
   useVisibilityAwareAnimationFrame(
@@ -423,6 +431,117 @@ function DAWWalkingAvatar({
             <UserProfilePopup
               user={user}
               isCurrentUser={isCurrentUser}
+              keyColor={keyColor}
+              onClose={() => setShowPopup(false)}
+            />
+          )}
+        </AnimatePresence>
+      </div>
+    </WalkingEntity>
+  );
+}
+
+// ============================================
+// Remote User Avatar (uses synced positions)
+// ============================================
+
+function RemoteUserAvatar({
+  user,
+  position,
+  audioLevel,
+  keyColor,
+  groundConfig,
+  containerWidth,
+  containerHeight,
+  musicalContext,
+  audioLevels,
+}: {
+  user: User;
+  position: WorldPosition;
+  audioLevel: number;
+  keyColor: string;
+  groundConfig: SceneGroundConfig;
+  containerWidth: number;
+  containerHeight: number;
+  musicalContext: MusicalContext;
+  audioLevels: Map<string, number>;
+}) {
+  const [showPopup, setShowPopup] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
+  const instrumentType = user.instrument || 'other';
+  const instrumentIcon = INSTRUMENT_ICONS[instrumentType.toLowerCase()] || INSTRUMENT_ICONS.other;
+
+  // Convert WorldPosition to EntityState for WalkingEntity
+  const state: EntityState = {
+    x: position.x,
+    y: position.y,
+    targetX: position.targetX ?? position.x,
+    targetY: position.targetY ?? position.y,
+    facingRight: position.facingRight,
+    isWalking: position.isWalking,
+    isSettling: false,
+    walkTimer: 0,
+    idleTimer: 0,
+    settlingTimer: 0,
+    timestamp: position.timestamp,
+  };
+
+  // Click outside to close popup
+  useEffect(() => {
+    if (!showPopup) return;
+    const handleClickOutside = (event: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+        setShowPopup(false);
+      }
+    };
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 10);
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPopup]);
+
+  return (
+    <WalkingEntity
+      id={user.id}
+      state={state}
+      groundConfig={groundConfig}
+      containerWidth={containerWidth}
+      containerHeight={containerHeight}
+      baseSize={100}
+      musicalContext={musicalContext}
+      audioLevel={audioLevel}
+      audioLevels={audioLevels}
+      showName={false}
+      showGlow={true}
+      glowColor={keyColor}
+      isCurrentUser={false}
+      isRemote={true}
+      onClick={() => setShowPopup(!showPopup)}
+    >
+      <div className="relative w-full h-full" ref={popupRef}>
+        {/* Instrument icon + name above */}
+        <div
+          className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 whitespace-nowrap pointer-events-none"
+          style={{ transform: `translateX(-50%) scaleX(${state.facingRight ? 1 : -1})` }}
+        >
+          <div className="text-white/80 scale-75">{instrumentIcon}</div>
+          <span className="text-[10px] font-medium text-white/90">{user.name}</span>
+        </div>
+
+        {/* Avatar */}
+        <div style={{ transform: `scaleX(${state.facingRight ? 1 : -1})` }}>
+          <UserAvatar userId={user.id} username={user.name} size={100} variant="fullBody" />
+        </div>
+
+        {/* Profile popup */}
+        <AnimatePresence>
+          {showPopup && (
+            <UserProfilePopup
+              user={user}
+              isCurrentUser={false}
               keyColor={keyColor}
               onClose={() => setShowPopup(false)}
             />
@@ -639,11 +758,18 @@ export function AvatarWorldView({ users, currentUser, audioLevels, realtimeManag
     return result;
   }, []);
 
-  // Position sync: broadcast local user's position (simplified - broadcast handled by avatar)
+  // Track local user's walk state for broadcasting
+  const [localWalkState, setLocalWalkState] = useState<EntityState | null>(null);
+
+  // Position sync: broadcast local user's position
   const broadcastFn = realtimeManager?.broadcastWorldPosition ?? null;
+  usePositionBroadcast(localWalkState, currentUser?.id ?? null, broadcastFn, isVisible);
 
   // Position sync: receive remote positions
   const { handlePosition } = usePositionReceiver(currentUser?.id ?? null, null, isVisible);
+
+  // Get remote positions from store
+  const remotePositions = useRoomStore(state => state.worldPositions);
 
   // Set up realtime listener
   useEffect(() => {
@@ -653,9 +779,6 @@ export function AvatarWorldView({ users, currentUser, audioLevels, realtimeManag
 
   // Clean up stale positions
   useStalePositionCleanup();
-
-  // Get remote positions from store
-  const remotePositions = useRoomStore(state => state.worldPositions);
 
   // Aggregate audio level for display
   const totalAudioLevel = useMemo(() => {
@@ -705,25 +828,43 @@ export function AvatarWorldView({ users, currentUser, audioLevels, realtimeManag
           </motion.div>
         </AnimatePresence>
 
-        {/* Avatars */}
-        {isVisible && allUsers.map((user) => {
-          const isLocal = user.id === currentUser?.id;
+        {/* Local User Avatar (self-contained walking) */}
+        {isVisible && currentUser && (
+          <DAWWalkingAvatar
+            key={currentUser.id}
+            user={currentUser}
+            audioLevel={audioLevels.get(currentUser.id) || 0}
+            isCurrentUser={true}
+            keyColor={keyColor}
+            groundConfig={groundConfig}
+            containerWidth={containerSize.width}
+            containerHeight={containerSize.height}
+            musicalContext={musicalContext}
+            audioLevels={audioLevels}
+            tempoMultiplier={tempoMultiplier}
+            onPositionUpdate={updatePosition}
+            onStateUpdate={setLocalWalkState}
+            getOtherPositions={getOtherPositions}
+          />
+        )}
+
+        {/* Remote User Avatars (synced positions) */}
+        {isVisible && users.filter(u => u.id !== currentUser?.id).map((user) => {
+          const remotePosition = remotePositions.get(user.id);
+          if (!remotePosition) return null;
 
           return (
-            <DAWWalkingAvatar
+            <RemoteUserAvatar
               key={user.id}
               user={user}
+              position={remotePosition}
               audioLevel={audioLevels.get(user.id) || 0}
-              isCurrentUser={isLocal}
               keyColor={keyColor}
               groundConfig={groundConfig}
               containerWidth={containerSize.width}
               containerHeight={containerSize.height}
               musicalContext={musicalContext}
               audioLevels={audioLevels}
-              tempoMultiplier={tempoMultiplier}
-              onPositionUpdate={updatePosition}
-              getOtherPositions={getOtherPositions}
             />
           );
         })}
