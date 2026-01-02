@@ -58,6 +58,11 @@ export class AudioEngine {
   private stemBuffers: Map<string, AudioBuffer> = new Map();
   private stemGains: Map<string, GainNode> = new Map();
 
+  // Multi-track playback support (multiple audio files playing simultaneously)
+  private multiTrackBuffers: Map<string, AudioBuffer> = new Map();
+  private multiTrackSources: Map<string, AudioBufferSourceNode> = new Map();
+  private multiTrackGains: Map<string, GainNode> = new Map();
+
   // WebRTC broadcast support - mixes MIDI audio with mic for streaming
   private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
   private broadcastMixerGain: GainNode | null = null;
@@ -1722,6 +1727,174 @@ export class AudioEngine {
     if (gainNode && state?.enabled) {
       gainNode.gain.value = volume;
     }
+  }
+
+  // ============================================================================
+  // Multi-track playback (multiple audio files playing simultaneously)
+  // ============================================================================
+
+  /**
+   * Load an audio track for multi-track playback
+   */
+  async loadMultiTrack(trackId: string, url: string): Promise<boolean> {
+    if (!this.audioContext) return false;
+
+    // Skip if already loaded
+    if (this.multiTrackBuffers.has(trackId)) {
+      return true;
+    }
+
+    try {
+      console.log(`[AudioEngine] Loading multi-track ${trackId} from ${url}`);
+      const response = await fetch(url);
+      if (!response.ok) {
+        console.error(`[AudioEngine] Failed to fetch track ${trackId}: ${response.status}`);
+        return false;
+      }
+
+      const contentType = response.headers.get('Content-Type') || '';
+      const isValidContentType = contentType.startsWith('audio/') ||
+        contentType === 'application/octet-stream' ||
+        contentType === '';
+      if (!isValidContentType) {
+        console.error(`[AudioEngine] Invalid content type for ${trackId}: ${contentType}`);
+        return false;
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      const buffer = await this.audioContext.decodeAudioData(arrayBuffer);
+      this.multiTrackBuffers.set(trackId, buffer);
+      console.log(`[AudioEngine] Loaded multi-track ${trackId}, duration: ${buffer.duration}s`);
+      return true;
+    } catch (error) {
+      console.error(`[AudioEngine] Error loading multi-track ${trackId}:`, error);
+      return false;
+    }
+  }
+
+  /**
+   * Check if a track is loaded for multi-track playback
+   */
+  isMultiTrackLoaded(trackId: string): boolean {
+    return this.multiTrackBuffers.has(trackId);
+  }
+
+  /**
+   * Play multiple tracks simultaneously
+   * @param syncTimestamp Timestamp to sync playback to
+   * @param trackConfigs Array of { trackId, offset, volume, muted }
+   */
+  playMultiTracks(
+    syncTimestamp: number,
+    trackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }>
+  ): void {
+    if (!this.audioContext || !this.masterGain) {
+      console.error('[AudioEngine] Cannot play multi-tracks: audio context not ready');
+      return;
+    }
+
+    // Resume if suspended
+    if (this.audioContext.state === 'suspended') {
+      this.audioContext.resume();
+    }
+
+    // Stop any currently playing multi-tracks
+    this.stopMultiTracks();
+
+    const now = Date.now();
+    const delay = Math.max(0, syncTimestamp - now) / 1000;
+    const startTime = this.audioContext.currentTime + delay;
+
+    let isFirst = true;
+    let firstBuffer: AudioBuffer | null = null;
+
+    for (const config of trackConfigs) {
+      const buffer = this.multiTrackBuffers.get(config.trackId);
+      if (!buffer) {
+        console.warn(`[AudioEngine] Track ${config.trackId} not loaded, skipping`);
+        continue;
+      }
+
+      if (isFirst) {
+        firstBuffer = buffer;
+      }
+
+      // Create gain node for this track
+      let gainNode = this.multiTrackGains.get(config.trackId);
+      if (!gainNode) {
+        gainNode = this.audioContext.createGain();
+        gainNode.connect(this.masterGain);
+        this.multiTrackGains.set(config.trackId, gainNode);
+      }
+      gainNode.gain.value = config.muted ? 0 : config.volume;
+
+      // Create and start source
+      const source = this.audioContext.createBufferSource();
+      source.buffer = buffer;
+      source.connect(gainNode);
+
+      // Track end callback on first source
+      if (isFirst) {
+        source.onended = () => {
+          if (this.multiTrackSources.get(config.trackId) === source && this.isPlaying) {
+            this.isPlaying = false;
+            this.onTrackEnded?.();
+          }
+        };
+        isFirst = false;
+      }
+
+      this.multiTrackSources.set(config.trackId, source);
+      source.start(startTime, config.offset);
+    }
+
+    if (this.multiTrackSources.size > 0) {
+      this.playbackStartTime = startTime;
+      this.playbackOffset = trackConfigs[0]?.offset || 0;
+      this.isPlaying = true;
+      // Store duration from first track for getCurrentTime calculations
+      if (firstBuffer) {
+        this.backingTrackBuffer = firstBuffer;
+      }
+      console.log(`[AudioEngine] Playing ${this.multiTrackSources.size} tracks`);
+    }
+  }
+
+  /**
+   * Update volume for a specific track during playback
+   */
+  setMultiTrackVolume(trackId: string, volume: number, muted: boolean): void {
+    const gainNode = this.multiTrackGains.get(trackId);
+    if (gainNode) {
+      gainNode.gain.value = muted ? 0 : volume;
+    }
+  }
+
+  /**
+   * Stop all multi-track playback
+   */
+  stopMultiTracks(): void {
+    for (const source of this.multiTrackSources.values()) {
+      try {
+        source.stop();
+      } catch (e) {
+        // Already stopped
+      }
+      source.disconnect();
+    }
+    this.multiTrackSources.clear();
+  }
+
+  /**
+   * Clear all loaded multi-track buffers
+   */
+  clearMultiTracks(): void {
+    this.stopMultiTracks();
+    this.multiTrackBuffers.clear();
+    for (const gainNode of this.multiTrackGains.values()) {
+      gainNode.disconnect();
+    }
+    this.multiTrackGains.clear();
   }
 
   getCurrentTime(): number {

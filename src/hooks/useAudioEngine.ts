@@ -529,6 +529,60 @@ export function useAudioEngine() {
     globalEngine?.setStemVolume(stem, volume);
   }, []);
 
+  // ============================================================================
+  // Multi-track playback
+  // ============================================================================
+
+  // Load a track for multi-track playback
+  const loadMultiTrack = useCallback(async (trackId: string, url: string): Promise<boolean> => {
+    if (!globalEngine) return false;
+    return globalEngine.loadMultiTrack(trackId, url);
+  }, []);
+
+  // Check if a track is loaded
+  const isMultiTrackLoaded = useCallback((trackId: string): boolean => {
+    return globalEngine?.isMultiTrackLoaded(trackId) ?? false;
+  }, []);
+
+  // Play multiple tracks simultaneously
+  const playMultiTracks = useCallback((
+    syncTimestamp: number,
+    trackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }>
+  ) => {
+    if (!globalEngine) return;
+    globalEngine.playMultiTracks(syncTimestamp, trackConfigs);
+    useAudioStore.getState().setPlaying(true);
+
+    // Start time update animation
+    const updateTime = () => {
+      if (!globalEngine) return;
+      const currentTime = globalEngine.getCurrentTime();
+      useAudioStore.getState().setCurrentTime(currentTime);
+      animationFrameRef.current = requestAnimationFrame(updateTime);
+    };
+    animationFrameRef.current = requestAnimationFrame(updateTime);
+  }, []);
+
+  // Update volume for a track during playback
+  const setMultiTrackVolume = useCallback((trackId: string, volume: number, muted: boolean) => {
+    globalEngine?.setMultiTrackVolume(trackId, volume, muted);
+  }, []);
+
+  // Stop multi-track playback
+  const stopMultiTracks = useCallback(() => {
+    if (!globalEngine) return;
+    globalEngine.stopMultiTracks();
+    useAudioStore.getState().setPlaying(false);
+    if (animationFrameRef.current) {
+      cancelAnimationFrame(animationFrameRef.current);
+    }
+  }, []);
+
+  // Clear all loaded multi-tracks
+  const clearMultiTracks = useCallback(() => {
+    globalEngine?.clearMultiTracks();
+  }, []);
+
   // Resume audio context (required after user interaction)
   const resume = useCallback(async () => {
     await globalEngine?.resume();
@@ -808,6 +862,13 @@ export function useAudioEngine() {
     seekTo,
     toggleStem,
     setStemVolume,
+    // Multi-track playback
+    loadMultiTrack,
+    isMultiTrackLoaded,
+    playMultiTracks,
+    setMultiTrackVolume,
+    stopMultiTracks,
+    clearMultiTracks,
     resume,
     updateFromStats,
     setOnTrackEnded,
