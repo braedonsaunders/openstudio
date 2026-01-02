@@ -461,326 +461,290 @@ const LoonRipples = memo(function LoonRipples({ x, isDark }: { x: number; isDark
   );
 });
 
+// ============================================
+// CAMPFIRE SCENE - High Fidelity Upgrade
+// ============================================
+
+// Majestic Mountain Range with Snow Caps
+const MountainRange = memo(function MountainRange({ isDark }: { isDark: boolean }) {
+  const colors = isDark ? {
+    back: '#1e1b4b',
+    front: '#312e81',
+    snow: '#6366f1',
+    snowShadow: '#4338ca'
+  } : {
+    back: '#60a5fa',
+    front: '#3b82f6',
+    snow: '#ffffff',
+    snowShadow: '#dbeafe'
+  };
+
+  return (
+    <div className="absolute bottom-[25%] left-0 right-0 h-[45%] w-full pointer-events-none">
+      <svg className="w-full h-full" viewBox="0 0 1440 320" preserveAspectRatio="none">
+        <path
+          d="M0 320 L0 180 L180 80 L350 220 L500 100 L700 250 L900 120 L1100 240 L1250 150 L1440 280 L1440 320 Z"
+          fill={colors.back}
+          opacity="0.8"
+        />
+        <g>
+          <path d="M-50 320 L-50 320 L150 120 L400 320 L400 320 Z" fill={colors.front} />
+          <path d="M150 120 L200 160 L180 180 L150 165 L120 180 L100 160 Z" fill={colors.snow} />
+        </g>
+        <g>
+          <path d="M250 320 L550 50 L850 320 Z" fill={colors.front} />
+          <path d="M550 50 L620 110 L590 130 L550 110 L510 130 L480 110 Z" fill={colors.snow} />
+          <path d="M550 50 L550 110 L510 130 L480 110 Z" fill={colors.snowShadow} opacity="0.3" />
+        </g>
+        <g>
+          <path d="M700 320 L1000 80 L1300 320 Z" fill={colors.front} />
+          <path d="M1000 80 L1060 130 L1030 150 L1000 130 L970 150 L940 130 Z" fill={colors.snow} />
+        </g>
+        <g>
+          <path d="M1100 320 L1350 140 L1600 320 Z" fill={colors.front} />
+          <path d="M1350 140 L1400 180 L1350 170 L1300 180 Z" fill={colors.snow} />
+        </g>
+      </svg>
+    </div>
+  );
+});
+
+// Shimmering Lake Water
+const LakeWater = memo(function LakeWater({ isDark }: { isDark: boolean }) {
+  return (
+    <div className="absolute left-0 right-0 bottom-[25%] h-[20%] overflow-hidden">
+      <div className={`absolute inset-0 ${
+        isDark
+          ? 'bg-gradient-to-b from-indigo-950 via-slate-900 to-slate-900'
+          : 'bg-gradient-to-b from-sky-400 via-sky-300 to-teal-300'
+      }`} />
+      <div className={`absolute inset-0 opacity-30 ${
+        isDark
+          ? 'bg-gradient-to-t from-transparent via-indigo-900 to-transparent'
+          : 'bg-gradient-to-t from-transparent via-white to-transparent'
+      }`} />
+      <svg className="absolute inset-0 w-full h-full" preserveAspectRatio="none">
+        {[0, 1, 2, 3].map((i) => (
+          <motion.path
+            key={i}
+            d={`M0 ${20 + i * 25} Q 360 ${10 + i * 25} 720 ${20 + i * 25} T 1440 ${20 + i * 25} V 100 H 0 Z`}
+            fill={isDark ? '#1e1b4b' : '#0ea5e9'}
+            fillOpacity={0.1 + i * 0.05}
+            animate={{ d: [
+              `M0 ${20 + i * 25} Q 360 ${10 + i * 25} 720 ${20 + i * 25} T 1440 ${20 + i * 25} V 100 H 0 Z`,
+              `M0 ${20 + i * 25} Q 360 ${30 + i * 25} 720 ${20 + i * 25} T 1440 ${20 + i * 25} V 100 H 0 Z`,
+              `M0 ${20 + i * 25} Q 360 ${10 + i * 25} 720 ${20 + i * 25} T 1440 ${20 + i * 25} V 100 H 0 Z`,
+            ]}}
+            transition={{ duration: 4 + i, repeat: Infinity, ease: "easeInOut" }}
+          />
+        ))}
+      </svg>
+    </div>
+  );
+});
+
+// Modern Dome Tent
+const CampingTent = memo(function CampingTent({
+  x, y, color, scale = 1, isDark
+}: {
+  x: number; y: number; color: 'red' | 'blue'; scale?: number; isDark: boolean
+}) {
+  const mainColor = color === 'red'
+    ? (isDark ? '#7f1d1d' : '#ef4444')
+    : (isDark ? '#1e3a8a' : '#3b82f6');
+  const highlightColor = color === 'red'
+    ? (isDark ? '#991b1b' : '#f87171')
+    : (isDark ? '#1d4ed8' : '#60a5fa');
+  const darkColor = color === 'red'
+    ? (isDark ? '#450a0a' : '#b91c1c')
+    : (isDark ? '#172554' : '#1d4ed8');
+
+  return (
+    <div
+      className="absolute"
+      style={{ left: `${x}%`, top: `${y}%`, transform: `scale(${scale}) translateX(-50%)`, zIndex: Math.floor(y) }}
+    >
+      <svg width="120" height="80" viewBox="0 0 120 80">
+        <ellipse cx="60" cy="75" rx="55" ry="5" fill="black" opacity="0.3" />
+        <path d="M25 75 L60 15 L95 75 Z" fill={darkColor} />
+        <path d="M10 75 Q15 40 60 10 Q35 40 25 75 Z" fill={mainColor} />
+        <path d="M110 75 Q105 40 60 10 Q85 40 95 75 Z" fill={highlightColor} />
+        <path d="M40 75 L60 30 L80 75 Z" fill={isDark ? '#000' : '#1f2937'} opacity="0.8" />
+        <path d="M10 75 Q60 -5 110 75" fill="none" stroke={isDark ? '#4b5563' : '#cbd5e1'} strokeWidth="2" />
+        <path d="M25 75 L95 75" fill="none" stroke={isDark ? '#4b5563' : '#cbd5e1'} strokeWidth="1" strokeDasharray="4 4" />
+        {isDark && (
+          <motion.path
+            d="M45 75 L60 40 L75 75 Z"
+            fill="#fbbf24"
+            opacity="0.2"
+            animate={{ opacity: [0.1, 0.3, 0.1] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
+        )}
+      </svg>
+    </div>
+  );
+});
+
+// Camping Chair
+const FoldingChair = memo(function FoldingChair({
+  x, y, scale = 1, isDark
+}: {
+  x: number; y: number; scale?: number; isDark: boolean
+}) {
+  return (
+    <div
+      className="absolute"
+      style={{ left: `${x}%`, top: `${y}%`, transform: `scale(${scale}) translateX(-50%)` }}
+    >
+      <svg width="40" height="50" viewBox="0 0 40 50">
+        <path d="M5 45 L35 45" stroke={isDark ? '#4b5563' : '#64748b'} strokeWidth="2" />
+        <path d="M10 45 L20 25 L30 45" stroke={isDark ? '#9ca3af' : '#cbd5e1'} strokeWidth="2" fill="none" />
+        <path d="M10 25 L10 45" stroke={isDark ? '#9ca3af' : '#cbd5e1'} strokeWidth="2" />
+        <path d="M30 25 L30 45" stroke={isDark ? '#9ca3af' : '#cbd5e1'} strokeWidth="2" />
+        <path d="M10 25 Q20 30 30 25" stroke={isDark ? '#166534' : '#15803d'} strokeWidth="3" fill="none" />
+        <path d="M10 25 L5 5" stroke={isDark ? '#9ca3af' : '#cbd5e1'} strokeWidth="2" />
+        <path d="M30 25 L35 5" stroke={isDark ? '#9ca3af' : '#cbd5e1'} strokeWidth="2" />
+        <rect x="5" y="5" width="30" height="15" rx="2" fill={isDark ? '#166534' : '#15803d'} />
+      </svg>
+    </div>
+  );
+});
+
 function CampfireScene({ isDark, keyColor, audioLevel }: SceneProps) {
   const config = SCENE_CONFIGS.campfire.ground;
 
-  // Pine trees along the lakeshore
-  const lakeshoreTrees = useMemo(() => [
-    { x: -5, scale: 0.6 }, { x: 2, scale: 0.75 }, { x: 8, scale: 0.55 },
-    { x: 15, scale: 0.85 }, { x: 22, scale: 0.65 }, { x: 28, scale: 0.9 },
-    { x: 72, scale: 0.85 }, { x: 78, scale: 0.7 }, { x: 85, scale: 0.95 },
-    { x: 92, scale: 0.6 }, { x: 98, scale: 0.8 }, { x: 105, scale: 0.7 },
-  ], []);
-
   return (
     <div className="absolute inset-0 overflow-hidden">
-      {/* Sky */}
-      <div className="absolute left-0 right-0 top-0" style={{ height: `${config.horizonY + 15}%` }}>
-        <div className={`absolute inset-0 ${
+      {/* ==================== SKY & BACKDROP ==================== */}
+      <div className="absolute inset-0">
+        <div className={`absolute inset-0 transition-colors duration-1000 ${
           isDark
             ? 'bg-gradient-to-b from-slate-950 via-indigo-950 to-slate-900'
-            : 'bg-gradient-to-b from-orange-300 via-rose-300 to-violet-300'
+            : 'bg-gradient-to-b from-sky-400 via-sky-300 to-blue-200'
         }`} />
-
-        {/* Dense star field (night) */}
-        {isDark && <StarField count={80} maxTop={70} />}
-
-        {/* Aurora Borealis (night) */}
+        {isDark && <StarField count={120} maxTop={70} />}
         {isDark && <AuroraBorealis />}
-
-        {/* Moon (night) or Sun (day) */}
         <motion.div
-          className={`absolute ${isDark ? 'top-[12%] right-[20%]' : 'top-[8%] left-[15%]'} rounded-full ${
+          className={`absolute rounded-full ${
             isDark
-              ? 'w-10 h-10 bg-gradient-to-br from-gray-100 to-gray-200'
-              : 'w-12 h-12 bg-gradient-to-br from-yellow-200 to-orange-400'
+              ? 'top-[10%] right-[15%] w-16 h-16 bg-slate-100'
+              : 'top-[8%] left-[10%] w-24 h-24 bg-yellow-300'
           }`}
           style={{
             boxShadow: isDark
-              ? '0 0 40px 15px rgba(255, 255, 255, 0.2)'
-              : '0 0 50px 20px rgba(255, 180, 100, 0.5)',
+              ? '0 0 40px 10px rgba(255, 255, 255, 0.15)'
+              : '0 0 60px 20px rgba(253, 224, 71, 0.4)'
           }}
-          animate={{ y: [0, -4, 0] }}
-          transition={{ duration: 6, repeat: Infinity }}
+          animate={{ y: [0, -5, 0] }}
+          transition={{ duration: 8, repeat: Infinity, ease: "easeInOut" }}
         />
-
-        {/* Distant mountains */}
-        <svg className="absolute bottom-[20%] left-0 right-0 w-full h-[50%]" viewBox="0 0 1440 200" preserveAspectRatio="none">
-          {/* Far mountain range */}
-          <path
-            d="M0 200 L0 140 L100 80 L180 120 L280 50 L380 100 L450 60 L550 110 L650 40 L750 90 L850 55 L950 100 L1050 45 L1150 95 L1250 60 L1350 110 L1440 70 L1440 200 Z"
-            fill={isDark ? '#1e293b' : '#64748b'}
-            opacity={isDark ? 0.6 : 0.4}
-          />
-          {/* Near mountain range */}
-          <path
-            d="M0 200 L0 160 L80 100 L160 140 L260 70 L340 120 L420 80 L520 130 L620 65 L720 115 L820 75 L920 125 L1020 70 L1120 120 L1220 85 L1320 130 L1440 90 L1440 200 Z"
-            fill={isDark ? '#334155' : '#475569'}
-            opacity={isDark ? 0.8 : 0.5}
-          />
-        </svg>
-
-        {/* Pine tree silhouettes at treeline */}
-        <div className="absolute bottom-[15%] left-0 right-0">
-          {lakeshoreTrees.map((tree, i) => (
-            <PineTreeSilhouette key={i} {...tree} isDark={isDark} />
-          ))}
-        </div>
+        {!isDark && <CloudLayer isDark={isDark} />}
       </div>
 
-      {/* Lake */}
-      <div
-        className="absolute left-0 right-0"
-        style={{ top: `${config.horizonY - 8}%`, height: '23%' }}
-      >
-        {/* Lake water */}
+      {/* ==================== BACKGROUND LANDSCAPE ==================== */}
+      <MountainRange isDark={isDark} />
+      <LakeWater isDark={isDark} />
+
+      {/* ==================== FOREGROUND CLEARING ==================== */}
+      <div className="absolute left-0 right-0 bottom-0" style={{ height: '35%' }}>
         <div className={`absolute inset-0 ${
           isDark
-            ? 'bg-gradient-to-b from-slate-800 via-slate-900 to-slate-950'
-            : 'bg-gradient-to-b from-slate-400 via-slate-500 to-slate-600'
+            ? 'bg-gradient-to-b from-emerald-900 via-slate-900 to-black'
+            : 'bg-gradient-to-b from-emerald-400 via-green-500 to-green-600'
         }`} />
-
-        {/* Water reflections */}
-        <div className="absolute inset-0 overflow-hidden">
-          {/* Moon/sun reflection */}
-          <motion.div
-            className={`absolute ${isDark ? 'right-[18%]' : 'left-[13%]'} top-[10%] w-4 rounded-full`}
-            style={{
-              height: '70%',
-              background: isDark
-                ? 'linear-gradient(to bottom, rgba(255,255,255,0.3), rgba(255,255,255,0.05))'
-                : 'linear-gradient(to bottom, rgba(255,200,100,0.4), rgba(255,200,100,0.1))',
-              filter: 'blur(3px)',
-            }}
-            animate={{ scaleX: [1, 1.5, 0.8, 1.2, 1], opacity: [0.6, 0.8, 0.5, 0.7, 0.6] }}
-            transition={{ duration: 4, repeat: Infinity }}
-          />
-
-          {/* Subtle wave lines */}
-          {[0, 1, 2, 3].map((line) => (
-            <motion.div
-              key={line}
-              className="absolute left-0 right-0"
-              style={{
-                top: `${25 + line * 20}%`,
-                height: 1,
-                background: isDark
-                  ? 'linear-gradient(90deg, transparent 10%, rgba(148,163,184,0.2) 30%, rgba(148,163,184,0.3) 50%, rgba(148,163,184,0.2) 70%, transparent 90%)'
-                  : 'linear-gradient(90deg, transparent 10%, rgba(255,255,255,0.3) 30%, rgba(255,255,255,0.4) 50%, rgba(255,255,255,0.3) 70%, transparent 90%)',
-              }}
-              animate={{ x: [-20, 20, -20] }}
-              transition={{ duration: 6 + line, repeat: Infinity, delay: line * 0.5 }}
-            />
-          ))}
-        </div>
-
-        {/* Loon with ripples (night) */}
-        {isDark && <LoonRipples x={55} isDark={isDark} />}
+        <div className="absolute inset-0 bg-gradient-to-r from-black/40 via-transparent to-black/40" />
       </div>
 
-      {/* Rocky lakeshore and camping ground */}
-      <div className="absolute left-0 right-0 bottom-0" style={{ top: `${config.horizonY + 15}%` }}>
-        {/* Sandy/rocky shore */}
-        <div className={`absolute inset-0 ${
-          isDark
-            ? 'bg-gradient-to-b from-slate-800 via-stone-800 to-stone-900'
-            : 'bg-gradient-to-b from-stone-400 via-stone-500 to-stone-600'
-        }`} />
+      {/* ==================== SCENE OBJECTS ==================== */}
 
-        {/* Shore pebbles and rocks */}
-        {useMemo(() => [
-          { x: 5, y: 5, size: 15, color: isDark ? '#57534e' : '#78716c' },
-          { x: 15, y: 8, size: 10, color: isDark ? '#44403c' : '#a8a29e' },
-          { x: 25, y: 3, size: 12, color: isDark ? '#57534e' : '#78716c' },
-          { x: 75, y: 6, size: 14, color: isDark ? '#44403c' : '#a8a29e' },
-          { x: 85, y: 4, size: 11, color: isDark ? '#57534e' : '#78716c' },
-          { x: 95, y: 7, size: 13, color: isDark ? '#44403c' : '#a8a29e' },
-        ].map((rock, i) => (
-          <div
-            key={i}
-            className="absolute rounded-full"
-            style={{
-              left: `${rock.x}%`,
-              top: `${rock.y}%`,
-              width: rock.size,
-              height: rock.size * 0.6,
-              background: rock.color,
-              opacity: 0.7,
-            }}
-          />
-        )), [isDark])}
+      {/* Trees - Pushed to sides to create clearing */}
+      <div className="absolute bottom-[5%] left-[-5%] z-10">
+        <ForestTree x={0} scale={1.2} variant="pine" isDark={isDark} />
+        <ForestTree x={50} scale={0.9} variant="pine" isDark={isDark} />
+      </div>
+      <div className="absolute bottom-[5%] right-[-5%] z-10">
+        <ForestTree x={0} scale={1.1} variant="pine" isDark={isDark} flip />
+        <ForestTree x={-40} scale={0.8} variant="pine" isDark={isDark} flip />
+      </div>
 
-        {/* Camping tent */}
-        <div className="absolute" style={{ left: '18%', top: '30%' }}>
-          <svg width="80" height="60" viewBox="0 0 80 60">
-            {/* Tent body */}
-            <path d="M5 55 L40 10 L75 55 Z" fill={isDark ? '#1e3a5f' : '#3b82f6'} />
-            <path d="M5 55 L40 10 L40 55 Z" fill={isDark ? '#1e3a5f' : '#3b82f6'} opacity="0.8" />
-            <path d="M40 10 L75 55 L40 55 Z" fill={isDark ? '#0f2847' : '#2563eb'} />
-            {/* Tent entrance */}
-            <path d="M32 55 L40 30 L48 55 Z" fill={isDark ? '#0a1929' : '#1e40af'} />
-            {/* Tent poles visible */}
-            <path d="M40 10 L40 55" stroke={isDark ? '#64748b' : '#94a3b8'} strokeWidth="1" />
-            {/* Light from inside (night) */}
-            {isDark && (
-              <path d="M34 55 L40 35 L46 55 Z" fill="#fef08a" opacity="0.3" />
-            )}
-          </svg>
-        </div>
+      {/* Tents - Placed on edges of clearing */}
+      <CampingTent x={15} y={65} color="blue" scale={1.2} isDark={isDark} />
+      <CampingTent x={85} y={62} color="red" scale={1.1} isDark={isDark} />
 
-        {/* Campfire */}
-        <div className="absolute" style={{ left: '50%', top: '55%', transform: 'translateX(-50%)' }}>
-          <svg width="100" height="80" viewBox="0 0 120 100">
-            {/* Fire pit rocks */}
-            <ellipse cx="60" cy="85" rx="40" ry="12" fill={isDark ? '#44403c' : '#57534e'} />
-            {[0, 1, 2, 3, 4, 5, 6, 7].map((rock) => (
-              <ellipse
-                key={rock}
-                cx={30 + rock * 8.5}
-                cy={85 + Math.sin(rock) * 3}
-                rx="8"
-                ry="6"
-                fill={isDark ? '#57534e' : '#78716c'}
-              />
-            ))}
-            {/* Log base */}
-            <rect x="30" y="72" width="60" height="10" rx="5" fill="#78350f" transform="rotate(-5 60 77)" />
-            <rect x="30" y="72" width="60" height="10" rx="5" fill="#92400e" transform="rotate(5 60 77)" />
-            {/* Fire glow */}
-            <motion.ellipse
-              cx="60" cy="65" rx="30" ry="18"
-              fill={isDark ? '#f97316' : '#fbbf24'}
-              opacity={0.3}
-              animate={{ opacity: [0.2, 0.4, 0.2], scale: [1, 1.1, 1] }}
-              transition={{ duration: 1.5, repeat: Infinity }}
-            />
-            {/* Flames */}
+      {/* Campfire Pit - Center Stage */}
+      <div className="absolute left-1/2 top-[72%] -translate-x-1/2 -translate-y-1/2 z-0">
+        <div className="relative">
+          <div className="absolute top-8 left-1/2 -translate-x-1/2 w-32 h-12 bg-black/40 rounded-[100%] blur-sm" />
+          <svg width="100" height="100" viewBox="0 0 100 100" className="overflow-visible">
+            <g transform="translate(0, 10)">
+              {[0, 45, 90, 135, 180, 225, 270, 315].map((angle, i) => (
+                <ellipse
+                  key={i}
+                  cx={50 + 25 * Math.cos(angle * Math.PI / 180)}
+                  cy={80 + 10 * Math.sin(angle * Math.PI / 180)}
+                  rx="6" ry="4"
+                  fill={isDark ? '#4b5563' : '#9ca3af'}
+                />
+              ))}
+            </g>
+            <path d="M30 75 L70 85 L70 90 L30 80 Z" fill="#5D4037" />
+            <path d="M70 75 L30 85 L30 90 L70 80 Z" fill="#4E342E" />
             <motion.g
-              style={{ transformOrigin: '60px 72px' }}
-              animate={{ scaleY: [1, 1.08, 0.95, 1.03, 1], scaleX: [1, 0.97, 1.03, 0.98, 1] }}
-              transition={{ duration: 0.4, repeat: Infinity }}
+              style={{ transformOrigin: '50px 80px' }}
+              animate={{ scaleY: [1, 1.1, 0.9, 1.05, 1], scaleX: [1, 0.95, 1.05, 0.98, 1] }}
+              transition={{ duration: 0.6, repeat: Infinity, ease: "easeInOut" }}
             >
-              <ellipse cx="60" cy="48" rx="12" ry="26" fill="url(#campFlameGrad)" />
-              <ellipse cx="50" cy="54" rx="7" ry="16" fill="url(#campFlameGrad2)" />
-              <ellipse cx="70" cy="54" rx="7" ry="16" fill="url(#campFlameGrad2)" />
-              <ellipse cx="55" cy="52" rx="5" ry="12" fill="#fef08a" opacity="0.8" />
-              <ellipse cx="65" cy="50" rx="4" ry="10" fill="#fef08a" opacity="0.7" />
+              <path d="M50 20 Q70 60 65 85 L35 85 Q30 60 50 20" fill="#fbbf24" opacity="0.8" />
+              <path d="M50 30 Q65 60 60 85 L40 85 Q35 60 50 30" fill="#f59e0b" opacity="0.9" />
+              <path d="M50 45 Q60 65 55 85 L45 85 Q40 65 50 45" fill="#ef4444" />
             </motion.g>
-            {/* Sparks */}
-            {isDark && [0, 1, 2, 3, 4].map((spark) => (
-              <motion.circle
-                key={spark}
-                cx={55 + spark * 3}
-                cy={40}
-                r="1"
-                fill="#fef08a"
-                animate={{
-                  y: [-20 - spark * 10, -50 - spark * 15],
-                  x: [(spark - 2) * 5, (spark - 2) * 15],
-                  opacity: [1, 0],
-                }}
-                transition={{
-                  duration: 1.5,
-                  delay: spark * 0.3,
-                  repeat: Infinity,
-                }}
-              />
-            ))}
+            <circle cx="50" cy="70" r="40" fill="url(#fireGlow)" opacity={isDark ? 0.6 : 0.3} />
             <defs>
-              <linearGradient id="campFlameGrad" x1="0%" y1="100%" x2="0%" y2="0%">
-                <stop offset="0%" stopColor="#dc2626" />
-                <stop offset="40%" stopColor="#f97316" />
-                <stop offset="100%" stopColor="#fef08a" />
-              </linearGradient>
-              <linearGradient id="campFlameGrad2" x1="0%" y1="100%" x2="0%" y2="0%">
-                <stop offset="0%" stopColor="#ea580c" />
-                <stop offset="100%" stopColor="#fcd34d" />
-              </linearGradient>
+              <radialGradient id="fireGlow">
+                <stop offset="0%" stopColor="#f59e0b" />
+                <stop offset="100%" stopColor="transparent" />
+              </radialGradient>
             </defs>
           </svg>
+          <Particles color="#fbbf24" count={isDark ? 15 : 5} />
         </div>
+      </div>
 
-        {/* Camp chairs/logs */}
-        {[
-          { x: 38, y: 68, rotation: 15 },
-          { x: 58, y: 70, rotation: -10 },
-        ].map((log, i) => (
-          <div
+      {/* Props around fire */}
+      <FoldingChair x={38} y={68} scale={0.9} isDark={isDark} />
+
+      {/* Sitting Logs */}
+      <div className="absolute left-[62%] top-[75%]">
+        <svg width="40" height="20" viewBox="0 0 40 20">
+          <ellipse cx="20" cy="10" rx="18" ry="8" fill={isDark ? '#3f2c22' : '#5d4037'} />
+          <ellipse cx="20" cy="8" rx="18" ry="8" fill={isDark ? '#5d4037' : '#8d6e63'} />
+          <ellipse cx="20" cy="8" rx="14" ry="6" fill={isDark ? '#795548' : '#a1887f'} />
+        </svg>
+      </div>
+
+      {/* String Lights */}
+      <div className="absolute top-0 left-0 right-0 h-[30%] pointer-events-none z-20">
+        <svg width="100%" height="100%" preserveAspectRatio="none">
+          <path d="M0 0 Q 720 200 1440 0" fill="none" stroke={isDark ? '#4b5563' : '#94a3b8'} strokeWidth="1" />
+        </svg>
+        {Array.from({ length: 12 }).map((_, i) => (
+          <motion.div
             key={i}
-            className="absolute"
+            className="absolute w-2 h-2 rounded-full bg-yellow-200"
             style={{
-              left: `${log.x}%`,
-              top: `${log.y}%`,
-              transform: `rotate(${log.rotation}deg)`,
+              left: `${8 + i * 7.5}%`,
+              top: `${15 + Math.sin(i * 0.5) * 2}%`,
+              boxShadow: isDark ? '0 0 10px 2px #fcd34d' : 'none'
             }}
-          >
-            <div className={`w-12 h-4 rounded-full ${isDark ? 'bg-amber-900' : 'bg-amber-800'}`} />
-          </div>
-        ))}
-
-        {/* Canoe by the shore */}
-        <div className="absolute" style={{ left: '75%', top: '15%' }}>
-          <svg width="70" height="25" viewBox="0 0 70 25">
-            <path
-              d="M5 15 Q0 12 5 8 L65 8 Q70 12 65 15 Z"
-              fill={isDark ? '#7c2d12' : '#b45309'}
-            />
-            <path
-              d="M8 14 Q5 12 8 10 L62 10 Q65 12 62 14 Z"
-              fill={isDark ? '#9a3412' : '#d97706'}
-            />
-            {/* Paddle */}
-            <rect x="50" y="3" width="2" height="22" rx="1" fill={isDark ? '#78350f' : '#92400e'} transform="rotate(-20 51 14)" />
-            <ellipse cx="48" cy="3" rx="4" ry="7" fill={isDark ? '#78350f' : '#92400e'} transform="rotate(-20 48 3)" />
-          </svg>
-        </div>
-
-        {/* Small grass patches */}
-        {[
-          { x: 5, y: 35, scale: 0.6 },
-          { x: 92, y: 40, scale: 0.55 },
-          { x: 10, y: 75, scale: 0.8 },
-          { x: 88, y: 78, scale: 0.7 },
-        ].map((grass, i) => (
-          <svg
-            key={i}
-            className="absolute"
-            style={{
-              left: `${grass.x}%`,
-              top: `${grass.y}%`,
-              transform: `scale(${grass.scale})`,
-              opacity: 0.5,
-            }}
-            width="20" height="15" viewBox="0 0 20 15"
-          >
-            <path d="M3 15 Q4 8 5 3 Q4 9 3 15" fill={isDark ? '#4ade80' : '#65a30d'} />
-            <path d="M8 15 Q9 6 10 1 Q9 8 8 15" fill={isDark ? '#22c55e' : '#84cc16'} />
-            <path d="M14 15 Q15 9 17 5 Q15 10 14 15" fill={isDark ? '#4ade80' : '#65a30d'} />
-          </svg>
+            animate={{ opacity: [0.6, 1, 0.6] }}
+            transition={{ duration: 2, delay: i * 0.2, repeat: Infinity }}
+          />
         ))}
       </div>
 
-      {/* Fireflies over water (night) */}
-      {isDark && <Particles color="#fef08a" count={20} />}
-
-      {/* Dragonflies (day) */}
-      {!isDark && useMemo(() => [0, 1].map((i) => (
-        <motion.div
-          key={i}
-          className="absolute"
-          style={{ left: `${30 + i * 35}%`, top: `${35 + i * 10}%` }}
-          animate={{ x: [0, 40, -20, 30, 0], y: [0, -15, 10, -8, 0] }}
-          transition={{ duration: 10 + i * 3, repeat: Infinity, delay: i * 2 }}
-        >
-          <svg width="24" height="12" viewBox="0 0 24 12">
-            <ellipse cx="12" cy="6" rx="8" ry="2" fill="#22d3ee" opacity="0.7" />
-            <ellipse cx="4" cy="4" rx="4" ry="2" fill="#67e8f9" opacity="0.5" />
-            <ellipse cx="4" cy="8" rx="4" ry="2" fill="#67e8f9" opacity="0.5" />
-            <ellipse cx="20" cy="4" rx="4" ry="2" fill="#67e8f9" opacity="0.5" />
-            <ellipse cx="20" cy="8" rx="4" ry="2" fill="#67e8f9" opacity="0.5" />
-          </svg>
-        </motion.div>
-      )), [])}
+      {/* Fireflies (Night) */}
+      {isDark && <Particles color="#bef264" count={20} />}
     </div>
   );
 }
