@@ -319,10 +319,10 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
 
     closeContextMenu();
     setSeparatingAssetId(assetId);
-    setSeparationProgress(0);
+    setSeparationProgress(50); // Show indeterminate progress
 
     try {
-      // Start stem separation
+      // Call stem separation API (synchronous - waits for completion)
       const response = await fetch('/api/stems/separate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -332,67 +332,45 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
         }),
       });
 
+      const result = await response.json();
+
       if (!response.ok) {
-        throw new Error('Failed to start stem separation');
+        throw new Error(result.error || 'Stem separation failed');
       }
 
-      const { jobId } = await response.json();
+      if (result.status === 'completed' && result.stems) {
+        // Create new audio assets for each stem
+        const stemNames = ['vocals', 'drums', 'bass', 'guitar', 'other'] as const;
 
-      // Poll for completion
-      let complete = false;
-      while (!complete) {
-        await new Promise((r) => setTimeout(r, 1000));
+        for (const stemName of stemNames) {
+          const stemUrl = result.stems[stemName];
+          if (!stemUrl) continue;
 
-        const statusRes = await fetch(`/api/stems/status/${jobId}`);
-        const status = await statusRes.json();
-
-        setSeparationProgress(status.progress);
-
-        if (status.status === 'completed' && status.stems) {
-          complete = true;
-
-          // Create new audio assets for each stem
-          const stemNames = ['vocals', 'drums', 'bass', 'guitar', 'other'] as const;
-          const stemColors = {
-            vocals: '#ec4899',
-            drums: '#f97316',
-            bass: '#22c55e',
-            guitar: '#a855f7',
-            other: '#3b82f6',
+          // Create a new backing track for this stem
+          const stemTrack: BackingTrack = {
+            id: `${assetId}-${stemName}`,
+            name: `${audioTrack.name} (${stemName.charAt(0).toUpperCase() + stemName.slice(1)})`,
+            artist: audioTrack.artist,
+            duration: audioTrack.duration,
+            url: stemUrl,
+            uploadedBy: 'stem-separation',
+            uploadedAt: new Date().toISOString(),
           };
 
-          for (const stemName of stemNames) {
-            const stemUrl = status.stems[stemName];
-            if (!stemUrl) continue;
+          // Add to queue (asset library)
+          useRoomStore.getState().addToQueue(stemTrack);
 
-            // Create a new backing track for this stem
-            const stemTrack: BackingTrack = {
-              id: `${assetId}-${stemName}`,
-              name: `${audioTrack.name} (${stemName.charAt(0).toUpperCase() + stemName.slice(1)})`,
-              artist: audioTrack.artist,
-              duration: audioTrack.duration,
-              url: stemUrl,
-              uploadedBy: 'stem-separation',
-              uploadedAt: new Date().toISOString(),
-            };
-
-            // Add to queue (asset library)
-            useRoomStore.getState().addToQueue(stemTrack);
-
-            // Optionally add to current song timeline
-            if (currentSong) {
-              addTrackToSong(currentSong.id, {
-                type: 'audio',
-                trackId: stemTrack.id,
-                startOffset: 0,
-              });
-            }
+          // Optionally add to current song timeline
+          if (currentSong) {
+            addTrackToSong(currentSong.id, {
+              type: 'audio',
+              trackId: stemTrack.id,
+              startOffset: 0,
+            });
           }
-
-          toast.success(`Separated "${audioTrack.name}" into 4 stems`);
-        } else if (status.status === 'failed') {
-          throw new Error(status.error || 'Stem separation failed');
         }
+
+        toast.success(`Separated "${audioTrack.name}" into stems`);
       }
     } catch (error) {
       console.error('Stem separation error:', error);
