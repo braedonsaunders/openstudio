@@ -137,7 +137,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     broadcastTimeSignature,
   } = useRoom(roomId);
 
-  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource } = useAudioEngine();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource, loadMultiTrack, playMultiTracks, stopMultiTracks, setMultiTrackVolume } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume, currentTime } = useAudioStore();
 
@@ -391,7 +391,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     // Check if ANY track has solo enabled (across all track types)
     const hasSoloTrack = songTracks.some(t => t.ref.solo);
 
-    // Play all audio tracks in the Song
+    // Load and prepare all audio tracks for multi-track playback
+    const audioTrackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }> = [];
+
     for (const track of songTracks) {
       if (track.type === 'audio' && track.audioTrack) {
         // Skip if track hasn't started yet or already ended
@@ -407,14 +409,22 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         const trackOffset = Math.max(0, playbackOffset - track.ref.startOffset);
 
         console.log('Loading audio track:', track.name, 'at offset:', trackOffset, 'muted:', isEffectivelyMuted);
-        const loadSuccess = await loadBackingTrack(track.audioTrack);
+        const loadSuccess = await loadMultiTrack(track.audioTrack.id, track.audioTrack.url);
         if (loadSuccess) {
-          playBackingTrack(syncTime, trackOffset);
-          // Apply mute state via volume (0 = muted, 1 = normal)
-          setBackingTrackVolume(isEffectivelyMuted ? 0 : (track.ref.volume ?? 1));
+          audioTrackConfigs.push({
+            trackId: track.audioTrack.id,
+            offset: trackOffset,
+            volume: track.ref.volume ?? 1,
+            muted: isEffectivelyMuted,
+          });
         }
-        break; // Only play one audio track at a time for now
       }
+    }
+
+    // Play all audio tracks simultaneously
+    if (audioTrackConfigs.length > 0) {
+      console.log(`Playing ${audioTrackConfigs.length} audio tracks simultaneously`);
+      playMultiTracks(syncTime, audioTrackConfigs);
     }
 
     // Play all loop tracks in the Song - this sets state which triggers useLoopPlayback
@@ -462,13 +472,13 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     }
 
     setPlaying(true);
-  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setDuration, setPlaying, setBackingTrackVolume]);
+  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, playLoopTrack, setDuration, setPlaying]);
 
   const handleSongPause = useCallback(() => {
     console.log('Pausing Song playback');
 
-    // Stop audio tracks
-    pauseBackingTrack();
+    // Stop all audio tracks
+    stopMultiTracks();
 
     // Stop all loop tracks
     for (const track of songTracks) {
@@ -484,7 +494,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     }
 
     setPlaying(false);
-  }, [songTracks, pauseBackingTrack, stopLoopTrack, setPlaying]);
+  }, [songTracks, stopMultiTracks, stopLoopTrack, setPlaying]);
 
   const handleSongSeek = useCallback(async (time: number) => {
     if (!isMaster) return;
@@ -496,8 +506,8 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
 
     // Always stop first if playing
     if (wasPlaying) {
-      // Stop audio tracks
-      pauseBackingTrack();
+      // Stop all audio tracks
+      stopMultiTracks();
 
       // Stop all loop tracks
       for (const track of songTracks) {
@@ -532,7 +542,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       // Check if ANY track has solo enabled (across all track types)
       const hasSoloTrack = songTracks.some(t => t.ref.solo);
 
-      // Play all audio tracks at new position
+      // Load and play all audio tracks at new position
+      const audioTrackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }> = [];
+
       for (const track of songTracks) {
         if (track.type === 'audio' && track.audioTrack) {
           const trackEndTime = track.ref.startOffset + track.duration;
@@ -544,14 +556,21 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
           const trackOffset = Math.max(0, seekTime - track.ref.startOffset);
           console.log('Resuming audio track at:', trackOffset, 'muted:', isEffectivelyMuted);
 
-          const loadSuccess = await loadBackingTrack(track.audioTrack);
+          const loadSuccess = await loadMultiTrack(track.audioTrack.id, track.audioTrack.url);
           if (loadSuccess) {
-            playBackingTrack(syncTime, trackOffset);
-            // Apply mute state via volume (0 = muted, 1 = normal)
-            setBackingTrackVolume(isEffectivelyMuted ? 0 : (track.ref.volume ?? 1));
+            audioTrackConfigs.push({
+              trackId: track.audioTrack.id,
+              offset: trackOffset,
+              volume: track.ref.volume ?? 1,
+              muted: isEffectivelyMuted,
+            });
           }
-          break;
         }
+      }
+
+      // Play all audio tracks simultaneously
+      if (audioTrackConfigs.length > 0) {
+        playMultiTracks(syncTime, audioTrackConfigs);
       }
 
       // Play all loop tracks at new position
@@ -566,7 +585,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         }
       }
     }
-  }, [isMaster, isPlaying, songTracks, hasLoopTracks, hasAudioTracks, pauseBackingTrack, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadBackingTrack, playBackingTrack, playLoopTrack, setPlaying, setBackingTrackVolume]);
+  }, [isMaster, isPlaying, songTracks, hasLoopTracks, hasAudioTracks, stopMultiTracks, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, playLoopTrack, setPlaying]);
 
   // Playback handlers - Song system only, no legacy fallback
   const handlePlay = useCallback(() => {
