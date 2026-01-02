@@ -176,8 +176,48 @@ export class LyriaSession {
   // Bytes streamed for usage tracking
   private bytesStreamed = 0;
 
+  // Session start time for tracking session duration
+  private sessionStartTime: number | null = null;
+
+  // Max session duration (from rate limits, default 600 seconds = 10 minutes)
+  private maxSessionSeconds: number = 600;
+
   constructor() {
     // No API key needed - fetched from server after auth
+  }
+
+  /**
+   * Get the time when the current session started
+   * Returns null if not connected
+   */
+  getSessionStartTime(): number | null {
+    return this.sessionStartTime;
+  }
+
+  /**
+   * Get elapsed seconds since session started
+   * Returns 0 if not connected
+   */
+  getSessionElapsedSeconds(): number {
+    if (!this.sessionStartTime) return 0;
+    return Math.floor((Date.now() - this.sessionStartTime) / 1000);
+  }
+
+  /**
+   * Get remaining seconds in the session
+   * Returns null if not connected, 0 if expired
+   */
+  getSessionRemainingSeconds(): number | null {
+    if (!this.sessionStartTime) return null;
+    const elapsed = this.getSessionElapsedSeconds();
+    return Math.max(0, this.maxSessionSeconds - elapsed);
+  }
+
+  /**
+   * Get max session duration in seconds
+   */
+  getMaxSessionSeconds(): number {
+    return this.maxSessionSeconds;
   }
 
   /**
@@ -313,9 +353,10 @@ export class LyriaSession {
       // Store session ID and rate limits
       this.sessionId = authData.sessionId;
       this.rateLimits = authData.limits;
+      this.maxSessionSeconds = authData.limits?.maxSessionSeconds || 600;
       this.callbacks.onRateLimitUpdate?.(authData.limits);
 
-      console.log('[Lyria] Authenticated, session:', this.sessionId);
+      console.log('[Lyria] Authenticated, session:', this.sessionId, 'maxSeconds:', this.maxSessionSeconds);
 
       // 2. Initialize Web Audio context
       this.audioContext = new AudioContext({ sampleRate: 48000 });
@@ -414,6 +455,9 @@ export class LyriaSession {
       });
       this.sessionId = null;
     }
+
+    // Reset session timing
+    this.sessionStartTime = null;
 
     if (this.ws) {
       this.ws.close();
@@ -774,6 +818,8 @@ export class LyriaSession {
     if (message.setupComplete || message.setup_complete) {
       console.log('[Lyria] Setup complete!');
       this.setupComplete = true;
+      this.sessionStartTime = Date.now();
+      console.log('[Lyria] Session started at:', this.sessionStartTime, 'max duration:', this.maxSessionSeconds, 'seconds');
       this.setState('connected');
       this.connectResolve?.();
       this.connectResolve = null;
