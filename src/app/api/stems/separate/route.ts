@@ -1,26 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { v4 as uuidv4 } from 'uuid';
 import Replicate from 'replicate';
 import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
-
-// Store separation jobs in memory (use Redis in production)
-const separations = new Map<string, {
-  id: string;
-  status: 'processing' | 'completed' | 'failed';
-  progress: number;
-  message: string;
-  stems?: {
-    vocals?: string;
-    drums?: string;
-    bass?: string;
-    guitar?: string;
-    other?: string;
-  };
-  error?: string;
-}>();
-
-// Export for status endpoint
-export { separations };
 
 // Replicate client for Demucs
 const replicate = new Replicate({
@@ -63,54 +43,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const jobId = uuidv4();
-
-    // Initialize separation job
-    separations.set(jobId, {
-      id: jobId,
-      status: 'processing',
-      progress: 0,
-      message: 'Starting stem separation...',
-    });
-
     // Get the base URL for resolving relative URLs
     const baseUrl = request.headers.get('origin') ||
                     request.headers.get('referer')?.replace(/\/[^/]*$/, '') ||
                     `${request.nextUrl.protocol}//${request.nextUrl.host}`;
-
-    // Start async separation with Demucs
-    separateWithDemucs(jobId, trackId, trackUrl, baseUrl);
-
-    return NextResponse.json({ jobId });
-  } catch (error) {
-    console.error('Separation error:', error);
-    return NextResponse.json(
-      { error: 'Failed to start separation' },
-      { status: 500 }
-    );
-  }
-}
-
-/**
- * Demucs Stem Separation via Replicate
- * Uses ryan5453/demucs model for high-quality stem separation
- * Returns: vocals, drums, bass, guitar, other
- */
-async function separateWithDemucs(
-  jobId: string,
-  trackId: string,
-  trackUrl: string,
-  baseUrl: string
-) {
-  const job = separations.get(jobId);
-  if (!job) return;
-
-  try {
-    separations.set(jobId, {
-      ...separations.get(jobId)!,
-      progress: 5,
-      message: 'Preparing audio file...',
-    });
 
     // Resolve relative URLs to absolute
     let absoluteUrl = trackUrl;
@@ -120,18 +56,15 @@ async function separateWithDemucs(
       absoluteUrl = `${baseUrl}/${trackUrl}`;
     }
 
-    separations.set(jobId, {
-      ...separations.get(jobId)!,
-      progress: 10,
-      message: 'Downloading audio...',
-    });
+    console.log(`[Stems] Fetching audio from: ${absoluteUrl} (original: ${trackUrl})`);
 
     // Fetch the audio file and convert to data URI for Replicate
-    // This allows us to handle internal/relative URLs that Replicate can't access directly
-    console.log(`[Stems] Fetching audio from: ${absoluteUrl} (original: ${trackUrl})`);
     const audioResponse = await fetch(absoluteUrl);
     if (!audioResponse.ok) {
-      throw new Error(`Failed to fetch audio from ${absoluteUrl}: ${audioResponse.status} ${audioResponse.statusText}`);
+      return NextResponse.json(
+        { error: `Failed to fetch audio: ${audioResponse.status} ${audioResponse.statusText}` },
+        { status: 400 }
+      );
     }
 
     const audioBuffer = await audioResponse.arrayBuffer();
@@ -139,14 +72,10 @@ async function separateWithDemucs(
     const base64Audio = Buffer.from(audioBuffer).toString('base64');
     const dataUri = `data:${contentType};base64,${base64Audio}`;
 
-    separations.set(jobId, {
-      ...separations.get(jobId)!,
-      progress: 25,
-      message: 'Uploading to Demucs...',
-    });
+    console.log(`[Stems] Audio fetched (${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB), sending to Demucs...`);
 
     // Use ryan5453/demucs model on Replicate for stem separation
-    // Pass audio as data URI since Replicate may not be able to access our internal URLs
+    // This is synchronous - waits for completion
     const output = await replicate.run(
       "ryan5453/demucs:5a7041cc9b82e5a558fea6b3d7b12dea89625e89da33f0447bd727c2d0ab9e77",
       {
@@ -156,11 +85,7 @@ async function separateWithDemucs(
       }
     );
 
-    separations.set(jobId, {
-      ...separations.get(jobId)!,
-      progress: 85,
-      message: 'Processing separated stems...',
-    });
+    console.log('[Stems] Demucs completed:', output);
 
     // Parse the output - Demucs returns URLs for each stem
     const stems = output as unknown as {
@@ -171,11 +96,8 @@ async function separateWithDemucs(
       other?: string;
     };
 
-    separations.set(jobId, {
-      id: jobId,
+    return NextResponse.json({
       status: 'completed',
-      progress: 100,
-      message: 'Stem separation complete!',
       stems: {
         vocals: stems.vocals,
         drums: stems.drums,
@@ -185,16 +107,11 @@ async function separateWithDemucs(
       },
     });
   } catch (error) {
-    console.error('Demucs separation error:', error);
-
-    // Set error state
+    console.error('Stem separation error:', error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    separations.set(jobId, {
-      id: jobId,
-      status: 'failed',
-      progress: 0,
-      message: 'Stem separation failed',
-      error: errorMessage,
-    });
+    return NextResponse.json(
+      { error: `Stem separation failed: ${errorMessage}` },
+      { status: 500 }
+    );
   }
 }
