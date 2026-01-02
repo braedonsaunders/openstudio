@@ -3,6 +3,7 @@ import { subscribeWithSelector } from 'zustand/middleware';
 import type { SavedTrackPreset } from '@/types/user';
 import type { UserTrack, ExtendedEffectsChain } from '@/types';
 import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
+import { authFetch, authFetchJson } from '@/lib/auth-fetch';
 
 interface SavedTracksState {
   // All saved track presets
@@ -65,7 +66,8 @@ export const useSavedTracksStore = create<SavedTracksState>()(
       set({ isLoading: true, error: null });
 
       try {
-        const response = await fetch(`/api/saved-tracks?userId=${userId}`);
+        // SECURITY: No longer pass userId in query - server derives it from JWT
+        const response = await authFetch('/api/saved-tracks');
         if (!response.ok) {
           throw new Error('Failed to load saved track presets');
         }
@@ -90,11 +92,7 @@ export const useSavedTracksStore = create<SavedTracksState>()(
       set({ isLoading: true, error: null });
 
       try {
-        const response = await fetch('/api/saved-tracks', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(preset),
-        });
+        const response = await authFetchJson('/api/saved-tracks', 'POST', preset);
 
         if (!response.ok) {
           throw new Error('Failed to save track preset');
@@ -122,11 +120,7 @@ export const useSavedTracksStore = create<SavedTracksState>()(
       set({ isLoading: true, error: null });
 
       try {
-        const response = await fetch(`/api/saved-tracks/${presetId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(updates),
-        });
+        const response = await authFetchJson(`/api/saved-tracks/${presetId}`, 'PATCH', updates);
 
         if (!response.ok) {
           throw new Error('Failed to update track preset');
@@ -154,7 +148,7 @@ export const useSavedTracksStore = create<SavedTracksState>()(
       set({ isLoading: true, error: null });
 
       try {
-        const response = await fetch(`/api/saved-tracks/${presetId}`, {
+        const response = await authFetch(`/api/saved-tracks/${presetId}`, {
           method: 'DELETE',
         });
 
@@ -300,7 +294,7 @@ export const useSavedTracksStore = create<SavedTracksState>()(
 
       // Then update on server (fire and forget)
       try {
-        await fetch(`/api/saved-tracks/${presetId}/use`, { method: 'POST' });
+        await authFetch(`/api/saved-tracks/${presetId}/use`, { method: 'POST' });
       } catch (error) {
         console.error('Failed to increment use count:', error);
       }
