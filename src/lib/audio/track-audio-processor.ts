@@ -409,19 +409,14 @@ export class TrackAudioProcessor {
       }
     }
 
-    // Handle worklet messages (stats)
+    // Handle worklet messages (stats) - only log if there are issues
     this.bridgeWorkletNode!.port.onmessage = (event) => {
       if (event.data.type === 'stats') {
         const stats = event.data;
-        console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} worklet stats:`, {
-          underruns: stats.underruns,
-          overruns: stats.overruns,
-          bufferFill: (stats.bufferFill * 100).toFixed(1) + '%',
-          latencyMs: stats.latencyMs || 'N/A',
-          useSharedBuffer: stats.useSharedBuffer ?? this.useSharedBuffer,
-          armGain: this.armGainNode.gain.value,
-          monitorGain: this.monitorGainNode.gain.value,
-        });
+        // Only log on underruns or significant issues
+        if (stats.underruns > 0 && stats.underruns % 100 === 0) {
+          console.warn(`[TrackAudioProcessor] ${this.trackId.slice(-8)} underruns: ${stats.underruns}`);
+        }
       }
     };
 
@@ -453,13 +448,9 @@ export class TrackAudioProcessor {
       return;
     }
 
-    // Log occasionally to confirm messages are being posted
-    if (this.pushCounter <= 5 || this.pushCounter % 500 === 0) {
-      console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} pushBridgeAudio:`, {
-        pushCounter: this.pushCounter,
-        samplesLength: samples.length,
-        useSharedBuffer: this.useSharedBuffer,
-      });
+    // Only log first push to confirm connection is working
+    if (this.pushCounter === 1) {
+      console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} bridge audio started`);
     }
 
     if (this.useSharedBuffer && this.sharedFloatView && this.sharedUint32View) {

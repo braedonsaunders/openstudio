@@ -48,14 +48,14 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
     const bridgeState = useBridgeAudioStore.getState();
     const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge && bridgeState.isRunning;
 
-    console.log('[useTrackAudioSync] Force syncing all tracks, useBridge:', useBridge);
-
     for (const track of userTracks) {
       if (!track) continue;
 
       const isEffectivelyMuted = track.isMuted || (hasSoloedTracks && !track.isSolo);
       const directMonitoring = track.audioSettings.directMonitoring ?? true;
-      const jsMonitoringEnabled = useBridge ? !directMonitoring : directMonitoring;
+      // When using native bridge, JS should stay silent - native handles monitoring
+      // When NOT using bridge, JS handles monitoring directly
+      const jsMonitoringEnabled = useBridge ? false : directMonitoring;
 
       getOrCreateTrackProcessor(track.id, track.audioSettings);
       updateTrackState(track.id, {
@@ -66,8 +66,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         inputGain: track.audioSettings.inputGain || 0,
         monitoringEnabled: jsMonitoringEnabled,
       });
-
-      console.log(`[useTrackAudioSync] Force synced track ${track.id.slice(-8)}: isArmed=${track.isArmed}, jsMonitoringEnabled=${jsMonitoringEnabled}`);
 
       if (useBridge) {
         nativeBridge.updateTrackState(track.id, {
@@ -175,12 +173,16 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           lastState.monitoringEnabled !== currentState.monitoringEnabled;
 
         if (stateChanged) {
-          // For bridge mode: JS monitors WET audio when directMonitoring is OFF
-          // (Native bridge handles DRY monitoring when directMonitoring is ON)
-          // For web audio mode: monitoringEnabled controls all monitoring
+          // When using native bridge:
+          // - Native bridge handles DRY monitoring (zero-latency hardware path)
+          // - JS should NOT add additional monitoring on top
+          // - monitoringEnabled controls ONLY native bridge monitoring
+          // When NOT using native bridge:
+          // - JS handles all monitoring through effects chain
+          // - monitoringEnabled directly controls JS monitoring
           const jsMonitoringEnabled = useBridge
-            ? !currentState.monitoringEnabled  // Invert for WET when direct is OFF
-            : currentState.monitoringEnabled;  // Use as-is for web audio
+            ? false  // Native bridge handles monitoring, JS stays silent
+            : currentState.monitoringEnabled;  // Use as-is for web audio mode
 
           updateTrackState(track.id, {
             isArmed: currentState.isArmed,
