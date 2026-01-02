@@ -54,13 +54,14 @@ const handleAudioDataStable = (data: BridgeAudioData) => {
   }
 
   try {
+    // Pass timestamp for clock synchronization (ultra-low-latency mode)
     if (data.trackId) {
-      engine.pushTrackBridgeAudio(data.trackId, data.samples);
+      engine.pushTrackBridgeAudio(data.trackId, data.samples, data.timestamp);
     } else {
       // No trackId - route to primary track
       const primaryTrackId = engine.getPrimaryTrackId?.();
       if (primaryTrackId) {
-        engine.pushTrackBridgeAudio(primaryTrackId, data.samples);
+        engine.pushTrackBridgeAudio(primaryTrackId, data.samples, data.timestamp);
       } else if (audioDataCounter % 500 === 1) {
         console.warn('[useNativeBridge] Audio dropped: no trackId and no primary track');
       }

@@ -7,6 +7,22 @@ const nextConfig: NextConfig = {
       bodySizeLimit: '10mb',
     },
   },
+
+  // COOP/COEP headers for SharedArrayBuffer support (ultra-low-latency audio)
+  async headers() {
+    return [
+      {
+        source: '/:path*',
+        headers: [
+          // Required for SharedArrayBuffer
+          { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
+          // Using credentialless instead of require-corp for better compatibility
+          // with third-party resources (fonts, analytics, etc.)
+          { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
+        ],
+      },
+    ];
+  },
   // Enable Turbopack with empty config to silence the warning
   // and configure webpack for WASM files when using webpack build
   turbopack: {},

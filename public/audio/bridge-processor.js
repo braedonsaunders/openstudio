@@ -14,10 +14,11 @@ class BridgeAudioProcessor extends AudioWorkletProcessor {
     // For larger buffers, we can afford more cushion.
     const asioBufferSize = options?.processorOptions?.asioBufferSize || 128;
     // Scale buffer with ASIO size: smaller ASIO = smaller jitter buffer for lower latency
-    // ~20 ASIO callbacks worth of buffer provides jitter absorption without excessive latency
-    const asioBasedSize = asioBufferSize * 40; // 20 callbacks * 2 for stereo
-    // Minimum 30ms buffer for WebSocket jitter (vs 100ms before - much lower latency)
-    const minBufferMs = 30;
+    // ~12 ASIO callbacks worth of buffer - reduced for lower latency
+    const asioBasedSize = asioBufferSize * 24; // 12 callbacks * 2 for stereo
+    // Reduced minimum buffer: 10ms instead of 30ms for much lower latency
+    // This is aggressive but acceptable with modern browsers and localhost WebSocket
+    const minBufferMs = 10;
     const minBufferSamples = Math.ceil(48000 * minBufferMs / 1000) * 2; // stereo
     const calculatedSize = Math.max(asioBasedSize, minBufferSamples);
     // Round up to nearest power of 2 for efficient modulo operations
