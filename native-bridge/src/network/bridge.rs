@@ -310,7 +310,7 @@ impl AudioNetworkBridge {
                     if let Some(tx) = transport_tx {
                         let _ = tx.send(TransportEvent::TransportStateChanged {
                             action: msg.action,
-                            position: msg.position,
+                            position: msg.position.unwrap_or(0.0),
                         });
                     }
                 }
