@@ -4,7 +4,7 @@
 //! Essential for tight jam sessions where everyone plays to the same beat.
 
 use parking_lot::RwLock;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Clock sync configuration
 #[derive(Debug, Clone)]
@@ -340,6 +340,7 @@ impl BeatScheduler {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Duration;
 
     #[test]
     fn test_clock_sample_offset() {
