@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
+import { getUserFromRequest } from '@/lib/supabase/server';
+import { checkRateLimit, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
 
 const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
 const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
@@ -76,6 +78,21 @@ async function extractWithRapidAPI(videoId: string): Promise<{ success: boolean;
 }
 
 export async function POST(request: NextRequest) {
+  // SECURITY: Require authentication for YouTube extraction
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required to extract audio from YouTube' },
+      { status: 401 }
+    );
+  }
+
+  // SECURITY: Rate limit expensive extraction operations per user
+  const rateLimit = checkRateLimit(`youtube-extract:${user.id}`, rateLimiters.expensive);
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
   try {
     const { videoId, title, artist } = await request.json();
 
@@ -86,7 +103,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log(`Extracting audio from YouTube video: ${videoId}`);
+    console.log(`Extracting audio from YouTube video: ${videoId} for user ${user.id}`);
 
     // Check for RapidAPI configuration
     if (!RAPIDAPI_KEY) {
@@ -148,10 +165,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Generate track ID and key
+    // Generate track ID and key - SECURITY: Include user ID for ownership tracking
     const trackId = uuidv4();
     const extension = 'mp3';
-    const key = `tracks/${trackId}.${extension}`;
+    const key = `tracks/${user.id}/${trackId}.${extension}`;
     const contentType = 'audio/mpeg';
 
     // Upload to R2

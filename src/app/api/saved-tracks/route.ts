@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
-import { getSupabase } from '@/lib/supabase/server';
+import { getSupabase, getAdminSupabase, getUserFromRequest } from '@/lib/supabase/server';
 
 // Transform database record to SavedTrackPreset format
 function transformDbToPreset(record: Record<string, unknown>) {
@@ -46,32 +46,37 @@ function transformPresetToDb(preset: Record<string, unknown>) {
   };
 }
 
-// GET /api/saved-tracks - Load all saved track presets for a user
+// GET /api/saved-tracks - Load all saved track presets for the authenticated user
+// SECURITY: Requires authentication; only returns the user's own presets
 export async function GET(request: NextRequest) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
-
     if (!supabase) {
-      // Return empty array if no database
-      return NextResponse.json([]);
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 503 }
+      );
     }
 
+    // SECURITY: Always use authenticated user's ID, never trust query params
     const { data: presets, error } = await supabase
       .from('saved_track_presets')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
       console.error('Error loading saved track presets:', error);
-      // Handle table not existing
       if (error.code === '42P01') {
         return NextResponse.json([]);
       }
@@ -87,38 +92,39 @@ export async function GET(request: NextRequest) {
 }
 
 // POST /api/saved-tracks - Create a new saved track preset
+// SECURITY: Requires authentication; preset is created for the authenticated user
 export async function POST(request: NextRequest) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const preset = await request.json();
-
-    if (!preset.userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
 
     if (!preset.name) {
       return NextResponse.json({ error: 'name is required' }, { status: 400 });
     }
 
     const id = uuidv4();
-    const now = new Date().toISOString();
 
     if (!supabase) {
-      // Return mock response if no database
-      return NextResponse.json({
-        id,
-        ...preset,
-        useCount: 0,
-        createdAt: now,
-        updatedAt: now,
-      });
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 503 }
+      );
     }
 
-    // Build database record - let DB handle timestamps with defaults
+    // SECURITY: Always use authenticated user's ID
     const dbRecord = {
       id,
-      user_id: preset.userId,
+      user_id: user.id,
       name: preset.name,
       description: preset.description || null,
       track_type: preset.type || 'audio',
@@ -135,8 +141,6 @@ export async function POST(request: NextRequest) {
       use_count: 0,
     };
 
-    console.log('Inserting saved track preset:', JSON.stringify(dbRecord, null, 2));
-
     const { data, error } = await supabase
       .from('saved_track_presets')
       .insert(dbRecord)
@@ -145,15 +149,11 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error saving track preset:', error.message, error.details, error.hint);
-      // Handle table not existing - return mock response
       if (error.code === '42P01') {
-        return NextResponse.json({
-          id,
-          ...preset,
-          useCount: 0,
-          createdAt: now,
-          updatedAt: now,
-        });
+        return NextResponse.json(
+          { error: 'Database schema not ready' },
+          { status: 503 }
+        );
       }
       return NextResponse.json({ error: 'Failed to save track preset', details: error.message }, { status: 500 });
     }

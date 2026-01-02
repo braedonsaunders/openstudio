@@ -1,30 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
-import { getSupabase } from '@/lib/supabase/server';
+import { getSupabase, getAdminSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
 
 interface RouteContext {
   params: Promise<{ roomId: string }>;
 }
 
 // GET /api/rooms/[roomId]/permissions - Load all members and their permissions for a room
+// SECURITY: Requires authentication to view room members
 export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
 
-    // If Supabase is not configured, return empty response
+    // If Supabase is not configured, return error
     if (!supabase) {
-      return NextResponse.json({
-        members: [],
-        defaultRole: 'member',
-        requireApproval: false,
-      });
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 503 }
+      );
+    }
+
+    // SECURITY: Verify user is a member of this room (or is room creator)
+    const membership = await getRoomMembership(roomId, user.id);
+    if (!membership) {
+      return NextResponse.json(
+        { error: 'You are not a member of this room' },
+        { status: 403 }
+      );
     }
 
     // Load room settings
@@ -77,22 +93,20 @@ export async function GET(
       banReason: m.ban_reason,
     }));
 
-    // If userId is provided, also return the user's own permissions
+    // SECURITY: Return the authenticated user's own permissions
     let myMember: RoomMember | null = null;
-    if (userId) {
-      myMember = roomMembers.find((m) => m.oduserId === userId) || null;
+    myMember = roomMembers.find((m) => m.oduserId === user.id) || null;
 
-      // If user is room creator but not in members, they're the owner
-      if (!myMember && room?.created_by === userId) {
-        myMember = {
-          id: 'owner-' + userId,
-          oduserId: userId,
-          userName: 'Owner',
-          role: 'owner',
-          joinedAt: new Date().toISOString(),
-          lastActiveAt: new Date().toISOString(),
-        };
-      }
+    // If user is room creator but not in members, they're the owner
+    if (!myMember && room?.created_by === user.id) {
+      myMember = {
+        id: 'owner-' + user.id,
+        oduserId: user.id,
+        userName: 'Owner',
+        role: 'owner',
+        joinedAt: new Date().toISOString(),
+        lastActiveAt: new Date().toISOString(),
+      };
     }
 
     return NextResponse.json({
@@ -112,27 +126,48 @@ export async function GET(
 }
 
 // POST /api/rooms/[roomId]/permissions - Add/update a member's permissions
+// SECURITY: Requires authentication; users can only add themselves or moderators can add others
 export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
     const body = await request.json();
-    const { userId, userName, userAvatar, role, invitedBy } = body;
+    const { userId, userName, userAvatar, role } = body;
 
-    if (!userId) {
+    // SECURITY: If no userId specified, the user is adding themselves
+    const targetUserId = userId || user.id;
+
+    // If Supabase is not configured, return error
+    if (!supabase) {
       return NextResponse.json(
-        { error: 'userId is required' },
-        { status: 400 }
+        { error: 'Database not configured' },
+        { status: 503 }
       );
     }
 
-    // If Supabase is not configured, just return success
-    if (!supabase) {
-      return NextResponse.json({ success: true, role: role || 'member' });
+    // SECURITY: Check permissions based on who is being added
+    if (targetUserId !== user.id) {
+      // User is trying to add someone else - must be a moderator
+      const membership = await getRoomMembership(roomId, user.id);
+      if (!membership || !membership.isModerator) {
+        return NextResponse.json(
+          { error: 'Only room moderators can add other users' },
+          { status: 403 }
+        );
+      }
     }
 
     // Get room default role
@@ -142,18 +177,23 @@ export async function POST(
       .eq('id', roomId)
       .single();
 
-    const memberRole = role || room?.default_role || 'member';
+    // SECURITY: Non-moderators can only join as default role or lower
+    let memberRole = role || room?.default_role || 'member';
+    if (targetUserId === user.id) {
+      // User joining themselves - can only get default role
+      memberRole = room?.default_role || 'member';
+    }
 
     // Upsert member record
     const { data, error } = await supabase
       .from('room_members')
       .upsert({
         room_id: roomId,
-        user_id: userId,
+        user_id: targetUserId,
         user_name: userName || 'User',
         user_avatar: userAvatar,
         role: memberRole,
-        invited_by: invitedBy,
+        invited_by: targetUserId !== user.id ? user.id : null,
         last_active_at: new Date().toISOString(),
       }, { onConflict: 'room_id,user_id' })
       .select()
@@ -189,17 +229,26 @@ export async function POST(
 }
 
 // PATCH /api/rooms/[roomId]/permissions - Update a member's role or permissions
-// Only owner or co-host can modify roles
+// SECURITY: Only owner or co-host can modify roles
 export async function PATCH(
   request: NextRequest,
   context: RouteContext
 ) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
     const body = await request.json();
-    const { userId, role, customPermissions, clearCustom, requesterId } = body;
+    const { userId, role, customPermissions, clearCustom } = body;
 
     if (!userId) {
       return NextResponse.json(
@@ -208,46 +257,36 @@ export async function PATCH(
       );
     }
 
-    if (!requesterId) {
+    // If Supabase is not configured, return error
+    if (!supabase) {
       return NextResponse.json(
-        { error: 'requesterId is required for authorization' },
-        { status: 400 }
+        { error: 'Database not configured' },
+        { status: 503 }
       );
     }
 
-    // If Supabase is not configured, just return success
-    if (!supabase) {
-      return NextResponse.json({ success: true });
-    }
-
-    // Authorization: Check if requester is room owner/co-host or room creator
-    const { data: room } = await supabase
-      .from('rooms')
-      .select('created_by')
-      .eq('id', roomId)
-      .single();
-
-    const { data: requesterMember } = await supabase
-      .from('room_members')
-      .select('role')
-      .eq('room_id', roomId)
-      .eq('user_id', requesterId)
-      .single();
-
-    const isRoomCreator = room?.created_by === requesterId;
-    const isOwnerOrCoHost = requesterMember?.role === 'owner' || requesterMember?.role === 'co_host';
-
-    if (!isRoomCreator && !isOwnerOrCoHost) {
+    // SECURITY: Verify the authenticated user has permission to modify roles
+    const requesterMembership = await getRoomMembership(roomId, user.id);
+    if (!requesterMembership || !requesterMembership.isModerator) {
       return NextResponse.json(
         { error: 'Only room owner or co-host can modify permissions' },
         { status: 403 }
       );
     }
 
-    // Prevent non-owners from promoting to owner
-    if (role === 'owner' && requesterMember?.role !== 'owner' && !isRoomCreator) {
+    // SECURITY: Prevent non-owners from promoting to owner
+    if (role === 'owner' && !requesterMembership.isOwner) {
       return NextResponse.json(
         { error: 'Only the room owner can promote someone to owner' },
+        { status: 403 }
+      );
+    }
+
+    // SECURITY: Prevent non-owners from demoting the owner
+    const targetMembership = await getRoomMembership(roomId, userId);
+    if (targetMembership?.isOwner && !requesterMembership.isOwner) {
+      return NextResponse.json(
+        { error: 'Only the room owner can modify owner permissions' },
         { status: 403 }
       );
     }
@@ -291,7 +330,7 @@ export async function PATCH(
       );
     }
 
-    // Log permission change
+    // Log permission change - SECURITY: Use authenticated user ID
     if (role || customPermissions) {
       try {
         await supabase.from('room_permission_logs').insert({
@@ -300,7 +339,7 @@ export async function PATCH(
           action: role ? 'role_change' : 'permissions_update',
           old_value: null,
           new_value: role || customPermissions,
-          performed_by: body.performedBy || 'unknown',
+          performed_by: user.id,
         });
       } catch {
         // Ignore logging errors
@@ -317,84 +356,74 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/rooms/[roomId]/permissions?userId=xxx&requesterId=xxx - Kick or ban a user
-// Only owner or co-host can kick/ban users
+// DELETE /api/rooms/[roomId]/permissions?userId=xxx - Kick or ban a user
+// SECURITY: Only owner or co-host can kick/ban users
 export async function DELETE(
   request: NextRequest,
   context: RouteContext
 ) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
     const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-    const requesterId = searchParams.get('requesterId');
+    const targetUserId = searchParams.get('userId');
     const ban = searchParams.get('ban') === 'true';
     const banReason = searchParams.get('reason') || undefined;
-    const performedBy = searchParams.get('performedBy') || requesterId || 'unknown';
 
-    if (!userId) {
+    if (!targetUserId) {
       return NextResponse.json(
         { error: 'userId is required' },
         { status: 400 }
       );
     }
 
-    if (!requesterId) {
+    // If Supabase is not configured, return error
+    if (!supabase) {
       return NextResponse.json(
-        { error: 'requesterId is required for authorization' },
-        { status: 400 }
+        { error: 'Database not configured' },
+        { status: 503 }
       );
     }
 
-    // If Supabase is not configured, just return success
-    if (!supabase) {
-      return NextResponse.json({ success: true });
-    }
-
-    // Authorization: Check if requester is room owner/co-host or room creator
-    const { data: room } = await supabase
-      .from('rooms')
-      .select('created_by')
-      .eq('id', roomId)
-      .single();
-
-    const { data: requesterMember } = await supabase
-      .from('room_members')
-      .select('role')
-      .eq('room_id', roomId)
-      .eq('user_id', requesterId)
-      .single();
-
-    // Check the target user's role to prevent kicking higher-ranked members
-    const { data: targetMember } = await supabase
-      .from('room_members')
-      .select('role')
-      .eq('room_id', roomId)
-      .eq('user_id', userId)
-      .single();
-
-    const isRoomCreator = room?.created_by === requesterId;
-    const isOwnerOrCoHost = requesterMember?.role === 'owner' || requesterMember?.role === 'co_host';
-
-    if (!isRoomCreator && !isOwnerOrCoHost) {
+    // SECURITY: Verify the authenticated user has permission to kick/ban
+    const requesterMembership = await getRoomMembership(roomId, user.id);
+    if (!requesterMembership || !requesterMembership.isModerator) {
       return NextResponse.json(
         { error: 'Only room owner or co-host can kick/ban users' },
         { status: 403 }
       );
     }
 
-    // Prevent co-hosts from kicking owners
-    if (targetMember?.role === 'owner' && requesterMember?.role !== 'owner' && !isRoomCreator) {
+    // SECURITY: Check the target user's role to prevent kicking higher-ranked members
+    const targetMembership = await getRoomMembership(roomId, targetUserId);
+
+    // Prevent non-owners from kicking owners
+    if (targetMembership?.isOwner && !requesterMembership.isOwner) {
       return NextResponse.json(
-        { error: 'Co-hosts cannot kick the room owner' },
+        { error: 'Only the room owner can kick/ban another owner' },
         { status: 403 }
       );
     }
 
-    // Prevent kicking the room creator
-    if (room?.created_by === userId && !isRoomCreator) {
+    // Get room to check if target is the creator
+    const { data: room } = await supabase
+      .from('rooms')
+      .select('created_by')
+      .eq('id', roomId)
+      .single();
+
+    // Prevent kicking the room creator unless you are the creator
+    if (room?.created_by === targetUserId && user.id !== room.created_by) {
       return NextResponse.json(
         { error: 'Cannot kick the room creator' },
         { status: 403 }
@@ -406,9 +435,9 @@ export async function DELETE(
       try {
         await supabase.from('room_bans').upsert({
           room_id: roomId,
-          user_id: userId,
+          user_id: targetUserId,
           reason: banReason,
-          banned_by: performedBy,
+          banned_by: user.id,
           banned_at: new Date().toISOString(),
         }, { onConflict: 'room_id,user_id' });
       } catch {
@@ -423,24 +452,24 @@ export async function DELETE(
           ban_reason: banReason,
         })
         .eq('room_id', roomId)
-        .eq('user_id', userId);
+        .eq('user_id', targetUserId);
     } else {
       // Just remove from members (kick)
       await supabase
         .from('room_members')
         .delete()
         .eq('room_id', roomId)
-        .eq('user_id', userId);
+        .eq('user_id', targetUserId);
     }
 
-    // Log the action
+    // Log the action - SECURITY: Use authenticated user ID
     try {
       await supabase.from('room_permission_logs').insert({
         room_id: roomId,
-        target_user_id: userId,
+        target_user_id: targetUserId,
         action: ban ? 'ban' : 'kick',
         new_value: banReason ? { reason: banReason } : null,
-        performed_by: performedBy,
+        performed_by: user.id,
       });
     } catch {
       // Ignore logging errors

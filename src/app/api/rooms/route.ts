@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { deleteRoomFiles } from '@/lib/storage/r2';
-import { getSupabase, getAdminSupabase } from '@/lib/supabase/server';
+import { getSupabase, getAdminSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
 
 // Transform database row to API response
 function transformRoom(room: Record<string, unknown>) {
@@ -29,12 +29,20 @@ function transformRoom(room: Record<string, unknown>) {
 export async function POST(request: NextRequest) {
   const supabase = getSupabase();
 
+  // SECURITY: Require authentication to create rooms
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required to create a room' },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
     const {
       id,
       name,
-      createdBy,
       description,
       isPublic = true,
       maxUsers = 10,
@@ -49,12 +57,22 @@ export async function POST(request: NextRequest) {
     // Use provided ID or generate a new one
     const roomId = id || uuidv4().slice(0, 8);
 
-    // If Supabase is not configured, return a mock response
+    // SECURITY: Always use authenticated user's ID as creator, never trust client input
+    const createdBy = user.id;
+
+    // If Supabase is not configured, reject in production
     if (!supabase) {
+      if (process.env.NODE_ENV === 'production') {
+        return NextResponse.json(
+          { error: 'Database not configured' },
+          { status: 503 }
+        );
+      }
+      // Only allow mock response in development
       return NextResponse.json({
         id: roomId,
         name: name || `Room ${roomId}`,
-        createdBy: createdBy || 'anonymous',
+        createdBy,
         createdAt: new Date().toISOString(),
         popLocation: 'auto',
         maxUsers,
@@ -93,12 +111,19 @@ export async function POST(request: NextRequest) {
 
     if (error) {
       console.error('Error creating room:', error);
-      // If table doesn't exist or column doesn't exist, return a mock room for now
+      // SECURITY: Do not return mock responses for database errors in production
       if (error.code === '42P01' || error.code === '42703') {
+        if (process.env.NODE_ENV === 'production') {
+          return NextResponse.json(
+            { error: 'Database schema not ready' },
+            { status: 503 }
+          );
+        }
+        // Only allow mock response in development
         return NextResponse.json({
           id: roomId,
           name: name || `Room ${roomId}`,
-          createdBy: createdBy || 'anonymous',
+          createdBy,
           createdAt: new Date().toISOString(),
           popLocation: 'auto',
           maxUsers,
@@ -252,13 +277,20 @@ export async function GET(request: NextRequest) {
   }
 }
 
-// DELETE /api/rooms?id=xxx&requesterId=xxx - Delete a room and all its tracks
+// DELETE /api/rooms?id=xxx - Delete a room and all its tracks
 // Only the room creator or an admin can delete a room
 export async function DELETE(request: NextRequest) {
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required to delete a room' },
+      { status: 401 }
+    );
+  }
+
   const { searchParams } = new URL(request.url);
   const roomId = searchParams.get('id');
-  const requesterId = searchParams.get('requesterId');
-  const isAdminRequest = searchParams.get('admin') === 'true';
 
   if (!roomId) {
     return NextResponse.json(
@@ -267,19 +299,13 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  // Use admin client to bypass RLS - required for admin operations
+  // Use admin client to bypass RLS - required for room deletion
   const adminSupabase = getAdminSupabase();
 
   if (!adminSupabase) {
-    // Fall back to regular client for checking, but warn about RLS
-    const supabase = getSupabase();
-    if (!supabase) {
-      return NextResponse.json({ success: true });
-    }
-
     return NextResponse.json(
-      { error: 'Admin operations require SUPABASE_SERVICE_ROLE_KEY to be configured. Room deletion is blocked by database security policies.' },
-      { status: 500 }
+      { error: 'Database not configured' },
+      { status: 503 }
     );
   }
 
@@ -298,43 +324,26 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Authorization check: Only room creator or admin can delete
-    if (!isAdminRequest) {
-      // For non-admin requests, verify the requester is the room creator
-      if (!requesterId) {
-        return NextResponse.json(
-          { error: 'requesterId is required for non-admin deletion' },
-          { status: 400 }
-        );
-      }
+    // SECURITY: Check if user is room creator or admin
+    const isRoomCreator = existingRoom.created_by === user.id;
 
-      if (existingRoom.created_by !== requesterId) {
-        return NextResponse.json(
-          { error: 'Only the room creator can delete this room' },
-          { status: 403 }
-        );
-      }
-    } else {
-      // For admin requests, verify the requester is actually an admin
-      if (!requesterId) {
-        return NextResponse.json(
-          { error: 'requesterId is required for admin verification' },
-          { status: 400 }
-        );
-      }
+    // Check if user is an admin
+    let isAdmin = false;
+    const { data: userProfile } = await adminSupabase
+      .from('user_profiles')
+      .select('account_type')
+      .eq('id', user.id)
+      .single();
 
-      const { data: requesterProfile } = await adminSupabase
-        .from('user_profiles')
-        .select('account_type')
-        .eq('id', requesterId)
-        .single();
+    if (userProfile?.account_type === 'admin') {
+      isAdmin = true;
+    }
 
-      if (!requesterProfile || requesterProfile.account_type !== 'admin') {
-        return NextResponse.json(
-          { error: 'Admin privileges required' },
-          { status: 403 }
-        );
-      }
+    if (!isRoomCreator && !isAdmin) {
+      return NextResponse.json(
+        { error: 'Only the room creator or an admin can delete this room' },
+        { status: 403 }
+      );
     }
 
     // Delete all R2 files for this room (audio tracks and stems)
@@ -413,8 +422,18 @@ export async function DELETE(request: NextRequest) {
 }
 
 // PATCH /api/rooms - Update a room
+// Only room creator or co-hosts can update
 export async function PATCH(request: NextRequest) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required to update a room' },
+      { status: 401 }
+    );
+  }
+
+  const adminSupabase = getAdminSupabase();
 
   try {
     const body = await request.json();
@@ -427,10 +446,19 @@ export async function PATCH(request: NextRequest) {
       );
     }
 
-    if (!supabase) {
+    if (!adminSupabase) {
       return NextResponse.json(
         { error: 'Database not configured' },
-        { status: 500 }
+        { status: 503 }
+      );
+    }
+
+    // SECURITY: Verify user has permission to update this room
+    const membership = await getRoomMembership(id, user.id);
+    if (!membership || !membership.isModerator) {
+      return NextResponse.json(
+        { error: 'Only room owner or co-hosts can update room settings' },
+        { status: 403 }
       );
     }
 
@@ -448,7 +476,7 @@ export async function PATCH(request: NextRequest) {
     if (updates.icon !== undefined) dbUpdates.icon = updates.icon;
     dbUpdates.last_activity = new Date().toISOString();
 
-    const { data, error } = await supabase
+    const { data, error } = await adminSupabase
       .from('rooms')
       .update(dbUpdates)
       .eq('id', id)
