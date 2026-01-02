@@ -775,17 +775,24 @@ function reset() {
 }
 
 // Handle messages from main thread
+// IMPORTANT: This handler must be synchronous (not async) to avoid Chrome's
+// "message channel closed before response" error. Async operations are handled
+// internally with .then() instead of await.
 let frameCount = 0;
 let lastLongTermAnalysis = 0;
 const LONG_TERM_INTERVAL = 2000; // Run long-term analysis every 2 seconds for faster key detection
 
-self.onmessage = async function(e) {
+self.onmessage = function(e) {
   const { type, data } = e.data;
 
   switch (type) {
     case 'init':
-      const success = await initialize(data.sampleRate);
-      self.postMessage({ type: 'initialized', success });
+      // Handle async initialization without making the handler async
+      initialize(data.sampleRate).then(success => {
+        self.postMessage({ type: 'initialized', success });
+      }).catch(() => {
+        self.postMessage({ type: 'initialized', success: false });
+      });
       break;
 
     case 'analyze':
@@ -840,6 +847,12 @@ self.onmessage = async function(e) {
 
     case 'stop':
       reset();
+      break;
+
+    case 'flush':
+      // Graceful shutdown signal - reset state and acknowledge
+      reset();
+      self.postMessage({ type: 'flushed', success: true });
       break;
   }
 };

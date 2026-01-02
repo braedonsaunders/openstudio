@@ -20,6 +20,9 @@ export class EssentiaAnalyzer {
   private static readonly IDLE_THRESHOLD_FRAMES = 300; // 30 seconds at 100ms intervals
   private isIdle = false;
 
+  // Track disposal state to prevent sending messages during cleanup
+  private isDisposing = false;
+
   async initialize(sampleRate: number = 44100): Promise<void> {
     if (this.isInitialized) return;
 
@@ -176,7 +179,8 @@ export class EssentiaAnalyzer {
     const ANALYSIS_INTERVAL_MS = 100;
 
     this.analysisInterval = window.setInterval(() => {
-      if (!this.isAnalyzing || !this.analyserNode || !this.worker) {
+      // Check disposal state first to prevent sending messages during cleanup
+      if (this.isDisposing || !this.isAnalyzing || !this.analyserNode || !this.worker) {
         this.stopAnalysis();
         return;
       }
@@ -280,11 +284,31 @@ export class EssentiaAnalyzer {
   }
 
   dispose(): void {
+    // Set disposing flag first to prevent new messages from being sent
+    this.isDisposing = true;
+
     this.stopAnalysis();
 
     if (this.worker) {
-      this.worker.terminate();
+      // Send flush message to allow worker to complete any pending operations
+      try {
+        this.worker.postMessage({ type: 'flush' });
+      } catch {
+        // Worker may already be in a bad state, ignore
+      }
+
+      // Delay termination slightly to allow pending messages to be processed
+      // This prevents "message channel closed before response" errors
+      const workerToTerminate = this.worker;
       this.worker = null;
+
+      setTimeout(() => {
+        try {
+          workerToTerminate.terminate();
+        } catch {
+          // Worker may already be terminated, ignore
+        }
+      }, 50);
     }
 
     if (this.analyserNode) {
@@ -294,6 +318,7 @@ export class EssentiaAnalyzer {
 
     this.audioContext = null;
     this.isInitialized = false;
+    this.isDisposing = false;
   }
 }
 
