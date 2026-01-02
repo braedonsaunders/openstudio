@@ -8,7 +8,6 @@
 
 use super::{NetworkEvent, NetworkManager, NetworkMode};
 use crate::audio::AudioEngine;
-use crate::mixing::PartialTrackState;
 use crate::network::osp::{OspMessageType, TrackStateMessage};
 use std::sync::Arc;
 use std::time::Duration;

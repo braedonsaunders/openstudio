@@ -2,7 +2,7 @@
 //!
 //! Represents a connected peer in the P2P network or relay.
 
-use super::{ClockSync, JitterBuffer, JitterConfig};
+use super::jitter::{JitterBuffer, JitterConfig};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::net::SocketAddr;

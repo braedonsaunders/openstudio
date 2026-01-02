@@ -12,7 +12,7 @@ mod network;
 mod protocol;
 
 use anyhow::Result;
-use network::{NetworkConfig, NetworkManager, NetworkMode, RoomConfig};
+use network::{NetworkConfig, NetworkManager};
 use protocol::LaunchParams;
 use std::sync::Arc;
 use tokio::sync::Mutex;
