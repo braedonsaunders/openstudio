@@ -151,8 +151,16 @@ export async function POST(request: NextRequest) {
         // Method 1: Try to get the URL
         try {
           if (typeof fileOutput.url === 'function') {
-            replicateUrl = fileOutput.url();
-            console.log(`[Stems] ${stemName} URL from url():`, replicateUrl);
+            const urlResult = fileOutput.url();
+            // url() returns a URL object, not a string - get the href
+            if (urlResult instanceof URL) {
+              replicateUrl = urlResult.href;
+            } else if (typeof urlResult === 'string') {
+              replicateUrl = urlResult;
+            } else if (urlResult && typeof urlResult === 'object' && 'href' in urlResult) {
+              replicateUrl = (urlResult as { href: string }).href;
+            }
+            console.log(`[Stems] ${stemName} URL:`, replicateUrl);
           }
         } catch (e) {
           console.error(`[Stems] Error calling url() on ${stemName}:`, e);
