@@ -8,6 +8,7 @@ import type {
   JamCompatibility,
   QualityPresetName,
 } from '@/types';
+import { getAuthHeaders } from '@/lib/auth-fetch';
 
 /**
  * Audio track info stored locally in CloudflareCalls
@@ -55,6 +56,7 @@ import { useSessionTempoStore } from '@/stores/session-tempo-store';
 /**
  * Fetch with timeout using AbortController
  * Prevents hanging on slow/failed network requests (especially on iOS Safari)
+ * Includes auth headers if user is authenticated (supports unauthenticated guests)
  */
 const DEFAULT_FETCH_TIMEOUT = 10000; // 10 seconds
 
@@ -67,8 +69,18 @@ async function fetchWithTimeout(
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
+    // Get auth headers if user is logged in (supports anonymous guests)
+    const authHeaders = await getAuthHeaders();
+    const headers = new Headers(options.headers);
+
+    // Merge auth headers if available
+    for (const [key, value] of Object.entries(authHeaders)) {
+      headers.set(key, value);
+    }
+
     const response = await fetch(url, {
       ...options,
+      headers,
       signal: controller.signal,
     });
     return response;

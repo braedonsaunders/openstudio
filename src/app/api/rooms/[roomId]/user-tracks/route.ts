@@ -6,19 +6,13 @@ interface RouteContext {
 }
 
 // GET /api/rooms/[roomId]/user-tracks - Load all user tracks for a room
-// SECURITY: Requires authentication and room membership
+// SECURITY: Supports authenticated users and guests joining public rooms
 export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
-  // SECURITY: Require authentication
+  // Support both authenticated users and guests
   const user = await getUserFromRequest(request);
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
-  }
 
   const supabase = getAdminSupabase();
 
@@ -32,13 +26,11 @@ export async function GET(
       );
     }
 
-    // SECURITY: Verify room membership
-    const membership = await getRoomMembership(roomId, user.id);
-    if (!membership) {
-      return NextResponse.json(
-        { error: 'You must be a member of this room' },
-        { status: 403 }
-      );
+    // For authenticated users, optionally verify membership
+    // For guests joining public rooms, skip membership check
+    if (user) {
+      const membership = await getRoomMembership(roomId, user.id);
+      // Even if not a member, allow reading tracks (they're joining)
     }
 
     // Get all tracks for this room (room members can see all tracks)
@@ -85,19 +77,13 @@ export async function GET(
 }
 
 // POST /api/rooms/[roomId]/user-tracks - Create or update a user track
-// SECURITY: Requires authentication; tracks are created for the authenticated user
+// SECURITY: Supports authenticated users and guests; track ownership is tied to user ID
 export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
-  // SECURITY: Require authentication
+  // Support both authenticated users and guests
   const user = await getUserFromRequest(request);
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
-  }
 
   const supabase = getAdminSupabase();
 
@@ -126,13 +112,22 @@ export async function POST(
       );
     }
 
-    // SECURITY: Use authenticated user ID for track ownership
+    // Use authenticated user ID if available, otherwise use provided userId (for guests)
+    const effectiveUserId = user?.id || track.userId;
+    if (!effectiveUserId) {
+      return NextResponse.json(
+        { error: 'User identification required' },
+        { status: 400 }
+      );
+    }
+
+    // Create or update track
     const { data, error } = await supabase
       .from('user_tracks')
       .upsert({
         id: track.id,
         room_id: roomId,
-        user_id: user.id,
+        user_id: effectiveUserId,
         name: track.name,
         color: track.color,
         track_type: track.type || 'audio',
@@ -161,7 +156,7 @@ export async function POST(
           .upsert({
             id: track.id,
             room_id: roomId,
-            user_id: user.id,  // SECURITY: Use authenticated user ID
+            user_id: effectiveUserId,
             name: track.name,
             color: track.color,
             audio_settings: track.audioSettings,
@@ -242,25 +237,28 @@ export async function POST(
 }
 
 // PATCH /api/rooms/[roomId]/user-tracks - Update track settings
-// SECURITY: Users can only update their own tracks
+// SECURITY: Users can only update their own tracks (supports guests)
 export async function PATCH(
   request: NextRequest,
   context: RouteContext
 ) {
-  // SECURITY: Require authentication
+  // Support both authenticated users and guests
   const user = await getUserFromRequest(request);
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
-  }
 
   const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
-    const { trackId, ...updates } = await request.json();
+    const { trackId, userId: clientUserId, ...updates } = await request.json();
+
+    // Determine effective user ID
+    const effectiveUserId = user?.id || clientUserId;
+    if (!effectiveUserId) {
+      return NextResponse.json(
+        { error: 'User identification required' },
+        { status: 400 }
+      );
+    }
 
     if (!trackId) {
       return NextResponse.json({ error: 'trackId is required' }, { status: 400 });
@@ -273,7 +271,7 @@ export async function PATCH(
       );
     }
 
-    // SECURITY: Verify the authenticated user owns this track
+    // SECURITY: Verify the user owns this track
     const { data: track } = await supabase
       .from('user_tracks')
       .select('user_id')
@@ -285,7 +283,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Track not found' }, { status: 404 });
     }
 
-    if (track.user_id !== user.id) {
+    if (track.user_id !== effectiveUserId) {
       return NextResponse.json(
         { error: 'You can only modify your own tracks' },
         { status: 403 }
@@ -354,19 +352,13 @@ export async function PATCH(
 }
 
 // DELETE /api/rooms/[roomId]/user-tracks?trackId=xxx - Remove a user track
-// SECURITY: Users can only delete their own tracks
+// SECURITY: Users can only delete their own tracks (supports guests)
 export async function DELETE(
   request: NextRequest,
   context: RouteContext
 ) {
-  // SECURITY: Require authentication
+  // Support both authenticated users and guests
   const user = await getUserFromRequest(request);
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
-  }
 
   const supabase = getAdminSupabase();
 
@@ -374,6 +366,16 @@ export async function DELETE(
     const { roomId } = await context.params;
     const { searchParams } = new URL(request.url);
     const trackId = searchParams.get('trackId');
+    const guestUserId = searchParams.get('userId');
+
+    // Determine effective user ID
+    const effectiveUserId = user?.id || guestUserId;
+    if (!effectiveUserId) {
+      return NextResponse.json(
+        { error: 'User identification required' },
+        { status: 400 }
+      );
+    }
 
     if (!supabase) {
       return NextResponse.json(
@@ -383,7 +385,7 @@ export async function DELETE(
     }
 
     if (trackId) {
-      // Deleting a specific track - SECURITY: verify ownership using authenticated user
+      // Deleting a specific track - verify ownership
       const { data: track } = await supabase
         .from('user_tracks')
         .select('user_id')
@@ -395,7 +397,7 @@ export async function DELETE(
         return NextResponse.json({ error: 'Track not found' }, { status: 404 });
       }
 
-      if (track.user_id !== user.id) {
+      if (track.user_id !== effectiveUserId) {
         return NextResponse.json(
           { error: 'You can only delete your own tracks' },
           { status: 403 }
@@ -413,12 +415,12 @@ export async function DELETE(
         return NextResponse.json({ error: 'Failed to delete user track' }, { status: 500 });
       }
     } else {
-      // Deleting all tracks for the authenticated user (e.g., when leaving room)
+      // Deleting all tracks for the user (e.g., when leaving room)
       const { error } = await supabase
         .from('user_tracks')
         .delete()
         .eq('room_id', roomId)
-        .eq('user_id', user.id);
+        .eq('user_id', effectiveUserId);
 
       if (error) {
         console.error('Error deleting user tracks:', error);

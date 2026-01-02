@@ -3,6 +3,7 @@
 import { useCallback } from 'react';
 import { usePermissionsStore } from '@/stores/permissions-store';
 import { useAuthStore } from '@/stores/auth-store';
+import { authFetch, authFetchJson } from '@/lib/auth-fetch';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
 
 export function useRoomPermissions(roomId: string) {
@@ -28,22 +29,17 @@ export function useRoomPermissions(roomId: string) {
       // Update local store
       storeUpdateMemberRole(targetUserId, role);
 
-      // Persist to database
+      // Persist to database (performedBy is now derived from JWT on server)
       try {
-        await fetch(`/api/rooms/${roomId}/permissions`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: targetUserId,
-            role,
-            performedBy: userId,
-          }),
+        await authFetchJson(`/api/rooms/${roomId}/permissions`, 'PATCH', {
+          userId: targetUserId,
+          role,
         });
       } catch (err) {
         console.error('Failed to update role:', err);
       }
     },
-    [roomId, userId, storeUpdateMemberRole]
+    [roomId, storeUpdateMemberRole]
   );
 
   const updateUserPermissions = useCallback(
@@ -54,59 +50,55 @@ export function useRoomPermissions(roomId: string) {
         storeUpdateMemberPermissions(targetUserId, customPermissions);
       }
 
-      // Persist to database
+      // Persist to database (performedBy is now derived from JWT on server)
       try {
-        await fetch(`/api/rooms/${roomId}/permissions`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: targetUserId,
-            customPermissions,
-            clearCustom: customPermissions === null,
-            performedBy: userId,
-          }),
+        await authFetchJson(`/api/rooms/${roomId}/permissions`, 'PATCH', {
+          userId: targetUserId,
+          customPermissions,
+          clearCustom: customPermissions === null,
         });
       } catch (err) {
         console.error('Failed to update permissions:', err);
       }
     },
-    [roomId, userId, storeUpdateMemberPermissions, clearMemberCustomPermissions]
+    [roomId, storeUpdateMemberPermissions, clearMemberCustomPermissions]
   );
 
   const kickUser = useCallback(
     async (targetUserId: string) => {
       removeMember(targetUserId);
 
+      // Persist to database (performedBy is now derived from JWT on server)
       try {
-        await fetch(
-          `/api/rooms/${roomId}/permissions?userId=${targetUserId}&performedBy=${userId}`,
+        await authFetch(
+          `/api/rooms/${roomId}/permissions?userId=${targetUserId}`,
           { method: 'DELETE' }
         );
       } catch (err) {
         console.error('Failed to kick user:', err);
       }
     },
-    [roomId, userId, removeMember]
+    [roomId, removeMember]
   );
 
   const banUser = useCallback(
     async (targetUserId: string, reason?: string) => {
       removeMember(targetUserId);
 
+      // Persist to database (performedBy is now derived from JWT on server)
       try {
         const params = new URLSearchParams({
           userId: targetUserId,
           ban: 'true',
-          performedBy: userId,
         });
         if (reason) params.set('reason', reason);
 
-        await fetch(`/api/rooms/${roomId}/permissions?${params}`, { method: 'DELETE' });
+        await authFetch(`/api/rooms/${roomId}/permissions?${params}`, { method: 'DELETE' });
       } catch (err) {
         console.error('Failed to ban user:', err);
       }
     },
-    [roomId, userId, removeMember]
+    [roomId, removeMember]
   );
 
   const setDefaultRole = useCallback(

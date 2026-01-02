@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useCallback } from 'react';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { authFetchJson } from '@/lib/auth-fetch';
 import type { UserTrack } from '@/types';
 
 // Debounce delay for persisting track changes (ms)
@@ -33,22 +34,18 @@ export function useTrackPersistence(
   const persistTrack = useCallback(async (track: UserTrack) => {
     if (!roomId || !userId) return;
 
+    // SECURITY: No longer send requesterId - server derives identity from JWT
     try {
-      await fetch(`/api/rooms/${roomId}/user-tracks`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trackId: track.id,
-          requesterId: userId,
-          name: track.name,
-          color: track.color,
-          audioSettings: track.audioSettings,
-          isMuted: track.isMuted,
-          isSolo: track.isSolo,
-          volume: track.volume,
-          isArmed: track.isArmed,
-          isRecording: track.isRecording,
-        }),
+      await authFetchJson(`/api/rooms/${roomId}/user-tracks`, 'PATCH', {
+        trackId: track.id,
+        name: track.name,
+        color: track.color,
+        audioSettings: track.audioSettings,
+        isMuted: track.isMuted,
+        isSolo: track.isSolo,
+        volume: track.volume,
+        isArmed: track.isArmed,
+        isRecording: track.isRecording,
       });
     } catch (err) {
       console.error('Failed to persist track:', err);

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { RealtimeRoomManager } from '@/lib/supabase/realtime';
 import { CloudflareCalls } from '@/lib/cloudflare/calls';
+import { authFetch, authFetchJson } from '@/lib/auth-fetch';
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
@@ -159,17 +160,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       // Ensure room exists in database (create if needed)
       try {
-        const roomResponse = await fetch(`/api/rooms?id=${roomId}`);
+        const roomResponse = await authFetch(`/api/rooms?id=${roomId}`);
         if (!roomResponse.ok) {
           // Room doesn't exist, create it
-          await fetch('/api/rooms', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              id: roomId,
-              name: `Room ${roomId}`,
-              createdBy: user.id,
-            }),
+          await authFetchJson('/api/rooms', 'POST', {
+            id: roomId,
+            name: `Room ${roomId}`,
+            createdBy: user.id,
           });
         }
       } catch (err) {
@@ -185,7 +182,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       let userTracks: UserTrack[] = [];
 
       try {
-        const tracksResponse = await fetch(`/api/rooms/${roomId}/user-tracks`);
+        const tracksResponse = await authFetch(`/api/rooms/${roomId}/user-tracks`);
         if (tracksResponse.ok) {
           const persistedTracks: UserTrack[] = await tracksResponse.json();
 
@@ -210,16 +207,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             for (const track of ownedTracks) {
               userTracksState.assignTrackToUser(track.id, user.id, user.name);
               // Persist the reactivation and update owner ID
-              fetch(`/api/rooms/${roomId}/user-tracks`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  trackId: track.id,
-                  requesterId: user.id,
-                  userId: user.id,
-                  ownerUserId: user.id,
-                  isActive: true,
-                }),
+              authFetchJson(`/api/rooms/${roomId}/user-tracks`, 'PATCH', {
+                trackId: track.id,
+                userId: user.id,
+                ownerUserId: user.id,
+                isActive: true,
               }).catch(err => console.error('Failed to update track status:', err));
             }
             userTracks = userTracksState.getTracksByUser(user.id);
@@ -231,7 +223,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       // Load persisted loop tracks
       try {
-        const loopTracksResponse = await fetch(`/api/rooms/${roomId}/loop-tracks`);
+        const loopTracksResponse = await authFetch(`/api/rooms/${roomId}/loop-tracks`);
         if (loopTracksResponse.ok) {
           const persistedLoopTracks: LoopTrackState[] = await loopTracksResponse.json();
           const loopTracksState = useLoopTracksStore.getState();
@@ -244,8 +236,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       // Load room permissions
       try {
-        const permissionsResponse = await fetch(
-          `/api/rooms/${roomId}/permissions?userId=${user.id}`
+        // SECURITY: No longer pass userId in query - server derives it from JWT
+        const permissionsResponse = await authFetch(
+          `/api/rooms/${roomId}/permissions`
         );
         if (permissionsResponse.ok) {
           const permissionsData = await permissionsResponse.json();
@@ -283,11 +276,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           userTracks = [newTrack];
 
           // Persist the new track
-          fetch(`/api/rooms/${roomId}/user-tracks`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(newTrack),
-          }).catch(err => console.error('Failed to persist new track:', err));
+          authFetchJson(`/api/rooms/${roomId}/user-tracks`, 'POST', newTrack)
+            .catch(err => console.error('Failed to persist new track:', err));
         }
       }
 
@@ -412,7 +402,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         // Load existing tracks from database (includes both file uploads and YouTube tracks)
         // Always set queue to this room's tracks (even if empty) to clear any previous room data
         try {
-          const response = await fetch(`/api/rooms/${roomId}/tracks`);
+          const response = await authFetch(`/api/rooms/${roomId}/tracks`);
           if (response.ok) {
             const tracks: BackingTrack[] = await response.json();
             console.log('Loaded tracks from database:', tracks.length, 'tracks');
@@ -891,14 +881,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // Persist the inactive state to database
     for (const track of userTracks) {
-      fetch(`/api/rooms/${roomId}/user-tracks`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          trackId: track.id,
-          requesterId: currentUserId,
-          isActive: false,
-        }),
+      authFetchJson(`/api/rooms/${roomId}/user-tracks`, 'PATCH', {
+        trackId: track.id,
+        isActive: false,
       }).catch(err => console.error('Failed to mark track as inactive:', err));
     }
 
@@ -1030,11 +1015,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // Persist track to database (both file uploads and YouTube tracks)
     try {
-      const response = await fetch(`/api/rooms/${roomId}/tracks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(track),
-      });
+      const response = await authFetchJson(`/api/rooms/${roomId}/tracks`, 'POST', track);
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}));
@@ -1070,7 +1051,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // Remove track from database
     try {
-      await fetch(`/api/rooms/${roomId}/tracks?trackId=${trackId}`, {
+      await authFetch(`/api/rooms/${roomId}/tracks?trackId=${trackId}`, {
         method: 'DELETE',
       });
     } catch (err) {
@@ -1321,11 +1302,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     // Persist to database
     try {
-      await fetch(`/api/rooms/${roomId}/loop-tracks`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(track),
-      });
+      await authFetchJson(`/api/rooms/${roomId}/loop-tracks`, 'POST', track);
     } catch (err) {
       console.error('Failed to persist loop track:', err);
     }
@@ -1338,9 +1315,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     const loopTracksStore = useLoopTracksStore.getState();
     loopTracksStore.removeTrack(trackId);
 
-    // Delete from database
+    // Delete from database (no longer need requesterId - server uses JWT)
     try {
-      await fetch(`/api/rooms/${roomId}/loop-tracks?trackId=${trackId}&requesterId=${userIdRef.current}`, {
+      await authFetch(`/api/rooms/${roomId}/loop-tracks?trackId=${trackId}`, {
         method: 'DELETE',
       });
     } catch (err) {
@@ -1355,13 +1332,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     const loopTracksStore = useLoopTracksStore.getState();
     loopTracksStore.updateTrack(trackId, updates);
 
-    // Persist to database
+    // Persist to database (no longer need requesterId - server uses JWT)
     try {
-      await fetch(`/api/rooms/${roomId}/loop-tracks`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ trackId, requesterId: userIdRef.current, ...updates }),
-      });
+      await authFetchJson(`/api/rooms/${roomId}/loop-tracks`, 'PATCH', { trackId, ...updates });
     } catch (err) {
       console.error('Failed to update loop track:', err);
     }
@@ -1400,16 +1373,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Update permissions store
     usePermissionsStore.getState().updateMemberRole(targetUserId, role);
 
-    // Persist to database
+    // Persist to database (performedBy is now derived from JWT on server)
     try {
-      await fetch(`/api/rooms/${roomId}/permissions`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: targetUserId,
-          role,
-          performedBy: userIdRef.current,
-        }),
+      await authFetchJson(`/api/rooms/${roomId}/permissions`, 'PATCH', {
+        userId: targetUserId,
+        role,
       });
     } catch (err) {
       console.error('Failed to update role:', err);
@@ -1431,17 +1399,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       permissionsStore.updateMemberPermissions(targetUserId, customPermissions);
     }
 
-    // Persist to database
+    // Persist to database (performedBy is now derived from JWT on server)
     try {
-      await fetch(`/api/rooms/${roomId}/permissions`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          userId: targetUserId,
-          customPermissions,
-          clearCustom: customPermissions === null,
-          performedBy: userIdRef.current,
-        }),
+      await authFetchJson(`/api/rooms/${roomId}/permissions`, 'PATCH', {
+        userId: targetUserId,
+        customPermissions,
+        clearCustom: customPermissions === null,
       });
     } catch (err) {
       console.error('Failed to update permissions:', err);
@@ -1455,10 +1418,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Remove from permissions store
     usePermissionsStore.getState().removeMember(targetUserId);
 
-    // Persist to database
+    // Persist to database (performedBy is now derived from JWT on server)
     try {
-      await fetch(
-        `/api/rooms/${roomId}/permissions?userId=${targetUserId}&performedBy=${userIdRef.current}`,
+      await authFetch(
+        `/api/rooms/${roomId}/permissions?userId=${targetUserId}`,
         { method: 'DELETE' }
       );
     } catch (err) {
@@ -1473,16 +1436,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Remove from permissions store
     usePermissionsStore.getState().removeMember(targetUserId);
 
-    // Persist to database
+    // Persist to database (performedBy is now derived from JWT on server)
     try {
       const params = new URLSearchParams({
         userId: targetUserId,
         ban: 'true',
-        performedBy: userIdRef.current,
       });
       if (reason) params.set('reason', reason);
 
-      await fetch(`/api/rooms/${roomId}/permissions?${params}`, { method: 'DELETE' });
+      await authFetch(`/api/rooms/${roomId}/permissions?${params}`, { method: 'DELETE' });
     } catch (err) {
       console.error('Failed to ban user:', err);
     }

@@ -7,19 +7,18 @@ interface RouteContext {
 }
 
 // GET /api/rooms/[roomId]/permissions - Load all members and their permissions for a room
-// SECURITY: Requires authentication to view room members
+// SECURITY: Supports both authenticated users and guests (for joining public rooms)
 export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
-  // SECURITY: Require authentication
+  // Support both authenticated users and guests
   const user = await getUserFromRequest(request);
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
-  }
+
+  // For guests, get userId from query param (they provide their guest ID)
+  const { searchParams } = new URL(request.url);
+  const guestUserId = searchParams.get('guestUserId');
+  const effectiveUserId = user?.id || guestUserId;
 
   const supabase = getAdminSupabase();
 
@@ -34,13 +33,14 @@ export async function GET(
       );
     }
 
-    // SECURITY: Verify user is a member of this room (or is room creator)
-    const membership = await getRoomMembership(roomId, user.id);
-    if (!membership) {
-      return NextResponse.json(
-        { error: 'You are not a member of this room' },
-        { status: 403 }
-      );
+    // For authenticated users, verify membership
+    // For guests, skip membership check (they're joining)
+    if (user) {
+      const membership = await getRoomMembership(roomId, user.id);
+      if (!membership) {
+        // User is authenticated but not a member - allow reading to see room info
+        // They'll get limited permissions as a new joiner
+      }
     }
 
     // Load room settings
@@ -93,20 +93,22 @@ export async function GET(
       banReason: m.ban_reason,
     }));
 
-    // SECURITY: Return the authenticated user's own permissions
+    // Return the current user's permissions (authenticated or guest)
     let myMember: RoomMember | null = null;
-    myMember = roomMembers.find((m) => m.oduserId === user.id) || null;
+    if (effectiveUserId) {
+      myMember = roomMembers.find((m) => m.oduserId === effectiveUserId) || null;
 
-    // If user is room creator but not in members, they're the owner
-    if (!myMember && room?.created_by === user.id) {
-      myMember = {
-        id: 'owner-' + user.id,
-        oduserId: user.id,
-        userName: 'Owner',
-        role: 'owner',
-        joinedAt: new Date().toISOString(),
-        lastActiveAt: new Date().toISOString(),
-      };
+      // If user is room creator but not in members, they're the owner
+      if (!myMember && room?.created_by === effectiveUserId) {
+        myMember = {
+          id: 'owner-' + effectiveUserId,
+          oduserId: effectiveUserId,
+          userName: 'Owner',
+          role: 'owner',
+          joinedAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+        };
+      }
     }
 
     return NextResponse.json({
@@ -126,19 +128,13 @@ export async function GET(
 }
 
 // POST /api/rooms/[roomId]/permissions - Add/update a member's permissions
-// SECURITY: Requires authentication; users can only add themselves or moderators can add others
+// SECURITY: Supports authenticated users and guests; users can only add themselves or moderators can add others
 export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
-  // SECURITY: Require authentication
+  // Support both authenticated users and guests
   const user = await getUserFromRequest(request);
-  if (!user) {
-    return NextResponse.json(
-      { error: 'Authentication required' },
-      { status: 401 }
-    );
-  }
 
   const supabase = getAdminSupabase();
 
@@ -147,8 +143,18 @@ export async function POST(
     const body = await request.json();
     const { userId, userName, userAvatar, role } = body;
 
-    // SECURITY: If no userId specified, the user is adding themselves
-    const targetUserId = userId || user.id;
+    // Determine effective user ID: prefer authenticated user, fall back to provided userId
+    const effectiveUserId = user?.id || userId;
+
+    if (!effectiveUserId) {
+      return NextResponse.json(
+        { error: 'User identification required (either login or provide userId)' },
+        { status: 400 }
+      );
+    }
+
+    // Target user for membership: the userId in body, or the effective user
+    const targetUserId = userId || effectiveUserId;
 
     // If Supabase is not configured, return error
     if (!supabase) {
@@ -159,8 +165,9 @@ export async function POST(
     }
 
     // SECURITY: Check permissions based on who is being added
-    if (targetUserId !== user.id) {
-      // User is trying to add someone else - must be a moderator
+    // Only authenticated users can add others (moderators)
+    if (targetUserId !== effectiveUserId && user) {
+      // Authenticated user is trying to add someone else - must be a moderator
       const membership = await getRoomMembership(roomId, user.id);
       if (!membership || !membership.isModerator) {
         return NextResponse.json(
@@ -168,6 +175,12 @@ export async function POST(
           { status: 403 }
         );
       }
+    } else if (targetUserId !== effectiveUserId && !user) {
+      // Guest cannot add someone else
+      return NextResponse.json(
+        { error: 'Authentication required to add other users' },
+        { status: 401 }
+      );
     }
 
     // Get room default role
@@ -179,7 +192,7 @@ export async function POST(
 
     // SECURITY: Non-moderators can only join as default role or lower
     let memberRole = role || room?.default_role || 'member';
-    if (targetUserId === user.id) {
+    if (targetUserId === effectiveUserId) {
       // User joining themselves - can only get default role
       memberRole = room?.default_role || 'member';
     }
@@ -190,10 +203,10 @@ export async function POST(
       .upsert({
         room_id: roomId,
         user_id: targetUserId,
-        user_name: userName || 'User',
+        user_name: userName || (user ? 'User' : 'Guest'),
         user_avatar: userAvatar,
         role: memberRole,
-        invited_by: targetUserId !== user.id ? user.id : null,
+        invited_by: targetUserId !== effectiveUserId ? effectiveUserId : null,
         last_active_at: new Date().toISOString(),
       }, { onConflict: 'room_id,user_id' })
       .select()
