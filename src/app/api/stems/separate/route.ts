@@ -128,9 +128,10 @@ async function separateWithDemucs(
 
     // Fetch the audio file and convert to data URI for Replicate
     // This allows us to handle internal/relative URLs that Replicate can't access directly
+    console.log(`[Stems] Fetching audio from: ${absoluteUrl} (original: ${trackUrl})`);
     const audioResponse = await fetch(absoluteUrl);
     if (!audioResponse.ok) {
-      throw new Error(`Failed to fetch audio: ${audioResponse.status} ${audioResponse.statusText}`);
+      throw new Error(`Failed to fetch audio from ${absoluteUrl}: ${audioResponse.status} ${audioResponse.statusText}`);
     }
 
     const audioBuffer = await audioResponse.arrayBuffer();
