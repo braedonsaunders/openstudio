@@ -823,7 +823,9 @@ impl AudioEngine {
         _effects_metering: &Arc<RwLock<EffectsMetering>>,
     ) {
         let frame_num = INPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-        let should_log = frame_num % 7500 == 0; // Log every 7500 frames (~every 10s at 64 samples/48kHz)
+        // CRITICAL: Never log on frame 0! Logging allocates memory which kills ASIO.
+        // Start logging only after frame 7500 to let ASIO stabilize.
+        let should_log = frame_num >= 7500 && frame_num % 7500 == 0;
 
         // Get channel config
         let (left_ch, right_ch, is_stereo) = if let Ok(state) = processing_state.try_read() {
@@ -999,7 +1001,8 @@ impl AudioEngine {
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
         let frame_num = OUTPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-        let should_log = frame_num % 7500 == 0;
+        // CRITICAL: Never log on frame 0! Logging allocates memory which kills ASIO.
+        let should_log = frame_num >= 7500 && frame_num % 7500 == 0;
 
         if should_log {
             info!(
