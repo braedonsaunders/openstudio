@@ -867,9 +867,10 @@ export function MultiTrackTimeline({
     const song = getCurrentSong();
     if (!song) return;
 
+    // Skip persist for mute toggle - it's transient state
     updateTrackInSong(song.id, contextMenu.trackRef.id, {
       muted: !contextMenu.trackRef.muted,
-    });
+    }, true);
 
     closeContextMenu();
   }, [contextMenu.trackRef, closeContextMenu]);
@@ -1004,7 +1005,7 @@ export function MultiTrackTimeline({
     }
   }, [contextMenu.trackRef, queue.tracks, closeContextMenu, roomId]);
 
-  // Toggle mute for all clips in a row
+  // Toggle mute for all clips in a row (skip persist - mute is transient)
   const handleRowMute = useCallback((row: { clips: typeof unifiedTracks; muted: boolean }) => {
     const { getCurrentSong, updateTrackInSong } = useSongsStore.getState();
     const song = getCurrentSong();
@@ -1012,11 +1013,11 @@ export function MultiTrackTimeline({
 
     const newMuted = !row.muted;
     for (const clip of row.clips) {
-      updateTrackInSong(song.id, clip.ref.id, { muted: newMuted });
+      updateTrackInSong(song.id, clip.ref.id, { muted: newMuted }, true); // skipPersist
     }
   }, []);
 
-  // Toggle solo for all clips in a row
+  // Toggle solo for all clips in a row (skip persist - solo is transient)
   const handleRowSolo = useCallback((row: { clips: typeof unifiedTracks; solo: boolean }) => {
     const { getCurrentSong, updateTrackInSong } = useSongsStore.getState();
     const song = getCurrentSong();
@@ -1024,7 +1025,7 @@ export function MultiTrackTimeline({
 
     const newSolo = !row.solo;
     for (const clip of row.clips) {
-      updateTrackInSong(song.id, clip.ref.id, { solo: newSolo });
+      updateTrackInSong(song.id, clip.ref.id, { solo: newSolo }, true); // skipPersist
     }
   }, []);
 
