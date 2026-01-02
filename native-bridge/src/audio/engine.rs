@@ -1152,9 +1152,8 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I32 => {
-                // SIMPLIFIED: Minimal I32 input - just convert and push to ring buffer
-                // Testing if complex processing is causing ASIO to die
-                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
+                // DIAGNOSTIC: Absolute minimum - no ring buffer operations at all
+                // Just convert I32->F32 and discard, to test if ring buffers are the issue
                 let input_cb_count = self.input_callback_count.clone();
 
                 device.build_input_stream(
@@ -1162,31 +1161,17 @@ impl AudioEngine {
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
                         input_cb_count.fetch_add(1, Ordering::Relaxed);
 
-                        let mut stereo_buf = stereo_buffer.borrow_mut();
-                        stereo_buf.clear();
-
-                        // Simple I32 -> F32 conversion and stereo extraction inline
-                        // Assuming 2 input channels (left=0, right=1)
-                        for chunk in data.chunks(input_channels) {
-                            let left = chunk.get(0).map(|&s| s as f32 / i32::MAX as f32).unwrap_or(0.0);
-                            let right = chunk.get(1).map(|&s| s as f32 / i32::MAX as f32).unwrap_or(left);
-                            stereo_buf.push(left);
-                            stereo_buf.push(right);
+                        // Just convert and calculate a dummy value to prevent optimization
+                        let mut sum = 0.0f32;
+                        for &sample in data.iter() {
+                            sum += sample as f32 / i32::MAX as f32;
                         }
+                        // Prevent compiler from optimizing away the conversion
+                        std::hint::black_box(sum);
 
-                        // Push directly to browser stream (skip local monitoring for now)
-                        if let Some(ref bsp) = browser_stream_producer {
-                            if let Ok(mut prod) = bsp.try_lock() {
-                                let _ = prod.push_slice(&stereo_buf);
-                            }
-                        }
-
-                        // Also push to local for monitoring
-                        if let Ok(mut prod) = producer.try_lock() {
-                            for &sample in stereo_buf.iter() {
-                                let _ = prod.try_push(sample);
-                            }
-                        }
+                        // Skip ALL ring buffer operations
+                        let _ = &browser_stream_producer;
+                        let _ = &producer;
                     },
                     |_err| {},
                     None,
@@ -1226,8 +1211,8 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I32 => {
-                // SIMPLIFIED: Minimal I32 output - just read from local and output
-                // Testing if complex processing is causing ASIO to die
+                // DIAGNOSTIC: Absolute minimum output - just silence
+                // No ring buffer reads at all
                 let output_cb_count = self.output_callback_count.clone();
 
                 device.build_output_stream(
@@ -1235,22 +1220,13 @@ impl AudioEngine {
                     move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
                         output_cb_count.fetch_add(1, Ordering::Relaxed);
 
-                        // Simple output: read from local consumer, convert to I32
-                        if let Ok(mut cons) = local_consumer.try_lock() {
-                            for sample in data.iter_mut() {
-                                let f = cons.try_pop().unwrap_or(0.0);
-                                // Soft clip and convert to i32
-                                let clipped = f.tanh();
-                                *sample = (clipped * i32::MAX as f32) as i32;
-                            }
-                        } else {
-                            // If can't lock, output silence
-                            for sample in data.iter_mut() {
-                                *sample = 0;
-                            }
+                        // Just output silence
+                        for sample in data.iter_mut() {
+                            *sample = 0;
                         }
 
-                        // Keep references alive (unused for now but needed for later)
+                        // Keep references alive
+                        let _ = &local_consumer;
                         let _ = &remote_buffers;
                         let _ = &backing_consumer;
                         let _ = &levels_out;
