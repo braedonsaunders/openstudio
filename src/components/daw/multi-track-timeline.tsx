@@ -923,6 +923,8 @@ export function MultiTrackTimeline({
         body: JSON.stringify({
           trackId: trackId,
           trackUrl: audioTrack.url,
+          trackName: audioTrack.name,
+          trackDuration: audioTrack.duration,
         }),
       });
 
@@ -936,24 +938,36 @@ export function MultiTrackTimeline({
         // Create new audio assets for each stem
         const stemNames = ['vocals', 'drums', 'bass', 'guitar', 'other'] as const;
         const currentSongLocal = useSongsStore.getState().getCurrentSong();
+        const currentUser = useRoomStore.getState().currentUser;
 
         for (const stemName of stemNames) {
-          const stemUrl = result.stems[stemName];
-          if (!stemUrl) continue;
+          const stemData = result.stems[stemName];
+          if (!stemData) continue;
 
           // Create a new backing track for this stem
           const stemTrack: BackingTrack = {
-            id: `${trackId}-${stemName}`,
-            name: `${audioTrack.name} (${stemName.charAt(0).toUpperCase() + stemName.slice(1)})`,
+            id: stemData.id,
+            name: stemData.name,
             artist: audioTrack.artist,
-            duration: audioTrack.duration,
-            url: stemUrl,
-            uploadedBy: 'stem-separation',
+            duration: result.duration || audioTrack.duration,
+            url: stemData.url,
+            uploadedBy: currentUser?.id || 'stem-separation',
             uploadedAt: new Date().toISOString(),
           };
 
-          // Add to queue (asset library)
+          // Add to queue (asset library) - local state
           useRoomStore.getState().addToQueue(stemTrack);
+
+          // Save to room in database
+          try {
+            await fetch(`/api/rooms/${roomId}/tracks`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(stemTrack),
+            });
+          } catch (saveError) {
+            console.error('Failed to save stem to room:', saveError);
+          }
 
           // Add to current song timeline at same position as original
           if (currentSongLocal) {
@@ -974,7 +988,7 @@ export function MultiTrackTimeline({
       setSeparatingTrackId(null);
       setSeparationProgress(0);
     }
-  }, [contextMenu.trackRef, queue.tracks, closeContextMenu]);
+  }, [contextMenu.trackRef, queue.tracks, closeContextMenu, roomId]);
 
   // Toggle mute for all clips in a row
   const handleRowMute = useCallback((row: { clips: typeof unifiedTracks; muted: boolean }) => {

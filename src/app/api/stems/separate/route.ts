@@ -1,10 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { v4 as uuidv4 } from 'uuid';
 import Replicate from 'replicate';
+import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
+import { getUserFromRequest } from '@/lib/supabase/server';
 
 // Replicate client for Demucs
 const replicate = new Replicate({
   auth: process.env.REPLICATE_API_TOKEN,
+});
+
+// R2 client for storing stems
+const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
+const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
+const R2_SECRET_ACCESS_KEY = process.env.CLOUDFLARE_R2_SECRET_ACCESS_KEY || '';
+const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
+
+const s3Client = new S3Client({
+  region: 'auto',
+  endpoint: process.env.R2_ENDPOINT || `https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+  credentials: {
+    accessKeyId: R2_ACCESS_KEY_ID,
+    secretAccessKey: R2_SECRET_ACCESS_KEY,
+  },
 });
 
 export async function POST(request: NextRequest) {
@@ -16,6 +34,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  // Get user for ownership tracking
+  const user = await getUserFromRequest(request);
+  const userId = user?.id || 'anonymous';
+
   // Rate limiting for expensive AI operations
   const clientId = getClientIdentifier(request);
   const rateLimit = checkRateLimit(`stems:${clientId}`, rateLimiters.expensive);
@@ -26,7 +48,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { trackId, trackUrl } = body;
+    const { trackId, trackUrl, trackName, trackDuration } = body;
 
     if (!trackId || !trackUrl) {
       return NextResponse.json(
@@ -75,7 +97,6 @@ export async function POST(request: NextRequest) {
     console.log(`[Stems] Audio fetched (${(audioBuffer.byteLength / 1024 / 1024).toFixed(2)} MB), sending to Demucs...`);
 
     // Use ryan5453/demucs model on Replicate for stem separation
-    // This is synchronous - waits for completion
     const output = await replicate.run(
       "ryan5453/demucs:5a7041cc9b82e5a558fea6b3d7b12dea89625e89da33f0447bd727c2d0ab9e77",
       {
@@ -85,10 +106,10 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    console.log('[Stems] Demucs completed:', output);
+    console.log('[Stems] Demucs completed, uploading stems to R2...');
 
     // Parse the output - Demucs returns URLs for each stem
-    const stems = output as unknown as {
+    const replicateStems = output as unknown as {
       vocals?: string;
       drums?: string;
       bass?: string;
@@ -96,15 +117,61 @@ export async function POST(request: NextRequest) {
       other?: string;
     };
 
+    // Download stems from Replicate and upload to R2
+    const stemNames = ['vocals', 'drums', 'bass', 'guitar', 'other'] as const;
+    const stems: Record<string, { id: string; url: string; name: string }> = {};
+
+    for (const stemName of stemNames) {
+      const replicateUrl = replicateStems[stemName];
+      if (!replicateUrl) continue;
+
+      try {
+        // Download stem from Replicate
+        const stemResponse = await fetch(replicateUrl);
+        if (!stemResponse.ok) {
+          console.error(`Failed to download ${stemName} stem: ${stemResponse.status}`);
+          continue;
+        }
+
+        const stemBuffer = await stemResponse.arrayBuffer();
+        const stemId = uuidv4();
+
+        // Determine file extension from content-type or URL
+        const stemContentType = stemResponse.headers.get('content-type') || 'audio/mpeg';
+        let extension = 'mp3';
+        if (stemContentType.includes('wav')) extension = 'wav';
+        else if (stemContentType.includes('flac')) extension = 'flac';
+        else if (replicateUrl.includes('.wav')) extension = 'wav';
+        else if (replicateUrl.includes('.flac')) extension = 'flac';
+
+        // Upload to R2 with user subdirectory (same structure as regular uploads)
+        const key = `tracks/${userId}/${stemId}.${extension}`;
+
+        await s3Client.send(new PutObjectCommand({
+          Bucket: BUCKET_NAME,
+          Key: key,
+          Body: Buffer.from(stemBuffer),
+          ContentType: stemContentType,
+        }));
+
+        console.log(`[Stems] Uploaded ${stemName} to R2: ${key}`);
+
+        // Store stem info with the proxy URL format
+        const baseName = trackName || 'Track';
+        stems[stemName] = {
+          id: stemId,
+          url: `/api/audio/${stemId}`,
+          name: `${baseName} (${stemName.charAt(0).toUpperCase() + stemName.slice(1)})`,
+        };
+      } catch (error) {
+        console.error(`Error processing ${stemName} stem:`, error);
+      }
+    }
+
     return NextResponse.json({
       status: 'completed',
-      stems: {
-        vocals: stems.vocals,
-        drums: stems.drums,
-        bass: stems.bass,
-        guitar: stems.guitar,
-        other: stems.other,
-      },
+      stems,
+      duration: trackDuration || 0,
     });
   } catch (error) {
     console.error('Stem separation error:', error);

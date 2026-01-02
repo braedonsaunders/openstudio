@@ -329,6 +329,8 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
         body: JSON.stringify({
           trackId: assetId,
           trackUrl: audioTrack.url,
+          trackName: audioTrack.name,
+          trackDuration: audioTrack.duration,
         }),
       });
 
@@ -343,22 +345,33 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
         const stemNames = ['vocals', 'drums', 'bass', 'guitar', 'other'] as const;
 
         for (const stemName of stemNames) {
-          const stemUrl = result.stems[stemName];
-          if (!stemUrl) continue;
+          const stemData = result.stems[stemName];
+          if (!stemData) continue;
 
           // Create a new backing track for this stem
           const stemTrack: BackingTrack = {
-            id: `${assetId}-${stemName}`,
-            name: `${audioTrack.name} (${stemName.charAt(0).toUpperCase() + stemName.slice(1)})`,
+            id: stemData.id,
+            name: stemData.name,
             artist: audioTrack.artist,
-            duration: audioTrack.duration,
-            url: stemUrl,
-            uploadedBy: 'stem-separation',
+            duration: result.duration || audioTrack.duration,
+            url: stemData.url,
+            uploadedBy: userId,
             uploadedAt: new Date().toISOString(),
           };
 
-          // Add to queue (asset library)
+          // Add to queue (asset library) - local state
           useRoomStore.getState().addToQueue(stemTrack);
+
+          // Save to room in database
+          try {
+            await fetch(`/api/rooms/${roomId}/tracks`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(stemTrack),
+            });
+          } catch (saveError) {
+            console.error('Failed to save stem to room:', saveError);
+          }
 
           // Optionally add to current song timeline
           if (currentSong) {
@@ -379,7 +392,7 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
       setSeparatingAssetId(null);
       setSeparationProgress(0);
     }
-  }, [contextMenu, queue.tracks, currentSong, addTrackToSong, closeContextMenu]);
+  }, [contextMenu, queue.tracks, currentSong, addTrackToSong, closeContextMenu, roomId, userId]);
 
   // Close context menu on click outside
   useEffect(() => {
