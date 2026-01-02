@@ -20,7 +20,7 @@ use ringbuf::{
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, AtomicU64, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
 use tracing::info;
@@ -181,6 +181,10 @@ pub struct AudioEngine {
 
     // Running state
     is_running: Arc<AtomicBool>,
+
+    // Callback counters for diagnostics (no allocation to increment)
+    input_callback_count: Arc<AtomicU64>,
+    output_callback_count: Arc<AtomicU64>,
 }
 
 impl AudioEngine {
@@ -216,6 +220,8 @@ impl AudioEngine {
             levels: Arc::new(RwLock::new(AudioLevels::default())),
             effects_metering: Arc::new(RwLock::new(EffectsMetering::default())),
             is_running: Arc::new(AtomicBool::new(false)),
+            input_callback_count: Arc::new(AtomicU64::new(0)),
+            output_callback_count: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -1140,6 +1146,7 @@ impl AudioEngine {
                 let monitoring_volume = self.monitoring_volume.clone();
                 let processing_state_in = self.processing_state.clone();
                 let effects_metering = self.effects_metering.clone();
+                let input_cb_count = self.input_callback_count.clone();
 
                 // Pre-allocate both conversion buffer and stereo buffer
                 // Use 65536 to handle any ASIO buffer size without reallocation
@@ -1149,6 +1156,9 @@ impl AudioEngine {
                 device.build_input_stream(
                     &stream_input_config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
+                        // Increment callback counter (atomic, no allocation)
+                        input_cb_count.fetch_add(1, Ordering::Relaxed);
+
                         let mut conv_buf = conversion_buffer.borrow_mut();
                         let mut stereo_buf = stereo_buffer.borrow_mut();
 
@@ -1212,6 +1222,7 @@ impl AudioEngine {
                 let backing_consumer = self.backing_consumer.clone().unwrap();
                 let levels_out = self.levels.clone();
                 let processing_state_out = self.processing_state.clone();
+                let output_cb_count = self.output_callback_count.clone();
 
                 // Pre-allocate conversion buffer
                 // Use 65536 to handle any ASIO buffer size without reallocation
@@ -1220,6 +1231,9 @@ impl AudioEngine {
                 device.build_output_stream(
                     &stream_output_config,
                     move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
+                        // Increment callback counter (atomic, no allocation)
+                        output_cb_count.fetch_add(1, Ordering::Relaxed);
+
                         let mut float_buf = float_buffer.borrow_mut();
                         Self::process_output_i32(
                             data,
@@ -1242,6 +1256,10 @@ impl AudioEngine {
                 ))
             }
         };
+
+        // Reset callback counters for diagnostics
+        self.input_callback_count.store(0, Ordering::Relaxed);
+        self.output_callback_count.store(0, Ordering::Relaxed);
 
         input_stream.play()?;
         output_stream.play()?;
@@ -1282,5 +1300,13 @@ impl AudioEngine {
 
     pub fn is_running(&self) -> bool {
         self.is_running.load(Ordering::SeqCst)
+    }
+
+    /// Get callback counts for diagnostics (input, output)
+    pub fn get_callback_counts(&self) -> (u64, u64) {
+        (
+            self.input_callback_count.load(Ordering::Relaxed),
+            self.output_callback_count.load(Ordering::Relaxed),
+        )
     }
 }
