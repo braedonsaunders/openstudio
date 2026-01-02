@@ -2,6 +2,18 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { User, Room, RoomSettings, BackingTrack, TrackQueue, RoomMessage, StemMixState } from '@/types';
 
+// World position for synced avatar movement
+export interface WorldPosition {
+  userId: string;
+  x: number;
+  y: number;
+  facingRight: boolean;
+  isWalking: boolean;
+  targetX?: number;
+  targetY?: number;
+  timestamp: number;
+}
+
 // Synced analysis data from master
 export interface SyncedAnalysisData {
   key: string | null;
@@ -42,6 +54,10 @@ interface RoomState {
 
   // Waveform data for current track
   waveformData: number[] | null;
+
+  // World view positions (synced between clients)
+  worldPositions: Map<string, WorldPosition>;
+  worldScene: string | null;
 
   // Actions
   setRoom: (room: Room) => void;
@@ -88,6 +104,12 @@ interface RoomState {
   // Waveform actions
   setWaveformData: (data: number[] | null) => void;
 
+  // World position actions
+  setWorldPosition: (userId: string, position: WorldPosition) => void;
+  updateWorldPosition: (userId: string, updates: Partial<WorldPosition>) => void;
+  removeWorldPosition: (userId: string) => void;
+  setWorldScene: (scene: string | null) => void;
+
   // Reset
   reset: () => void;
 }
@@ -124,6 +146,8 @@ export const useRoomStore = create<RoomState>()(
     audioLevels: new Map(),
     syncedAnalysis: null,
     waveformData: null,
+    worldPositions: new Map(),
+    worldScene: null,
 
     setRoom: (room) => set({ room }),
     setCurrentUser: (user) => set({ currentUser: user }),
@@ -419,6 +443,33 @@ export const useRoomStore = create<RoomState>()(
 
     setWaveformData: (data) => set({ waveformData: data }),
 
+    // World position actions
+    setWorldPosition: (userId, position) =>
+      set((state) => {
+        const worldPositions = new Map(state.worldPositions);
+        worldPositions.set(userId, position);
+        return { worldPositions };
+      }),
+
+    updateWorldPosition: (userId, updates) =>
+      set((state) => {
+        const worldPositions = new Map(state.worldPositions);
+        const existing = worldPositions.get(userId);
+        if (existing) {
+          worldPositions.set(userId, { ...existing, ...updates, timestamp: Date.now() });
+        }
+        return { worldPositions };
+      }),
+
+    removeWorldPosition: (userId) =>
+      set((state) => {
+        const worldPositions = new Map(state.worldPositions);
+        worldPositions.delete(userId);
+        return { worldPositions };
+      }),
+
+    setWorldScene: (scene) => set({ worldScene: scene }),
+
     reset: () =>
       set({
         room: null,
@@ -436,6 +487,8 @@ export const useRoomStore = create<RoomState>()(
         audioLevels: new Map(),
         syncedAnalysis: null,
         waveformData: null,
+        worldPositions: new Map(),
+        worldScene: null,
       }),
   }))
 );
