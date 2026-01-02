@@ -339,6 +339,12 @@ impl AudioEngine {
 
     /// Update track state with partial update - only fields that are Some will be changed
     pub fn update_track_state(&self, partial: PartialTrackState) {
+        // CRITICAL: Sync atomic is_monitoring FIRST - this is read in audio callback
+        // The atomic never fails, ensuring monitoring state is always current
+        if let Some(monitoring) = partial.monitoring_enabled {
+            self.is_monitoring.store(monitoring, Ordering::SeqCst);
+        }
+        // Then update the full state in RwLock (for state queries)
         if let Ok(mut proc_state) = self.processing_state.write() {
             proc_state.track_state.merge(&partial);
         }
@@ -848,7 +854,7 @@ impl AudioEngine {
         producer: &Arc<std::sync::Mutex<HeapProd<f32>>>,
         browser_stream_producer: Option<&Arc<std::sync::Mutex<HeapProd<f32>>>>,
         levels: &Arc<RwLock<AudioLevels>>,
-        _is_monitoring: &Arc<AtomicBool>, // Now unused - monitoring_enabled read from processing_state.track_state
+        is_monitoring: &Arc<AtomicBool>,
         monitoring_volume: &Arc<AtomicU32>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
         _effects_metering: &Arc<RwLock<EffectsMetering>>,
@@ -905,12 +911,13 @@ impl AudioEngine {
             }
         }
 
-        // Get monitoring state
+        // Get monitoring state - use atomic flag for monitoring_enabled (never fails!)
         let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
-        let (is_muted, monitoring_enabled) = if let Ok(state) = processing_state.try_read() {
-            (state.track_state.is_muted, state.track_state.monitoring_enabled)
+        let monitoring_enabled = is_monitoring.load(Ordering::Relaxed);
+        let is_muted = if let Ok(state) = processing_state.try_read() {
+            state.track_state.is_muted
         } else {
-            (false, false)
+            false // Default to not muted - let audio through
         };
 
         // DRY monitoring: hardware bypass for zero-latency monitoring
