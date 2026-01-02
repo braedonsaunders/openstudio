@@ -268,10 +268,8 @@ impl MoqRelay {
         transport.max_idle_timeout(Some(VarInt::from_u32(30_000).into())); // 30s idle timeout
         transport.keep_alive_interval(Some(self.config.keep_alive_interval));
 
-        let mut config = ClientConfig::new(Arc::new(
-            quinn::crypto::rustls::QuicClientConfig::try_from(crypto)
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?,
-        ));
+        // quinn 0.10 uses rustls ClientConfig directly
+        let mut config = ClientConfig::new(Arc::new(crypto));
         config.transport_config(Arc::new(transport));
 
         Ok(config)
@@ -1035,10 +1033,8 @@ impl WebTransportListener {
         let mut transport = TransportConfig::default();
         transport.max_idle_timeout(Some(VarInt::from_u32(30_000).into()));
 
-        let mut client_config = ClientConfig::new(Arc::new(
-            quinn::crypto::rustls::QuicClientConfig::try_from(crypto)
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?,
-        ));
+        // quinn 0.10 uses rustls ClientConfig directly
+        let mut client_config = ClientConfig::new(Arc::new(crypto));
         client_config.transport_config(Arc::new(transport));
         endpoint.set_default_client_config(client_config);
 
