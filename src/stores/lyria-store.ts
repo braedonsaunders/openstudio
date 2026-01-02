@@ -216,11 +216,11 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
       await currentSession.connect();
 
       // Store session timing info
+      // NOTE: Google Lyria API has a hard 10-minute limit, always use 600
       const sessionStartTime = currentSession.getSessionStartTime();
-      const maxSeconds = currentSession.getMaxSessionSeconds();
       set({
         sessionStartedAt: sessionStartTime,
-        maxSessionSeconds: maxSeconds,
+        maxSessionSeconds: 600, // Google's hard limit, not our app's rate limit
         isSessionExpired: false,
       });
 
