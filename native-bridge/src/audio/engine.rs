@@ -1078,14 +1078,26 @@ impl AudioEngine {
         let buffer_size_samples = self.config.buffer_size as u32;
         let sample_rate = self.config.sample_rate as u32;
 
+        // Log device capabilities
+        let device_input_channels = input_config.channels();
+        let device_output_channels = output_config.channels();
+        info!(
+            "ASIO device - input channels: {}, output channels: {}",
+            device_input_channels, device_output_channels
+        );
+
+        // For multitrack, we want all input channels but only 2 output channels
+        // DIAGNOSTIC: If ASIO is dying, try limiting input to 2 as well
+        let requested_input_channels = device_input_channels; // Change to .min(2) if ASIO issues persist
+
         let stream_input_config = cpal::StreamConfig {
-            channels: input_config.channels(),
+            channels: requested_input_channels,
             sample_rate: cpal::SampleRate(sample_rate),
             buffer_size: cpal::BufferSize::Fixed(buffer_size_samples),
         };
 
         let stream_output_config = cpal::StreamConfig {
-            channels: output_config.channels().min(2),
+            channels: device_output_channels.min(2),
             sample_rate: cpal::SampleRate(sample_rate),
             buffer_size: cpal::BufferSize::Fixed(buffer_size_samples),
         };
@@ -1095,8 +1107,9 @@ impl AudioEngine {
         let output_sample_format = output_config.sample_format();
 
         info!(
-            "ASIO config - input: {:?}, output: {:?}",
-            input_sample_format, output_sample_format
+            "ASIO stream config - input: {} ch {:?}, output: {} ch {:?}",
+            input_channels, input_sample_format,
+            stream_output_config.channels, output_sample_format
         );
 
         // Clone shared state for callbacks
@@ -1142,10 +1155,13 @@ impl AudioEngine {
                 // Pre-allocate ALL buffers BEFORE building stream
                 let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
                 let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
+                let input_cb_count = self.input_callback_count.clone();
 
                 device.build_input_stream(
                     &stream_input_config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
+                        input_cb_count.fetch_add(1, Ordering::Relaxed);
+
                         let mut conv_buf = conversion_buffer.borrow_mut();
                         let mut stereo_buf = stereo_buffer.borrow_mut();
 
@@ -1206,10 +1222,13 @@ impl AudioEngine {
             SampleFormat::I32 => {
                 // Pre-allocate conversion buffer BEFORE building stream
                 let float_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
+                let output_cb_count = self.output_callback_count.clone();
 
                 device.build_output_stream(
                     &stream_output_config,
                     move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
+                        output_cb_count.fetch_add(1, Ordering::Relaxed);
+
                         let mut float_buf = float_buffer.borrow_mut();
                         Self::process_output_i32(
                             data,
