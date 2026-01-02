@@ -32,17 +32,14 @@ let audioDataHandlerRegistered = false;
 let audioDataCounter = 0;
 
 const handleAudioDataStable = (data: BridgeAudioData) => {
-  // Log occasionally
-  if (audioDataCounter++ % 500 === 0) {
-    console.log('[useNativeBridge] handleAudioData - samples:', data.samples?.length,
-      'trackId:', data.trackId || 'default', 'hasEngine:', !!cachedAudioEngine);
-  }
+  audioDataCounter++;
 
   // Use cached engine reference for zero-overhead access
   // Falls back to window reference if cache is stale
   const engine = cachedAudioEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
   if (!engine) {
-    if (audioDataCounter % 500 === 1) {
+    // Only warn once at start
+    if (audioDataCounter === 1) {
       console.warn('[useNativeBridge] Audio dropped: engine not ready');
     }
     return;

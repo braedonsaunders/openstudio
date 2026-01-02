@@ -299,9 +299,10 @@ export class NativeBridge {
   private handleMessage(data: string): void {
     try {
       const msg = JSON.parse(data) as NativeMessage;
-      // Only log non-levels messages to avoid console spam
-      if (msg.type !== 'levels') {
-        console.log('[NativeBridge] Received message:', msg.type, msg);
+      // Only log significant messages (not high-frequency status updates)
+      const quietMessages = ['levels', 'streamHealth'];
+      if (!quietMessages.includes(msg.type)) {
+        console.log('[NativeBridge] Received message:', msg.type);
       }
 
       switch (msg.type) {
@@ -413,11 +414,9 @@ export class NativeBridge {
       const samplesBuffer = data.slice(headerSize);
       const samplesData = new Float32Array(samplesBuffer);
 
-      // Log occasionally to confirm binary messages are being received
-      if (this.binaryMessageCounter++ % 500 === 0) {
-        console.log('[NativeBridge] handleBinaryMessage - samples:', samplesData.length,
-          'trackId:', trackId || 'none',
-          'listeners:', this.listeners.get('audioData')?.size);
+      // Only log first message to confirm binary audio is working
+      if (this.binaryMessageCounter++ === 0) {
+        console.log('[NativeBridge] Binary audio streaming started');
       }
 
       // Emit audio data event

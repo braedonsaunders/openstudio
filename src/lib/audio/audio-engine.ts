@@ -1105,20 +1105,13 @@ export class AudioEngine {
     const processor = this.trackProcessors.get(trackId);
     if (processor) {
       processor.pushBridgeAudio(samples, timestamp);
-      // Log occasionally to confirm audio is flowing
-      if (this.trackAudioLogCounter++ % 500 === 0) {
-        const state = processor.getState();
-        console.log(`[AudioEngine] pushTrackBridgeAudio -> ${trackId.slice(-8)}`, {
-          samples: samples.length,
-          isArmed: state.isArmed,
-          isMuted: state.isMuted,
-          monitoringEnabled: state.monitoringEnabled,
-          inputSourceType: processor.getInputSourceType(),
-          usingSAB: processor.isUsingSharedBuffer(),
-        });
+      // Only log first push per track to confirm routing works
+      if (this.trackAudioLogCounter++ === 0) {
+        console.log(`[AudioEngine] Bridge audio routed to track ${trackId.slice(-8)}`);
       }
-    } else if (this.trackAudioLogCounter++ % 500 === 0) {
-      console.warn(`[AudioEngine] pushTrackBridgeAudio: no processor for track ${trackId.slice(-8)}`);
+    } else if (this.trackAudioLogCounter === 0) {
+      this.trackAudioLogCounter++;
+      console.warn(`[AudioEngine] No processor for track ${trackId.slice(-8)}`);
     }
   }
 
