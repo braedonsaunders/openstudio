@@ -248,31 +248,42 @@ export class TrackAudioProcessor {
     this.mediaStreamSource = this.audioContext.createMediaStreamSource(stream);
 
     const channelCount = config.channelConfig.channelCount;
-    const leftChannel = config.channelConfig.leftChannel;
-    const rightChannel = config.channelConfig.rightChannel;
+    const configLeftChannel = config.channelConfig.leftChannel;
+    const configRightChannel = config.channelConfig.rightChannel;
+
+    // Get actual channel count from stream and ensure valid bounds
+    const numChannels = stream.getAudioTracks()[0]?.getSettings().channelCount || 1;
+
+    // Clamp channel indices to valid range (0 to numChannels-1)
+    // This prevents "output index exceeds number of outputs" errors when
+    // a mono stream is captured but config specifies channel 1
+    const leftChannel = Math.min(configLeftChannel, numChannels - 1);
+    const rightChannel = configRightChannel !== undefined
+      ? Math.min(configRightChannel, numChannels - 1)
+      : leftChannel;
+
+    if (leftChannel !== configLeftChannel || rightChannel !== configRightChannel) {
+      console.warn(
+        `[TrackAudioProcessor] ${this.trackId} - Channel config adjusted: ` +
+        `requested L=${configLeftChannel}/R=${configRightChannel}, ` +
+        `using L=${leftChannel}/R=${rightChannel} (stream has ${numChannels} channels)`
+      );
+    }
+
+    this.channelSplitter = this.audioContext.createChannelSplitter(numChannels);
+    this.channelMerger = this.audioContext.createChannelMerger(2);
+    this.mediaStreamSource.connect(this.channelSplitter);
 
     if (channelCount === 1) {
-      // Mono: extract single channel and connect
-      const numChannels = stream.getAudioTracks()[0]?.getSettings().channelCount || 2;
-      this.channelSplitter = this.audioContext.createChannelSplitter(numChannels);
-      this.channelMerger = this.audioContext.createChannelMerger(2);
-
-      this.mediaStreamSource.connect(this.channelSplitter);
-      // Route selected channel to both L and R
+      // Mono: route selected channel to both L and R
       this.channelSplitter.connect(this.channelMerger, leftChannel, 0);
       this.channelSplitter.connect(this.channelMerger, leftChannel, 1);
-      this.channelMerger.connect(this.inputGainNode);
     } else {
       // Stereo: extract L/R channels
-      const numChannels = stream.getAudioTracks()[0]?.getSettings().channelCount || 2;
-      this.channelSplitter = this.audioContext.createChannelSplitter(numChannels);
-      this.channelMerger = this.audioContext.createChannelMerger(2);
-
-      this.mediaStreamSource.connect(this.channelSplitter);
       this.channelSplitter.connect(this.channelMerger, leftChannel, 0);
-      this.channelSplitter.connect(this.channelMerger, rightChannel ?? leftChannel, 1);
-      this.channelMerger.connect(this.inputGainNode);
+      this.channelSplitter.connect(this.channelMerger, rightChannel, 1);
     }
+    this.channelMerger.connect(this.inputGainNode);
 
     console.log(`[TrackAudioProcessor] ${this.trackId} - MediaStream input connected`, config);
   }
