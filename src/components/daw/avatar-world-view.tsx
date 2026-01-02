@@ -28,9 +28,8 @@ import {
 } from '@/components/world';
 import {
   useWorldVisibility,
-  useWalkingBehavior,
+  useVisibilityAwareAnimationFrame,
   useMusicalWorld,
-  usePositionBroadcast,
   usePositionReceiver,
   useStalePositionCleanup,
   useInterpolatedPosition,
@@ -190,12 +189,11 @@ function UserProfilePopup({
 }
 
 // ============================================
-// Walking Avatar (using shared WalkingEntity)
+// Walking Avatar (self-contained walking like homepage)
 // ============================================
 
 function DAWWalkingAvatar({
   user,
-  state,
   audioLevel,
   isCurrentUser,
   keyColor,
@@ -204,9 +202,11 @@ function DAWWalkingAvatar({
   containerHeight,
   musicalContext,
   audioLevels,
+  tempoMultiplier,
+  onPositionUpdate,
+  getOtherPositions,
 }: {
   user: User;
-  state: EntityState | WorldPosition;
   audioLevel: number;
   isCurrentUser: boolean;
   keyColor: string;
@@ -215,27 +215,167 @@ function DAWWalkingAvatar({
   containerHeight: number;
   musicalContext: MusicalContext;
   audioLevels: Map<string, number>;
+  tempoMultiplier: number;
+  onPositionUpdate?: (id: string, x: number, y: number) => void;
+  getOtherPositions?: (excludeId: string) => Array<{ x: number; y: number }>;
 }) {
   const [showPopup, setShowPopup] = useState(false);
   const popupRef = useRef<HTMLDivElement>(null);
   const instrumentType = user.instrument || 'other';
   const instrumentIcon = INSTRUMENT_ICONS[instrumentType.toLowerCase()] || INSTRUMENT_ICONS.other;
 
+  // Walking config
+  const config = DAW_WALKING_CONFIG;
+
+  // Internal walking state (like homepage WalkingCharacter)
+  const [walkState, setWalkState] = useState<EntityState>(() => {
+    const { walkableArea } = groundConfig;
+    const x = walkableArea.minX + Math.random() * (walkableArea.maxX - walkableArea.minX);
+    const y = walkableArea.minY + Math.random() * (walkableArea.maxY - walkableArea.minY);
+    return {
+      x,
+      y,
+      targetX: x,
+      targetY: y,
+      facingRight: Math.random() > 0.5,
+      isWalking: false,
+      isSettling: false,
+      walkTimer: 0,
+      idleTimer: config.idleDuration[0] + Math.random() * (config.idleDuration[1] - config.idleDuration[0]),
+      settlingTimer: 0,
+      timestamp: Date.now(),
+    };
+  });
+
+  // Position tracking for collision avoidance
+  useEffect(() => {
+    onPositionUpdate?.(user.id, walkState.x, walkState.y);
+  }, [user.id, walkState.x, walkState.y, onPositionUpdate]);
+
+  // Walking animation loop (runs continuously)
+  useVisibilityAwareAnimationFrame(
+    (deltaTime) => {
+      setWalkState((prev) => {
+        const { walkableArea } = groundConfig;
+        const effectiveSpeed = config.tempoInfluence
+          ? config.walkSpeed * tempoMultiplier
+          : config.walkSpeed;
+
+        if (prev.isWalking) {
+          const dx = prev.targetX - prev.x;
+          const dy = prev.targetY - prev.y;
+          const distance = Math.sqrt(dx * dx + dy * dy);
+
+          if (distance < 1 || prev.walkTimer <= 0) {
+            return {
+              ...prev,
+              x: distance < 1 ? prev.targetX : prev.x,
+              y: distance < 1 ? prev.targetY : prev.y,
+              isWalking: false,
+              isSettling: true,
+              settlingTimer: config.settlingDuration,
+              timestamp: Date.now(),
+            };
+          }
+
+          const moveX = (dx / distance) * effectiveSpeed * deltaTime;
+          const moveY = (dy / distance) * effectiveSpeed * deltaTime;
+          let newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
+          let newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
+
+          // Collision check
+          const otherPos = getOtherPositions?.(user.id) ?? [];
+          const wouldCollide = otherPos.some(other => {
+            const cdx = newX - other.x;
+            const cdy = newY - other.y;
+            return Math.sqrt(cdx * cdx + cdy * cdy) < config.minEntityDistance;
+          });
+
+          if (wouldCollide) {
+            return {
+              ...prev,
+              isWalking: false,
+              isSettling: true,
+              settlingTimer: config.settlingDuration,
+              timestamp: Date.now(),
+            };
+          }
+
+          return {
+            ...prev,
+            x: newX,
+            y: newY,
+            walkTimer: prev.walkTimer - deltaTime,
+            facingRight: dx > 0,
+            timestamp: Date.now(),
+          };
+        } else if (prev.isSettling) {
+          if (prev.settlingTimer <= 0) {
+            return {
+              ...prev,
+              isSettling: false,
+              idleTimer: config.idleDuration[0] + Math.random() * (config.idleDuration[1] - config.idleDuration[0]),
+              timestamp: Date.now(),
+            };
+          }
+          return { ...prev, settlingTimer: prev.settlingTimer - deltaTime };
+        } else {
+          // Idle - count down then start walking
+          if (prev.idleTimer <= 0) {
+            const maxStepX = 15;
+            const maxStepY = 12;
+            const otherPos = getOtherPositions?.(user.id) ?? [];
+
+            // Try to find a valid target
+            for (let attempt = 0; attempt < 8; attempt++) {
+              const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
+              const offsetY = (Math.random() - 0.3) * 2 * maxStepY;
+              let targetX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + offsetX));
+              let targetY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + offsetY));
+
+              // Check collision at target
+              const wouldCollide = otherPos.some(other => {
+                const dx = targetX - other.x;
+                const dy = targetY - other.y;
+                return Math.sqrt(dx * dx + dy * dy) < config.minEntityDistance;
+              });
+
+              if (!wouldCollide) {
+                return {
+                  ...prev,
+                  targetX,
+                  targetY,
+                  isWalking: true,
+                  facingRight: targetX > prev.x,
+                  walkTimer: config.walkDuration[0] + Math.random() * (config.walkDuration[1] - config.walkDuration[0]),
+                  timestamp: Date.now(),
+                };
+              }
+            }
+
+            // Couldn't find target, try again soon
+            return { ...prev, idleTimer: config.idleDuration[0] * 0.5 };
+          }
+
+          return { ...prev, idleTimer: prev.idleTimer - deltaTime };
+        }
+      });
+    },
+    true, // Always visible when rendered (like homepage)
+    [groundConfig, tempoMultiplier, user.id, getOtherPositions]
+  );
+
   // Click outside to close popup
   useEffect(() => {
     if (!showPopup) return;
-
     const handleClickOutside = (event: MouseEvent) => {
       if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
         setShowPopup(false);
       }
     };
-
-    // Delay to prevent immediate close on the same click
     const timeoutId = setTimeout(() => {
       document.addEventListener('mousedown', handleClickOutside);
     }, 10);
-
     return () => {
       clearTimeout(timeoutId);
       document.removeEventListener('mousedown', handleClickOutside);
@@ -245,7 +385,7 @@ function DAWWalkingAvatar({
   return (
     <WalkingEntity
       id={user.id}
-      state={state}
+      state={walkState}
       groundConfig={groundConfig}
       containerWidth={containerWidth}
       containerHeight={containerHeight}
@@ -257,7 +397,7 @@ function DAWWalkingAvatar({
       showGlow={true}
       glowColor={keyColor}
       isCurrentUser={isCurrentUser}
-      isRemote={'timestamp' in state && !isCurrentUser}
+      isRemote={false}
       onClick={() => setShowPopup(!showPopup)}
     >
       {/* Custom avatar content */}
@@ -265,7 +405,7 @@ function DAWWalkingAvatar({
         {/* Instrument icon + name above */}
         <div
           className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 whitespace-nowrap pointer-events-none"
-          style={{ transform: `translateX(-50%) scaleX(${state.facingRight ? 1 : -1})` }}
+          style={{ transform: `translateX(-50%) scaleX(${walkState.facingRight ? 1 : -1})` }}
         >
           <div className="text-white/80 scale-75">{instrumentIcon}</div>
           <span className="text-[10px] font-medium text-white/90">{user.name}</span>
@@ -273,7 +413,7 @@ function DAWWalkingAvatar({
         </div>
 
         {/* Avatar */}
-        <div style={{ transform: `scaleX(${state.facingRight ? 1 : -1})` }}>
+        <div style={{ transform: `scaleX(${walkState.facingRight ? 1 : -1})` }}>
           <UserAvatar userId={user.id} username={user.name} size={100} variant="fullBody" />
         </div>
 
@@ -476,32 +616,31 @@ export function AvatarWorldView({ users, currentUser, audioLevels, realtimeManag
     return userList;
   }, [users, currentUser]);
 
-  // Walking entities
-  const walkingEntities = useMemo(
-    () => allUsers.map(u => ({ id: u.id })),
-    [allUsers]
-  );
-
   // Tempo-based speed multiplier
   const tempoMultiplier = useMemo(() => {
     if (!isPlaying || tempo <= 0) return 1;
     return Math.max(0.5, Math.min(1.5, tempo / 120));
   }, [tempo, isPlaying]);
 
-  // Walking behavior with shared hook
-  const { positions } = useWalkingBehavior(
-    walkingEntities,
-    groundConfig,
-    DAW_WALKING_CONFIG,
-    audioLevels,
-    tempoMultiplier,
-    isVisible
-  );
+  // Position tracking for collision avoidance (each avatar manages its own walking)
+  const positionsRef = useRef<Map<string, { x: number; y: number }>>(new Map());
 
-  // Position sync: broadcast local user's position
-  const localPosition = currentUser ? positions.get(currentUser.id) : null;
+  const updatePosition = useCallback((id: string, x: number, y: number) => {
+    positionsRef.current.set(id, { x, y });
+  }, []);
+
+  const getOtherPositions = useCallback((excludeId: string) => {
+    const result: Array<{ x: number; y: number }> = [];
+    positionsRef.current.forEach((pos, id) => {
+      if (id !== excludeId) {
+        result.push(pos);
+      }
+    });
+    return result;
+  }, []);
+
+  // Position sync: broadcast local user's position (simplified - broadcast handled by avatar)
   const broadcastFn = realtimeManager?.broadcastWorldPosition ?? null;
-  usePositionBroadcast(localPosition ?? null, currentUser?.id ?? null, broadcastFn, isVisible);
 
   // Position sync: receive remote positions
   const { handlePosition } = usePositionReceiver(currentUser?.id ?? null, null, isVisible);
@@ -569,18 +708,11 @@ export function AvatarWorldView({ users, currentUser, audioLevels, realtimeManag
         {/* Avatars */}
         {isVisible && allUsers.map((user) => {
           const isLocal = user.id === currentUser?.id;
-          const localState = positions.get(user.id);
-          const remoteState = remotePositions.get(user.id);
-
-          // Use local state for current user, remote state for others
-          const state = isLocal ? localState : (remoteState || localState);
-          if (!state) return null;
 
           return (
             <DAWWalkingAvatar
               key={user.id}
               user={user}
-              state={state}
               audioLevel={audioLevels.get(user.id) || 0}
               isCurrentUser={isLocal}
               keyColor={keyColor}
@@ -589,6 +721,9 @@ export function AvatarWorldView({ users, currentUser, audioLevels, realtimeManag
               containerHeight={containerSize.height}
               musicalContext={musicalContext}
               audioLevels={audioLevels}
+              tempoMultiplier={tempoMultiplier}
+              onPositionUpdate={updatePosition}
+              getOtherPositions={getOtherPositions}
             />
           );
         })}
