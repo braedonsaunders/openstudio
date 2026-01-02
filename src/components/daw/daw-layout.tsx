@@ -41,7 +41,7 @@ import { TeleprompterView } from './teleprompter-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
-import { authFetch } from '@/lib/auth-fetch';
+import { authFetch, authFetchJson } from '@/lib/auth-fetch';
 import type { BackingTrack, StemType, QualityPresetName, OpusEncodingSettings } from '@/types';
 import type { SongTrackReference } from '@/types/songs';
 import type { LoopTrackState } from '@/types/loops';
@@ -916,14 +916,10 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     console.log('Extracting audio from YouTube:', video.id);
 
     try {
-      const response = await fetch('/api/youtube/extract', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          videoId: video.id,
-          title: video.title,
-          artist: video.channelTitle,
-        }),
+      const response = await authFetchJson('/api/youtube/extract', 'POST', {
+        videoId: video.id,
+        title: video.title,
+        artist: video.channelTitle,
       });
 
       if (!response.ok) {
