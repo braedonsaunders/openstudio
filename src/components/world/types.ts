@@ -3,6 +3,9 @@
 import type { SceneType, SceneGroundConfig } from './scene-config';
 import type { IdleAnimation } from '@/types/avatar';
 
+// Re-export IdleAnimation for convenience
+export type { IdleAnimation } from '@/types/avatar';
+
 // Entity position state (shared between local and remote)
 export interface EntityPosition {
   x: number;           // 0-100 percent
