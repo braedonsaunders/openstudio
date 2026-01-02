@@ -380,6 +380,8 @@ export function MultiTrackTimeline({
 
   // Waveform data cache by track URL
   const [waveformDataCache, setWaveformDataCache] = useState<Map<string, number[]>>(new Map());
+  // Track which URLs are currently being processed to prevent duplicate fetches
+  const processingWaveformsRef = useRef<Set<string>>(new Set());
 
   // Gridlines visibility
   const [showGridlines, setShowGridlines] = useState(true);
@@ -516,8 +518,10 @@ export function MultiTrackTimeline({
 
   // Generate waveforms for audio tracks that don't have waveform data yet
   useEffect(() => {
+    // Filter to tracks that need waveforms and aren't already being processed
     const audioTracks = unifiedTracks.filter(
-      (track) => track.type === 'audio' && track.audioUrl && !waveformDataCache.has(track.audioUrl)
+      (track) => track.type === 'audio' && track.audioUrl &&
+        !processingWaveformsRef.current.has(track.audioUrl)
     );
 
     if (audioTracks.length === 0) return;
@@ -526,6 +530,9 @@ export function MultiTrackTimeline({
     audioTracks.forEach((track) => {
       if (!track.audioUrl) return;
       const url = track.audioUrl;
+
+      // Mark as processing to prevent duplicate fetches
+      processingWaveformsRef.current.add(url);
 
       generateWaveformFromUrl(url, 200)
         .then((waveform) => {
@@ -539,9 +546,11 @@ export function MultiTrackTimeline({
         })
         .catch((err) => {
           console.error('[MultiTrackTimeline] Failed to generate waveform:', err);
+          // Remove from processing on error so it can be retried
+          processingWaveformsRef.current.delete(url);
         });
     });
-  }, [unifiedTracks, waveformDataCache]);
+  }, [unifiedTracks]);
 
   // Track container size with ResizeObserver
   useEffect(() => {
