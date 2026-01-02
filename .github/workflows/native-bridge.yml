@@ -56,7 +56,25 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y libasound2-dev libjack-jackd2-dev
+          sudo apt-get install -y libasound2-dev libjack-jackd2-dev libopus-dev pkg-config
+
+      - name: Install macOS dependencies
+        if: runner.os == 'macOS'
+        run: |
+          brew install opus pkg-config
+
+      - name: Install Windows dependencies
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Install vcpkg and opus
+          git clone https://github.com/Microsoft/vcpkg.git C:\vcpkg
+          C:\vcpkg\bootstrap-vcpkg.bat
+          C:\vcpkg\vcpkg install opus:x64-windows
+          echo "VCPKG_ROOT=C:\vcpkg" >> $env:GITHUB_ENV
+          echo "LIBOPUS_STATIC=1" >> $env:GITHUB_ENV
+          # Add vcpkg to pkg-config path
+          echo "PKG_CONFIG_PATH=C:\vcpkg\installed\x64-windows\lib\pkgconfig" >> $env:GITHUB_ENV
 
       - name: Check ASIO SDK exists (Windows)
         if: runner.os == 'Windows'

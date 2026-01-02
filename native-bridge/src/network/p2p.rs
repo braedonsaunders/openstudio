@@ -219,13 +219,17 @@ impl P2PNetwork {
         let hash = blake3::hash(room.room_secret.as_bytes());
         secret_hash.copy_from_slice(hash.as_bytes());
 
+        // Generate ephemeral key pair for this session
+        let secret = x25519_dalek::StaticSecret::random_from_rng(&mut rand::thread_rng());
+        let public = x25519_dalek::PublicKey::from(&secret);
+
         let handshake = HandshakeMessage {
             protocol_version: 1,
             user_id: local_id,
             user_name: local_name,
             room_id: room.room_id,
             room_secret_hash: secret_hash,
-            public_key: [0u8; 32], // TODO: Implement key exchange
+            public_key: *public.as_bytes(),
             has_native_bridge: true,
         };
 
@@ -323,7 +327,8 @@ impl P2PNetwork {
 
         match packet.message_type {
             OspMessageType::AudioFrame => {
-                self.handle_audio_frame(&packet.payload).await?;
+                // Use sequence and timestamp from packet header for jitter buffer
+                self.handle_audio_frame_with_header(packet.sequence, packet.timestamp, &packet.payload).await?;
             }
             OspMessageType::AudioLevels => {
                 self.handle_audio_levels(&packet.payload).await?;
@@ -361,8 +366,8 @@ impl P2PNetwork {
         Ok(())
     }
 
-    /// Handle incoming audio frame
-    async fn handle_audio_frame(&self, payload: &[u8]) -> Result<()> {
+    /// Handle incoming audio frame with sequence tracking
+    async fn handle_audio_frame_with_header(&self, header_seq: u16, header_ts: u16, payload: &[u8]) -> Result<()> {
         let frame = AudioFrameMessage::from_bytes(payload)
             .ok_or_else(|| NetworkError::Serialization("Invalid audio frame".to_string()))?;
 
@@ -373,7 +378,13 @@ impl P2PNetwork {
         } else {
             // PCM (convert from bytes)
             frame.data.chunks(4)
-                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                .filter_map(|b| {
+                    if b.len() == 4 {
+                        Some(f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                    } else {
+                        None
+                    }
+                })
                 .collect()
         };
 
@@ -388,10 +399,8 @@ impl P2PNetwork {
                 );
             }
 
-            // Push to jitter buffer (sequence from header would be better but we don't have it here)
-            let sequence = 0u16; // TODO: Extract from somewhere
-            let timestamp = 0u16;
-            peer.push_audio(frame.track_id, sequence, timestamp, samples.clone());
+            // Push to jitter buffer with sequence from packet header
+            peer.push_audio(frame.track_id, header_seq, header_ts, samples.clone());
 
             // Emit event
             if let Some(tx) = self.event_tx.read().as_ref() {
@@ -404,6 +413,12 @@ impl P2PNetwork {
         }
 
         Ok(())
+    }
+
+    /// Handle incoming audio frame (legacy without header info)
+    async fn handle_audio_frame(&self, payload: &[u8]) -> Result<()> {
+        // Use 0 for sequence/timestamp when header info not available
+        self.handle_audio_frame_with_header(0, 0, payload).await
     }
 
     /// Handle audio levels message
@@ -532,12 +547,41 @@ impl P2PNetwork {
             self.peers.add(new_peer)
         };
 
+        // Build current room state for new peer
+        let room_state = {
+            let clock_state = self.clock.state();
+            let peers: Vec<(u32, String, String, bool)> = self.peers.all()
+                .iter()
+                .map(|p| (p.id, p.user_id.clone(), p.user_name.clone(), p.has_native_bridge))
+                .collect();
+            let tracks: Vec<(u32, u8, String, bool, f32, f32)> = self.peers.all()
+                .iter()
+                .flat_map(|p| {
+                    p.all_tracks().iter().map(|t| {
+                        (p.id, t.track_id, t.name.clone(), t.muted, t.volume, t.pan)
+                    }).collect::<Vec<_>>()
+                })
+                .collect();
+
+            RoomStateMessage {
+                room_id: room.room_id.clone(),
+                bpm: clock_state.bpm,
+                time_sig_num: clock_state.time_signature.0,
+                time_sig_denom: clock_state.time_signature.1,
+                beat_position: clock_state.beat_position,
+                is_playing: false,
+                master_user_id: if self.clock.is_master() { *self.local_peer_id.read() } else { 0 },
+                peers,
+                tracks,
+            }
+        };
+
         // Send handshake ack
         let ack = HandshakeAckMessage {
             success: true,
             error: None,
             assigned_user_id: Some(peer_id),
-            room_state: None, // TODO: Include room state for new peers
+            room_state: Some(room_state),
             is_master: self.clock.is_master(),
         };
 
