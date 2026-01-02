@@ -123,7 +123,7 @@ interface SongsState {
   // Track management within songs
   addTrackToSong: (songId: string, track: Omit<SongTrackReference, 'id' | 'position'>) => void;
   removeTrackFromSong: (songId: string, trackRefId: string) => void;
-  updateTrackInSong: (songId: string, trackRefId: string, changes: Partial<SongTrackReference>) => void;
+  updateTrackInSong: (songId: string, trackRefId: string, changes: Partial<SongTrackReference>, skipPersist?: boolean) => void;
   reorderTracksInSong: (songId: string, trackRefIds: string[]) => void;
 
   // Bulk operations
@@ -342,7 +342,7 @@ export const useSongsStore = create<SongsState>((set, get) => ({
     persistSong(updatedSong);
   },
 
-  updateTrackInSong: (songId: string, trackRefId: string, changes: Partial<SongTrackReference>) => {
+  updateTrackInSong: (songId: string, trackRefId: string, changes: Partial<SongTrackReference>, skipPersist = false) => {
     const { songs } = get();
     const song = songs.get(songId);
     if (!song) return;
@@ -361,8 +361,10 @@ export const useSongsStore = create<SongsState>((set, get) => ({
     newSongs.set(songId, updatedSong);
     set({ songs: newSongs });
 
-    // Persist to server (debounced)
-    persistSong(updatedSong);
+    // Persist to server (debounced) - skip for transient changes like mute/solo
+    if (!skipPersist) {
+      persistSong(updatedSong);
+    }
   },
 
   reorderTracksInSong: (songId: string, trackRefIds: string[]) => {
