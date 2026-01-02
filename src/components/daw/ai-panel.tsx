@@ -218,13 +218,14 @@ export function AIPanel() {
   // NOTE: BPM/key sync to Lyria is now handled by useSessionTempoSync hook with debouncing
   // Do NOT add a sync here as it would bypass the debounce
 
-  // Live update Lyria session when sliders change (only when playing)
+  // Live update Lyria session when sliders change (works when connected/playing/paused)
   useEffect(() => {
     const lyriaStore = useLyriaStore.getState();
-    if (lyriaStore.sessionState !== 'playing') return;
+    const { sessionState, session } = lyriaStore;
 
-    const session = lyriaStore.session;
-    if (!session) return;
+    // Update for any active session state
+    const isActiveSession = sessionState === 'playing' || sessionState === 'connected' || sessionState === 'paused';
+    if (!isActiveSession || !session) return;
 
     session.setDensity(density);
     session.setBrightness(brightness);
@@ -233,19 +234,19 @@ export function AIPanel() {
     session.setTemperature(temperature * 3); // Scale to 0-3
   }, [density, brightness, drums, bass, temperature]);
 
-  // Live update prompts when style/mood changes (only when playing)
+  // Live update prompts when style/mood changes (works when connected/playing/paused)
   // Debounce custom prompt changes to avoid sending on every keystroke
   useEffect(() => {
     const lyriaStore = useLyriaStore.getState();
-    if (lyriaStore.sessionState !== 'playing') return;
+    const { sessionState, session } = lyriaStore;
 
-    const session = lyriaStore.session;
-    if (!session) return;
+    // Update for any active session state
+    const isActiveSession = sessionState === 'playing' || sessionState === 'connected' || sessionState === 'paused';
+    if (!isActiveSession || !session) return;
 
     const prompt = customPrompt.trim() || buildPrompt(selectedStyle, selectedMood || undefined);
 
-    // Debounce custom prompt changes (500ms) to avoid spamming the API
-    // Style/mood changes are immediate since they're discrete selections
+    // Debounce prompt changes (500ms) to avoid spamming the API
     const timeoutId = setTimeout(() => {
       session.setPrompts(prompt);
     }, 500);

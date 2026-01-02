@@ -483,9 +483,10 @@ export class LyriaSession {
       this.prompts = prompts.filter(p => p.text.trim().length > 0);
     }
 
-    // If already playing, send new prompts immediately for smooth transition
+    // Send new prompts if connected (works for playing, connected, or paused states)
     // Skip if no valid prompts to avoid API error for empty weighted_prompts
-    if (this.state === 'playing' && this.ws?.readyState === WebSocket.OPEN && this.prompts.length > 0) {
+    const isActiveSession = this.state === 'playing' || this.state === 'connected' || this.state === 'paused';
+    if (isActiveSession && this.ws?.readyState === WebSocket.OPEN && this.prompts.length > 0) {
       this.sendMessage({
         client_content: {
           weighted_prompts: this.prompts.map(p => ({
