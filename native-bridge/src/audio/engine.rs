@@ -20,14 +20,10 @@ use ringbuf::{
 };
 use std::cell::RefCell;
 use std::collections::HashMap;
-use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
-use tracing::{error, info, warn};
-
-/// Debug frame counter for periodic logging
-static INPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
-static OUTPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
+use tracing::{error, info};
 
 // NOTE: Thread-locals were REMOVED because they allocate on first access,
 // which happens INSIDE audio callbacks. This kills ASIO.
@@ -44,9 +40,9 @@ const REMOTE_RING_BUFFER_SIZE: usize = 16384;
 /// Ring buffer size for backing track
 const BACKING_RING_BUFFER_SIZE: usize = 32768;
 
-/// Ring buffer size for streaming to browser (larger for network jitter)
-/// Needs to handle WebSocket send delays - 500ms at 48kHz stereo = 48000 samples
-const BROWSER_STREAM_BUFFER_SIZE: usize = 49152;
+/// Ring buffer size for streaming to browser (power-of-two for efficiency)
+/// 131072 samples = ~1.5 seconds at 44100Hz stereo - handles WebSocket jitter
+const BROWSER_STREAM_BUFFER_SIZE: usize = 131072;
 
 /// Audio engine configuration
 #[derive(Debug, Clone)]
@@ -823,10 +819,7 @@ impl AudioEngine {
         processing_state: &Arc<RwLock<AudioProcessingState>>,
         _effects_metering: &Arc<RwLock<EffectsMetering>>,
     ) {
-        let frame_num = INPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-        // CRITICAL: Never log on frame 0! Logging allocates memory which kills ASIO.
-        // Start logging only after frame 7500 to let ASIO stabilize.
-        let should_log = frame_num >= 7500 && frame_num % 7500 == 0;
+        // NO LOGGING IN THIS FUNCTION - logging allocates memory which kills ASIO
 
         // Get channel config
         let (left_ch, right_ch, is_stereo) = if let Ok(state) = processing_state.try_read() {
@@ -837,24 +830,6 @@ impl AudioEngine {
         } else {
             (0, 1, true)
         };
-
-        if should_log {
-            info!(
-                "[INPUT] Frame {} | data_len={} input_ch={} left_ch={} right_ch={} stereo={}",
-                frame_num,
-                data.len(),
-                input_channels,
-                left_ch,
-                right_ch,
-                is_stereo
-            );
-        }
-
-        // Check if we're getting any signal from raw input
-        let raw_peak: f32 = data.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
-        if should_log {
-            info!("[INPUT] Raw input peak: {:.6}", raw_peak);
-        }
 
         // Clear and reuse the pre-allocated stereo buffer (no allocation!)
         stereo_buffer.clear();
@@ -881,118 +856,44 @@ impl AudioEngine {
             lvl.input_peak = lvl.input_peak.max(level);
         }
 
-        if should_log {
-            info!(
-                "[INPUT] Extracted stereo peak: {:.6} | buffer_size={}",
-                level,
-                stereo_buffer.len()
-            );
-        }
-
-        // Stream RAW audio to browser for WET monitoring (BEFORE effects)
-        // The browser will apply effects using Web Audio, ensuring single effects codebase
-        // ALWAYS stream to browser when audio is running - the browser's audio chain
-        // has its own gain gates (armGain, monitorGain) to control output
+        // Stream audio to browser (browser applies effects via Web Audio)
         if let Some(browser_prod) = browser_stream_producer {
             if let Ok(mut prod) = browser_prod.try_lock() {
-                let available_space = prod.vacant_len();
-                let pushed = prod.push_slice(stereo_buffer);
-                if should_log || pushed < stereo_buffer.len() {
-                    info!(
-                        "[INPUT] Browser stream: pushed={}/{} space_was={}",
-                        pushed,
-                        stereo_buffer.len(),
-                        available_space
-                    );
-                }
-            } else if should_log {
-                warn!("[INPUT] Browser stream: failed to acquire lock!");
+                let _ = prod.push_slice(stereo_buffer);
             }
-        } else if should_log {
-            warn!("[INPUT] Browser stream: producer is None!");
         }
 
-        // Get monitoring volume from atomic (can be updated independently)
+        // Get monitoring state
         let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
+        let (is_muted, monitoring_enabled) = if let Ok(state) = processing_state.try_read() {
+            (state.track_state.is_muted, state.track_state.monitoring_enabled)
+        } else {
+            (false, false)
+        };
 
-        // Get all track state including monitoring_enabled from processing state
-        // This is updated by UpdateTrackState messages from the browser
-        let (is_armed, is_muted, monitoring_enabled) =
-            if let Ok(state) = processing_state.try_read() {
-                (
-                    state.track_state.is_armed,
-                    state.track_state.is_muted,
-                    state.track_state.monitoring_enabled,
-                )
-            } else {
-                (false, false, false)
-            };
-
-        // DRY monitoring (native bridge passthrough) is controlled by:
-        // - monitoring_enabled (Direct Monitoring toggle) - user wants to hear hardware bypass
-        // - !is_muted - track isn't muted
-        // Note: ARM is NOT required for DRY monitoring - it's hardware bypass for hearing yourself
-        // ARM only affects software monitoring (browser WET path with effects)
+        // DRY monitoring: hardware bypass for zero-latency monitoring
         let should_monitor = monitoring_enabled && !is_muted;
 
-        if should_log {
-            info!("[INPUT] DRY Monitoring: enabled={} muted={} -> should_monitor={} (armed={} for info only)",
-                  monitoring_enabled, is_muted, should_monitor, is_armed);
-        }
-
-        // If monitoring enabled, do DRY monitoring (no effects - effects are in browser)
-        // This provides zero-latency monitoring of raw input
         if should_monitor {
-            let (gain, volume) = if let Ok(state) = processing_state.try_read() {
-                // Apply input gain and monitoring volume only
+            if let Ok(state) = processing_state.try_read() {
                 let gain = state.track_state.input_gain_linear();
                 let volume = state.track_state.volume;
                 for sample in stereo_buffer.iter_mut() {
                     *sample *= gain * volume * mon_vol;
                 }
-                (gain, volume)
-            } else {
-                if should_log {
-                    warn!("[INPUT] Could not acquire processing state lock!");
-                }
-                (1.0, 1.0)
-            };
-
-            // Calculate level after processing
-            let processed_peak: f32 = stereo_buffer
-                .iter()
-                .map(|s| s.abs())
-                .fold(0.0_f32, f32::max);
-            if should_log {
-                info!(
-                    "[INPUT] After processing: gain={:.2} vol={:.2} peak={:.6}",
-                    gain, volume, processed_peak
-                );
             }
 
-            // Push to ring buffer
-            let mut pushed = 0;
+            // Push to output ring buffer
             if let Ok(mut prod) = producer.try_lock() {
                 for sample in stereo_buffer.iter() {
-                    if prod.try_push(*sample).is_ok() {
-                        pushed += 1;
-                    }
+                    let _ = prod.try_push(*sample);
                 }
-            } else if should_log {
-                warn!("[INPUT] Could not acquire producer lock!");
             }
-
-            if should_log {
-                info!("[INPUT] Pushed {} samples to ring buffer", pushed);
-            }
-        } else if should_log {
-            info!("[INPUT] Monitoring DISABLED - not sending to output");
         }
     }
 
     /// Process output audio (mix all sources)
-    /// NOTE: Remote user levels are NOT tracked inside this callback to avoid String allocations
-    /// that would kill ASIO. Audio mixing still works - just no per-user level metering.
+    /// NO LOGGING IN THIS FUNCTION - logging allocates memory which kills ASIO
     fn process_output_f32(
         data: &mut [f32],
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
@@ -1001,57 +902,27 @@ impl AudioEngine {
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
-        let frame_num = OUTPUT_FRAME_COUNT.fetch_add(1, Ordering::Relaxed);
-        // CRITICAL: Never log on frame 0! Logging allocates memory which kills ASIO.
-        let should_log = frame_num >= 7500 && frame_num % 7500 == 0;
-
-        if should_log {
-            info!(
-                "[OUTPUT] Frame {} | output_buffer_len={}",
-                frame_num,
-                data.len()
-            );
-        }
-
         // Clear output
         for sample in data.iter_mut() {
             *sample = 0.0;
         }
 
-        // Mix local audio
-        let mut local_samples = 0;
-        let mut local_peak = 0.0_f32;
+        // Mix local audio (from DRY monitoring)
         if let Ok(mut cons) = local_consumer.try_lock() {
             for sample in data.iter_mut() {
-                let s = cons.try_pop().unwrap_or(0.0);
-                if s != 0.0 {
-                    local_samples += 1;
-                    local_peak = local_peak.max(s.abs());
-                }
-                *sample += s;
+                *sample += cons.try_pop().unwrap_or(0.0);
             }
-        } else if should_log {
-            warn!("[OUTPUT] Could not acquire local_consumer lock!");
         }
 
-        if should_log {
-            info!(
-                "[OUTPUT] Local audio: non_zero_samples={} peak={:.6}",
-                local_samples, local_peak
-            );
-        }
-
-        // Mix remote user audio (no level tracking to avoid String allocations)
+        // Mix remote user audio
         if let Ok(buffers) = remote_buffers.try_read() {
             for (_user_id, buffer) in buffers.iter() {
                 if buffer.is_muted {
                     continue;
                 }
-
                 if let Ok(mut cons) = buffer.consumer.try_lock() {
                     for sample in data.iter_mut() {
-                        let s = cons.try_pop().unwrap_or(0.0) * buffer.volume;
-                        *sample += s;
+                        *sample += cons.try_pop().unwrap_or(0.0) * buffer.volume;
                     }
                 }
             }
@@ -1060,13 +931,7 @@ impl AudioEngine {
         // Mix backing track
         let backing_volume = processing_state
             .try_read()
-            .map(|s| {
-                if s.backing_track.is_playing {
-                    s.backing_track.volume
-                } else {
-                    0.0
-                }
-            })
+            .map(|s| if s.backing_track.is_playing { s.backing_track.volume } else { 0.0 })
             .unwrap_or(0.0);
 
         let mut backing_level = 0.0_f32;
@@ -1081,16 +946,9 @@ impl AudioEngine {
         }
 
         // Apply master volume
-        let master_vol = processing_state
-            .try_read()
-            .map(|s| s.master_volume)
-            .unwrap_or(1.0);
+        let master_vol = processing_state.try_read().map(|s| s.master_volume).unwrap_or(1.0);
         for sample in data.iter_mut() {
             *sample *= master_vol;
-        }
-
-        if should_log {
-            info!("[OUTPUT] Master volume: {:.2}", master_vol);
         }
 
         // Soft clip to prevent harsh clipping
@@ -1098,24 +956,12 @@ impl AudioEngine {
             *sample = sample.tanh();
         }
 
-        // Calculate output level
+        // Update output level for metering
         let level = data.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
         if let Ok(mut lvl) = levels.try_write() {
             lvl.output_level = level;
             lvl.output_peak = lvl.output_peak.max(level);
-            // remote_levels is now updated in the REMOTE_LEVELS_BUFFER block above
             lvl.backing_level = backing_level;
-        }
-
-        if should_log {
-            info!("[OUTPUT] Final output peak: {:.6}", level);
-            // Log first 8 samples without allocation (use fixed array access)
-            if data.len() >= 8 {
-                info!(
-                    "[OUTPUT] First 8 samples: [{:.6}, {:.6}, {:.6}, {:.6}, {:.6}, {:.6}, {:.6}, {:.6}]",
-                    data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
-                );
-            }
         }
     }
 
