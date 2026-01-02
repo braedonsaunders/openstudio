@@ -498,34 +498,6 @@ export interface LyriaSessionEvents {
   onConfigApplied: (config: LyriaConfig) => void;
 }
 
-// AudioDec (Facebook SAM Audio) Types - Stem Separation & Audio Manipulation
-export type AudioDecStemType = 'vocals' | 'drums' | 'bass' | 'guitar' | 'piano' | 'strings' | 'other';
-
-export interface AudioDecConfig {
-  audioUrl: string;
-  separationType: 'stems' | 'vocal-removal' | 'music-removal';
-  outputFormat?: 'wav' | 'mp3' | 'flac';
-  quality?: 'fast' | 'balanced' | 'high';
-  stemTypes?: AudioDecStemType[];
-}
-
-export interface AudioDecResult {
-  jobId: string;
-  status: 'queued' | 'processing' | 'complete' | 'error';
-  stems?: {
-    [key in AudioDecStemType]?: string;
-  };
-  processingTime?: number;
-  error?: string;
-}
-
-export interface AudioDecProgress {
-  stage: 'uploading' | 'analyzing' | 'separating' | 'encoding' | 'complete';
-  progress: number;
-  message: string;
-  currentStem?: AudioDecStemType;
-}
-
 // Text-to-Song Modification Types
 export interface TextToSongModification {
   audioUrl: string;

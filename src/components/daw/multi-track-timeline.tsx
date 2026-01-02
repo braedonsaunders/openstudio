@@ -27,7 +27,11 @@ import {
   MoreHorizontal,
   Pencil,
   Grid3X3,
+  Wand2,
+  Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import type { BackingTrack } from '@/types';
 import type { SongTrackReference } from '@/types/songs';
 import type { MidiNote, LoopDefinition, LoopTrackState } from '@/types/loops';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
@@ -369,6 +373,10 @@ export function MultiTrackTimeline({
     loopId: null,
     loopTrackId: null,
   });
+
+  // Stem separation state
+  const [separatingTrackId, setSeparatingTrackId] = useState<string | null>(null);
+  const [separationProgress, setSeparationProgress] = useState(0);
 
   // Waveform data cache by track URL
   const [waveformDataCache, setWaveformDataCache] = useState<Map<string, number[]>>(new Map());
@@ -890,6 +898,98 @@ export function MultiTrackTimeline({
 
     closeContextMenu();
   }, [contextMenu.trackRef, loopTracks, closeContextMenu]);
+
+  // Stem separation handler - separates audio into vocals, drums, bass, other
+  const handleSeparateStems = useCallback(async () => {
+    if (!contextMenu.trackRef || contextMenu.trackRef.type !== 'audio') return;
+
+    const trackId = contextMenu.trackRef.trackId;
+    const audioTrack = queue.tracks.find((t) => t.id === trackId);
+    if (!audioTrack?.url) {
+      toast.error('Cannot separate stems: audio URL not found');
+      closeContextMenu();
+      return;
+    }
+
+    closeContextMenu();
+    setSeparatingTrackId(contextMenu.trackRef.id);
+    setSeparationProgress(0);
+
+    try {
+      // Start stem separation
+      const response = await fetch('/api/stems/separate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trackId: trackId,
+          trackUrl: audioTrack.url,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start stem separation');
+      }
+
+      const { jobId } = await response.json();
+
+      // Poll for completion
+      let complete = false;
+      while (!complete) {
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const statusRes = await fetch(`/api/stems/status/${jobId}`);
+        const status = await statusRes.json();
+
+        setSeparationProgress(status.progress);
+
+        if (status.status === 'completed' && status.stems) {
+          complete = true;
+
+          // Create new audio assets for each stem
+          const stemNames = ['vocals', 'drums', 'bass', 'other'] as const;
+          const currentSongLocal = useSongsStore.getState().getCurrentSong();
+
+          for (const stemName of stemNames) {
+            const stemUrl = status.stems[stemName];
+            if (!stemUrl) continue;
+
+            // Create a new backing track for this stem
+            const stemTrack: BackingTrack = {
+              id: `${trackId}-${stemName}`,
+              name: `${audioTrack.name} (${stemName.charAt(0).toUpperCase() + stemName.slice(1)})`,
+              artist: audioTrack.artist,
+              duration: audioTrack.duration,
+              url: stemUrl,
+              uploadedBy: 'stem-separation',
+              uploadedAt: new Date().toISOString(),
+            };
+
+            // Add to queue (asset library)
+            useRoomStore.getState().addToQueue(stemTrack);
+
+            // Add to current song timeline at same position as original
+            if (currentSongLocal) {
+              useSongsStore.getState().addTrackToSong(currentSongLocal.id, {
+                type: 'audio',
+                trackId: stemTrack.id,
+                startOffset: contextMenu.trackRef?.startOffset || 0,
+              });
+            }
+          }
+
+          toast.success(`Separated "${audioTrack.name}" into 4 stems`);
+        } else if (status.status === 'failed') {
+          throw new Error(status.error || 'Stem separation failed');
+        }
+      }
+    } catch (error) {
+      console.error('Stem separation error:', error);
+      toast.error(`Stem separation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSeparatingTrackId(null);
+      setSeparationProgress(0);
+    }
+  }, [contextMenu.trackRef, queue.tracks, closeContextMenu]);
 
   // Toggle mute for all clips in a row
   const handleRowMute = useCallback((row: { clips: typeof unifiedTracks; muted: boolean }) => {
@@ -1698,6 +1798,17 @@ export function MultiTrackTimeline({
           <div className="px-3 py-1.5 text-xs text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800 truncate">
             {contextMenu.trackName}
           </div>
+
+          {/* Separate Stems - only shown for audio clips */}
+          {contextMenu.trackRef?.type === 'audio' && (
+            <button
+              onClick={handleSeparateStems}
+              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors text-indigo-600 dark:text-indigo-400"
+            >
+              <Wand2 className="w-4 h-4" />
+              <span>Separate Stems</span>
+            </button>
+          )}
 
           {/* Edit Loop - only shown for loop clips */}
           {contextMenu.trackRef?.type === 'loop' && (

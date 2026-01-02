@@ -24,7 +24,10 @@ import {
   Pencil,
   Copy,
   Trash2,
+  Wand2,
+  Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import type { BackingTrack } from '@/types';
 import type { LoopDefinition } from '@/types/loops';
 
@@ -110,6 +113,10 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
     loopId: null,
     loopTrackId: null,
   });
+
+  // Stem separation state
+  const [separatingAssetId, setSeparatingAssetId] = useState<string | null>(null);
+  const [separationProgress, setSeparationProgress] = useState(0);
 
   // Get data
   const songs = getSongsByRoom(roomId);
@@ -297,6 +304,103 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
 
     closeContextMenu();
   }, [contextMenu, onTrackRemove, removeLoopTrack, closeContextMenu, roomId]);
+
+  // Stem separation handler - separates audio into vocals, drums, bass, other
+  const handleSeparateStems = useCallback(async () => {
+    if (!contextMenu || contextMenu.type !== 'audio') return;
+
+    const assetId = contextMenu.assetId;
+    const audioTrack = queue.tracks.find((t) => t.id === assetId);
+    if (!audioTrack?.url) {
+      toast.error('Cannot separate stems: audio URL not found');
+      closeContextMenu();
+      return;
+    }
+
+    closeContextMenu();
+    setSeparatingAssetId(assetId);
+    setSeparationProgress(0);
+
+    try {
+      // Start stem separation
+      const response = await fetch('/api/stems/separate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          trackId: assetId,
+          trackUrl: audioTrack.url,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to start stem separation');
+      }
+
+      const { jobId } = await response.json();
+
+      // Poll for completion
+      let complete = false;
+      while (!complete) {
+        await new Promise((r) => setTimeout(r, 1000));
+
+        const statusRes = await fetch(`/api/stems/status/${jobId}`);
+        const status = await statusRes.json();
+
+        setSeparationProgress(status.progress);
+
+        if (status.status === 'completed' && status.stems) {
+          complete = true;
+
+          // Create new audio assets for each stem
+          const stemNames = ['vocals', 'drums', 'bass', 'other'] as const;
+          const stemColors = {
+            vocals: '#ec4899',
+            drums: '#f97316',
+            bass: '#22c55e',
+            other: '#3b82f6',
+          };
+
+          for (const stemName of stemNames) {
+            const stemUrl = status.stems[stemName];
+            if (!stemUrl) continue;
+
+            // Create a new backing track for this stem
+            const stemTrack: BackingTrack = {
+              id: `${assetId}-${stemName}`,
+              name: `${audioTrack.name} (${stemName.charAt(0).toUpperCase() + stemName.slice(1)})`,
+              artist: audioTrack.artist,
+              duration: audioTrack.duration,
+              url: stemUrl,
+              uploadedBy: 'stem-separation',
+              uploadedAt: new Date().toISOString(),
+            };
+
+            // Add to queue (asset library)
+            useRoomStore.getState().addToQueue(stemTrack);
+
+            // Optionally add to current song timeline
+            if (currentSong) {
+              addTrackToSong(currentSong.id, {
+                type: 'audio',
+                trackId: stemTrack.id,
+                startOffset: 0,
+              });
+            }
+          }
+
+          toast.success(`Separated "${audioTrack.name}" into 4 stems`);
+        } else if (status.status === 'failed') {
+          throw new Error(status.error || 'Stem separation failed');
+        }
+      }
+    } catch (error) {
+      console.error('Stem separation error:', error);
+      toast.error(`Stem separation failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setSeparatingAssetId(null);
+      setSeparationProgress(0);
+    }
+  }, [contextMenu, queue.tracks, currentSong, addTrackToSong, closeContextMenu]);
 
   // Close context menu on click outside
   useEffect(() => {
@@ -542,12 +646,18 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
                     Audio
                   </span>
                 </div>
-                {audioAssets.map((asset) => (
+                {audioAssets.map((asset) => {
+                  const isSeparating = separatingAssetId === asset.id;
+                  return (
                   <div
                     key={asset.id}
-                    className="group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors cursor-grab active:cursor-grabbing"
-                    draggable
+                    className={cn(
+                      "group flex items-center gap-2 px-3 py-1.5 hover:bg-gray-100 dark:hover:bg-white/5 transition-colors",
+                      isSeparating ? "opacity-70 pointer-events-none" : "cursor-grab active:cursor-grabbing"
+                    )}
+                    draggable={!isSeparating}
                     onDragStart={(e) => {
+                      if (isSeparating) return;
                       e.dataTransfer.setData('application/x-track', JSON.stringify({
                         type: 'audio',
                         trackId: asset.id,
@@ -556,19 +666,29 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
                       }));
                       e.dataTransfer.effectAllowed = 'copy';
                     }}
-                    onContextMenu={(e) => handleContextMenu(e, 'audio', asset.id, asset.name)}
+                    onContextMenu={(e) => !isSeparating && handleContextMenu(e, 'audio', asset.id, asset.name)}
                   >
                     <GripVertical className="w-3 h-3 text-gray-300 dark:text-zinc-700 opacity-0 group-hover:opacity-100 shrink-0" />
                     <div
                       className="w-5 h-5 rounded flex items-center justify-center shrink-0"
                       style={{ backgroundColor: `${asset.color}20`, color: asset.color }}
                     >
-                      {asset.youtubeId ? <Youtube className="w-3 h-3" /> : asset.aiGenerated ? <Sparkles className="w-3 h-3" /> : <Music className="w-3 h-3" />}
+                      {isSeparating ? (
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                      ) : asset.youtubeId ? (
+                        <Youtube className="w-3 h-3" />
+                      ) : asset.aiGenerated ? (
+                        <Sparkles className="w-3 h-3" />
+                      ) : (
+                        <Music className="w-3 h-3" />
+                      )}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <div className="text-xs text-gray-700 dark:text-zinc-300 truncate">{asset.name}</div>
+                      <div className="text-xs text-gray-700 dark:text-zinc-300 truncate">
+                        {isSeparating ? `Separating... ${separationProgress}%` : asset.name}
+                      </div>
                     </div>
-                    {asset.clipCount > 0 && (
+                    {!isSeparating && asset.clipCount > 0 && (
                       <span className="text-[9px] text-indigo-500 dark:text-indigo-400 bg-indigo-500/10 px-1.5 py-0.5 rounded">
                         ×{asset.clipCount}
                       </span>
@@ -599,7 +719,8 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
                       </button>
                     )}
                   </div>
-                ))}
+                  );
+                })}
               </>
             )}
 
@@ -716,6 +837,17 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
           <div className="px-3 py-1.5 text-xs text-gray-500 dark:text-zinc-400 border-b border-gray-100 dark:border-zinc-800 truncate">
             {contextMenu.name}
           </div>
+
+          {/* Separate Stems - only for audio */}
+          {contextMenu.type === 'audio' && (
+            <button
+              onClick={handleSeparateStems}
+              className="w-full px-3 py-2 text-left text-sm flex items-center gap-2 hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors text-indigo-600 dark:text-indigo-400"
+            >
+              <Wand2 className="w-4 h-4" />
+              <span>Separate Stems</span>
+            </button>
+          )}
 
           {/* Edit Loop - only for loops */}
           {contextMenu.type === 'loop' && (

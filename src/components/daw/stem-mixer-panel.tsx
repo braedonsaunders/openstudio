@@ -78,7 +78,7 @@ export function StemMixerPanel({
           <h4 className="font-medium text-gray-900 dark:text-white mb-2">Separating Audio</h4>
           <Progress value={separationProgress} showLabel className="mb-3" />
           <p className="text-xs text-gray-500 dark:text-zinc-500">
-            Using Meta SAM to extract individual stems...
+            Using Demucs AI to extract individual stems...
           </p>
         </div>
       </div>
@@ -114,7 +114,7 @@ export function StemMixerPanel({
       <div className="px-4 py-3 border-b border-gray-200 dark:border-white/5">
         <div className="flex items-center justify-between">
           <h4 className="text-sm font-medium text-gray-900 dark:text-white">Stem Mixer</h4>
-          <span className="text-[10px] text-gray-500 dark:text-zinc-500">Powered by Meta SAM</span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-500">Powered by Demucs</span>
         </div>
       </div>
 
