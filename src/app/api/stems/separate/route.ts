@@ -124,33 +124,66 @@ export async function POST(request: NextRequest) {
 
       let replicateUrl: string | undefined;
 
-      // Replicate FileOutput objects have a url() method
-      if (typeof stemOutput === 'object' && stemOutput !== null) {
-        const fileOutput = stemOutput as { url?: (() => string) | string; href?: string };
+      // Debug: log everything about this object
+      console.log(`[Stems] ${stemName} output type:`, typeof stemOutput);
+      console.log(`[Stems] ${stemName} constructor:`, stemOutput?.constructor?.name);
+      console.log(`[Stems] ${stemName} prototype props:`, Object.getOwnPropertyNames(Object.getPrototypeOf(stemOutput) || {}));
+      console.log(`[Stems] ${stemName} own props:`, Object.getOwnPropertyNames(stemOutput));
 
-        // Check if url is a function (Replicate FileOutput)
-        if (typeof fileOutput.url === 'function') {
-          replicateUrl = fileOutput.url();
-        } else if (typeof fileOutput.url === 'string') {
-          replicateUrl = fileOutput.url;
-        } else if (typeof fileOutput.href === 'string') {
-          replicateUrl = fileOutput.href;
+      if (typeof stemOutput === 'string') {
+        replicateUrl = stemOutput;
+      } else if (typeof stemOutput === 'object' && stemOutput !== null) {
+        // Try multiple ways to extract the URL
+        const obj = stemOutput as Record<string, unknown>;
+
+        // Method 1: Direct property access
+        if (typeof obj.url === 'string') {
+          replicateUrl = obj.url;
+        } else if (typeof obj.href === 'string') {
+          replicateUrl = obj.href;
         }
 
-        // Also try toString() as FileOutput might convert to URL string
-        if (!replicateUrl && typeof stemOutput.toString === 'function') {
-          const strValue = stemOutput.toString();
-          if (strValue.startsWith('http')) {
-            replicateUrl = strValue;
+        // Method 2: Call url() if it's a function
+        if (!replicateUrl && typeof obj.url === 'function') {
+          try {
+            replicateUrl = (obj.url as () => string)();
+          } catch (e) {
+            console.error(`[Stems] Error calling url() on ${stemName}:`, e);
           }
         }
-      } else if (typeof stemOutput === 'string') {
-        replicateUrl = stemOutput;
+
+        // Method 3: Try toString()
+        if (!replicateUrl) {
+          try {
+            const str = String(stemOutput);
+            if (str.startsWith('http')) {
+              replicateUrl = str;
+            }
+          } catch (e) {
+            console.error(`[Stems] Error calling String() on ${stemName}:`, e);
+          }
+        }
+
+        // Method 4: Check if it's iterable (ReadableStream-like)
+        if (!replicateUrl && Symbol.iterator in obj) {
+          console.log(`[Stems] ${stemName} is iterable`);
+        }
+
+        // Method 5: Try to access via bracket notation with common property names
+        if (!replicateUrl) {
+          for (const prop of ['url', 'href', 'uri', 'src', 'location']) {
+            const val = obj[prop];
+            if (typeof val === 'string' && val.startsWith('http')) {
+              replicateUrl = val;
+              break;
+            }
+          }
+        }
       }
 
       // Must be a string URL at this point
       if (!replicateUrl || typeof replicateUrl !== 'string') {
-        console.error(`[Stems] ${stemName} stem is not a valid URL:`, typeof stemOutput, Object.keys(stemOutput as object));
+        console.error(`[Stems] ${stemName} - Could not extract URL. Raw value:`, stemOutput);
         continue;
       }
 
