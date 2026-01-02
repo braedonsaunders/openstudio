@@ -1139,52 +1139,34 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I32 => {
-                let producer = self.local_producer.clone().unwrap();
-                let browser_stream_producer = self.browser_stream_producer.clone();
-                let levels_in = self.levels.clone();
-                let is_monitoring = self.is_monitoring.clone();
-                let monitoring_volume = self.monitoring_volume.clone();
-                let processing_state_in = self.processing_state.clone();
-                let effects_metering = self.effects_metering.clone();
-                let input_cb_count = self.input_callback_count.clone();
-
-                // Pre-allocate both conversion buffer and stereo buffer
-                // Use 65536 to handle any ASIO buffer size without reallocation
+                // Pre-allocate ALL buffers BEFORE building stream
                 let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
                 let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_input_stream(
                     &stream_input_config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
-                        // Increment callback counter (atomic, no allocation)
-                        input_cb_count.fetch_add(1, Ordering::Relaxed);
-
-                        // DIAGNOSTIC: Minimal processing to isolate ASIO issue
-                        // If callbacks still die with minimal processing, issue is in ASIO/cpal
                         let mut conv_buf = conversion_buffer.borrow_mut();
                         let mut stereo_buf = stereo_buffer.borrow_mut();
 
-                        // Simplified conversion - just copy first few samples to prove we're running
+                        // Convert I32 to F32 using pre-allocated buffer
                         conv_buf.clear();
-                        let sample_count = data.len().min(256); // Cap to avoid any size issues
-                        for i in 0..sample_count {
-                            conv_buf.push(data[i] as f32 / 2147483647.0_f32);
-                        }
+                        conv_buf.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
 
-                        // Simplified stereo buffer - just copy what we have
-                        stereo_buf.clear();
-                        for &s in conv_buf.iter() {
-                            stereo_buf.push(s);
-                        }
-
-                        // Push to browser stream only (skip all other processing)
-                        if let Some(ref prod) = browser_stream_producer {
-                            if let Ok(mut p) = prod.try_lock() {
-                                let _ = p.push_slice(&stereo_buf);
-                            }
-                        }
+                        Self::process_input(
+                            &conv_buf,
+                            input_channels,
+                            &mut stereo_buf,
+                            &producer,
+                            browser_stream_producer.as_ref(),
+                            &levels_in,
+                            &is_monitoring,
+                            &monitoring_volume,
+                            &processing_state_in,
+                            &effects_metering,
+                        );
                     },
-                    |_err| {}, // No logging - allocates memory which kills ASIO
+                    |_err| {},
                     None,
                 )?
             }
@@ -1222,38 +1204,24 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I32 => {
-                let local_consumer = self.local_consumer.clone().unwrap();
-                let remote_buffers = self.remote_buffers.clone();
-                let backing_consumer = self.backing_consumer.clone().unwrap();
-                let levels_out = self.levels.clone();
-                let processing_state_out = self.processing_state.clone();
-                let output_cb_count = self.output_callback_count.clone();
-
-                // Pre-allocate conversion buffer
-                // Use 65536 to handle any ASIO buffer size without reallocation
+                // Pre-allocate conversion buffer BEFORE building stream
                 let float_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_output_stream(
                     &stream_output_config,
                     move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
-                        // Increment callback counter (atomic, no allocation)
-                        output_cb_count.fetch_add(1, Ordering::Relaxed);
-
-                        // DIAGNOSTIC: Minimal output - just silence
-                        // If callbacks still die with just silence, issue is in ASIO/cpal
-                        for sample in data.iter_mut() {
-                            *sample = 0;
-                        }
-
-                        // Skip float buffer and all processing for now
-                        let _ = &float_buffer; // Keep it to avoid unused warning
-                        let _ = &local_consumer;
-                        let _ = &remote_buffers;
-                        let _ = &backing_consumer;
-                        let _ = &levels_out;
-                        let _ = &processing_state_out;
+                        let mut float_buf = float_buffer.borrow_mut();
+                        Self::process_output_i32(
+                            data,
+                            &mut float_buf,
+                            &local_consumer,
+                            &remote_buffers,
+                            &backing_consumer,
+                            &levels_out,
+                            &processing_state_out,
+                        );
                     },
-                    |_err| {}, // No logging - allocates memory which kills ASIO
+                    |_err| {},
                     None,
                 )?
             }
