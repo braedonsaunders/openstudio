@@ -1,25 +1,29 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase/server';
+import { getSupabase, getAdminSupabase, getUserFromRequest } from '@/lib/supabase/server';
 
-// GET - Fetch all custom loops for a user
+// GET - Fetch all custom loops for the authenticated user
+// SECURITY: Requires authentication; only returns the user's own loops
 export async function GET(request: NextRequest) {
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
   try {
-    const supabase = getSupabase();
+    const supabase = getAdminSupabase();
     if (!supabase) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
-
+    // SECURITY: Always use authenticated user's ID, never trust query params
     const { data, error } = await supabase
       .from('user_custom_loops')
       .select('*')
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .order('updated_at', { ascending: false });
 
     if (error) {
@@ -38,18 +42,26 @@ export async function GET(request: NextRequest) {
 }
 
 // POST - Create a new custom loop
+// SECURITY: Requires authentication; loop is created for the authenticated user
 export async function POST(request: NextRequest) {
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
   try {
-    const supabase = getSupabase();
+    const supabase = getAdminSupabase();
     if (!supabase) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
     const body = await request.json();
-
-    if (!body.userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
+    // SECURITY: Override userId with authenticated user's ID
+    body.userId = user.id;
 
     const dbRecord = transformToDb(body);
 
@@ -72,22 +84,28 @@ export async function POST(request: NextRequest) {
 }
 
 // PATCH - Update a custom loop
+// SECURITY: Requires authentication; can only update own loops
 export async function PATCH(request: NextRequest) {
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
   try {
-    const supabase = getSupabase();
+    const supabase = getAdminSupabase();
     if (!supabase) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
     const body = await request.json();
-    const { id, userId, ...updates } = body;
+    const { id, ...updates } = body;
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 });
-    }
-
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
     }
 
     const dbUpdates = transformToDb(updates);
@@ -95,17 +113,22 @@ export async function PATCH(request: NextRequest) {
     delete dbUpdates.user_id;
     delete dbUpdates.created_at;
 
+    // SECURITY: Only allow updating own loops (filter by authenticated user ID)
     const { data, error } = await supabase
       .from('user_custom_loops')
       .update(dbUpdates)
       .eq('id', id)
-      .eq('user_id', userId)
+      .eq('user_id', user.id)
       .select()
       .single();
 
     if (error) {
       console.error('Error updating custom loop:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
+    }
+
+    if (!data) {
+      return NextResponse.json({ error: 'Loop not found or access denied' }, { status: 404 });
     }
 
     return NextResponse.json(transformFromDb(data));
@@ -116,30 +139,36 @@ export async function PATCH(request: NextRequest) {
 }
 
 // DELETE - Remove a custom loop
+// SECURITY: Requires authentication; can only delete own loops
 export async function DELETE(request: NextRequest) {
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
   try {
-    const supabase = getSupabase();
+    const supabase = getAdminSupabase();
     if (!supabase) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
 
     const { searchParams } = new URL(request.url);
     const id = searchParams.get('id');
-    const userId = searchParams.get('userId');
 
     if (!id) {
       return NextResponse.json({ error: 'id is required' }, { status: 400 });
     }
 
-    if (!userId) {
-      return NextResponse.json({ error: 'userId is required' }, { status: 400 });
-    }
-
+    // SECURITY: Only allow deleting own loops (filter by authenticated user ID)
     const { error } = await supabase
       .from('user_custom_loops')
       .delete()
       .eq('id', id)
-      .eq('user_id', userId);
+      .eq('user_id', user.id);
 
     if (error) {
       console.error('Error deleting custom loop:', error);

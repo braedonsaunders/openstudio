@@ -1,36 +1,52 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase/server';
+import { getSupabase, getAdminSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
 
 interface RouteContext {
   params: Promise<{ roomId: string }>;
 }
 
 // GET /api/rooms/[roomId]/user-tracks - Load all user tracks for a room
+// SECURITY: Requires authentication and room membership
 export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
-    const { searchParams } = new URL(request.url);
-    const userId = searchParams.get('userId');
 
     if (!supabase) {
-      return NextResponse.json([]);
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 503 }
+      );
     }
 
-    let query = supabase
+    // SECURITY: Verify room membership
+    const membership = await getRoomMembership(roomId, user.id);
+    if (!membership) {
+      return NextResponse.json(
+        { error: 'You must be a member of this room' },
+        { status: 403 }
+      );
+    }
+
+    // Get all tracks for this room (room members can see all tracks)
+    const { data: tracks, error } = await supabase
       .from('user_tracks')
       .select('*')
-      .eq('room_id', roomId);
-
-    if (userId) {
-      query = query.eq('user_id', userId);
-    }
-
-    const { data: tracks, error } = await query.order('created_at', { ascending: true });
+      .eq('room_id', roomId)
+      .order('created_at', { ascending: true });
 
     if (error) {
       console.error('Error loading user tracks:', error);
@@ -69,43 +85,54 @@ export async function GET(
 }
 
 // POST /api/rooms/[roomId]/user-tracks - Create or update a user track
+// SECURITY: Requires authentication; tracks are created for the authenticated user
 export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
     const track = await request.json();
 
     if (!supabase) {
-      return NextResponse.json(track);
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 503 }
+      );
     }
 
-    // Ensure room exists
-    const { error: roomError } = await supabase
+    // SECURITY: Verify room exists (don't auto-create rooms from track creation)
+    const { data: room, error: roomError } = await supabase
       .from('rooms')
-      .upsert({
-        id: roomId,
-        name: `Room ${roomId}`,
-        created_by: track.userId || 'user',
-        pop_location: 'auto',
-        max_users: 10,
-        is_public: true,
-        settings: {},
-      }, { onConflict: 'id', ignoreDuplicates: true });
+      .select('id')
+      .eq('id', roomId)
+      .single();
 
-    if (roomError && roomError.code !== '42P01') {
-      console.error('Error ensuring room exists:', roomError);
+    if (roomError || !room) {
+      return NextResponse.json(
+        { error: 'Room not found' },
+        { status: 404 }
+      );
     }
 
+    // SECURITY: Use authenticated user ID for track ownership
     const { data, error } = await supabase
       .from('user_tracks')
       .upsert({
         id: track.id,
         room_id: roomId,
-        user_id: track.userId,
+        user_id: user.id,
         name: track.name,
         color: track.color,
         track_type: track.type || 'audio',
@@ -134,7 +161,7 @@ export async function POST(
           .upsert({
             id: track.id,
             room_id: roomId,
-            user_id: track.userId,
+            user_id: user.id,  // SECURITY: Use authenticated user ID
             name: track.name,
             color: track.color,
             audio_settings: track.audioSettings,
@@ -149,7 +176,10 @@ export async function POST(
 
         if (fallbackError) {
           if (fallbackError.code === '42P01') {
-            return NextResponse.json(track);
+            return NextResponse.json(
+              { error: 'Database schema not ready' },
+              { status: 503 }
+            );
           }
           return NextResponse.json(
             { error: 'Failed to save user track', details: fallbackError.message },
@@ -175,7 +205,10 @@ export async function POST(
         });
       }
       if (error.code === '42P01') {
-        return NextResponse.json(track);
+        return NextResponse.json(
+          { error: 'Database schema not ready' },
+          { status: 503 }
+        );
       }
       return NextResponse.json(
         { error: 'Failed to save user track', details: error.message },
@@ -209,30 +242,38 @@ export async function POST(
 }
 
 // PATCH /api/rooms/[roomId]/user-tracks - Update track settings
-// Users can only update their own tracks
+// SECURITY: Users can only update their own tracks
 export async function PATCH(
   request: NextRequest,
   context: RouteContext
 ) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
-    const { trackId, requesterId, ...updates } = await request.json();
+    const { trackId, ...updates } = await request.json();
 
     if (!trackId) {
       return NextResponse.json({ error: 'trackId is required' }, { status: 400 });
     }
 
-    if (!requesterId) {
-      return NextResponse.json({ error: 'requesterId is required' }, { status: 400 });
-    }
-
     if (!supabase) {
-      return NextResponse.json({ success: true });
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 503 }
+      );
     }
 
-    // Verify the requester owns this track
+    // SECURITY: Verify the authenticated user owns this track
     const { data: track } = await supabase
       .from('user_tracks')
       .select('user_id')
@@ -244,7 +285,7 @@ export async function PATCH(
       return NextResponse.json({ error: 'Track not found' }, { status: 404 });
     }
 
-    if (track.user_id !== requesterId) {
+    if (track.user_id !== user.id) {
       return NextResponse.json(
         { error: 'You can only modify your own tracks' },
         { status: 403 }
@@ -312,30 +353,37 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/rooms/[roomId]/user-tracks?trackId=xxx&requesterId=xxx - Remove a user track
-// Users can only delete their own tracks
+// DELETE /api/rooms/[roomId]/user-tracks?trackId=xxx - Remove a user track
+// SECURITY: Users can only delete their own tracks
 export async function DELETE(
   request: NextRequest,
   context: RouteContext
 ) {
-  const supabase = getSupabase();
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
+  const supabase = getAdminSupabase();
 
   try {
     const { roomId } = await context.params;
     const { searchParams } = new URL(request.url);
     const trackId = searchParams.get('trackId');
-    const requesterId = searchParams.get('requesterId');
-
-    if (!requesterId) {
-      return NextResponse.json({ error: 'requesterId is required' }, { status: 400 });
-    }
 
     if (!supabase) {
-      return NextResponse.json({ success: true });
+      return NextResponse.json(
+        { error: 'Database not configured' },
+        { status: 503 }
+      );
     }
 
     if (trackId) {
-      // Deleting a specific track - verify ownership
+      // Deleting a specific track - SECURITY: verify ownership using authenticated user
       const { data: track } = await supabase
         .from('user_tracks')
         .select('user_id')
@@ -347,7 +395,7 @@ export async function DELETE(
         return NextResponse.json({ error: 'Track not found' }, { status: 404 });
       }
 
-      if (track.user_id !== requesterId) {
+      if (track.user_id !== user.id) {
         return NextResponse.json(
           { error: 'You can only delete your own tracks' },
           { status: 403 }
@@ -365,12 +413,12 @@ export async function DELETE(
         return NextResponse.json({ error: 'Failed to delete user track' }, { status: 500 });
       }
     } else {
-      // Deleting all tracks for the requester (e.g., when leaving room)
+      // Deleting all tracks for the authenticated user (e.g., when leaving room)
       const { error } = await supabase
         .from('user_tracks')
         .delete()
         .eq('room_id', roomId)
-        .eq('user_id', requesterId);
+        .eq('user_id', user.id);
 
       if (error) {
         console.error('Error deleting user tracks:', error);

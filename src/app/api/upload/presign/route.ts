@@ -3,6 +3,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
+import { getUserFromRequest } from '@/lib/supabase/server';
 
 const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
 const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
@@ -21,9 +22,17 @@ const BUCKET_NAME = process.env.R2_BUCKET_NAME || 'openstudio-tracks';
 const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100MB
 
 export async function POST(request: NextRequest) {
-  // Rate limiting for file uploads
-  const clientId = getClientIdentifier(request);
-  const rateLimit = checkRateLimit(`upload:${clientId}`, rateLimiters.upload);
+  // SECURITY: Require authentication for file uploads
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required to upload files' },
+      { status: 401 }
+    );
+  }
+
+  // Rate limiting for file uploads - SECURITY: Use authenticated user ID
+  const rateLimit = checkRateLimit(`upload:${user.id}`, rateLimiters.upload);
 
   if (!rateLimit.success) {
     return rateLimitResponse(rateLimit);
@@ -58,7 +67,8 @@ export async function POST(request: NextRequest) {
 
     const trackId = uuidv4();
     const extension = (fileName.split('.').pop() || 'mp3').toLowerCase();
-    const key = `tracks/${trackId}.${extension}`;
+    // SECURITY: Include user ID in path for ownership tracking
+    const key = `tracks/${user.id}/${trackId}.${extension}`;
 
     const command = new PutObjectCommand({
       Bucket: BUCKET_NAME,

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase/server';
+import { getSupabase, getAdminSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
 
 // Cloudflare Calls API configuration
 const CLOUDFLARE_CALLS_APP_ID = process.env.NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID || '';
@@ -137,9 +137,18 @@ async function callCloudflareAPI(endpoint: string, method: string, body?: object
 }
 
 export async function POST(request: NextRequest) {
+  // SECURITY: Require authentication for WebRTC session management
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required for WebRTC sessions' },
+      { status: 401 }
+    );
+  }
+
   try {
     const body = await request.json();
-    const { action, roomId, userId, sessionId, trackName, sdp, mid, metadata } = body;
+    const { action, roomId, sessionId, trackName, sdp, mid, metadata } = body;
 
     if (!CLOUDFLARE_CALLS_APP_ID || !CLOUDFLARE_CALLS_APP_SECRET) {
       return NextResponse.json(
@@ -148,16 +157,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // SECURITY: Verify room membership for room-scoped actions
+    if (roomId && action !== 'syncClock') {
+      const membership = await getRoomMembership(roomId, user.id);
+      // Allow users to join rooms (they become members), but verify for other actions
+      if (!membership && action !== 'create') {
+        return NextResponse.json(
+          { error: 'You must be a member of this room to perform this action' },
+          { status: 403 }
+        );
+      }
+    }
+
     switch (action) {
       case 'create': {
-        // Create a new session
+        // Create a new session - SECURITY: Use authenticated user ID
         const result = await callCloudflareAPI('/sessions/new', 'POST');
 
         // NOTE: We intentionally do NOT store the session here anymore.
         // Storing on create caused race conditions where other users would try
         // to pull tracks from a session that wasn't fully connected yet (410 error).
         // Sessions are now only stored after pushTrack succeeds.
-        console.log(`[WebRTC Sessions] Created session ${result.sessionId} for user ${userId} in room ${roomId} (not stored until track pushed)`);
+        console.log(`[WebRTC Sessions] Created session ${result.sessionId} for user ${user.id} in room ${roomId} (not stored until track pushed)`);
 
         return NextResponse.json({
           sessionId: result.sessionId,
@@ -166,6 +187,9 @@ export async function POST(request: NextRequest) {
 
       case 'pushTrack': {
         // Push a local track to Cloudflare
+        // SECURITY: Use authenticated user ID for track name
+        const secureTrackName = `audio-${user.id}`;
+
         const result = await callCloudflareAPI(
           `/sessions/${sessionId}/tracks/new`,
           'POST',
@@ -178,17 +202,15 @@ export async function POST(request: NextRequest) {
               {
                 location: 'local',
                 mid: mid,
-                trackName: trackName,
+                trackName: secureTrackName,
               },
             ],
           }
         );
 
-        // Store session in persistent storage now that track is pushed and session is active
-        // Use userId from metadata if available, otherwise extract from trackName
-        const actualUserId = metadata?.userId || trackName.replace('audio-', '');
-        await storeRoomSession(roomId, actualUserId, sessionId, trackName);
-        console.log(`[WebRTC Sessions] Pushed track ${trackName} for user ${actualUserId}, session ${sessionId}`);
+        // SECURITY: Store session with authenticated user ID only
+        await storeRoomSession(roomId, user.id, sessionId, secureTrackName);
+        console.log(`[WebRTC Sessions] Pushed track ${secureTrackName} for user ${user.id}, session ${sessionId}`);
 
         return NextResponse.json({
           sessionId: result.sessionId,
@@ -317,6 +339,15 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
+  // SECURITY: Require authentication
+  const user = await getUserFromRequest(request);
+  if (!user) {
+    return NextResponse.json(
+      { error: 'Authentication required' },
+      { status: 401 }
+    );
+  }
+
   try {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
@@ -329,10 +360,10 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Remove from persistent storage
+    // SECURITY: Remove only the authenticated user's session from persistent storage
     if (roomId) {
       await removeRoomSession(roomId, sessionId);
-      console.log(`[WebRTC Sessions] Deleted session ${sessionId} from room ${roomId}`);
+      console.log(`[WebRTC Sessions] Deleted session ${sessionId} from room ${roomId} by user ${user.id}`);
     }
 
     return NextResponse.json({ success: true });
