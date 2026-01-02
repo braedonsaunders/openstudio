@@ -20,8 +20,6 @@ pub mod p2p;
 pub mod peer;
 pub mod relay;
 
-pub use bridge::BridgeConfig;
-pub use jitter::JitterBuffer;
 pub use manager::{NetworkConfig, NetworkEvent, NetworkManager, NetworkMode};
 
 use thiserror::Error;

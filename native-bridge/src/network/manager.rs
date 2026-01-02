@@ -528,7 +528,7 @@ impl NetworkManager {
                         MoqEvent::Disconnected { reason } => {
                             let _ = tx.send(NetworkEvent::Error { error: reason });
                         }
-                        MoqEvent::TrackAvailable { track } => {
+                        MoqEvent::TrackAvailable { track: _ } => {
                             // New user's track available - could trigger subscribe
                         }
                         MoqEvent::AudioReceived {
@@ -559,11 +559,11 @@ impl NetworkManager {
                         self.p2p.send_audio(track_id, &samples).await?;
                     }
                     OutgoingMessage::Control {
-                        message_type,
-                        payload,
+                        message_type: _,
+                        payload: _,
                     } => {
                         // Broadcast to all peers
-                        for peer in self.p2p.peers().connected() {
+                        for _peer in self.p2p.peers().connected() {
                             // Note: send_packet is private, need to expose or use different approach
                         }
                     }
@@ -580,7 +580,7 @@ impl NetworkManager {
                             time_sig_denom: time_sig.1,
                             sync_sequence: 0,
                         };
-                        let payload = bincode::serialize(&msg)
+                        let _payload = bincode::serialize(&msg)
                             .map_err(|e| NetworkError::Serialization(e.to_string()))?;
                         // Broadcast clock sync
                     }

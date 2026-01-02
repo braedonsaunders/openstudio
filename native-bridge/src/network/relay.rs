@@ -6,7 +6,7 @@
 use super::{clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, Result};
 use parking_lot::RwLock;
 use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, TransportConfig, VarInt};
-use rustls::Certificate;
+use rustls::{Certificate, ServerName};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -149,7 +149,8 @@ pub enum MoqConnectionState {
 /// Track publisher state
 struct PublishedTrack {
     track: MoqTrackName,
-    send_stream: SendStream,
+    /// Send stream wrapped in tokio Mutex to allow async access without holding RwLock
+    send_stream: Arc<tokio::sync::Mutex<SendStream>>,
     sequence: u32,
     bytes_sent: u64,
 }
@@ -251,7 +252,7 @@ impl MoqRelay {
         roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
             rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
                 ta.subject.as_ref(),
-                ta.subject_public_key_info.as_ref(),
+                ta.spki.as_ref(),
                 ta.name_constraints.as_ref().map(|nc| nc.as_ref()),
             )
         }));
@@ -463,7 +464,7 @@ impl MoqRelay {
     fn handle_control_message(
         data: &[u8],
         event_tx: &Option<broadcast::Sender<MoqEvent>>,
-        peers: &PeerRegistry,
+        _peers: &PeerRegistry,
     ) {
         if data.is_empty() {
             return;
@@ -668,7 +669,7 @@ impl MoqRelay {
             track_path,
             PublishedTrack {
                 track,
-                send_stream,
+                send_stream: Arc::new(tokio::sync::Mutex::new(send_stream)),
                 sequence: 0,
                 bytes_sent: 0,
             },
@@ -694,8 +695,10 @@ impl MoqRelay {
         }
 
         // Close and remove the track
-        if let Some(mut track) = self.published_tracks.write().remove(&track_path) {
-            let _ = track.send_stream.finish();
+        if let Some(track) = self.published_tracks.write().remove(&track_path) {
+            // Lock and finish the stream
+            let mut stream = track.send_stream.lock().await;
+            let _ = stream.finish();
         }
 
         Ok(())
@@ -777,28 +780,44 @@ impl MoqRelay {
         // Encode with Opus
         let encoded = self.codec.encoder.encode(samples)?;
 
-        // Get or create track
-        let mut tracks = self.published_tracks.write();
-        if let Some(track) = tracks.get_mut(&track_path) {
-            // Build message: msg_type + path_len + path + sequence + opus_data
-            let mut msg = Vec::with_capacity(2 + track_path.len() + 4 + encoded.len());
-            msg.push(RelayMessageType::AudioData as u8);
-            msg.push(track_path.len() as u8);
-            msg.extend_from_slice(track_path.as_bytes());
-            msg.extend_from_slice(&track.sequence.to_be_bytes());
-            msg.extend_from_slice(&encoded);
+        // Get the send_stream Arc and sequence while holding the RwLock briefly
+        let (send_stream, sequence) = {
+            let tracks = self.published_tracks.read();
+            if let Some(track) = tracks.get(&track_path) {
+                (track.send_stream.clone(), track.sequence)
+            } else {
+                return Ok(()); // Track not found
+            }
+        }; // RwLock dropped here
 
-            // Send on the track's stream
-            track
-                .send_stream
+        // Build message: msg_type + path_len + path + sequence + opus_data
+        let mut msg = Vec::with_capacity(2 + track_path.len() + 4 + encoded.len());
+        msg.push(RelayMessageType::AudioData as u8);
+        msg.push(track_path.len() as u8);
+        msg.extend_from_slice(track_path.as_bytes());
+        msg.extend_from_slice(&sequence.to_be_bytes());
+        msg.extend_from_slice(&encoded);
+
+        // Send on the track's stream (tokio Mutex is fine to hold across await)
+        {
+            let mut stream = send_stream.lock().await;
+            stream
                 .write_all(&msg)
                 .await
                 .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+        }
 
-            track.sequence = track.sequence.wrapping_add(1);
-            track.bytes_sent += msg.len() as u64;
+        // Update track state after successful send
+        {
+            let mut tracks = self.published_tracks.write();
+            if let Some(track) = tracks.get_mut(&track_path) {
+                track.sequence = track.sequence.wrapping_add(1);
+                track.bytes_sent += msg.len() as u64;
+            }
+        }
 
-            // Update stats
+        // Update stats
+        {
             let mut stats = self.stats.write();
             stats.bytes_sent_per_sec += msg.len() as u64;
         }
@@ -939,7 +958,7 @@ pub struct WebTransportListener {
     /// Event sender
     event_tx: RwLock<Option<broadcast::Sender<MoqEvent>>>,
     /// Subscribed audio tracks with buffered samples
-    subscribed_tracks: RwLock<HashMap<String, Vec<f32>>>,
+    subscribed_tracks: Arc<RwLock<HashMap<String, Vec<f32>>>>,
     /// Codec for decoding
     codec: Arc<OpusCodec>,
     /// Stats
@@ -957,7 +976,7 @@ impl WebTransportListener {
             user_id: RwLock::new(None),
             connection: RwLock::new(None),
             event_tx: RwLock::new(None),
-            subscribed_tracks: RwLock::new(HashMap::new()),
+            subscribed_tracks: Arc::new(RwLock::new(HashMap::new())),
             codec: Arc::new(codec),
             stats: RwLock::new(NetworkStats::default()),
         })
@@ -995,7 +1014,7 @@ impl WebTransportListener {
         roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
             rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
                 ta.subject.as_ref(),
-                ta.subject_public_key_info.as_ref(),
+                ta.spki.as_ref(),
                 ta.name_constraints.as_ref().map(|nc| nc.as_ref()),
             )
         }));
