@@ -8,13 +8,12 @@ use super::{
 };
 use dashmap::DashMap;
 use parking_lot::RwLock;
-use std::collections::HashMap;
-use std::net::{SocketAddr, UdpSocket};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket as TokioUdpSocket;
-use tokio::sync::{broadcast, mpsc};
-use tracing::{debug, error, info, warn};
+use tokio::sync::broadcast;
+use tracing::{info, warn};
 
 /// P2P network configuration
 #[derive(Debug, Clone)]
@@ -232,7 +231,7 @@ impl P2PNetwork {
         secret_hash.copy_from_slice(hash.as_bytes());
 
         // Generate ephemeral key pair for this session
-        let secret = x25519_dalek::StaticSecret::random_from_rng(&mut rand::thread_rng());
+        let secret = x25519_dalek::EphemeralSecret::random_from_rng(&mut rand::thread_rng());
         let public = x25519_dalek::PublicKey::from(&secret);
 
         let handshake = HandshakeMessage {
@@ -601,9 +600,18 @@ impl P2PNetwork {
                 .all()
                 .iter()
                 .flat_map(|p| {
-                    p.all_tracks()
+                    p.tracks()
                         .iter()
-                        .map(|t| (p.id, t.track_id, t.name.clone(), t.muted, t.volume, t.pan))
+                        .map(|t| {
+                            (
+                                p.id,
+                                t.track_id,
+                                t.track_name.clone(),
+                                t.is_muted,
+                                t.volume,
+                                0.0, // Default pan to center
+                            )
+                        })
                         .collect::<Vec<_>>()
                 })
                 .collect();

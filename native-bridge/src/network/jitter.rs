@@ -5,7 +5,7 @@
 
 use parking_lot::Mutex;
 use std::collections::BTreeMap;
-use std::time::{Duration, Instant};
+use std::time::Instant;
 
 /// Jitter buffer configuration
 #[derive(Debug, Clone)]

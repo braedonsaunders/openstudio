@@ -4,7 +4,7 @@
 //! Optimized for real-time music transmission.
 
 use super::{NetworkError, Result};
-use opus::{Application, Bandwidth, Bitrate, Channels, Decoder, Encoder, Signal};
+use opus::{Application, Bandwidth, Bitrate, Channels, Decoder, Encoder};
 use std::sync::Mutex;
 
 /// Opus codec configuration
@@ -116,9 +116,7 @@ impl OpusEncoder {
             .set_complexity(config.complexity)
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
-        encoder
-            .set_signal(Signal::Music)
-            .map_err(|e| NetworkError::CodecError(e.to_string()))?;
+        // Note: Signal type is set via Application::Audio in encoder creation
 
         encoder
             .set_bandwidth(Bandwidth::Fullband)

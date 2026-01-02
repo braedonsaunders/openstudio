@@ -4,15 +4,14 @@
 //! room size and network conditions.
 
 use super::{
-    clock::*, codec::*, jitter::*, osp::*, p2p::*, peer::*, relay::*, NetworkError, NetworkStats,
-    Result, RoomConfig,
+    clock::*, codec::*, osp::*, p2p::*, peer::*, relay::*, NetworkError, NetworkStats, Result,
+    RoomConfig,
 };
 use parking_lot::RwLock;
-use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{broadcast, mpsc, oneshot};
-use tracing::{debug, error, info, warn};
+use tokio::sync::broadcast;
+use tracing::{info, warn};
 
 /// Network mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
