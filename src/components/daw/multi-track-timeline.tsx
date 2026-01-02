@@ -946,7 +946,7 @@ export function MultiTrackTimeline({
           complete = true;
 
           // Create new audio assets for each stem
-          const stemNames = ['vocals', 'drums', 'bass', 'other'] as const;
+          const stemNames = ['vocals', 'drums', 'bass', 'guitar', 'other'] as const;
           const currentSongLocal = useSongsStore.getState().getCurrentSong();
 
           for (const stemName of stemNames) {

@@ -13,6 +13,7 @@ const separations = new Map<string, {
     vocals?: string;
     drums?: string;
     bass?: string;
+    guitar?: string;
     other?: string;
   };
   error?: string;
@@ -27,6 +28,14 @@ const replicate = new Replicate({
 });
 
 export async function POST(request: NextRequest) {
+  // Check for Replicate API token first
+  if (!process.env.REPLICATE_API_TOKEN) {
+    return NextResponse.json(
+      { error: 'Stem separation is not configured. REPLICATE_API_TOKEN is required.' },
+      { status: 503 }
+    );
+  }
+
   // Rate limiting for expensive AI operations
   const clientId = getClientIdentifier(request);
   const rateLimit = checkRateLimit(`stems:${clientId}`, rateLimiters.expensive);
@@ -56,20 +65,10 @@ export async function POST(request: NextRequest) {
       message: 'Starting stem separation...',
     });
 
-    // Determine if we have Replicate API token
-    const hasReplicateToken = !!process.env.REPLICATE_API_TOKEN;
+    // Start async separation with Demucs
+    separateWithDemucs(jobId, trackId, trackUrl);
 
-    // Start async separation
-    if (hasReplicateToken) {
-      separateWithDemucs(jobId, trackId, trackUrl);
-    } else {
-      mockSeparation(jobId, trackId);
-    }
-
-    return NextResponse.json({
-      jobId,
-      provider: hasReplicateToken ? 'demucs' : 'mock'
-    });
+    return NextResponse.json({ jobId });
   } catch (error) {
     console.error('Separation error:', error);
     return NextResponse.json(
@@ -81,8 +80,8 @@ export async function POST(request: NextRequest) {
 
 /**
  * Demucs Stem Separation via Replicate
- * Uses the Demucs model for high-quality stem separation
- * Output format: MP3 (compressed, not WAV)
+ * Uses ryan5453/demucs model for high-quality stem separation
+ * Returns: vocals, drums, bass, guitar, other
  */
 async function separateWithDemucs(
   jobId: string,
@@ -99,15 +98,12 @@ async function separateWithDemucs(
       message: 'Uploading audio to Demucs...',
     });
 
-    // Use Demucs model on Replicate for stem separation
-    // Output format is MP3 to keep file sizes reasonable
+    // Use ryan5453/demucs model on Replicate for stem separation
     const output = await replicate.run(
-      "cjwbw/demucs:25a173108cff36ef9f80f854c162d01df9e6528be175794b81b7a0f3b7571398",
+      "ryan5453/demucs:5a7041cc9b82e5a558fea6b3d7b12dea89625e89da33f0447bd727c2d0ab9e77",
       {
         input: {
           audio: trackUrl,
-          stems: "drums,bass,vocals,other",
-          output_format: "mp3",
         }
       }
     );
@@ -123,6 +119,7 @@ async function separateWithDemucs(
       vocals?: string;
       drums?: string;
       bass?: string;
+      guitar?: string;
       other?: string;
     };
 
@@ -135,13 +132,14 @@ async function separateWithDemucs(
         vocals: stems.vocals,
         drums: stems.drums,
         bass: stems.bass,
+        guitar: stems.guitar,
         other: stems.other,
       },
     });
   } catch (error) {
     console.error('Demucs separation error:', error);
 
-    // Set error state instead of falling back to mock
+    // Set error state
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
     separations.set(jobId, {
       id: jobId,
@@ -151,48 +149,4 @@ async function separateWithDemucs(
       error: errorMessage,
     });
   }
-}
-
-/**
- * Mock separation for demo/development
- * Returns sample audio URLs to demonstrate the UI flow
- */
-async function mockSeparation(jobId: string, trackId: string) {
-  const stages = [
-    { progress: 20, message: 'Analyzing audio structure...', delay: 1500 },
-    { progress: 40, message: 'Isolating vocals...', delay: 2000 },
-    { progress: 55, message: 'Extracting drums...', delay: 2000 },
-    { progress: 70, message: 'Separating bass...', delay: 2000 },
-    { progress: 85, message: 'Processing other instruments...', delay: 1500 },
-    { progress: 95, message: 'Finalizing stems...', delay: 1000 },
-  ];
-
-  for (const stage of stages) {
-    await new Promise((resolve) => setTimeout(resolve, stage.delay));
-
-    const currentJob = separations.get(jobId);
-    if (!currentJob) return;
-
-    separations.set(jobId, {
-      ...currentJob,
-      progress: stage.progress,
-      message: stage.message,
-    });
-  }
-
-  // Demo audio URLs (these are just placeholders for the demo)
-  const demoStems = {
-    vocals: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
-    drums: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
-    bass: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
-    other: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3',
-  };
-
-  separations.set(jobId, {
-    id: jobId,
-    status: 'completed',
-    progress: 100,
-    message: 'Stem separation complete! (Demo mode)',
-    stems: demoStems,
-  });
 }
