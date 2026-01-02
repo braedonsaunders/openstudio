@@ -41,8 +41,9 @@ const REMOTE_RING_BUFFER_SIZE: usize = 16384;
 const BACKING_RING_BUFFER_SIZE: usize = 32768;
 
 /// Ring buffer size for streaming to browser (power-of-two for efficiency)
-/// 131072 samples = ~1.5 seconds at 44100Hz stereo - handles WebSocket jitter
-const BROWSER_STREAM_BUFFER_SIZE: usize = 131072;
+/// 262144 samples = ~3 seconds at 44100Hz stereo - handles WebSocket jitter
+/// Increased from 131072 to provide more headroom for browser stalls
+const BROWSER_STREAM_BUFFER_SIZE: usize = 262144;
 
 /// Audio engine configuration
 #[derive(Debug, Clone)]
@@ -185,6 +186,13 @@ pub struct AudioEngine {
     // Callback counters for diagnostics (no allocation to increment)
     input_callback_count: Arc<AtomicU64>,
     output_callback_count: Arc<AtomicU64>,
+
+    // Overflow tracking for browser stream (no allocation to increment)
+    browser_stream_overflow_count: Arc<AtomicU64>,
+    browser_stream_overflow_samples: Arc<AtomicU64>,
+
+    // Connection health tracking
+    last_browser_read_time: Arc<AtomicU64>,
 }
 
 impl AudioEngine {
@@ -222,6 +230,9 @@ impl AudioEngine {
             is_running: Arc::new(AtomicBool::new(false)),
             input_callback_count: Arc::new(AtomicU64::new(0)),
             output_callback_count: Arc::new(AtomicU64::new(0)),
+            browser_stream_overflow_count: Arc::new(AtomicU64::new(0)),
+            browser_stream_overflow_samples: Arc::new(AtomicU64::new(0)),
+            last_browser_read_time: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -625,6 +636,8 @@ impl AudioEngine {
         let monitoring_volume = self.monitoring_volume.clone();
         let processing_state = self.processing_state.clone();
         let effects_metering = self.effects_metering.clone();
+        let overflow_count = self.browser_stream_overflow_count.clone();
+        let overflow_samples = self.browser_stream_overflow_samples.clone();
         let input_channels = config.channels as usize;
 
         // Pre-allocate stereo buffer BEFORE building stream (allocation happens here, not in callback!)
@@ -647,6 +660,8 @@ impl AudioEngine {
                         &monitoring_volume,
                         &processing_state,
                         &effects_metering,
+                        &overflow_count,
+                        &overflow_samples,
                     );
                 },
                 |_err| {}, // No logging - allocates memory which kills ASIO
@@ -654,6 +669,8 @@ impl AudioEngine {
             )?,
             SampleFormat::I32 => {
                 let browser_stream_producer = self.browser_stream_producer.clone();
+                let overflow_count = self.browser_stream_overflow_count.clone();
+                let overflow_samples = self.browser_stream_overflow_samples.clone();
                 // Pre-allocate both conversion buffer and stereo buffer
                 // Use 65536 to handle any ASIO buffer size without reallocation
                 let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
@@ -680,6 +697,8 @@ impl AudioEngine {
                             &monitoring_volume,
                             &processing_state,
                             &effects_metering,
+                            &overflow_count,
+                            &overflow_samples,
                         );
                     },
                     |_err| {}, // No logging - allocates memory which kills ASIO
@@ -688,6 +707,8 @@ impl AudioEngine {
             }
             SampleFormat::I16 => {
                 let browser_stream_producer = self.browser_stream_producer.clone();
+                let overflow_count = self.browser_stream_overflow_count.clone();
+                let overflow_samples = self.browser_stream_overflow_samples.clone();
                 // Pre-allocate both conversion buffer and stereo buffer
                 // Use 65536 to handle any ASIO buffer size without reallocation
                 let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
@@ -714,6 +735,8 @@ impl AudioEngine {
                             &monitoring_volume,
                             &processing_state,
                             &effects_metering,
+                            &overflow_count,
+                            &overflow_samples,
                         );
                     },
                     |_err| {}, // No logging - allocates memory which kills ASIO
@@ -829,6 +852,8 @@ impl AudioEngine {
         monitoring_volume: &Arc<AtomicU32>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
         _effects_metering: &Arc<RwLock<EffectsMetering>>,
+        overflow_count: &Arc<AtomicU64>,
+        overflow_samples: &Arc<AtomicU64>,
     ) {
         // NO LOGGING IN THIS FUNCTION - logging allocates memory which kills ASIO
 
@@ -870,7 +895,13 @@ impl AudioEngine {
         // Stream audio to browser (browser applies effects via Web Audio)
         if let Some(browser_prod) = browser_stream_producer {
             if let Ok(mut prod) = browser_prod.try_lock() {
-                let _ = prod.push_slice(stereo_buffer);
+                let pushed = prod.push_slice(stereo_buffer);
+                let dropped = stereo_buffer.len() - pushed;
+                if dropped > 0 {
+                    // Track overflow without allocation (atomic increment)
+                    overflow_count.fetch_add(1, Ordering::Relaxed);
+                    overflow_samples.fetch_add(dropped as u64, Ordering::Relaxed);
+                }
             }
         }
 
@@ -1120,6 +1151,8 @@ impl AudioEngine {
         let monitoring_volume = self.monitoring_volume.clone();
         let processing_state_in = self.processing_state.clone();
         let effects_metering = self.effects_metering.clone();
+        let overflow_count = self.browser_stream_overflow_count.clone();
+        let overflow_samples = self.browser_stream_overflow_samples.clone();
 
         // Build input stream
         // CRITICAL: Pre-allocate ALL buffers BEFORE building streams!
@@ -1145,6 +1178,8 @@ impl AudioEngine {
                             &monitoring_volume,
                             &processing_state_in,
                             &effects_metering,
+                            &overflow_count,
+                            &overflow_samples,
                         );
                     },
                     |_err| {}, // No logging - allocates memory which kills ASIO
@@ -1152,6 +1187,8 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I32 => {
+                let overflow_count = self.browser_stream_overflow_count.clone();
+                let overflow_samples = self.browser_stream_overflow_samples.clone();
                 // Pre-allocate ALL buffers BEFORE building stream
                 let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
                 let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
@@ -1177,6 +1214,8 @@ impl AudioEngine {
                             &monitoring_volume,
                             &processing_state_in,
                             &effects_metering,
+                            &overflow_count,
+                            &overflow_samples,
                         );
                     },
                     |_err| {},
@@ -1297,5 +1336,60 @@ impl AudioEngine {
             self.input_callback_count.load(Ordering::Relaxed),
             self.output_callback_count.load(Ordering::Relaxed),
         )
+    }
+
+    /// Get overflow statistics for browser stream (count, samples_dropped)
+    /// Returns the counts and resets them to zero
+    pub fn get_and_reset_overflow_stats(&self) -> (u64, u64) {
+        let count = self.browser_stream_overflow_count.swap(0, Ordering::Relaxed);
+        let samples = self.browser_stream_overflow_samples.swap(0, Ordering::Relaxed);
+        (count, samples)
+    }
+
+    /// Get overflow statistics without resetting
+    pub fn get_overflow_stats(&self) -> (u64, u64) {
+        (
+            self.browser_stream_overflow_count.load(Ordering::Relaxed),
+            self.browser_stream_overflow_samples.load(Ordering::Relaxed),
+        )
+    }
+
+    /// Mark that browser has read from the stream (for health monitoring)
+    pub fn mark_browser_read(&self) {
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        self.last_browser_read_time.store(now, Ordering::Relaxed);
+    }
+
+    /// Get milliseconds since last browser read (0 if never read)
+    pub fn ms_since_last_browser_read(&self) -> u64 {
+        let last = self.last_browser_read_time.load(Ordering::Relaxed);
+        if last == 0 {
+            return 0;
+        }
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as u64;
+        now.saturating_sub(last)
+    }
+
+    /// Check if browser stream is healthy (reading regularly)
+    pub fn is_browser_stream_healthy(&self) -> bool {
+        let ms_since = self.ms_since_last_browser_read();
+        // Healthy if never started or read within last 500ms
+        ms_since == 0 || ms_since < 500
+    }
+
+    /// Get browser stream buffer occupancy (samples available, capacity)
+    pub fn get_browser_stream_occupancy(&self) -> (usize, usize) {
+        if let Some(ref consumer) = self.browser_stream_consumer {
+            if let Ok(cons) = consumer.try_lock() {
+                return (cons.occupied_len(), BROWSER_STREAM_BUFFER_SIZE);
+            }
+        }
+        (0, BROWSER_STREAM_BUFFER_SIZE)
     }
 }

@@ -42,6 +42,14 @@ interface EffectsMetering {
   limiterReduction: number;
 }
 
+interface BridgeStreamHealth {
+  bufferOccupancy: number; // 0.0 - 1.0
+  overflowCount: number;
+  overflowSamples: number;
+  isHealthy: boolean;
+  msSinceLastRead: number;
+}
+
 // Native bridge sends snake_case, we normalize to camelCase
 type NativeMessage =
   | { type: 'welcome'; version: string; driverType?: string; driver_type?: string }
@@ -50,6 +58,7 @@ type NativeMessage =
   | { type: 'devices'; inputs: BridgeDevice[]; outputs: BridgeDevice[] }
   | { type: 'audioStatus' } & BridgeAudioStatus
   | { type: 'levels' } & BridgeLevels
+  | { type: 'streamHealth' } & BridgeStreamHealth
   | { type: 'effectsMetering' } & EffectsMetering
   | { type: 'backingTrackLoaded'; duration: number; waveform: number[] }
   | { type: 'backingTrackPosition'; time: number }
@@ -81,6 +90,7 @@ export type BridgeEventType =
   | 'devices'
   | 'levels'
   | 'audioStatus'
+  | 'streamHealth'
   | 'effectsMetering'
   | 'audioData'
   | 'error';
@@ -91,6 +101,7 @@ type BridgeEventData = {
   devices: { inputs: BridgeDevice[]; outputs: BridgeDevice[] };
   levels: BridgeLevels;
   audioStatus: BridgeAudioStatus;
+  streamHealth: BridgeStreamHealth;
   effectsMetering: EffectsMetering;
   audioData: BridgeAudioData;
   error: { code: string; message: string };
@@ -130,6 +141,7 @@ export class NativeBridge {
       'devices',
       'levels',
       'audioStatus',
+      'streamHealth',
       'effectsMetering',
       'audioData',
       'error',
@@ -323,6 +335,20 @@ export class NativeBridge {
             inputLatencyMs: msg.inputLatencyMs,
             outputLatencyMs: msg.outputLatencyMs,
             totalLatencyMs: msg.totalLatencyMs,
+          });
+          break;
+
+        case 'streamHealth':
+          // Only log if there's an issue (overflow or unhealthy)
+          if (msg.overflowCount > 0 || !msg.isHealthy) {
+            console.warn('[NativeBridge] Stream health issue:', msg);
+          }
+          this.emit('streamHealth', {
+            bufferOccupancy: msg.bufferOccupancy,
+            overflowCount: msg.overflowCount,
+            overflowSamples: msg.overflowSamples,
+            isHealthy: msg.isHealthy,
+            msSinceLastRead: msg.msSinceLastRead,
           });
           break;
 
@@ -687,6 +713,66 @@ export class NativeBridge {
    */
   ping(): void {
     this.send({ type: 'ping', timestamp: Date.now() });
+  }
+
+  /**
+   * Send remote user audio to native bridge for mixing
+   * Used to route WebRTC audio through the native audio engine
+   * Format: [msg_type: 0][sample_count: u32][timestamp: u64][user_id_len: u8][user_id: utf8][samples: f32 LE...]
+   */
+  sendRemoteAudio(userId: string, samples: Float32Array): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const userIdBytes = new TextEncoder().encode(userId);
+    const headerSize = 13; // msg_type(1) + sample_count(4) + timestamp(8)
+    const totalSize = headerSize + 1 + userIdBytes.length + samples.length * 4;
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+
+    // Header
+    view.setUint8(0, 0); // msg_type 0 = remote audio from browser
+    view.setUint32(1, samples.length, true); // little-endian
+    view.setBigUint64(5, BigInt(Date.now()), true); // little-endian
+
+    // User ID length and bytes
+    view.setUint8(headerSize, userIdBytes.length);
+    new Uint8Array(buffer, headerSize + 1, userIdBytes.length).set(userIdBytes);
+
+    // Samples as f32 little-endian
+    const samplesView = new Float32Array(buffer, headerSize + 1 + userIdBytes.length);
+    samplesView.set(samples);
+
+    this.ws.send(buffer);
+  }
+
+  /**
+   * Send backing track audio to native bridge
+   * Format: [msg_type: 1][sample_count: u32][timestamp: u64][samples: f32 LE...]
+   */
+  sendBackingAudio(samples: Float32Array): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const headerSize = 13; // msg_type(1) + sample_count(4) + timestamp(8)
+    const totalSize = headerSize + samples.length * 4;
+
+    const buffer = new ArrayBuffer(totalSize);
+    const view = new DataView(buffer);
+
+    // Header
+    view.setUint8(0, 1); // msg_type 1 = backing track audio
+    view.setUint32(1, samples.length, true); // little-endian
+    view.setBigUint64(5, BigInt(Date.now()), true); // little-endian
+
+    // Samples as f32 little-endian
+    const samplesView = new Float32Array(buffer, headerSize);
+    samplesView.set(samples);
+
+    this.ws.send(buffer);
   }
 }
 

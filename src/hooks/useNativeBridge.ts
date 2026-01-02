@@ -356,7 +356,49 @@ export function useNativeBridge() {
     // Determine channel config - use primary track's config if available, otherwise global
     const channelConfigToUse = primaryTrack?.audioSettings.channelConfig || state.inputChannelConfig;
 
-    // Configure native bridge
+    // CRITICAL FIX: Set up track processors BEFORE starting native audio
+    // This prevents the race condition where audio arrives before processors are ready
+    // which caused "audio for ~0.5s then silence" symptoms
+    console.log('[useNativeBridge] Setting up track processors BEFORE starting native audio...');
+
+    // Set isRunning = true early so useTrackAudioSync sees bridge mode
+    useBridgeAudioStore.getState().setRunning(true);
+
+    // Set up all track processors in the browser audio engine FIRST
+    for (const track of userTracks) {
+      if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+        const engine = (window as any).__openStudioAudioEngine;
+        engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
+
+        // Set track state BEFORE enabling audio input
+        const directMonitoring = track.audioSettings.directMonitoring ?? true;
+        engine.updateTrackState(track.id, {
+          isArmed: track.isArmed,
+          isMuted: track.isMuted,
+          isSolo: track.isSolo,
+          volume: track.volume,
+          inputGain: track.audioSettings.inputGain || 0,
+          monitoringEnabled: !directMonitoring, // Invert: WET when direct is OFF
+        });
+
+        if (track.audioSettings.effects) {
+          engine.updateTrackEffects(track.id, track.audioSettings.effects);
+        }
+
+        // Set up bridge input - creates the AudioWorklet that receives audio
+        const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
+        await engine.setTrackBridgeInput(track.id, {
+          channelConfig,
+          asioBufferSize: state.bufferSize,
+        });
+
+        console.log(`[useNativeBridge] Track processor ready: ${track.id}`);
+      }
+    }
+
+    console.log('[useNativeBridge] All track processors ready, starting native audio...');
+
+    // NOW configure and start native bridge (after processors are ready)
     if (deviceId) {
       nativeBridge.setInputDevice(deviceId);
       nativeBridge.setOutputDevice(deviceId);
@@ -364,50 +406,35 @@ export function useNativeBridge() {
 
     nativeBridge.setBufferSize(state.bufferSize);
     nativeBridge.setSampleRate(state.sampleRate);
-    // IMPORTANT: Set channel config BEFORE startAudio - setting it after would
-    // cause native bridge to stop/restart ASIO, losing audio
     nativeBridge.setChannelConfig(channelConfigToUse);
+
+    // Send track state to native bridge for direct monitoring
+    if (currentUserId && primaryTrack) {
+      nativeBridge.updateTrackState(primaryTrack.id, {
+        isArmed: primaryTrack.isArmed,
+        isMuted: primaryTrack.isMuted,
+        isSolo: primaryTrack.isSolo,
+        volume: primaryTrack.volume,
+        inputGainDb: primaryTrack.audioSettings.inputGain || 0,
+        monitoringEnabled: primaryTrack.audioSettings.directMonitoring ?? true,
+        monitoringVolume: primaryTrack.audioSettings.monitoringVolume ?? 1,
+      });
+    }
+
+    // Start audio - processors are already ready to receive it
     nativeBridge.startAudio();
 
-    // Small delay to let native bridge initialize with correct sample rate
-    await new Promise(resolve => setTimeout(resolve, 50));
+    // Small delay to ensure native bridge is fully initialized
+    await new Promise(resolve => setTimeout(resolve, 30));
 
-    // CRITICAL: Set isRunning = true BEFORE setting up track processors
-    // This ensures useTrackAudioSync sees useBridge = true and applies correct
-    // monitoring logic (inverted for bridge mode: WET when directMonitoring is OFF)
-    // The audioStatus callback will confirm this or set it to false if startup fails
-    useBridgeAudioStore.getState().setRunning(true);
+    // Final state resync to catch any updates during setup
+    if (currentUserId) {
+      const latestTracksState = useUserTracksStore.getState();
+      const latestUserTracks = latestTracksState.getTracksByUser(currentUserId);
+      const engine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
 
-    // Send initial track state after starting audio
-    // NOTE: Native bridge only supports single-track audio capture. Multi-track is handled
-    // entirely in the browser - all tracks share the same audio input from the bridge,
-    // and effects/mixing are processed per-track in the browser.
-    if (currentUserId && primaryTrack) {
-      // Send primary track state to native bridge for direct monitoring
-      // (channel config was already set above BEFORE startAudio)
-      nativeBridge.updateTrackState(primaryTrack.id, {
-          isArmed: primaryTrack.isArmed,
-          isMuted: primaryTrack.isMuted,
-          isSolo: primaryTrack.isSolo,
-          volume: primaryTrack.volume,
-          inputGainDb: primaryTrack.audioSettings.inputGain || 0,
-          monitoringEnabled: primaryTrack.audioSettings.directMonitoring ?? true,
-          monitoringVolume: primaryTrack.audioSettings.monitoringVolume ?? 1,
-        });
-        console.log('[useNativeBridge] Sent primary track config:', primaryTrack.id);
-      }
-
-      // Set up all track processors in the browser audio engine
-      // All tracks will receive the same audio from the bridge
-      for (const track of userTracks) {
-        if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-          const engine = (window as any).__openStudioAudioEngine;
-          engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
-
-          // IMPORTANT: Set track state BEFORE enabling audio input
-          // This ensures monitoring is enabled before audio starts flowing
-          // For bridge mode: JS monitors WET audio when directMonitoring is OFF
-          // (Native bridge handles DRY monitoring when directMonitoring is ON)
+      if (engine) {
+        for (const track of latestUserTracks) {
           const directMonitoring = track.audioSettings.directMonitoring ?? true;
           engine.updateTrackState(track.id, {
             isArmed: track.isArmed,
@@ -415,65 +442,22 @@ export function useNativeBridge() {
             isSolo: track.isSolo,
             volume: track.volume,
             inputGain: track.audioSettings.inputGain || 0,
-            monitoringEnabled: !directMonitoring, // Invert: WET when direct is OFF
+            monitoringEnabled: !directMonitoring,
           });
 
-          if (track.audioSettings.effects) {
-            engine.updateTrackEffects(track.id, track.audioSettings.effects);
-          }
-
-          // Now set up bridge input - audio can flow after this
-          // This creates the AudioWorklet that receives audio from native bridge
-          const channelConfig = track.audioSettings.channelConfig || state.inputChannelConfig;
-          await engine.setTrackBridgeInput(track.id, {
-            channelConfig,
-            asioBufferSize: state.bufferSize,
-          });
-
-          console.log(`[useNativeBridge] Set up bridge input for track ${track.id}, armed: ${track.isArmed}, directMonitoring: ${directMonitoring}, jsMonitoring: ${!directMonitoring}`);
-        }
-      }
-
-      // CRITICAL: Final state resync after all bridge inputs are set up
-      // The store might have been updated while we were setting up bridge inputs.
-      // Re-read the LATEST track state and apply it to ensure we have correct values.
-      // This catches any state updates that happened during the async setup above.
-      if (currentUserId) {
-        const latestTracksState = useUserTracksStore.getState();
-        const latestUserTracks = latestTracksState.getTracksByUser(currentUserId);
-        const engine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
-
-        if (engine) {
-          for (const track of latestUserTracks) {
-            const directMonitoring = track.audioSettings.directMonitoring ?? true;
-            engine.updateTrackState(track.id, {
-              isArmed: track.isArmed,
-              isMuted: track.isMuted,
-              isSolo: track.isSolo,
-              volume: track.volume,
-              inputGain: track.audioSettings.inputGain || 0,
-              monitoringEnabled: !directMonitoring,
-            });
-
-            // Also update native bridge with latest state
-            nativeBridge.updateTrackState(track.id, {
-              isArmed: track.isArmed,
-              isMuted: track.isMuted,
-              isSolo: track.isSolo,
-              volume: track.volume,
-              inputGainDb: track.audioSettings.inputGain || 0,
-              monitoringEnabled: directMonitoring,
-              monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
-            });
-          }
-          const firstTrack = latestUserTracks[0];
-          console.log('[useNativeBridge] Final state resync complete:', {
-            tracks: latestUserTracks.length,
-            firstTrackArmed: firstTrack?.isArmed,
-            firstTrackDirectMonitoring: firstTrack?.audioSettings?.directMonitoring ?? true,
+          nativeBridge.updateTrackState(track.id, {
+            isArmed: track.isArmed,
+            isMuted: track.isMuted,
+            isSolo: track.isSolo,
+            volume: track.volume,
+            inputGainDb: track.audioSettings.inputGain || 0,
+            monitoringEnabled: directMonitoring,
+            monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
           });
         }
+        console.log('[useNativeBridge] Audio started with', latestUserTracks.length, 'tracks ready');
       }
+    }
   }, []);
 
   // Stop audio
