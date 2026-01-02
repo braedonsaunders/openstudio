@@ -117,6 +117,15 @@ pub struct JitterBuffer {
     last_recv_sequence: Mutex<Option<u16>>,
 }
 
+impl std::fmt::Debug for JitterBuffer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("JitterBuffer")
+            .field("config", &self.config)
+            .field("stats", &*self.stats.lock())
+            .finish_non_exhaustive()
+    }
+}
+
 impl JitterBuffer {
     pub fn new(config: JitterConfig) -> Self {
         let initial_target = config.min_size;
@@ -331,8 +340,9 @@ impl JitterBuffer {
         if let Some((_, frame)) = frames.iter().next_back() {
             // Simple fade-out of last frame
             let mut plc = frame.samples.clone();
+            let plc_len = plc.len() as f32;
             for (i, sample) in plc.iter_mut().enumerate() {
-                let fade = 1.0 - (i as f32 / plc.len() as f32) * 0.3;
+                let fade = 1.0 - (i as f32 / plc_len) * 0.3;
                 *sample *= fade;
             }
             plc

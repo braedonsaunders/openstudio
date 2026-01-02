@@ -10,7 +10,7 @@ use super::{
 use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, mpsc};
 use tracing::{info, warn};
 
 /// Network mode
@@ -531,17 +531,16 @@ impl NetworkManager {
                         MoqEvent::TrackAvailable { track } => {
                             // New user's track available - could trigger subscribe
                         }
-                        MoqEvent::DataReceived { track, data } => {
-                            // Parse and forward
-                            if track.track_type == "audio" {
-                                if let Ok(samples) = bincode::deserialize::<Vec<f32>>(&data) {
-                                    let _ = tx.send(NetworkEvent::AudioReceived {
-                                        user_id: track.user_id,
-                                        track_id: track.track_num,
-                                        samples,
-                                    });
-                                }
-                            }
+                        MoqEvent::AudioReceived {
+                            track,
+                            samples,
+                            sequence: _,
+                        } => {
+                            let _ = tx.send(NetworkEvent::AudioReceived {
+                                user_id: track.user_id,
+                                track_id: track.track_num,
+                                samples,
+                            });
                         }
                         _ => {}
                     }

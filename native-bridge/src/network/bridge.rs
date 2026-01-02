@@ -65,44 +65,70 @@ impl AudioNetworkBridge {
 
     /// Start the bridge
     ///
-    /// Spawns background tasks for:
+    /// Spawns background threads for:
     /// - Processing incoming network events (audio, peers, control)
     /// - Sending outgoing audio to the network
-    pub fn start(&self, mut event_rx: broadcast::Receiver<NetworkEvent>) {
+    ///
+    /// Note: Uses std::thread instead of tokio::spawn because AudioEngine
+    /// contains raw pointers that are not Send+Sync.
+    pub fn start(&self, event_rx: broadcast::Receiver<NetworkEvent>) {
         self.running
             .store(true, std::sync::atomic::Ordering::SeqCst);
         info!("Starting audio-network bridge");
 
-        // Spawn incoming event processor
+        // Spawn incoming event processor on dedicated thread
         let audio = self.audio.clone();
         let running = self.running.clone();
-        tokio::spawn(async move {
-            while running.load(std::sync::atomic::Ordering::SeqCst) {
-                match event_rx.recv().await {
-                    Ok(event) => {
-                        Self::handle_network_event(&audio, event).await;
-                    }
-                    Err(broadcast::error::RecvError::Lagged(n)) => {
-                        warn!("Dropped {} network events (receiver lagging)", n);
-                    }
-                    Err(broadcast::error::RecvError::Closed) => {
-                        info!("Network event channel closed");
-                        break;
-                    }
-                }
-            }
-        });
+        std::thread::Builder::new()
+            .name("audio-bridge-events".to_string())
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("Failed to create runtime");
+                rt.block_on(Self::event_loop(audio, event_rx, running));
+            })
+            .expect("Failed to spawn event processor thread");
 
-        // Spawn outgoing audio sender
+        // Spawn outgoing audio sender on dedicated thread
         let audio = self.audio.clone();
         let network = self.network.clone();
         let config = self.config.clone();
         let running = self.running.clone();
-        tokio::spawn(async move {
-            Self::audio_send_loop(audio, network, config, running).await;
-        });
+        std::thread::Builder::new()
+            .name("audio-bridge-sender".to_string())
+            .spawn(move || {
+                let rt = tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                    .expect("Failed to create runtime");
+                rt.block_on(Self::audio_send_loop(audio, network, config, running));
+            })
+            .expect("Failed to spawn audio sender thread");
 
         info!("Audio-network bridge started");
+    }
+
+    /// Event processing loop
+    async fn event_loop(
+        audio: Arc<AudioEngine>,
+        mut event_rx: broadcast::Receiver<NetworkEvent>,
+        running: Arc<std::sync::atomic::AtomicBool>,
+    ) {
+        while running.load(std::sync::atomic::Ordering::SeqCst) {
+            match event_rx.recv().await {
+                Ok(event) => {
+                    Self::handle_network_event(&audio, event).await;
+                }
+                Err(broadcast::error::RecvError::Lagged(n)) => {
+                    warn!("Dropped {} network events (receiver lagging)", n);
+                }
+                Err(broadcast::error::RecvError::Closed) => {
+                    info!("Network event channel closed");
+                    break;
+                }
+            }
+        }
     }
 
     /// Stop the bridge

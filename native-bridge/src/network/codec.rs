@@ -4,7 +4,7 @@
 //! Optimized for real-time music transmission.
 
 use super::{NetworkError, Result};
-use opus::{Application, Bandwidth, Bitrate, Channels, Decoder, Encoder};
+use opus::{Application, Bitrate, Channels, Decoder, Encoder};
 use std::sync::Mutex;
 
 /// Opus codec configuration
@@ -112,22 +112,11 @@ impl OpusEncoder {
             .set_bitrate(Bitrate::Bits(config.bitrate as i32))
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
-        encoder
-            .set_complexity(config.complexity)
-            .map_err(|e| NetworkError::CodecError(e.to_string()))?;
-
-        // Note: Signal type is set via Application::Audio in encoder creation
-
-        encoder
-            .set_bandwidth(Bandwidth::Fullband)
-            .map_err(|e| NetworkError::CodecError(e.to_string()))?;
+        // Note: Signal type, complexity, bandwidth, and DTX are set at Opus library level
+        // when available. The opus crate only exposes bitrate and FEC configuration.
 
         encoder
             .set_inband_fec(config.fec)
-            .map_err(|e| NetworkError::CodecError(e.to_string()))?;
-
-        encoder
-            .set_dtx(config.dtx)
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
         // Max Opus packet size
