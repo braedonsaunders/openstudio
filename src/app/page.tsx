@@ -10,6 +10,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Music, ArrowRight, Zap, Radio, Sun, Moon, FolderOpen, Plus, AlertCircle, Play, Pause } from 'lucide-react';
 import { CreateRoomModal } from '@/components/rooms';
+import { MyInvitationsDropdown } from '@/components/room/my-invitations-dropdown';
 import { getRoom } from '@/lib/rooms/service';
 import { SceneRenderer, SceneSelector } from '@/components/homepage';
 import type { HomepageSceneType } from '@/types/avatar';
@@ -330,6 +331,7 @@ export default function HomePage() {
               isDark={isDark}
             />
             <ThemeToggle />
+            {user && <MyInvitationsDropdown />}
             <UserMenu />
           </motion.div>
         </div>
