@@ -1,15 +1,15 @@
 //! WebSocket server for browser communication
 
-use super::{BrowserMessage, NativeMessage, AudioMessageHeader};
+use super::{AudioMessageHeader, BrowserMessage, NativeMessage};
 use crate::AppState;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH, Instant};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
-use tracing::{info, warn, error};
+use tracing::{error, info, warn};
 
 pub struct BridgeServer {
     state: Arc<Mutex<AppState>>,
@@ -48,7 +48,9 @@ impl BridgeServer {
             version: env!("CARGO_PKG_VERSION").to_string(),
             driver_type: detect_driver_type(),
         };
-        write.send(Message::Text(serde_json::to_string(&welcome)?)).await?;
+        write
+            .send(Message::Text(serde_json::to_string(&welcome)?))
+            .await?;
 
         // Track time for periodic level updates
         let mut last_level_update = Instant::now();
@@ -95,7 +97,8 @@ impl BridgeServer {
             if last_health_update.elapsed() >= health_interval {
                 let app = self.state.lock().await;
                 let (overflow_count, overflow_samples) = app.audio_engine.get_overflow_stats();
-                let (buffer_used, buffer_capacity) = app.audio_engine.get_browser_stream_occupancy();
+                let (buffer_used, buffer_capacity) =
+                    app.audio_engine.get_browser_stream_occupancy();
                 let is_healthy = app.audio_engine.is_browser_stream_healthy();
                 let ms_since_last_read = app.audio_engine.ms_since_last_browser_read();
                 drop(app);
@@ -142,14 +145,19 @@ impl BridgeServer {
             if last_diagnostic.elapsed() >= diagnostic_interval {
                 let app = self.state.lock().await;
                 let (input_cbs, output_cbs) = app.audio_engine.get_callback_counts();
-                let (overflow_count, overflow_samples) = app.audio_engine.get_and_reset_overflow_stats();
-                let (buffer_used, buffer_capacity) = app.audio_engine.get_browser_stream_occupancy();
+                let (overflow_count, overflow_samples) =
+                    app.audio_engine.get_and_reset_overflow_stats();
+                let (buffer_used, buffer_capacity) =
+                    app.audio_engine.get_browser_stream_occupancy();
                 let buffer_pct = (buffer_used as f64 / buffer_capacity as f64 * 100.0) as u32;
                 let healthy = app.audio_engine.is_browser_stream_healthy();
                 drop(app);
 
                 if overflow_count > 0 {
-                    warn!("[Server] BUFFER OVERFLOW: {} batches, {} samples dropped", overflow_count, overflow_samples);
+                    warn!(
+                        "[Server] BUFFER OVERFLOW: {} batches, {} samples dropped",
+                        overflow_count, overflow_samples
+                    );
                 }
 
                 info!("[Server] Diagnostic: loop={}, empty_reads={}, cbs=({},{}), buffer={}% ({}/{}), healthy={}",
@@ -174,7 +182,8 @@ impl BridgeServer {
                         .as_millis() as u64,
                 };
 
-                let mut binary_data = Vec::with_capacity(AudioMessageHeader::SIZE + audio_accumulator.len() * 4);
+                let mut binary_data =
+                    Vec::with_capacity(AudioMessageHeader::SIZE + audio_accumulator.len() * 4);
                 binary_data.extend_from_slice(&header.to_bytes());
                 for sample in &audio_accumulator {
                     binary_data.extend_from_slice(&sample.to_le_bytes());
@@ -185,7 +194,11 @@ impl BridgeServer {
                 match write.send(Message::Binary(binary_data)).await {
                     Ok(_) => {}
                     Err(e) => {
-                        warn!("Failed to send audio data: {} (samples: {})", e, audio_accumulator.len());
+                        warn!(
+                            "Failed to send audio data: {} (samples: {})",
+                            e,
+                            audio_accumulator.len()
+                        );
                         // Check if this is a fatal error (connection closed)
                         if e.to_string().contains("close") || e.to_string().contains("Connection") {
                             error!("WebSocket connection lost, stopping audio loop");
@@ -200,10 +213,7 @@ impl BridgeServer {
             // Use short timeout to ensure audio is sent frequently
             // Browser's ScriptProcessorNode at 48kHz/256 buffer runs ~187 times/sec
             // We need to send audio at least that fast to avoid buffer starvation
-            let msg = tokio::time::timeout(
-                std::time::Duration::from_millis(2),
-                read.next()
-            ).await;
+            let msg = tokio::time::timeout(std::time::Duration::from_millis(2), read.next()).await;
 
             match msg {
                 Ok(Some(Ok(Message::Text(text)))) => {
@@ -220,7 +230,9 @@ impl BridgeServer {
                                 code: "PARSE_ERROR".to_string(),
                                 message: e.to_string(),
                             };
-                            write.send(Message::Text(serde_json::to_string(&error)?)).await?;
+                            write
+                                .send(Message::Text(serde_json::to_string(&error)?))
+                                .await?;
                         }
                     }
                 }
@@ -236,7 +248,7 @@ impl BridgeServer {
                 }
                 Ok(None) => break,
                 Ok(Some(Ok(_))) => {} // Ping/Pong handled automatically
-                Err(_) => {} // Timeout - continue loop for level updates
+                Err(_) => {}          // Timeout - continue loop for level updates
             }
         }
 
@@ -251,8 +263,15 @@ impl BridgeServer {
 
     async fn handle_message(&self, msg: BrowserMessage) -> Option<NativeMessage> {
         match msg {
-            BrowserMessage::Hello { version, room_id, user_id } => {
-                info!("Browser hello: v{}, room={:?}, user={:?}", version, room_id, user_id);
+            BrowserMessage::Hello {
+                version,
+                room_id,
+                user_id,
+            } => {
+                info!(
+                    "Browser hello: v{}, room={:?}, user={:?}",
+                    version, room_id, user_id
+                );
 
                 {
                     let mut app = self.state.lock().await;
@@ -399,7 +418,9 @@ impl BridgeServer {
                 }
             }
 
-            BrowserMessage::UpdateTrackState { state: track_state, .. } => {
+            BrowserMessage::UpdateTrackState {
+                state: track_state, ..
+            } => {
                 info!("UpdateTrackState received: monitoring_enabled={:?}, is_muted={:?}, volume={:?}",
                       track_state.monitoring_enabled, track_state.is_muted, track_state.volume);
                 let app = self.state.lock().await;
@@ -414,7 +435,10 @@ impl BridgeServer {
             }
 
             BrowserMessage::SetMonitoring { enabled, volume } => {
-                info!("SetMonitoring received: enabled={}, volume={}", enabled, volume);
+                info!(
+                    "SetMonitoring received: enabled={}, volume={}",
+                    enabled, volume
+                );
                 let app = self.state.lock().await;
                 app.audio_engine.set_monitoring(enabled);
                 app.audio_engine.set_monitoring_volume(volume);
@@ -442,9 +466,21 @@ impl BridgeServer {
                 None
             }
 
-            BrowserMessage::UpdateRemoteUser { user_id, volume, muted, compensation_delay_ms } => {
+            BrowserMessage::UpdateRemoteUser {
+                user_id,
+                volume,
+                pan,
+                muted,
+                compensation_delay_ms,
+            } => {
                 let app = self.state.lock().await;
-                app.audio_engine.update_remote_user(&user_id, volume, muted, compensation_delay_ms);
+                app.audio_engine.update_remote_user(
+                    &user_id,
+                    volume,
+                    pan,
+                    muted,
+                    compensation_delay_ms,
+                );
                 None
             }
 
@@ -459,7 +495,10 @@ impl BridgeServer {
                 })
             }
 
-            BrowserMessage::PlayBackingTrack { sync_timestamp: _, offset } => {
+            BrowserMessage::PlayBackingTrack {
+                sync_timestamp: _,
+                offset,
+            } => {
                 info!("PlayBackingTrack at offset: {:.2}s", offset);
                 let app = self.state.lock().await;
                 app.audio_engine.set_backing_track_state(true, offset);
@@ -486,8 +525,15 @@ impl BridgeServer {
             }
 
             // === Stems ===
-            BrowserMessage::SetStemState { stem, enabled, volume } => {
-                info!("SetStemState: {} enabled={} volume={:.2}", stem, enabled, volume);
+            BrowserMessage::SetStemState {
+                stem,
+                enabled,
+                volume,
+            } => {
+                info!(
+                    "SetStemState: {} enabled={} volume={:.2}",
+                    stem, enabled, volume
+                );
                 let mut app = self.state.lock().await;
                 app.mixer.set_stem_state(&stem, enabled, volume);
                 None
@@ -500,11 +546,109 @@ impl BridgeServer {
                 None
             }
 
-            BrowserMessage::UpdateMasterEffects { eq, compressor, reverb, limiter } => {
+            BrowserMessage::UpdateMasterEffects {
+                eq,
+                compressor,
+                reverb,
+                limiter,
+            } => {
                 info!("UpdateMasterEffects");
                 // Would update master effects chain here
                 let _ = (eq, compressor, reverb, limiter);
                 None
+            }
+
+            // === P2P/Relay Room ===
+            BrowserMessage::JoinRoom {
+                room_id,
+                room_secret,
+                user_name,
+            } => {
+                info!("JoinRoom: {} as {}", room_id, user_name);
+                let app = self.state.lock().await;
+
+                if let Some(ref network) = app.network {
+                    let room_config = crate::network::RoomConfig {
+                        room_id: room_id.clone(),
+                        room_secret,
+                        ..Default::default()
+                    };
+
+                    let user_id = app
+                        .user_id
+                        .clone()
+                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+                    match network
+                        .connect(room_config, user_id.clone(), user_name)
+                        .await
+                    {
+                        Ok(_event_rx) => {
+                            // TODO: Start AudioNetworkBridge with event_rx
+                            let mode = network.mode();
+                            let is_master = network.is_master();
+                            Some(NativeMessage::RoomJoined {
+                                room_id,
+                                network_mode: format!("{:?}", mode),
+                                is_master,
+                            })
+                        }
+                        Err(e) => Some(NativeMessage::Error {
+                            code: "ROOM_JOIN_ERROR".to_string(),
+                            message: e.to_string(),
+                        }),
+                    }
+                } else {
+                    Some(NativeMessage::Error {
+                        code: "NETWORK_UNAVAILABLE".to_string(),
+                        message: "Network manager not initialized".to_string(),
+                    })
+                }
+            }
+
+            BrowserMessage::LeaveRoom => {
+                info!("LeaveRoom");
+                let app = self.state.lock().await;
+
+                if let Some(ref network) = app.network {
+                    network.disconnect().await;
+                }
+
+                Some(NativeMessage::RoomLeft)
+            }
+
+            BrowserMessage::SetNetworkMode { mode } => {
+                info!("SetNetworkMode: {}", mode);
+                let app = self.state.lock().await;
+
+                if let Some(ref network) = app.network {
+                    let new_mode = match mode.as_str() {
+                        "p2p" | "P2P" => crate::network::NetworkMode::P2P,
+                        "relay" | "Relay" => crate::network::NetworkMode::Relay,
+                        "hybrid" | "Hybrid" => crate::network::NetworkMode::Hybrid,
+                        _ => {
+                            return Some(NativeMessage::Error {
+                                code: "INVALID_MODE".to_string(),
+                                message: format!("Unknown network mode: {}", mode),
+                            });
+                        }
+                    };
+
+                    match network.switch_mode(new_mode).await {
+                        Ok(_) => Some(NativeMessage::NetworkModeChanged {
+                            mode: format!("{:?}", new_mode),
+                        }),
+                        Err(e) => Some(NativeMessage::Error {
+                            code: "MODE_SWITCH_ERROR".to_string(),
+                            message: e.to_string(),
+                        }),
+                    }
+                } else {
+                    Some(NativeMessage::Error {
+                        code: "NETWORK_UNAVAILABLE".to_string(),
+                        message: "Network manager not initialized".to_string(),
+                    })
+                }
             }
 
             other => {

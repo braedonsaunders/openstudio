@@ -8,9 +8,9 @@ pub use server::BridgeServer;
 
 use crate::AppState;
 use anyhow::Result;
+use std::env;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use std::env;
 use url::Url;
 
 /// Run the WebSocket server

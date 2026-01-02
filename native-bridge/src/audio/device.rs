@@ -126,7 +126,10 @@ impl AudioDevice {
 
         // Get default devices
         let default_input = host.default_input_device().map(|d| d.name().ok()).flatten();
-        let default_output = host.default_output_device().map(|d| d.name().ok()).flatten();
+        let default_output = host
+            .default_output_device()
+            .map(|d| d.name().ok())
+            .flatten();
 
         for device in host.devices()? {
             if let Some(mut info) = Self::get_device_info(&device, driver_type) {
@@ -175,7 +178,8 @@ impl AudioDevice {
                         if let Ok(name) = device.name() {
                             let id = Self::generate_device_id(&name, DriverType::Asio);
                             if id == device_id {
-                                if let Some(info) = Self::get_device_info(&device, DriverType::Asio) {
+                                if let Some(info) = Self::get_device_info(&device, DriverType::Asio)
+                                {
                                     return Ok(AudioDevice { device, info });
                                 }
                             }
@@ -206,7 +210,8 @@ impl AudioDevice {
     /// Get default input device
     pub fn default_input() -> Result<AudioDevice, DeviceError> {
         let host = cpal::default_host();
-        let device = host.default_input_device()
+        let device = host
+            .default_input_device()
             .ok_or(DeviceError::NoDevicesFound)?;
         let driver_type = Self::detect_driver_type(&host);
         let info = Self::get_device_info(&device, driver_type)
@@ -217,7 +222,8 @@ impl AudioDevice {
     /// Get default output device
     pub fn default_output() -> Result<AudioDevice, DeviceError> {
         let host = cpal::default_host();
-        let device = host.default_output_device()
+        let device = host
+            .default_output_device()
             .ok_or(DeviceError::NoDevicesFound)?;
         let driver_type = Self::detect_driver_type(&host);
         let info = Self::get_device_info(&device, driver_type)

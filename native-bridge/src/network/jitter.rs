@@ -27,8 +27,8 @@ pub struct JitterConfig {
 impl Default for JitterConfig {
     fn default() -> Self {
         Self {
-            min_size: 480,    // 10ms at 48kHz
-            max_size: 4800,   // 100ms at 48kHz
+            min_size: 480,  // 10ms at 48kHz
+            max_size: 4800, // 100ms at 48kHz
             target_jitter_ms: 5.0,
             sample_rate: 48000,
             channels: 2,
@@ -41,8 +41,8 @@ impl JitterConfig {
     /// Live jamming preset (minimal buffering)
     pub fn live_jamming() -> Self {
         Self {
-            min_size: 240,    // 5ms
-            max_size: 1920,   // 40ms
+            min_size: 240,  // 5ms
+            max_size: 1920, // 40ms
             target_jitter_ms: 2.0,
             ..Default::default()
         }
@@ -56,8 +56,8 @@ impl JitterConfig {
     /// Stable preset (more buffering, less glitches)
     pub fn stable() -> Self {
         Self {
-            min_size: 960,    // 20ms
-            max_size: 9600,   // 200ms
+            min_size: 960,  // 20ms
+            max_size: 9600, // 200ms
             target_jitter_ms: 10.0,
             ..Default::default()
         }
@@ -291,7 +291,9 @@ impl JitterBuffer {
 
             // Expected interval based on sequence delta
             let seq_delta = seq_b.wrapping_sub(seq_a) as f32;
-            let expected_ms = seq_delta * (self.config.frame_size as f32 / self.config.sample_rate as f32) * 1000.0;
+            let expected_ms = seq_delta
+                * (self.config.frame_size as f32 / self.config.sample_rate as f32)
+                * 1000.0;
 
             // Actual interval
             let actual_ms = time_b.duration_since(time_a).as_secs_f32() * 1000.0;
@@ -311,7 +313,8 @@ impl JitterBuffer {
 
             // Update adaptive target
             let mut adaptive_target = self.adaptive_target.lock();
-            let target_samples = (stats.avg_jitter_ms * 2.0 * self.config.sample_rate as f32 / 1000.0) as usize;
+            let target_samples =
+                (stats.avg_jitter_ms * 2.0 * self.config.sample_rate as f32 / 1000.0) as usize;
             let new_target = target_samples.clamp(self.config.min_size, self.config.max_size);
 
             // Smooth adaptation

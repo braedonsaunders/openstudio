@@ -14,6 +14,8 @@ pub struct TrackState {
     pub is_solo: bool,
     /// Track volume (0.0 - 1.0)
     pub volume: f32,
+    /// Track pan (-1.0 = full left, 0.0 = center, 1.0 = full right)
+    pub pan: f32,
     /// Input gain in dB (-24 to +24)
     pub input_gain_db: f32,
     /// Direct monitoring enabled
@@ -36,6 +38,8 @@ pub struct PartialTrackState {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub volume: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub pan: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
     pub input_gain_db: Option<f32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub monitoring_enabled: Option<bool>,
@@ -50,6 +54,7 @@ impl TrackState {
             is_muted: false,
             is_solo: false,
             volume: 1.0,
+            pan: 0.0, // Center
             input_gain_db: 0.0,
             monitoring_enabled: false,
             monitoring_volume: 0.8,
@@ -89,6 +94,9 @@ impl TrackState {
         if let Some(v) = partial.volume {
             self.volume = v;
         }
+        if let Some(v) = partial.pan {
+            self.pan = v;
+        }
         if let Some(v) = partial.input_gain_db {
             self.input_gain_db = v;
         }
@@ -98,6 +106,16 @@ impl TrackState {
         if let Some(v) = partial.monitoring_volume {
             self.monitoring_volume = v;
         }
+    }
+
+    /// Apply pan to stereo samples using constant-power panning
+    /// Returns (left_gain, right_gain)
+    pub fn pan_gains(&self) -> (f32, f32) {
+        // Constant-power pan law: maintains perceived loudness at all pan positions
+        let angle = (self.pan + 1.0) * 0.25 * std::f32::consts::PI; // 0 to PI/2
+        let left = angle.cos();
+        let right = angle.sin();
+        (left, right)
     }
 }
 

@@ -245,7 +245,13 @@ impl EffectsChain {
                 let mod_value = match self.settings.tremolo.waveform {
                     TremoloWaveform::Sine => (PHASE * std::f32::consts::TAU).sin(),
                     TremoloWaveform::Triangle => 1.0 - 4.0 * (PHASE - 0.5).abs(),
-                    TremoloWaveform::Square => if PHASE < 0.5 { 1.0 } else { -1.0 },
+                    TremoloWaveform::Square => {
+                        if PHASE < 0.5 {
+                            1.0
+                        } else {
+                            -1.0
+                        }
+                    }
                     TremoloWaveform::Sawtooth => 2.0 * PHASE - 1.0,
                 };
 

@@ -8,21 +8,21 @@ mod chain;
 mod types;
 
 // Individual effects (stubs for now - full implementation would be ~2000 lines each)
-mod wah;
-mod overdrive;
-mod distortion;
 mod amp;
 mod cabinet;
-mod noise_gate;
-mod eq;
-mod compressor;
 mod chorus;
-mod flanger;
-mod phaser;
+mod compressor;
 mod delay;
-mod tremolo;
-mod reverb;
+mod distortion;
+mod eq;
+mod flanger;
 mod limiter;
+mod noise_gate;
+mod overdrive;
+mod phaser;
+mod reverb;
+mod tremolo;
+mod wah;
 
 pub use chain::EffectsChain;
 pub use types::*;

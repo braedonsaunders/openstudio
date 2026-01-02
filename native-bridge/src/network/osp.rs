@@ -524,7 +524,12 @@ pub struct OspPacket {
 impl OspPacket {
     pub const CHECKSUM_SIZE: usize = 4;
 
-    pub fn new(message_type: OspMessageType, payload: Vec<u8>, sequence: u16, timestamp: u16) -> Self {
+    pub fn new(
+        message_type: OspMessageType,
+        payload: Vec<u8>,
+        sequence: u16,
+        timestamp: u16,
+    ) -> Self {
         let header = OspHeader::new(sequence, timestamp);
         let checksum = Self::compute_checksum(&header.to_bytes(), message_type as u16, &payload);
         Self {
@@ -548,9 +553,8 @@ impl OspPacket {
         let msg_type_bytes = (self.message_type as u16).to_le_bytes();
         let payload_len = (self.payload.len() as u16).to_le_bytes();
 
-        let mut bytes = Vec::with_capacity(
-            OspHeader::SIZE + 2 + 2 + self.payload.len() + Self::CHECKSUM_SIZE,
-        );
+        let mut bytes =
+            Vec::with_capacity(OspHeader::SIZE + 2 + 2 + self.payload.len() + Self::CHECKSUM_SIZE);
         bytes.extend_from_slice(&header_bytes);
         bytes.extend_from_slice(&msg_type_bytes);
         bytes.extend_from_slice(&payload_len);

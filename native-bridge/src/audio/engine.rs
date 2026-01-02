@@ -111,6 +111,7 @@ struct RemoteUserBuffer {
     consumer: Arc<std::sync::Mutex<HeapCons<f32>>>,
     producer: Arc<std::sync::Mutex<HeapProd<f32>>>,
     volume: f32,
+    pan: f32, // -1.0 = left, 0.0 = center, 1.0 = right
     is_muted: bool,
     compensation_delay_samples: usize,
 }
@@ -136,6 +137,7 @@ struct AudioProcessingState {
 #[derive(Debug, Clone)]
 struct RemoteUserSettings {
     volume: f32,
+    pan: f32,
     is_muted: bool,
     compensation_delay_ms: f32,
 }
@@ -373,6 +375,7 @@ impl AudioEngine {
             producer: Arc::new(std::sync::Mutex::new(producer)),
             consumer: Arc::new(std::sync::Mutex::new(consumer)),
             volume: 1.0,
+            pan: 0.0, // Center by default
             is_muted: false,
             compensation_delay_samples: 0,
         };
@@ -386,6 +389,7 @@ impl AudioEngine {
                 user_id.to_string(),
                 RemoteUserSettings {
                     volume: 1.0,
+                    pan: 0.0,
                     is_muted: false,
                     compensation_delay_ms: 0.0,
                 },
@@ -405,10 +409,18 @@ impl AudioEngine {
         info!("Removed remote user: {}", user_id);
     }
 
-    pub fn update_remote_user(&self, user_id: &str, volume: f32, muted: bool, delay_ms: f32) {
+    pub fn update_remote_user(
+        &self,
+        user_id: &str,
+        volume: f32,
+        pan: f32,
+        muted: bool,
+        delay_ms: f32,
+    ) {
         if let Ok(mut buffers) = self.remote_buffers.write() {
             if let Some(buffer) = buffers.get_mut(user_id) {
                 buffer.volume = volume;
+                buffer.pan = pan;
                 buffer.is_muted = muted;
                 // Convert delay_ms to samples
                 let sample_rate = self.config.sample_rate as u32;
@@ -419,6 +431,7 @@ impl AudioEngine {
         if let Ok(mut state) = self.processing_state.write() {
             if let Some(settings) = state.remote_users.get_mut(user_id) {
                 settings.volume = volume;
+                settings.pan = pan;
                 settings.is_muted = muted;
                 settings.compensation_delay_ms = delay_ms;
             }
@@ -927,8 +940,13 @@ impl AudioEngine {
             if let Ok(state) = processing_state.try_read() {
                 let gain = state.track_state.input_gain_linear();
                 let volume = state.track_state.volume;
-                for sample in stereo_buffer.iter_mut() {
-                    *sample *= gain * volume * mon_vol;
+                let (pan_left, pan_right) = state.track_state.pan_gains();
+
+                // Apply gain, volume, and pan to stereo pairs
+                for chunk in stereo_buffer.chunks_exact_mut(2) {
+                    let base_gain = gain * volume * mon_vol;
+                    chunk[0] *= base_gain * pan_left;
+                    chunk[1] *= base_gain * pan_right;
                 }
             }
 
@@ -963,15 +981,24 @@ impl AudioEngine {
             }
         }
 
-        // Mix remote user audio
+        // Mix remote user audio with pan
         if let Ok(buffers) = remote_buffers.try_read() {
             for (_user_id, buffer) in buffers.iter() {
                 if buffer.is_muted {
                     continue;
                 }
+                // Calculate constant-power pan gains
+                let pan_angle = (buffer.pan + 1.0) * 0.25 * std::f32::consts::PI; // 0 to PI/2
+                let left_gain = pan_angle.cos() * buffer.volume;
+                let right_gain = pan_angle.sin() * buffer.volume;
+
                 if let Ok(mut cons) = buffer.consumer.try_lock() {
-                    for sample in data.iter_mut() {
-                        *sample += cons.try_pop().unwrap_or(0.0) * buffer.volume;
+                    // Process stereo pairs (L, R, L, R, ...)
+                    for chunk in data.chunks_exact_mut(2) {
+                        let left_sample = cons.try_pop().unwrap_or(0.0);
+                        let right_sample = cons.try_pop().unwrap_or(0.0);
+                        chunk[0] += left_sample * left_gain;
+                        chunk[1] += right_sample * right_gain;
                     }
                 }
             }
@@ -980,7 +1007,13 @@ impl AudioEngine {
         // Mix backing track
         let backing_volume = processing_state
             .try_read()
-            .map(|s| if s.backing_track.is_playing { s.backing_track.volume } else { 0.0 })
+            .map(|s| {
+                if s.backing_track.is_playing {
+                    s.backing_track.volume
+                } else {
+                    0.0
+                }
+            })
             .unwrap_or(0.0);
 
         let mut backing_level = 0.0_f32;
@@ -995,7 +1028,10 @@ impl AudioEngine {
         }
 
         // Apply master volume
-        let master_vol = processing_state.try_read().map(|s| s.master_volume).unwrap_or(1.0);
+        let master_vol = processing_state
+            .try_read()
+            .map(|s| s.master_volume)
+            .unwrap_or(1.0);
         for sample in data.iter_mut() {
             *sample *= master_vol;
         }
@@ -1146,8 +1182,10 @@ impl AudioEngine {
 
         info!(
             "ASIO stream config - input: {} ch {:?}, output: {} ch {:?}",
-            input_channels, input_sample_format,
-            stream_output_config.channels, output_sample_format
+            input_channels,
+            input_sample_format,
+            stream_output_config.channels,
+            output_sample_format
         );
 
         // Clone shared state for callbacks
@@ -1348,8 +1386,12 @@ impl AudioEngine {
     /// Get overflow statistics for browser stream (count, samples_dropped)
     /// Returns the counts and resets them to zero
     pub fn get_and_reset_overflow_stats(&self) -> (u64, u64) {
-        let count = self.browser_stream_overflow_count.swap(0, Ordering::Relaxed);
-        let samples = self.browser_stream_overflow_samples.swap(0, Ordering::Relaxed);
+        let count = self
+            .browser_stream_overflow_count
+            .swap(0, Ordering::Relaxed);
+        let samples = self
+            .browser_stream_overflow_samples
+            .swap(0, Ordering::Relaxed);
         (count, samples)
     }
 

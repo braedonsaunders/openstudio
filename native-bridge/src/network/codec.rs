@@ -35,7 +35,7 @@ impl Default for OpusConfig {
             bitrate: 128000, // 128 kbps - good quality for music
             frame_size: 480, // 10ms at 48kHz - low latency
             fec: true,
-            dtx: false, // Keep stream constant for music
+            dtx: false,     // Keep stream constant for music
             complexity: 10, // Max quality
         }
     }

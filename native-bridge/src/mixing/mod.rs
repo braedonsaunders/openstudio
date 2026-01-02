@@ -4,7 +4,7 @@ mod mixer;
 mod track;
 
 pub use mixer::Mixer;
-pub use track::{PartialTrackState, Track, TrackState, RemoteUser};
+pub use track::{PartialTrackState, RemoteUser, Track, TrackState};
 
 use serde::{Deserialize, Serialize};
 

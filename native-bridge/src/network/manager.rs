@@ -4,16 +4,15 @@
 //! room size and network conditions.
 
 use super::{
-    osp::*, peer::*, codec::*, jitter::*, clock::*,
-    p2p::*, relay::*,
-    NetworkError, Result, RoomConfig, NetworkStats,
+    clock::*, codec::*, jitter::*, osp::*, p2p::*, peer::*, relay::*, NetworkError, NetworkStats,
+    Result, RoomConfig,
 };
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, broadcast, oneshot};
-use tracing::{debug, info, warn, error};
+use tokio::sync::{broadcast, mpsc, oneshot};
+use tracing::{debug, error, info, warn};
 
 /// Network mode
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -71,15 +70,31 @@ pub enum NetworkEvent {
     /// Connection state changed
     StateChanged { mode: NetworkMode },
     /// Peer connected
-    PeerConnected { user_id: String, user_name: String, has_native_bridge: bool },
+    PeerConnected {
+        user_id: String,
+        user_name: String,
+        has_native_bridge: bool,
+    },
     /// Peer disconnected
     PeerDisconnected { user_id: String, reason: String },
     /// Audio received from peer
-    AudioReceived { user_id: String, track_id: u8, samples: Vec<f32> },
+    AudioReceived {
+        user_id: String,
+        track_id: u8,
+        samples: Vec<f32>,
+    },
     /// Control message received
-    ControlMessage { from_user_id: String, message: OspMessageType, payload: Vec<u8> },
+    ControlMessage {
+        from_user_id: String,
+        message: OspMessageType,
+        payload: Vec<u8>,
+    },
     /// Clock sync update
-    ClockSync { beat_position: f64, bpm: f32, time_sig: (u8, u8) },
+    ClockSync {
+        beat_position: f64,
+        bpm: f32,
+        time_sig: (u8, u8),
+    },
     /// Room state received
     RoomState { state: RoomStateMessage },
     /// Network stats update
@@ -87,7 +102,11 @@ pub enum NetworkEvent {
     /// Error occurred
     Error { error: String },
     /// Mode switched (P2P <-> Relay)
-    ModeSwitched { from: NetworkMode, to: NetworkMode, reason: String },
+    ModeSwitched {
+        from: NetworkMode,
+        to: NetworkMode,
+        reason: String,
+    },
 }
 
 /// Outgoing message to send
@@ -96,9 +115,16 @@ pub enum OutgoingMessage {
     /// Audio frame
     Audio { track_id: u8, samples: Vec<f32> },
     /// Control message
-    Control { message_type: OspMessageType, payload: Vec<u8> },
+    Control {
+        message_type: OspMessageType,
+        payload: Vec<u8>,
+    },
     /// Clock sync (master only)
-    ClockSync { beat_position: f64, bpm: f32, time_sig: (u8, u8) },
+    ClockSync {
+        beat_position: f64,
+        bpm: f32,
+        time_sig: (u8, u8),
+    },
 }
 
 /// Network manager state
@@ -174,7 +200,10 @@ impl NetworkManager {
         user_id: String,
         user_name: String,
     ) -> Result<broadcast::Receiver<NetworkEvent>> {
-        info!("Connecting to room: {} as {}", room_config.room_id, user_name);
+        info!(
+            "Connecting to room: {} as {}",
+            room_config.room_id, user_name
+        );
 
         // Create event channel
         let (event_tx, event_rx) = broadcast::channel(1000);
@@ -293,7 +322,10 @@ impl NetworkManager {
     /// Send control message
     pub fn send_control(&self, message_type: OspMessageType, payload: Vec<u8>) {
         if let Some(tx) = self.outgoing_tx.read().as_ref() {
-            let _ = tx.send(OutgoingMessage::Control { message_type, payload });
+            let _ = tx.send(OutgoingMessage::Control {
+                message_type,
+                payload,
+            });
         }
     }
 
@@ -357,7 +389,9 @@ impl NetworkManager {
         }
 
         let state = self.state.read();
-        let room_config = state.room_config.clone()
+        let room_config = state
+            .room_config
+            .clone()
             .ok_or_else(|| NetworkError::ConnectionFailed("Not in room".to_string()))?;
         let user_id = state.user_id.clone().unwrap_or_default();
         let user_name = state.user_name.clone().unwrap_or_default();
@@ -416,9 +450,20 @@ impl NetworkManager {
 
     // === Private helpers ===
 
-    async fn start_p2p(&self, room_config: &RoomConfig, user_id: &str, user_name: &str) -> Result<()> {
+    async fn start_p2p(
+        &self,
+        room_config: &RoomConfig,
+        user_id: &str,
+        user_name: &str,
+    ) -> Result<()> {
         let mut rx = self.p2p.start().await?;
-        self.p2p.join_room(room_config.clone(), user_id.to_string(), user_name.to_string()).await?;
+        self.p2p
+            .join_room(
+                room_config.clone(),
+                user_id.to_string(),
+                user_name.to_string(),
+            )
+            .await?;
 
         // Forward P2P events to our event channel
         let event_tx = self.event_tx.read().clone();
@@ -439,7 +484,11 @@ impl NetworkManager {
                                 reason,
                             });
                         }
-                        P2PEvent::AudioReceived { peer_id, track_id, samples } => {
+                        P2PEvent::AudioReceived {
+                            peer_id,
+                            track_id,
+                            samples,
+                        } => {
                             let _ = tx.send(NetworkEvent::AudioReceived {
                                 user_id: peer_id.to_string(),
                                 track_id,
@@ -511,13 +560,20 @@ impl NetworkManager {
                     OutgoingMessage::Audio { track_id, samples } => {
                         self.p2p.send_audio(track_id, &samples).await?;
                     }
-                    OutgoingMessage::Control { message_type, payload } => {
+                    OutgoingMessage::Control {
+                        message_type,
+                        payload,
+                    } => {
                         // Broadcast to all peers
                         for peer in self.p2p.peers().connected() {
                             // Note: send_packet is private, need to expose or use different approach
                         }
                     }
-                    OutgoingMessage::ClockSync { beat_position, bpm, time_sig } => {
+                    OutgoingMessage::ClockSync {
+                        beat_position,
+                        bpm,
+                        time_sig,
+                    } => {
                         let msg = ClockSyncMessage {
                             master_time: ClockSync::now_ms(),
                             beat_position,
@@ -532,42 +588,61 @@ impl NetworkManager {
                     }
                 }
             }
-            NetworkMode::Relay => {
-                match msg {
-                    OutgoingMessage::Audio { track_id, samples } => {
-                        self.relay.send_audio(track_id, &samples).await?;
-                    }
-                    OutgoingMessage::Control { message_type, payload } => {
-                        self.relay.send_control(message_type, payload).await?;
-                    }
-                    OutgoingMessage::ClockSync { beat_position, bpm, time_sig } => {
-                        let msg = ClockSyncMessage {
-                            master_time: ClockSync::now_ms(),
-                            beat_position,
-                            bpm,
-                            time_sig_num: time_sig.0,
-                            time_sig_denom: time_sig.1,
-                            sync_sequence: 0,
-                        };
-                        let payload = bincode::serialize(&msg)
-                            .map_err(|e| NetworkError::Serialization(e.to_string()))?;
-                        self.relay.send_control(OspMessageType::ClockSync, payload).await?;
-                    }
+            NetworkMode::Relay => match msg {
+                OutgoingMessage::Audio { track_id, samples } => {
+                    self.relay.send_audio(track_id, &samples).await?;
                 }
-            }
+                OutgoingMessage::Control {
+                    message_type,
+                    payload,
+                } => {
+                    self.relay.send_control(message_type, payload).await?;
+                }
+                OutgoingMessage::ClockSync {
+                    beat_position,
+                    bpm,
+                    time_sig,
+                } => {
+                    let msg = ClockSyncMessage {
+                        master_time: ClockSync::now_ms(),
+                        beat_position,
+                        bpm,
+                        time_sig_num: time_sig.0,
+                        time_sig_denom: time_sig.1,
+                        sync_sequence: 0,
+                    };
+                    let payload = bincode::serialize(&msg)
+                        .map_err(|e| NetworkError::Serialization(e.to_string()))?;
+                    self.relay
+                        .send_control(OspMessageType::ClockSync, payload)
+                        .await?;
+                }
+            },
             NetworkMode::Hybrid => {
                 // Send via both (relay handles fan-out, P2P for low-latency to nearby)
                 match msg {
-                    OutgoingMessage::Audio { track_id, ref samples } => {
+                    OutgoingMessage::Audio {
+                        track_id,
+                        ref samples,
+                    } => {
                         // P2P for nearby peers
                         let _ = self.p2p.send_audio(track_id, samples).await;
                         // Relay for others
                         let _ = self.relay.send_audio(track_id, samples).await;
                     }
-                    OutgoingMessage::Control { message_type, ref payload } => {
-                        self.relay.send_control(message_type, payload.clone()).await?;
+                    OutgoingMessage::Control {
+                        message_type,
+                        ref payload,
+                    } => {
+                        self.relay
+                            .send_control(message_type, payload.clone())
+                            .await?;
                     }
-                    OutgoingMessage::ClockSync { beat_position, bpm, time_sig } => {
+                    OutgoingMessage::ClockSync {
+                        beat_position,
+                        bpm,
+                        time_sig,
+                    } => {
                         let msg = ClockSyncMessage {
                             master_time: ClockSync::now_ms(),
                             beat_position,
@@ -578,7 +653,9 @@ impl NetworkManager {
                         };
                         let payload = bincode::serialize(&msg)
                             .map_err(|e| NetworkError::Serialization(e.to_string()))?;
-                        self.relay.send_control(OspMessageType::ClockSync, payload).await?;
+                        self.relay
+                            .send_control(OspMessageType::ClockSync, payload)
+                            .await?;
                     }
                 }
             }
@@ -604,15 +681,19 @@ impl NetworkManager {
             // Check if we need to switch modes
             match mode {
                 NetworkMode::P2P if peer_count > self.config.p2p_max_users => {
-                    info!("Peer count ({}) exceeds P2P max ({}), switching to relay",
-                        peer_count, self.config.p2p_max_users);
+                    info!(
+                        "Peer count ({}) exceeds P2P max ({}), switching to relay",
+                        peer_count, self.config.p2p_max_users
+                    );
                     if let Err(e) = self.switch_mode(NetworkMode::Relay).await {
                         warn!("Failed to switch to relay: {}", e);
                     }
                 }
                 NetworkMode::Relay if peer_count <= self.config.p2p_max_users => {
-                    info!("Peer count ({}) below P2P max ({}), switching to P2P",
-                        peer_count, self.config.p2p_max_users);
+                    info!(
+                        "Peer count ({}) below P2P max ({}), switching to P2P",
+                        peer_count, self.config.p2p_max_users
+                    );
                     if let Err(e) = self.switch_mode(NetworkMode::P2P).await {
                         warn!("Failed to switch to P2P: {}", e);
                     }

@@ -4,22 +4,18 @@
 //! Used when P2P mesh would have too many connections (5+ users).
 
 use super::{
-    osp::*, peer::*, codec::*, jitter::*, clock::*,
-    NetworkError, Result, RoomConfig, NetworkStats,
+    clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, Result, RoomConfig,
 };
 use bytes::Bytes;
 use parking_lot::RwLock;
+use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, TransportConfig, VarInt};
+use rustls::pki_types::{CertificateDer, ServerName};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tokio::sync::{mpsc, broadcast, oneshot};
-use tracing::{debug, info, warn, error};
-use quinn::{
-    Connection, Endpoint, ClientConfig, TransportConfig,
-    RecvStream, SendStream, VarInt,
-};
-use rustls::pki_types::{CertificateDer, ServerName};
-use std::net::SocketAddr;
+use tokio::sync::{broadcast, mpsc, oneshot};
+use tracing::{debug, error, info, warn};
 
 /// MoQ relay configuration
 #[derive(Debug, Clone)]
@@ -94,7 +90,10 @@ impl MoqTrackName {
     }
 
     pub fn to_path(&self) -> String {
-        format!("{}/{}/{}/{}", self.room_id, self.user_id, self.track_type, self.track_num)
+        format!(
+            "{}/{}/{}/{}",
+            self.room_id, self.user_id, self.track_type, self.track_num
+        )
     }
 
     pub fn from_path(s: &str) -> Option<Self> {
@@ -123,9 +122,17 @@ pub enum MoqEvent {
     /// Track no longer available
     TrackEnded { track: MoqTrackName },
     /// Received audio data on subscribed track
-    AudioReceived { track: MoqTrackName, samples: Vec<f32>, sequence: u32 },
+    AudioReceived {
+        track: MoqTrackName,
+        samples: Vec<f32>,
+        sequence: u32,
+    },
     /// Received control message
-    ControlReceived { from_user: String, message_type: OspMessageType, payload: Vec<u8> },
+    ControlReceived {
+        from_user: String,
+        message_type: OspMessageType,
+        payload: Vec<u8>,
+    },
     /// Connection quality update
     QualityUpdate { rtt_ms: f32, loss_percent: f32 },
     /// Error occurred
@@ -252,7 +259,8 @@ impl MoqRelay {
 
         // Allow self-signed certs in development
         if !self.config.verify_certs {
-            crypto.dangerous()
+            crypto
+                .dangerous()
                 .set_certificate_verifier(Arc::new(SkipServerVerification));
         }
 
@@ -262,7 +270,7 @@ impl MoqRelay {
 
         let mut config = ClientConfig::new(Arc::new(
             quinn::crypto::rustls::QuicClientConfig::try_from(crypto)
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?
+                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?,
         ));
         config.transport_config(Arc::new(transport));
 
@@ -270,7 +278,11 @@ impl MoqRelay {
     }
 
     /// Connect to relay
-    pub async fn connect(&self, room_id: &str, user_id: &str) -> Result<broadcast::Receiver<MoqEvent>> {
+    pub async fn connect(
+        &self,
+        room_id: &str,
+        user_id: &str,
+    ) -> Result<broadcast::Receiver<MoqEvent>> {
         *self.state.write() = MoqConnectionState::Connecting;
         *self.room_id.write() = Some(room_id.to_string());
         *self.user_id.write() = Some(user_id.to_string());
@@ -282,7 +294,9 @@ impl MoqRelay {
         *self.event_tx.write() = Some(tx.clone());
 
         // Parse relay URL
-        let relay_addr: SocketAddr = self.config.relay_url
+        let relay_addr: SocketAddr = self
+            .config
+            .relay_url
             .parse()
             .or_else(|_| {
                 // Try with default port
@@ -298,31 +312,38 @@ impl MoqRelay {
         endpoint.set_default_client_config(client_config);
 
         // Extract hostname for SNI
-        let host = self.config.relay_url.split(':').next().unwrap_or("localhost");
+        let host = self
+            .config
+            .relay_url
+            .split(':')
+            .next()
+            .unwrap_or("localhost");
         let server_name = ServerName::try_from(host.to_string())
             .map_err(|_| NetworkError::ConnectionFailed("Invalid server name".to_string()))?;
 
         // Connect with timeout
-        let connecting = endpoint.connect(relay_addr, host)
+        let connecting = endpoint
+            .connect(relay_addr, host)
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
-        let connection = tokio::time::timeout(
-            self.config.connect_timeout,
-            connecting
-        )
-        .await
-        .map_err(|_| NetworkError::ConnectionFailed("Connection timeout".to_string()))?
-        .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+        let connection = tokio::time::timeout(self.config.connect_timeout, connecting)
+            .await
+            .map_err(|_| NetworkError::ConnectionFailed("Connection timeout".to_string()))?
+            .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         info!("QUIC connection established to {}", relay_addr);
 
         // Open control stream
-        let (mut control_send, control_recv) = connection.open_bi().await
+        let (mut control_send, control_recv) = connection
+            .open_bi()
+            .await
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         // Send join message
         let join_msg = self.encode_join_message(room_id, user_id);
-        control_send.write_all(&join_msg).await
+        control_send
+            .write_all(&join_msg)
+            .await
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         *self.connection.write() = Some(connection.clone());
@@ -500,7 +521,7 @@ impl MoqRelay {
             return None;
         }
 
-        let path = std::str::from_utf8(&data[1..1+path_len]).ok()?;
+        let path = std::str::from_utf8(&data[1..1 + path_len]).ok()?;
         MoqTrackName::from_path(path)
     }
 
@@ -525,7 +546,7 @@ impl MoqRelay {
             return;
         }
 
-        let path = match std::str::from_utf8(&data[2..2+path_len]) {
+        let path = match std::str::from_utf8(&data[2..2 + path_len]) {
             Ok(p) => p,
             Err(_) => return,
         };
@@ -606,11 +627,20 @@ impl MoqRelay {
 
     /// Publish an audio track
     pub async fn publish_audio(&self, track_num: u8) -> Result<()> {
-        let room_id = self.room_id.read().clone()
+        let room_id = self
+            .room_id
+            .read()
+            .clone()
             .ok_or_else(|| NetworkError::ConnectionFailed("Not in room".to_string()))?;
-        let user_id = self.user_id.read().clone()
+        let user_id = self
+            .user_id
+            .read()
+            .clone()
             .ok_or_else(|| NetworkError::ConnectionFailed("No user ID".to_string()))?;
-        let connection = self.connection.read().clone()
+        let connection = self
+            .connection
+            .read()
+            .clone()
             .ok_or_else(|| NetworkError::ConnectionFailed("Not connected".to_string()))?;
 
         let track = MoqTrackName::audio(&room_id, &user_id, track_num);
@@ -619,7 +649,9 @@ impl MoqRelay {
         info!("Publishing audio track: {}", track_path);
 
         // Open unidirectional stream for publishing
-        let send_stream = connection.open_uni().await
+        let send_stream = connection
+            .open_uni()
+            .await
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         // Send publish announcement via control stream
@@ -628,16 +660,21 @@ impl MoqRelay {
             msg.push(track_path.len() as u8);
             msg.extend_from_slice(track_path.as_bytes());
 
-            control.write_all(&msg).await
+            control
+                .write_all(&msg)
+                .await
                 .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
         }
 
-        self.published_tracks.write().insert(track_path, PublishedTrack {
-            track,
-            send_stream,
-            sequence: 0,
-            bytes_sent: 0,
-        });
+        self.published_tracks.write().insert(
+            track_path,
+            PublishedTrack {
+                track,
+                send_stream,
+                sequence: 0,
+                bytes_sent: 0,
+            },
+        );
 
         Ok(())
     }
@@ -668,7 +705,10 @@ impl MoqRelay {
 
     /// Subscribe to a user's audio
     pub async fn subscribe_audio(&self, publisher_user_id: &str, track_num: u8) -> Result<()> {
-        let room_id = self.room_id.read().clone()
+        let room_id = self
+            .room_id
+            .read()
+            .clone()
             .ok_or_else(|| NetworkError::ConnectionFailed("Not in room".to_string()))?;
 
         let track = MoqTrackName::audio(&room_id, publisher_user_id, track_num);
@@ -682,7 +722,9 @@ impl MoqRelay {
             msg.push(track_path.len() as u8);
             msg.extend_from_slice(track_path.as_bytes());
 
-            control.write_all(&msg).await
+            control
+                .write_all(&msg)
+                .await
                 .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
         }
 
@@ -690,13 +732,16 @@ impl MoqRelay {
         let jitter_config = JitterConfig::live_jamming();
         let jitter_buffer = JitterBuffer::new(jitter_config);
 
-        self.subscribed_tracks.write().insert(track_path, SubscribedTrack {
-            track,
-            jitter_buffer,
-            last_sequence: 0,
-            packets_received: 0,
-            packets_lost: 0,
-        });
+        self.subscribed_tracks.write().insert(
+            track_path,
+            SubscribedTrack {
+                track,
+                jitter_buffer,
+                last_sequence: 0,
+                packets_received: 0,
+                packets_lost: 0,
+            },
+        );
 
         Ok(())
     }
@@ -746,7 +791,10 @@ impl MoqRelay {
             msg.extend_from_slice(&encoded);
 
             // Send on the track's stream
-            track.send_stream.write_all(&msg).await
+            track
+                .send_stream
+                .write_all(&msg)
+                .await
                 .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
             track.sequence = track.sequence.wrapping_add(1);
@@ -774,7 +822,9 @@ impl MoqRelay {
             msg.extend_from_slice(&(payload.len() as u16).to_be_bytes());
             msg.extend_from_slice(&payload);
 
-            control.write_all(&msg).await
+            control
+                .write_all(&msg)
+                .await
                 .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
         }
 
@@ -820,7 +870,9 @@ impl MoqRelay {
 
         if *attempts > self.config.max_reconnect_attempts {
             *self.state.write() = MoqConnectionState::Failed;
-            return Err(NetworkError::ConnectionFailed("Max reconnect attempts exceeded".to_string()));
+            return Err(NetworkError::ConnectionFailed(
+                "Max reconnect attempts exceeded".to_string(),
+            ));
         }
 
         *self.state.write() = MoqConnectionState::Reconnecting;
@@ -839,7 +891,9 @@ impl MoqRelay {
                 info!("Reconnected successfully");
 
                 // Re-publish tracks
-                let tracks: Vec<u8> = self.published_tracks.read()
+                let tracks: Vec<u8> = self
+                    .published_tracks
+                    .read()
                     .values()
                     .map(|t| t.track.track_num)
                     .collect();
@@ -944,7 +998,11 @@ impl WebTransportListener {
     }
 
     /// Connect as listen-only
-    pub async fn connect(&self, room_id: &str, user_id: &str) -> Result<broadcast::Receiver<MoqEvent>> {
+    pub async fn connect(
+        &self,
+        room_id: &str,
+        user_id: &str,
+    ) -> Result<broadcast::Receiver<MoqEvent>> {
         *self.state.write() = MoqConnectionState::Connecting;
         *self.room_id.write() = Some(room_id.to_string());
         *self.user_id.write() = Some(user_id.to_string());
@@ -955,7 +1013,9 @@ impl WebTransportListener {
         *self.event_tx.write() = Some(tx.clone());
 
         // Parse relay URL
-        let relay_addr: SocketAddr = self.config.relay_url
+        let relay_addr: SocketAddr = self
+            .config
+            .relay_url
             .parse()
             .or_else(|_| format!("{}:443", self.config.relay_url).parse())
             .map_err(|e| NetworkError::ConnectionFailed(format!("Invalid relay URL: {}", e)))?;
@@ -977,27 +1037,32 @@ impl WebTransportListener {
 
         let mut client_config = ClientConfig::new(Arc::new(
             quinn::crypto::rustls::QuicClientConfig::try_from(crypto)
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?
+                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?,
         ));
         client_config.transport_config(Arc::new(transport));
         endpoint.set_default_client_config(client_config);
 
-        let host = self.config.relay_url.split(':').next().unwrap_or("localhost");
+        let host = self
+            .config
+            .relay_url
+            .split(':')
+            .next()
+            .unwrap_or("localhost");
 
         // Connect
-        let connecting = endpoint.connect(relay_addr, host)
+        let connecting = endpoint
+            .connect(relay_addr, host)
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
-        let connection = tokio::time::timeout(
-            self.config.connect_timeout,
-            connecting
-        )
-        .await
-        .map_err(|_| NetworkError::ConnectionFailed("Connection timeout".to_string()))?
-        .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+        let connection = tokio::time::timeout(self.config.connect_timeout, connecting)
+            .await
+            .map_err(|_| NetworkError::ConnectionFailed("Connection timeout".to_string()))?
+            .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         // Open control stream and send listen-only join
-        let (mut control_send, mut control_recv) = connection.open_bi().await
+        let (mut control_send, mut control_recv) = connection
+            .open_bi()
+            .await
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         // Send listen-only join message
@@ -1007,7 +1072,9 @@ impl WebTransportListener {
         join_msg.push(user_id.len() as u8);
         join_msg.extend_from_slice(user_id.as_bytes());
 
-        control_send.write_all(&join_msg).await
+        control_send
+            .write_all(&join_msg)
+            .await
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         *self.connection.write() = Some(connection.clone());
@@ -1033,14 +1100,16 @@ impl WebTransportListener {
                                 if n > 6 && buf[0] == RelayMessageType::AudioData as u8 {
                                     let path_len = buf[1] as usize;
                                     if n >= 2 + path_len + 4 {
-                                        let path = std::str::from_utf8(&buf[2..2+path_len])
+                                        let path = std::str::from_utf8(&buf[2..2 + path_len])
                                             .unwrap_or_default()
                                             .to_string();
 
-                                        let opus_data = &buf[2+path_len+4..n];
+                                        let opus_data = &buf[2 + path_len + 4..n];
 
                                         if let Ok(samples) = codec.decoder.decode(opus_data) {
-                                            subscribed.write().insert(path.clone(), samples.clone());
+                                            subscribed
+                                                .write()
+                                                .insert(path.clone(), samples.clone());
 
                                             if let Some(track) = MoqTrackName::from_path(&path) {
                                                 let _ = event_tx.send(MoqEvent::AudioReceived {
@@ -1082,7 +1151,7 @@ impl WebTransportListener {
 
         if let Some(tx) = self.event_tx.read().as_ref() {
             let _ = tx.send(MoqEvent::Disconnected {
-                reason: "User disconnected".to_string()
+                reason: "User disconnected".to_string(),
             });
         }
     }

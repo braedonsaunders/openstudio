@@ -20,6 +20,23 @@ pub enum BrowserMessage {
     /// Ping for latency measurement
     Ping { timestamp: u64 },
 
+    // === P2P/Relay Room ===
+    /// Join a room with P2P/relay networking
+    JoinRoom {
+        #[serde(rename = "roomId")]
+        room_id: String,
+        #[serde(rename = "roomSecret")]
+        room_secret: String,
+        #[serde(rename = "userName")]
+        user_name: String,
+    },
+
+    /// Leave the current room
+    LeaveRoom,
+
+    /// Switch network mode (P2P, Relay, Hybrid)
+    SetNetworkMode { mode: String },
+
     // === Device Management ===
     /// Request list of audio devices
     GetDevices,
@@ -79,6 +96,7 @@ pub enum BrowserMessage {
     UpdateRemoteUser {
         user_id: String,
         volume: f32,
+        pan: f32,
         muted: bool,
         compensation_delay_ms: f32,
     },
@@ -259,6 +277,58 @@ pub enum NativeMessage {
     /// Backing track ended
     #[serde(rename = "backingTrackEnded")]
     BackingTrackEnded,
+
+    // === P2P/Relay Room ===
+    /// Room joined successfully
+    #[serde(rename = "roomJoined")]
+    RoomJoined {
+        #[serde(rename = "roomId")]
+        room_id: String,
+        #[serde(rename = "networkMode")]
+        network_mode: String,
+        #[serde(rename = "isMaster")]
+        is_master: bool,
+    },
+
+    /// Room left
+    #[serde(rename = "roomLeft")]
+    RoomLeft,
+
+    /// Peer connected to room
+    #[serde(rename = "peerConnected")]
+    PeerConnected {
+        #[serde(rename = "userId")]
+        user_id: String,
+        #[serde(rename = "userName")]
+        user_name: String,
+        #[serde(rename = "hasNativeBridge")]
+        has_native_bridge: bool,
+    },
+
+    /// Peer disconnected from room
+    #[serde(rename = "peerDisconnected")]
+    PeerDisconnected {
+        #[serde(rename = "userId")]
+        user_id: String,
+        reason: String,
+    },
+
+    /// Network mode changed
+    #[serde(rename = "networkModeChanged")]
+    NetworkModeChanged { mode: String },
+
+    /// Network stats update
+    #[serde(rename = "networkStats")]
+    NetworkStats {
+        #[serde(rename = "rttMs")]
+        rtt_ms: f32,
+        #[serde(rename = "jitterMs")]
+        jitter_ms: f32,
+        #[serde(rename = "packetLossPct")]
+        packet_loss_pct: f32,
+        #[serde(rename = "peerCount")]
+        peer_count: usize,
+    },
 
     // === Audio Data ===
     /// Audio data for WebRTC (local capture after effects) - binary format

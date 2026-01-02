@@ -10,23 +10,25 @@
 //! - Automatic P2P <-> relay switching
 //! - Cloudflare MoQ integration for scalability
 
-pub mod osp;
+pub mod bridge;
+pub mod clock;
 pub mod codec;
 pub mod jitter;
-pub mod clock;
-pub mod peer;
-pub mod p2p;
-pub mod relay;
 pub mod manager;
+pub mod osp;
+pub mod p2p;
+pub mod peer;
+pub mod relay;
 
-pub use osp::*;
+pub use bridge::{AudioNetworkBridge, BridgeConfig};
+pub use clock::ClockSync;
 pub use codec::OpusCodec;
 pub use jitter::JitterBuffer;
-pub use clock::ClockSync;
-pub use peer::{Peer, PeerState};
+pub use manager::{NetworkConfig, NetworkEvent, NetworkManager, NetworkMode};
+pub use osp::*;
 pub use p2p::P2PNetwork;
+pub use peer::{Peer, PeerState};
 pub use relay::MoqRelay;
-pub use manager::{NetworkManager, NetworkMode, NetworkConfig};
 
 use thiserror::Error;
 
@@ -71,7 +73,7 @@ pub struct NetworkStats {
     /// Jitter (variance in latency) in ms
     pub jitter_ms: f32,
     /// Packet loss percentage (0.0 - 100.0)
-    pub packet_loss_percent: f32,
+    pub packet_loss_pct: f32,
     /// Bytes sent per second
     pub bytes_sent_per_sec: u64,
     /// Bytes received per second

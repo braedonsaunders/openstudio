@@ -51,10 +51,10 @@ impl Default for EffectsSettings {
 pub struct WahSettings {
     pub enabled: bool,
     pub mode: WahMode,
-    pub frequency: f32,      // 0-1 sweep position
-    pub resonance: f32,      // Q factor
-    pub attack: f32,         // ms (for envelope mode)
-    pub release: f32,        // ms
+    pub frequency: f32, // 0-1 sweep position
+    pub resonance: f32, // Q factor
+    pub attack: f32,    // ms (for envelope mode)
+    pub release: f32,   // ms
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -83,9 +83,9 @@ impl Default for WahSettings {
 #[serde(rename_all = "camelCase")]
 pub struct OverdriveSettings {
     pub enabled: bool,
-    pub drive: f32,          // 0-1
-    pub tone: f32,           // 0-1
-    pub level: f32,          // 0-1
+    pub drive: f32, // 0-1
+    pub tone: f32,  // 0-1
+    pub level: f32, // 0-1
 }
 
 impl Default for OverdriveSettings {
@@ -105,9 +105,9 @@ impl Default for OverdriveSettings {
 pub struct DistortionSettings {
     pub enabled: bool,
     pub distortion_type: DistortionType,
-    pub amount: f32,         // 0-1
-    pub tone: f32,           // 0-1
-    pub level: f32,          // 0-1
+    pub amount: f32, // 0-1
+    pub tone: f32,   // 0-1
+    pub level: f32,  // 0-1
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -138,12 +138,12 @@ impl Default for DistortionSettings {
 pub struct AmpSettings {
     pub enabled: bool,
     pub amp_type: AmpType,
-    pub gain: f32,           // 0-1
-    pub bass: f32,           // 0-1
-    pub mid: f32,            // 0-1
-    pub treble: f32,         // 0-1
-    pub presence: f32,       // 0-1
-    pub master: f32,         // 0-1
+    pub gain: f32,     // 0-1
+    pub bass: f32,     // 0-1
+    pub mid: f32,      // 0-1
+    pub treble: f32,   // 0-1
+    pub presence: f32, // 0-1
+    pub master: f32,   // 0-1
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -179,7 +179,7 @@ pub struct CabinetSettings {
     pub enabled: bool,
     pub cabinet_type: CabinetType,
     pub mic_position: MicPosition,
-    pub room_level: f32,     // 0-1
+    pub room_level: f32, // 0-1
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -223,11 +223,11 @@ impl Default for CabinetSettings {
 #[serde(rename_all = "camelCase")]
 pub struct NoiseGateSettings {
     pub enabled: bool,
-    pub threshold: f32,      // dB (-96 to 0)
-    pub attack: f32,         // ms
-    pub hold: f32,           // ms
-    pub release: f32,        // ms
-    pub range: f32,          // dB attenuation when closed
+    pub threshold: f32, // dB (-96 to 0)
+    pub attack: f32,    // ms
+    pub hold: f32,      // ms
+    pub release: f32,   // ms
+    pub range: f32,     // dB attenuation when closed
 }
 
 impl Default for NoiseGateSettings {
@@ -254,9 +254,9 @@ pub struct EqSettings {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EqBand {
-    pub frequency: f32,      // Hz
-    pub gain: f32,           // dB (-24 to +24)
-    pub q: f32,              // 0.1 to 10
+    pub frequency: f32, // Hz
+    pub gain: f32,      // dB (-24 to +24)
+    pub q: f32,         // 0.1 to 10
     pub band_type: EqBandType,
 }
 
@@ -273,11 +273,36 @@ impl Default for EqSettings {
         Self {
             enabled: false,
             bands: vec![
-                EqBand { frequency: 80.0, gain: 0.0, q: 0.7, band_type: EqBandType::Lowshelf },
-                EqBand { frequency: 240.0, gain: 0.0, q: 1.0, band_type: EqBandType::Peak },
-                EqBand { frequency: 750.0, gain: 0.0, q: 1.0, band_type: EqBandType::Peak },
-                EqBand { frequency: 2200.0, gain: 0.0, q: 1.0, band_type: EqBandType::Peak },
-                EqBand { frequency: 6000.0, gain: 0.0, q: 0.7, band_type: EqBandType::Highshelf },
+                EqBand {
+                    frequency: 80.0,
+                    gain: 0.0,
+                    q: 0.7,
+                    band_type: EqBandType::Lowshelf,
+                },
+                EqBand {
+                    frequency: 240.0,
+                    gain: 0.0,
+                    q: 1.0,
+                    band_type: EqBandType::Peak,
+                },
+                EqBand {
+                    frequency: 750.0,
+                    gain: 0.0,
+                    q: 1.0,
+                    band_type: EqBandType::Peak,
+                },
+                EqBand {
+                    frequency: 2200.0,
+                    gain: 0.0,
+                    q: 1.0,
+                    band_type: EqBandType::Peak,
+                },
+                EqBand {
+                    frequency: 6000.0,
+                    gain: 0.0,
+                    q: 0.7,
+                    band_type: EqBandType::Highshelf,
+                },
             ],
         }
     }
@@ -288,12 +313,12 @@ impl Default for EqSettings {
 #[serde(rename_all = "camelCase")]
 pub struct CompressorSettings {
     pub enabled: bool,
-    pub threshold: f32,      // dB (-60 to 0)
-    pub ratio: f32,          // 1:1 to 20:1
-    pub attack: f32,         // ms
-    pub release: f32,        // ms
-    pub knee: f32,           // dB (0-40)
-    pub makeup_gain: f32,    // dB (-12 to +24)
+    pub threshold: f32,   // dB (-60 to 0)
+    pub ratio: f32,       // 1:1 to 20:1
+    pub attack: f32,      // ms
+    pub release: f32,     // ms
+    pub knee: f32,        // dB (0-40)
+    pub makeup_gain: f32, // dB (-12 to +24)
 }
 
 impl Default for CompressorSettings {
@@ -315,12 +340,12 @@ impl Default for CompressorSettings {
 #[serde(rename_all = "camelCase")]
 pub struct ChorusSettings {
     pub enabled: bool,
-    pub rate: f32,           // Hz (0.1-10)
-    pub depth: f32,          // 0-1
-    pub delay: f32,          // ms (2-20)
-    pub feedback: f32,       // 0-1
-    pub spread: f32,         // stereo spread (0-180 degrees)
-    pub mix: f32,            // 0-1
+    pub rate: f32,     // Hz (0.1-10)
+    pub depth: f32,    // 0-1
+    pub delay: f32,    // ms (2-20)
+    pub feedback: f32, // 0-1
+    pub spread: f32,   // stereo spread (0-180 degrees)
+    pub mix: f32,      // 0-1
 }
 
 impl Default for ChorusSettings {
@@ -342,12 +367,12 @@ impl Default for ChorusSettings {
 #[serde(rename_all = "camelCase")]
 pub struct FlangerSettings {
     pub enabled: bool,
-    pub rate: f32,           // Hz (0.05-5)
-    pub depth: f32,          // 0-1
-    pub delay: f32,          // ms (0.5-10)
-    pub feedback: f32,       // -1 to 1
-    pub mix: f32,            // 0-1
-    pub negative: bool,      // invert feedback
+    pub rate: f32,      // Hz (0.05-5)
+    pub depth: f32,     // 0-1
+    pub delay: f32,     // ms (0.5-10)
+    pub feedback: f32,  // -1 to 1
+    pub mix: f32,       // 0-1
+    pub negative: bool, // invert feedback
 }
 
 impl Default for FlangerSettings {
@@ -401,11 +426,11 @@ impl Default for PhaserSettings {
 pub struct DelaySettings {
     pub enabled: bool,
     pub delay_type: DelayType,
-    pub time: f32,           // seconds (0.01-2.0)
-    pub feedback: f32,       // 0-1
-    pub mix: f32,            // 0-1
-    pub tone: f32,           // 0-1 (for analog/tape)
-    pub modulation: f32,     // 0-1 (for analog/tape)
+    pub time: f32,             // seconds (0.01-2.0)
+    pub feedback: f32,         // 0-1
+    pub mix: f32,              // 0-1
+    pub tone: f32,             // 0-1 (for analog/tape)
+    pub modulation: f32,       // 0-1 (for analog/tape)
     pub ping_pong_spread: f32, // stereo spread (0-1)
     pub tempo_sync: bool,
     pub subdivision: String, // "1/4", "1/8", etc.
@@ -443,10 +468,10 @@ impl Default for DelaySettings {
 #[serde(rename_all = "camelCase")]
 pub struct TremoloSettings {
     pub enabled: bool,
-    pub rate: f32,           // Hz (0.1-20)
-    pub depth: f32,          // 0-1
+    pub rate: f32,  // Hz (0.1-20)
+    pub depth: f32, // 0-1
     pub waveform: TremoloWaveform,
-    pub spread: f32,         // stereo (0-1)
+    pub spread: f32, // stereo (0-1)
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -476,11 +501,11 @@ impl Default for TremoloSettings {
 pub struct ReverbSettings {
     pub enabled: bool,
     pub reverb_type: ReverbType,
-    pub decay: f32,          // seconds (0.1-10)
-    pub pre_delay: f32,      // ms (0-100)
-    pub low_cut: f32,        // Hz
-    pub high_cut: f32,       // Hz
-    pub mix: f32,            // 0-1
+    pub decay: f32,     // seconds (0.1-10)
+    pub pre_delay: f32, // ms (0-100)
+    pub low_cut: f32,   // Hz
+    pub high_cut: f32,  // Hz
+    pub mix: f32,       // 0-1
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq)]
@@ -512,15 +537,15 @@ impl Default for ReverbSettings {
 #[serde(rename_all = "camelCase")]
 pub struct LimiterSettings {
     pub enabled: bool,
-    pub threshold: f32,      // dB (-12 to 0)
-    pub release: f32,        // ms
-    pub ceiling: f32,        // dB (-3 to 0)
+    pub threshold: f32, // dB (-12 to 0)
+    pub release: f32,   // ms
+    pub ceiling: f32,   // dB (-3 to 0)
 }
 
 impl Default for LimiterSettings {
     fn default() -> Self {
         Self {
-            enabled: true,  // Limiter always on by default for safety
+            enabled: true, // Limiter always on by default for safety
             threshold: -1.0,
             release: 50.0,
             ceiling: -0.3,
@@ -533,6 +558,6 @@ impl Default for LimiterSettings {
 #[serde(rename_all = "camelCase")]
 pub struct EffectsMetering {
     pub noise_gate_open: bool,
-    pub compressor_reduction: f32,  // dB
-    pub limiter_reduction: f32,     // dB
+    pub compressor_reduction: f32, // dB
+    pub limiter_reduction: f32,    // dB
 }

@@ -2,7 +2,7 @@
 //!
 //! Represents a connected peer in the P2P network or relay.
 
-use super::{JitterBuffer, JitterConfig, ClockSync};
+use super::{ClockSync, JitterBuffer, JitterConfig};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -213,13 +213,18 @@ impl Peer {
         let jitter_penalty = self.jitter_ms() * 2.0;
         let loss_penalty = self.packet_loss() * 5.0;
 
-        ((rtt_score - jitter_penalty - loss_penalty).max(0.0).min(100.0)) as u8
+        ((rtt_score - jitter_penalty - loss_penalty)
+            .max(0.0)
+            .min(100.0)) as u8
     }
 
     /// Add a track
     pub fn add_track(&self, track_id: u8, track_name: String, jitter_config: JitterConfig) {
         let mut tracks = self.tracks.write();
-        tracks.insert(track_id, PeerTrack::new(track_id, track_name, jitter_config));
+        tracks.insert(
+            track_id,
+            PeerTrack::new(track_id, track_name, jitter_config),
+        );
     }
 
     /// Remove a track
@@ -239,7 +244,13 @@ impl Peer {
     }
 
     /// Update track state
-    pub fn update_track(&self, track_id: u8, muted: Option<bool>, solo: Option<bool>, volume: Option<f32>) {
+    pub fn update_track(
+        &self,
+        track_id: u8,
+        muted: Option<bool>,
+        solo: Option<bool>,
+        volume: Option<f32>,
+    ) {
         if let Some(track) = self.tracks.write().get_mut(&track_id) {
             if let Some(m) = muted {
                 track.is_muted = m;
@@ -426,11 +437,7 @@ impl PeerRegistry {
 
     /// Find the current master
     pub fn master(&self) -> Option<Arc<Peer>> {
-        self.peers
-            .read()
-            .values()
-            .find(|p| p.is_master())
-            .cloned()
+        self.peers.read().values().find(|p| p.is_master()).cloned()
     }
 
     /// Get average RTT across all peers
