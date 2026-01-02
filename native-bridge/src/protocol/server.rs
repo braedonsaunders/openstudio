@@ -109,8 +109,12 @@ impl BridgeServer {
 
             // Periodic diagnostic logging
             if last_diagnostic.elapsed() >= diagnostic_interval {
-                info!("[Server] Diagnostic: loop={}, empty_reads={}, accumulator_len={}",
-                      loop_counter, empty_read_counter, audio_accumulator.len());
+                let (input_cbs, output_cbs) = {
+                    let app = self.state.lock().await;
+                    app.audio_engine.get_callback_counts()
+                };
+                info!("[Server] Diagnostic: loop={}, empty_reads={}, accumulator_len={}, input_cbs={}, output_cbs={}",
+                      loop_counter, empty_read_counter, audio_accumulator.len(), input_cbs, output_cbs);
                 last_diagnostic = Instant::now();
             }
 
