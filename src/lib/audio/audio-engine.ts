@@ -1926,6 +1926,8 @@ export class AudioEngine {
     if (this.originalConsoleWarn) return;
 
     this.originalConsoleWarn = console.warn.bind(console);
+    // Keep a stable reference that won't be nulled out
+    const savedOriginalWarn = this.originalConsoleWarn;
     const self = this;
 
     console.warn = function (...args: unknown[]) {
@@ -1951,8 +1953,9 @@ export class AudioEngine {
         }, 100); // Wait 100ms for errors to stop
       }
 
-      // Call original console.warn
-      self.originalConsoleWarn!.apply(console, args);
+      // Call original console.warn using the stable reference
+      // This prevents "Cannot read properties of null" if uninstall races with this call
+      savedOriginalWarn.apply(console, args);
     };
 
     console.log('[AudioEngine] BiquadFilterNode error detection installed');
