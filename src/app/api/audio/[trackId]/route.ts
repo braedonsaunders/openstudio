@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import { S3Client, GetObjectCommand, ListObjectsV2Command } from '@aws-sdk/client-s3';
 
 const R2_ACCOUNT_ID = process.env.CLOUDFLARE_R2_ACCOUNT_ID || '';
 const R2_ACCESS_KEY_ID = process.env.CLOUDFLARE_R2_ACCESS_KEY_ID || '';
@@ -35,30 +35,62 @@ export async function GET(
       );
     }
 
-    // Try common extensions
-    const extensions = ['mp3', 'wav', 'webm'];
+    // First, search for the file using prefix search since files are stored under user directories
+    // Files are stored as tracks/{userId}/{trackId}.{ext}
+    const listCommand = new ListObjectsV2Command({
+      Bucket: BUCKET_NAME,
+      Prefix: 'tracks/',
+      MaxKeys: 1000,
+    });
+
+    const listResponse = await s3Client.send(listCommand);
+    const matchingKey = listResponse.Contents?.find(obj =>
+      obj.Key?.includes(trackId)
+    )?.Key;
+
     let audioStream = null;
     let contentType = 'audio/mpeg';
-    let foundKey = '';
 
-    for (const ext of extensions) {
-      const key = `tracks/${trackId}.${ext}`;
+    if (matchingKey) {
+      // Found the file, fetch it
       try {
         const command = new GetObjectCommand({
           Bucket: BUCKET_NAME,
-          Key: key,
+          Key: matchingKey,
         });
 
         const response = await s3Client.send(command);
         if (response.Body) {
           audioStream = response;
-          foundKey = key;
+          const ext = matchingKey.split('.').pop() || 'mp3';
           contentType = response.ContentType || `audio/${ext === 'mp3' ? 'mpeg' : ext}`;
-          break;
         }
-      } catch {
-        // Try next extension
-        continue;
+      } catch (e) {
+        console.error('Error fetching matched key:', matchingKey, e);
+      }
+    }
+
+    // Fallback: try legacy paths without user ID (for backwards compatibility)
+    if (!audioStream) {
+      const extensions = ['mp3', 'wav', 'webm'];
+      for (const ext of extensions) {
+        const key = `tracks/${trackId}.${ext}`;
+        try {
+          const command = new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: key,
+          });
+
+          const response = await s3Client.send(command);
+          if (response.Body) {
+            audioStream = response;
+            contentType = response.ContentType || `audio/${ext === 'mp3' ? 'mpeg' : ext}`;
+            break;
+          }
+        } catch {
+          // Try next extension
+          continue;
+        }
       }
     }
 
