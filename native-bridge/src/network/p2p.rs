@@ -144,7 +144,7 @@ impl P2PNetwork {
             }
         }
 
-        let socket = Arc::new(socket);
+        let _socket = Arc::new(socket);
         *self.session_start.write() = Some(Instant::now());
         *self.running.write() = true;
 

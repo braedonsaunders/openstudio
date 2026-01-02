@@ -1441,4 +1441,138 @@ impl AudioEngine {
         }
         (0, BROWSER_STREAM_BUFFER_SIZE)
     }
+
+    /// Create a thread-safe handle for use from the network bridge.
+    /// This handle can be safely sent to other threads.
+    pub fn create_bridge_handle(&self) -> AudioBridgeHandle {
+        AudioBridgeHandle {
+            remote_buffers: self.remote_buffers.clone(),
+            browser_stream_consumer: self.browser_stream_consumer.clone(),
+            processing_state: self.processing_state.clone(),
+            sample_rate: self.config.sample_rate as u32,
+        }
+    }
+}
+
+/// Thread-safe handle for audio operations from the network bridge.
+///
+/// This struct contains only the thread-safe Arc-wrapped fields from AudioEngine
+/// that are needed by the network bridge. It can be safely cloned and sent to
+/// other threads.
+#[derive(Clone)]
+pub struct AudioBridgeHandle {
+    remote_buffers: Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
+    browser_stream_consumer: Option<Arc<std::sync::Mutex<HeapCons<f32>>>>,
+    processing_state: Arc<RwLock<AudioProcessingState>>,
+    sample_rate: u32,
+}
+
+// Explicitly mark AudioBridgeHandle as Send + Sync
+// This is safe because all fields are Arc-wrapped thread-safe types
+unsafe impl Send for AudioBridgeHandle {}
+unsafe impl Sync for AudioBridgeHandle {}
+
+impl AudioBridgeHandle {
+    /// Add a remote user's audio buffer
+    pub fn add_remote_user(&self, user_id: &str, user_name: &str) {
+        // Create ring buffer for this user
+        let ring_buffer = HeapRb::<f32>::new(REMOTE_RING_BUFFER_SIZE);
+        let (producer, consumer) = ring_buffer.split();
+
+        let buffer = RemoteUserBuffer {
+            producer: Arc::new(std::sync::Mutex::new(producer)),
+            consumer: Arc::new(std::sync::Mutex::new(consumer)),
+            volume: 1.0,
+            pan: 0.0,
+            is_muted: false,
+            compensation_delay_samples: 0,
+        };
+
+        if let Ok(mut buffers) = self.remote_buffers.write() {
+            buffers.insert(user_id.to_string(), buffer);
+        }
+
+        if let Ok(mut state) = self.processing_state.write() {
+            state.remote_users.insert(
+                user_id.to_string(),
+                RemoteUserSettings {
+                    volume: 1.0,
+                    pan: 0.0,
+                    is_muted: false,
+                    compensation_delay_ms: 0.0,
+                },
+            );
+        }
+
+        info!("Added remote user: {} ({})", user_name, user_id);
+    }
+
+    /// Remove a remote user's audio buffer
+    pub fn remove_remote_user(&self, user_id: &str) {
+        if let Ok(mut buffers) = self.remote_buffers.write() {
+            buffers.remove(user_id);
+        }
+        if let Ok(mut state) = self.processing_state.write() {
+            state.remote_users.remove(user_id);
+        }
+        info!("Removed remote user: {}", user_id);
+    }
+
+    /// Update remote user settings
+    pub fn update_remote_user(
+        &self,
+        user_id: &str,
+        volume: f32,
+        pan: f32,
+        muted: bool,
+        delay_ms: f32,
+    ) {
+        if let Ok(mut buffers) = self.remote_buffers.write() {
+            if let Some(buffer) = buffers.get_mut(user_id) {
+                buffer.volume = volume;
+                buffer.pan = pan;
+                buffer.is_muted = muted;
+                buffer.compensation_delay_samples =
+                    (delay_ms * self.sample_rate as f32 / 1000.0) as usize;
+            }
+        }
+        if let Ok(mut state) = self.processing_state.write() {
+            if let Some(settings) = state.remote_users.get_mut(user_id) {
+                settings.volume = volume;
+                settings.pan = pan;
+                settings.is_muted = muted;
+                settings.compensation_delay_ms = delay_ms;
+            }
+        }
+    }
+
+    /// Push audio data for a remote user
+    pub fn push_remote_audio(&self, user_id: &str, samples: &[f32]) {
+        if let Ok(buffers) = self.remote_buffers.read() {
+            if let Some(buffer) = buffers.get(user_id) {
+                if let Ok(mut prod) = buffer.producer.try_lock() {
+                    for &sample in samples {
+                        let _ = prod.try_push(sample);
+                    }
+                }
+            }
+        }
+    }
+
+    /// Get raw audio samples for streaming to browser
+    pub fn get_browser_stream_audio(&self, max_samples: usize) -> Vec<f32> {
+        if let Some(ref consumer) = self.browser_stream_consumer {
+            if let Ok(mut cons) = consumer.try_lock() {
+                let available = cons.occupied_len();
+                let to_read = available.min(max_samples);
+                if to_read > 0 {
+                    let mut buffer = vec![0.0f32; to_read];
+                    let read = cons.pop_slice(&mut buffer);
+                    buffer.truncate(read);
+                    return buffer;
+                }
+            }
+        }
+        Vec::new()
+    }
 }

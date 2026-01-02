@@ -182,7 +182,7 @@ impl ClockSync {
     }
 
     /// Process sync request and create response timestamps
-    pub fn process_sync_request(&self, t1: u64) -> (u64, u64) {
+    pub fn process_sync_request(&self, _t1: u64) -> (u64, u64) {
         let t2 = Self::now_ms();
         let t3 = Self::now_ms();
         (t2, t3)
@@ -252,7 +252,7 @@ impl ClockSync {
     /// Calculate latency compensation delay for a peer
     /// Returns the delay in samples that should be applied
     pub fn calculate_compensation_delay(&self, peer_rtt_ms: f32, sample_rate: u32) -> usize {
-        let state = self.state.read();
+        let _state = self.state.read();
 
         // Total round-trip budget for the group
         // We want everyone to be synchronized to the slowest peer

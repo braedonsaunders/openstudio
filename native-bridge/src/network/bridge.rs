@@ -7,7 +7,7 @@
 //! - Control message forwarding (track state, effects, etc.)
 
 use super::{NetworkEvent, NetworkManager, NetworkMode};
-use crate::audio::AudioEngine;
+use crate::audio::AudioBridgeHandle;
 use crate::network::osp::{OspMessageType, TrackStateMessage};
 use std::sync::Arc;
 use std::time::Duration;
@@ -45,7 +45,7 @@ impl Default for BridgeConfig {
 pub struct AudioNetworkBridge {
     config: BridgeConfig,
     network: Arc<NetworkManager>,
-    audio: Arc<AudioEngine>,
+    audio: AudioBridgeHandle,
     running: Arc<std::sync::atomic::AtomicBool>,
 }
 
@@ -53,7 +53,7 @@ impl AudioNetworkBridge {
     pub fn new(
         config: BridgeConfig,
         network: Arc<NetworkManager>,
-        audio: Arc<AudioEngine>,
+        audio: AudioBridgeHandle,
     ) -> Self {
         Self {
             config,
@@ -69,14 +69,14 @@ impl AudioNetworkBridge {
     /// - Processing incoming network events (audio, peers, control)
     /// - Sending outgoing audio to the network
     ///
-    /// Note: Uses std::thread instead of tokio::spawn because AudioEngine
-    /// contains raw pointers that are not Send+Sync.
+    /// Uses AudioBridgeHandle which is thread-safe (Send+Sync).
     pub fn start(&self, event_rx: broadcast::Receiver<NetworkEvent>) {
         self.running
             .store(true, std::sync::atomic::Ordering::SeqCst);
         info!("Starting audio-network bridge");
 
         // Spawn incoming event processor on dedicated thread
+        // AudioBridgeHandle is Send+Sync so it can be safely moved to another thread
         let audio = self.audio.clone();
         let running = self.running.clone();
         std::thread::Builder::new()
@@ -111,7 +111,7 @@ impl AudioNetworkBridge {
 
     /// Event processing loop
     async fn event_loop(
-        audio: Arc<AudioEngine>,
+        audio: AudioBridgeHandle,
         mut event_rx: broadcast::Receiver<NetworkEvent>,
         running: Arc<std::sync::atomic::AtomicBool>,
     ) {
@@ -139,7 +139,7 @@ impl AudioNetworkBridge {
     }
 
     /// Handle incoming network events
-    async fn handle_network_event(audio: &AudioEngine, event: NetworkEvent) {
+    async fn handle_network_event(audio: &AudioBridgeHandle, event: NetworkEvent) {
         match event {
             NetworkEvent::AudioReceived {
                 user_id,
@@ -220,7 +220,7 @@ impl AudioNetworkBridge {
 
     /// Handle control messages from peers
     async fn handle_control_message(
-        audio: &AudioEngine,
+        audio: &AudioBridgeHandle,
         from_user_id: &str,
         message_type: OspMessageType,
         payload: &[u8],
@@ -262,7 +262,7 @@ impl AudioNetworkBridge {
 
     /// Audio send loop - gets audio from engine and sends to network
     async fn audio_send_loop(
-        audio: Arc<AudioEngine>,
+        audio: AudioBridgeHandle,
         network: Arc<NetworkManager>,
         config: BridgeConfig,
         running: Arc<std::sync::atomic::AtomicBool>,
@@ -302,7 +302,7 @@ impl AudioNetworkBridge {
 /// Helper to create and start an audio-network bridge
 pub fn create_and_start_bridge(
     network: Arc<NetworkManager>,
-    audio: Arc<AudioEngine>,
+    audio: AudioBridgeHandle,
     event_rx: broadcast::Receiver<NetworkEvent>,
 ) -> AudioNetworkBridge {
     let config = BridgeConfig::default();
