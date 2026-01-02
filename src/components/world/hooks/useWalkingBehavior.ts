@@ -382,6 +382,12 @@ export function useWalkingBehavior(
   const [positions, setPositions] = useState<Map<string, EntityState>>(new Map());
   const positionsRef = useRef<Map<string, EntityState>>(new Map());
 
+  // Keep refs in sync for animation callback (avoids dependency on frequently-changing values)
+  const audioLevelsRef = useRef(audioLevels);
+  const tempoMultiplierRef = useRef(tempoMultiplier);
+  audioLevelsRef.current = audioLevels;
+  tempoMultiplierRef.current = tempoMultiplier;
+
   // Keep ref in sync for collision detection
   useEffect(() => {
     positionsRef.current = positions;
@@ -437,7 +443,7 @@ export function useWalkingBehavior(
     []
   );
 
-  // Animation loop
+  // Animation loop - uses refs for frequently-changing values to avoid restarts
   useVisibilityAwareAnimationFrame(
     (deltaTime) => {
       setPositions((prev) => {
@@ -446,7 +452,9 @@ export function useWalkingBehavior(
 
         next.forEach((state, id) => {
           const otherPositions = getOtherPositions(id);
-          const audioLevel = audioLevels.get(id) || 0;
+          // Read from refs to get latest values without causing loop restarts
+          const audioLevel = audioLevelsRef.current.get(id) || 0;
+          const currentTempoMultiplier = tempoMultiplierRef.current;
 
           const updated = updateEntityState(
             state,
@@ -455,7 +463,7 @@ export function useWalkingBehavior(
             groundConfig,
             otherPositions,
             audioLevel,
-            tempoMultiplier
+            currentTempoMultiplier
           );
 
           // Only update if state changed
@@ -475,7 +483,7 @@ export function useWalkingBehavior(
       });
     },
     isVisible,
-    [config, groundConfig, audioLevels, tempoMultiplier, getOtherPositions]
+    [config, groundConfig, getOtherPositions] // Removed audioLevels and tempoMultiplier - using refs instead
   );
 
   return { positions, getOtherPositions };
