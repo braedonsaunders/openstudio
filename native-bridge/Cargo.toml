@@ -56,9 +56,7 @@ rustls = { version = "0.21", default-features = false, features = ["quic", "dang
 rcgen = "0.12"
 webpki-roots = "0.25"
 
-# HTTP/3 for MoQ
-h3 = "0.0.6"
-h3-quinn = "0.0.7"
+# Byte utilities
 bytes = "1.5"
 
 # NAT traversal (STUN/TURN)
