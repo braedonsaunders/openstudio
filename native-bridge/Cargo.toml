@@ -42,8 +42,9 @@ url = "2.5"
 
 # === NEW: OSP Networking Dependencies ===
 
-# Opus audio codec (low-latency)
-audiopus = "0.3.0-rc.0"
+# Opus audio codec (low-latency) - requires libopus system library
+# Install: macOS `brew install opus`, Linux `apt install libopus-dev`, Windows via vcpkg
+opus = "0.3"
 
 # UDP networking
 socket2 = "0.5"

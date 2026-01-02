@@ -4,10 +4,7 @@
 //! Optimized for real-time music transmission.
 
 use super::{NetworkError, Result};
-use audiopus::{
-    coder::{Decoder, Encoder},
-    Application, Bandwidth, Channels, SampleRate, Signal,
-};
+use opus::{Application, Bandwidth, Bitrate, Channels, Decoder, Encoder, Signal};
 use std::sync::Mutex;
 
 /// Opus codec configuration
@@ -82,6 +79,18 @@ impl OpusConfig {
     pub fn frame_duration_ms(&self) -> f32 {
         (self.frame_size as f32 / self.sample_rate as f32) * 1000.0
     }
+
+    /// Get opus Channels enum
+    fn opus_channels(&self) -> Result<Channels> {
+        match self.channels {
+            1 => Ok(Channels::Mono),
+            2 => Ok(Channels::Stereo),
+            _ => Err(NetworkError::CodecError(format!(
+                "Unsupported channel count: {}",
+                self.channels
+            ))),
+        }
+    }
 }
 
 /// Opus encoder wrapper
@@ -93,37 +102,14 @@ pub struct OpusEncoder {
 
 impl OpusEncoder {
     pub fn new(config: OpusConfig) -> Result<Self> {
-        let sample_rate = match config.sample_rate {
-            8000 => SampleRate::Hz8000,
-            12000 => SampleRate::Hz12000,
-            16000 => SampleRate::Hz16000,
-            24000 => SampleRate::Hz24000,
-            48000 => SampleRate::Hz48000,
-            _ => {
-                return Err(NetworkError::CodecError(format!(
-                    "Unsupported sample rate: {}",
-                    config.sample_rate
-                )))
-            }
-        };
+        let channels = config.opus_channels()?;
 
-        let channels = match config.channels {
-            1 => Channels::Mono,
-            2 => Channels::Stereo,
-            _ => {
-                return Err(NetworkError::CodecError(format!(
-                    "Unsupported channel count: {}",
-                    config.channels
-                )))
-            }
-        };
-
-        let mut encoder = Encoder::new(sample_rate, channels, Application::Audio)
+        let mut encoder = Encoder::new(config.sample_rate, channels, Application::Audio)
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
-        // Configure encoder
+        // Configure encoder for music
         encoder
-            .set_bitrate(audiopus::Bitrate::BitsPerSecond(config.bitrate as i32))
+            .set_bitrate(Bitrate::Bits(config.bitrate as i32))
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
         encoder
@@ -138,17 +124,13 @@ impl OpusEncoder {
             .set_bandwidth(Bandwidth::Fullband)
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
-        if config.fec {
-            encoder
-                .set_inband_fec(true)
-                .map_err(|e| NetworkError::CodecError(e.to_string()))?;
-        }
+        encoder
+            .set_inband_fec(config.fec)
+            .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
-        if config.dtx {
-            encoder
-                .set_dtx(true)
-                .map_err(|e| NetworkError::CodecError(e.to_string()))?;
-        }
+        encoder
+            .set_dtx(config.dtx)
+            .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
         // Max Opus packet size
         let encode_buffer = vec![0u8; 4000];
@@ -173,17 +155,33 @@ impl OpusEncoder {
             )));
         }
 
-        // Convert f32 to i16
-        let pcm_i16: Vec<i16> = pcm
-            .iter()
-            .map(|&s| (s.clamp(-1.0, 1.0) * 32767.0) as i16)
-            .collect();
+        let mut encoder = self.encoder.lock().unwrap();
+        let mut buffer = self.encode_buffer.lock().unwrap();
+
+        // opus crate's encode_float takes f32 directly
+        let len = encoder
+            .encode_float(pcm, &mut buffer)
+            .map_err(|e| NetworkError::CodecError(e.to_string()))?;
+
+        Ok(buffer[..len].to_vec())
+    }
+
+    /// Encode PCM samples from i16
+    pub fn encode_i16(&self, pcm: &[i16]) -> Result<Vec<u8>> {
+        let expected_samples = self.config.frame_size * self.config.channels as usize;
+        if pcm.len() != expected_samples {
+            return Err(NetworkError::CodecError(format!(
+                "Expected {} samples, got {}",
+                expected_samples,
+                pcm.len()
+            )));
+        }
 
         let mut encoder = self.encoder.lock().unwrap();
         let mut buffer = self.encode_buffer.lock().unwrap();
 
         let len = encoder
-            .encode(&pcm_i16, &mut buffer)
+            .encode(pcm, &mut buffer)
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
         Ok(buffer[..len].to_vec())
@@ -198,47 +196,29 @@ impl OpusEncoder {
     pub fn channels(&self) -> u8 {
         self.config.channels
     }
+
+    /// Get config
+    pub fn config(&self) -> &OpusConfig {
+        &self.config
+    }
 }
 
 /// Opus decoder wrapper
 pub struct OpusDecoder {
     decoder: Mutex<Decoder>,
     config: OpusConfig,
-    decode_buffer: Mutex<Vec<i16>>,
+    decode_buffer: Mutex<Vec<f32>>,
 }
 
 impl OpusDecoder {
     pub fn new(config: OpusConfig) -> Result<Self> {
-        let sample_rate = match config.sample_rate {
-            8000 => SampleRate::Hz8000,
-            12000 => SampleRate::Hz12000,
-            16000 => SampleRate::Hz16000,
-            24000 => SampleRate::Hz24000,
-            48000 => SampleRate::Hz48000,
-            _ => {
-                return Err(NetworkError::CodecError(format!(
-                    "Unsupported sample rate: {}",
-                    config.sample_rate
-                )))
-            }
-        };
+        let channels = config.opus_channels()?;
 
-        let channels = match config.channels {
-            1 => Channels::Mono,
-            2 => Channels::Stereo,
-            _ => {
-                return Err(NetworkError::CodecError(format!(
-                    "Unsupported channel count: {}",
-                    config.channels
-                )))
-            }
-        };
-
-        let decoder = Decoder::new(sample_rate, channels)
+        let decoder = Decoder::new(config.sample_rate, channels)
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
-        // Buffer for max frame size
-        let decode_buffer = vec![0i16; 5760 * config.channels as usize];
+        // Buffer for max frame size (120ms at 48kHz stereo = 5760 * 2)
+        let decode_buffer = vec![0f32; 5760 * config.channels as usize];
 
         Ok(Self {
             decoder: Mutex::new(decoder),
@@ -255,37 +235,47 @@ impl OpusDecoder {
         let mut buffer = self.decode_buffer.lock().unwrap();
 
         let samples = decoder
-            .decode(Some(opus_data), &mut buffer, false)
+            .decode_float(opus_data, &mut buffer, false)
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
         let total_samples = samples * self.config.channels as usize;
 
-        // Convert i16 to f32
-        let pcm_f32: Vec<f32> = buffer[..total_samples]
-            .iter()
-            .map(|&s| s as f32 / 32768.0)
-            .collect();
+        Ok(buffer[..total_samples].to_vec())
+    }
 
-        Ok(pcm_f32)
+    /// Decode to i16 samples
+    pub fn decode_i16(&self, opus_data: &[u8]) -> Result<Vec<i16>> {
+        let mut decoder = self.decoder.lock().unwrap();
+        let mut buffer = vec![0i16; 5760 * self.config.channels as usize];
+
+        let samples = decoder
+            .decode(opus_data, &mut buffer, false)
+            .map_err(|e| NetworkError::CodecError(e.to_string()))?;
+
+        let total_samples = samples * self.config.channels as usize;
+
+        Ok(buffer[..total_samples].to_vec())
     }
 
     /// Decode with packet loss concealment (when packet is lost)
     pub fn decode_plc(&self, frame_size: usize) -> Result<Vec<f32>> {
         let mut decoder = self.decoder.lock().unwrap();
-        let mut buffer = self.decode_buffer.lock().unwrap();
+        let output_size = frame_size * self.config.channels as usize;
+        let mut buffer = vec![0f32; output_size];
 
+        // Pass fec=true to enable forward error correction
         let samples = decoder
-            .decode(None, &mut buffer[..frame_size * self.config.channels as usize], false)
+            .decode_float(&[], &mut buffer, true)
             .map_err(|e| NetworkError::CodecError(e.to_string()))?;
 
         let total_samples = samples * self.config.channels as usize;
 
-        let pcm_f32: Vec<f32> = buffer[..total_samples]
-            .iter()
-            .map(|&s| s as f32 / 32768.0)
-            .collect();
+        Ok(buffer[..total_samples].to_vec())
+    }
 
-        Ok(pcm_f32)
+    /// Get config
+    pub fn config(&self) -> &OpusConfig {
+        &self.config
     }
 }
 
@@ -315,6 +305,16 @@ impl OpusCodec {
     /// Create with ultra-low-latency preset
     pub fn ultra_low_latency() -> Result<Self> {
         Self::new(OpusConfig::ultra_low_latency())
+    }
+
+    /// Create with high-quality preset
+    pub fn high_quality() -> Result<Self> {
+        Self::new(OpusConfig::high_quality())
+    }
+
+    /// Get frame duration in ms
+    pub fn frame_duration_ms(&self) -> f32 {
+        self.config.frame_duration_ms()
     }
 }
 
@@ -350,5 +350,12 @@ mod tests {
             / pcm.len() as f32;
 
         assert!(mse < 0.01, "MSE too high: {}", mse);
+    }
+
+    #[test]
+    fn test_config_presets() {
+        assert_eq!(OpusConfig::ultra_low_latency().frame_duration_ms(), 5.0);
+        assert_eq!(OpusConfig::low_latency().frame_duration_ms(), 10.0);
+        assert_eq!(OpusConfig::balanced().frame_duration_ms(), 20.0);
     }
 }
