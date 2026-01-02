@@ -23,7 +23,7 @@ use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::Arc;
 use std::sync::RwLock;
-use tracing::{error, info};
+use tracing::info;
 
 // NOTE: Thread-locals were REMOVED because they allocate on first access,
 // which happens INSIDE audio callbacks. This kills ASIO.
@@ -622,7 +622,8 @@ impl AudioEngine {
         let input_channels = config.channels as usize;
 
         // Pre-allocate stereo buffer BEFORE building stream (allocation happens here, not in callback!)
-        let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+        // Use 65536 to handle any ASIO buffer size without reallocation
+        let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
         let stream = match sample_format {
             SampleFormat::F32 => device.build_input_stream(
@@ -642,14 +643,15 @@ impl AudioEngine {
                         &effects_metering,
                     );
                 },
-                |err| error!("Input stream error: {}", err),
+                |_err| {}, // No logging - allocates memory which kills ASIO
                 None,
             )?,
             SampleFormat::I32 => {
                 let browser_stream_producer = self.browser_stream_producer.clone();
                 // Pre-allocate both conversion buffer and stereo buffer
-                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
-                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                // Use 65536 to handle any ASIO buffer size without reallocation
+                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_input_stream(
                     config,
@@ -674,15 +676,16 @@ impl AudioEngine {
                             &effects_metering,
                         );
                     },
-                    |err| error!("Input stream error: {}", err),
+                    |_err| {}, // No logging - allocates memory which kills ASIO
                     None,
                 )?
             }
             SampleFormat::I16 => {
                 let browser_stream_producer = self.browser_stream_producer.clone();
                 // Pre-allocate both conversion buffer and stereo buffer
-                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
-                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                // Use 65536 to handle any ASIO buffer size without reallocation
+                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_input_stream(
                     config,
@@ -707,7 +710,7 @@ impl AudioEngine {
                             &effects_metering,
                         );
                     },
-                    |err| error!("Input stream error: {}", err),
+                    |_err| {}, // No logging - allocates memory which kills ASIO
                     None,
                 )?
             }
@@ -747,12 +750,13 @@ impl AudioEngine {
                         &processing_state,
                     );
                 },
-                |err| error!("Output stream error: {}", err),
+                |_err| {}, // No logging - allocates memory which kills ASIO
                 None,
             )?,
             SampleFormat::I32 => {
                 // Pre-allocate conversion buffer
-                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                // Use 65536 to handle any ASIO buffer size without reallocation
+                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_output_stream(
                     config,
@@ -768,13 +772,14 @@ impl AudioEngine {
                             &processing_state,
                         );
                     },
-                    |err| error!("Output stream error: {}", err),
+                    |_err| {}, // No logging - allocates memory which kills ASIO
                     None,
                 )?
             }
             SampleFormat::I16 => {
                 // Pre-allocate conversion buffer
-                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                // Use 65536 to handle any ASIO buffer size without reallocation
+                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_output_stream(
                     config,
@@ -790,7 +795,7 @@ impl AudioEngine {
                             &processing_state,
                         );
                     },
-                    |err| error!("Output stream error: {}", err),
+                    |_err| {}, // No logging - allocates memory which kills ASIO
                     None,
                 )?
             }
@@ -1103,7 +1108,8 @@ impl AudioEngine {
         let input_stream = match input_sample_format {
             SampleFormat::F32 => {
                 // Pre-allocate stereo buffer
-                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                // Use 65536 to handle any ASIO buffer size without reallocation
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_input_stream(
                     &stream_input_config,
@@ -1122,7 +1128,7 @@ impl AudioEngine {
                             &effects_metering,
                         );
                     },
-                    |err| error!("ASIO input error: {}", err),
+                    |_err| {}, // No logging - allocates memory which kills ASIO
                     None,
                 )?
             }
@@ -1136,8 +1142,9 @@ impl AudioEngine {
                 let effects_metering = self.effects_metering.clone();
 
                 // Pre-allocate both conversion buffer and stereo buffer
-                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
-                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                // Use 65536 to handle any ASIO buffer size without reallocation
+                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_input_stream(
                     &stream_input_config,
@@ -1162,7 +1169,7 @@ impl AudioEngine {
                             &effects_metering,
                         );
                     },
-                    |err| error!("ASIO input error: {}", err),
+                    |_err| {}, // No logging - allocates memory which kills ASIO
                     None,
                 )?
             }
@@ -1195,7 +1202,7 @@ impl AudioEngine {
                             &processing_state_out,
                         );
                     },
-                    |err| error!("ASIO output error: {}", err),
+                    |_err| {}, // No logging - allocates memory which kills ASIO
                     None,
                 )?
             }
@@ -1207,7 +1214,8 @@ impl AudioEngine {
                 let processing_state_out = self.processing_state.clone();
 
                 // Pre-allocate conversion buffer
-                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                // Use 65536 to handle any ASIO buffer size without reallocation
+                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_output_stream(
                     &stream_output_config,
@@ -1223,7 +1231,7 @@ impl AudioEngine {
                             &processing_state_out,
                         );
                     },
-                    |err| error!("ASIO output error: {}", err),
+                    |_err| {}, // No logging - allocates memory which kills ASIO
                     None,
                 )?
             }
