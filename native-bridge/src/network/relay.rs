@@ -197,7 +197,7 @@ pub struct MoqRelay {
     /// QUIC connection
     connection: RwLock<Option<Connection>>,
     /// Control stream for signaling
-    control_send: RwLock<Option<SendStream>>,
+    control_send: Arc<tokio::sync::Mutex<Option<SendStream>>>,
     /// Published tracks
     published_tracks: RwLock<HashMap<String, PublishedTrack>>,
     /// Subscribed tracks
@@ -230,7 +230,7 @@ impl MoqRelay {
             room_id: RwLock::new(None),
             user_id: RwLock::new(None),
             connection: RwLock::new(None),
-            control_send: RwLock::new(None),
+            control_send: Arc::new(tokio::sync::Mutex::new(None)),
             published_tracks: RwLock::new(HashMap::new()),
             subscribed_tracks: RwLock::new(HashMap::new()),
             event_tx: RwLock::new(None),
@@ -253,7 +253,7 @@ impl MoqRelay {
             rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
                 ta.subject.as_ref(),
                 ta.spki.as_ref(),
-                ta.name_constraints.as_ref().map(|nc| nc.as_ref()),
+                ta.name_constraints.as_ref().map(|nc| nc.as_ref() as &[u8]),
             )
         }));
 
@@ -349,7 +349,7 @@ impl MoqRelay {
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         *self.connection.write() = Some(connection.clone());
-        *self.control_send.write() = Some(control_send);
+        *self.control_send.lock().await = Some(control_send);
 
         // Create shutdown channel
         let (shutdown_tx, shutdown_rx) = oneshot::channel();
@@ -592,7 +592,7 @@ impl MoqRelay {
         }
 
         // Send leave message
-        if let Some(mut control) = self.control_send.write().take() {
+        if let Some(mut control) = self.control_send.lock().await.take() {
             let room_id = self.room_id.read().clone().unwrap_or_default();
             let user_id = self.user_id.read().clone().unwrap_or_default();
 
@@ -654,15 +654,18 @@ impl MoqRelay {
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         // Send publish announcement via control stream
-        if let Some(control) = self.control_send.write().as_mut() {
-            let mut msg = vec![RelayMessageType::Publish as u8];
-            msg.push(track_path.len() as u8);
-            msg.extend_from_slice(track_path.as_bytes());
+        {
+            let mut control_guard = self.control_send.lock().await;
+            if let Some(control) = control_guard.as_mut() {
+                let mut msg = vec![RelayMessageType::Publish as u8];
+                msg.push(track_path.len() as u8);
+                msg.extend_from_slice(track_path.as_bytes());
 
-            control
-                .write_all(&msg)
-                .await
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+                control
+                    .write_all(&msg)
+                    .await
+                    .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+            }
         }
 
         self.published_tracks.write().insert(
@@ -686,12 +689,15 @@ impl MoqRelay {
         let track_path = track.to_path();
 
         // Send unpublish via control stream
-        if let Some(control) = self.control_send.write().as_mut() {
-            let mut msg = vec![RelayMessageType::Unpublish as u8];
-            msg.push(track_path.len() as u8);
-            msg.extend_from_slice(track_path.as_bytes());
+        {
+            let mut control_guard = self.control_send.lock().await;
+            if let Some(control) = control_guard.as_mut() {
+                let mut msg = vec![RelayMessageType::Unpublish as u8];
+                msg.push(track_path.len() as u8);
+                msg.extend_from_slice(track_path.as_bytes());
 
-            let _ = control.write_all(&msg).await;
+                let _ = control.write_all(&msg).await;
+            }
         }
 
         // Close and remove the track
@@ -718,15 +724,18 @@ impl MoqRelay {
         info!("Subscribing to audio track: {}", track_path);
 
         // Send subscribe via control stream
-        if let Some(control) = self.control_send.write().as_mut() {
-            let mut msg = vec![RelayMessageType::Subscribe as u8];
-            msg.push(track_path.len() as u8);
-            msg.extend_from_slice(track_path.as_bytes());
+        {
+            let mut control_guard = self.control_send.lock().await;
+            if let Some(control) = control_guard.as_mut() {
+                let mut msg = vec![RelayMessageType::Subscribe as u8];
+                msg.push(track_path.len() as u8);
+                msg.extend_from_slice(track_path.as_bytes());
 
-            control
-                .write_all(&msg)
-                .await
-                .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+                control
+                    .write_all(&msg)
+                    .await
+                    .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
+            }
         }
 
         // Create jitter buffer for this track
@@ -754,12 +763,15 @@ impl MoqRelay {
         let track_path = track.to_path();
 
         // Send unsubscribe via control stream
-        if let Some(control) = self.control_send.write().as_mut() {
-            let mut msg = vec![RelayMessageType::Unsubscribe as u8];
-            msg.push(track_path.len() as u8);
-            msg.extend_from_slice(track_path.as_bytes());
+        {
+            let mut control_guard = self.control_send.lock().await;
+            if let Some(control) = control_guard.as_mut() {
+                let mut msg = vec![RelayMessageType::Unsubscribe as u8];
+                msg.push(track_path.len() as u8);
+                msg.extend_from_slice(track_path.as_bytes());
 
-            let _ = control.write_all(&msg).await;
+                let _ = control.write_all(&msg).await;
+            }
         }
 
         self.subscribed_tracks.write().remove(&track_path);
@@ -833,7 +845,8 @@ impl MoqRelay {
             return Err(NetworkError::ConnectionFailed("Not connected".to_string()));
         }
 
-        if let Some(control) = self.control_send.write().as_mut() {
+        let mut control_guard = self.control_send.lock().await;
+        if let Some(control) = control_guard.as_mut() {
             let mut msg = vec![RelayMessageType::ControlData as u8];
             msg.extend_from_slice(&(message_type as u16).to_be_bytes());
             msg.extend_from_slice(&(payload.len() as u16).to_be_bytes());
@@ -1015,7 +1028,7 @@ impl WebTransportListener {
             rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
                 ta.subject.as_ref(),
                 ta.spki.as_ref(),
-                ta.name_constraints.as_ref().map(|nc| nc.as_ref()),
+                ta.name_constraints.as_ref().map(|nc| nc.as_ref() as &[u8]),
             )
         }));
 
