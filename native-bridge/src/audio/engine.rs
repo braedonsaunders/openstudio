@@ -29,17 +29,11 @@ use tracing::{error, info, warn};
 static INPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
 static OUTPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-/// Thread-local buffers for audio callbacks.
-/// CRITICAL: Real-time audio callbacks must NEVER allocate memory.
-/// These pre-allocated buffers are reused across callbacks to avoid heap allocations.
-thread_local! {
-    static INPUT_CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(8192));
-    static OUTPUT_CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(8192));
-    /// Stereo buffer for channel extraction in process_input
-    static STEREO_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(8192));
-    /// Remote levels buffer for process_output_f32
-    static REMOTE_LEVELS_BUFFER: RefCell<Vec<(String, f32)>> = RefCell::new(Vec::with_capacity(32));
-}
+// NOTE: Thread-locals were REMOVED because they allocate on first access,
+// which happens INSIDE audio callbacks. This kills ASIO.
+// Instead, we now pre-allocate buffers in RefCells BEFORE building streams,
+// and capture them in closures. See build_input_stream, build_output_stream,
+// and start_asio for the pre-allocation pattern.
 
 /// Ring buffer size for local audio (samples, stereo)
 const LOCAL_RING_BUFFER_SIZE: usize = 8192;
@@ -630,13 +624,18 @@ impl AudioEngine {
         let effects_metering = self.effects_metering.clone();
         let input_channels = config.channels as usize;
 
+        // Pre-allocate stereo buffer BEFORE building stream (allocation happens here, not in callback!)
+        let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+
         let stream = match sample_format {
             SampleFormat::F32 => device.build_input_stream(
                 config,
                 move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                    let mut stereo_buf = stereo_buffer.borrow_mut();
                     Self::process_input(
                         data,
                         input_channels,
+                        &mut stereo_buf,
                         &producer,
                         browser_stream_producer.as_ref(),
                         &levels,
@@ -651,26 +650,32 @@ impl AudioEngine {
             )?,
             SampleFormat::I32 => {
                 let browser_stream_producer = self.browser_stream_producer.clone();
+                // Pre-allocate both conversion buffer and stereo buffer
+                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+
                 device.build_input_stream(
                     config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
-                        // Use thread-local buffer to avoid allocation in real-time callback
-                        INPUT_CONVERSION_BUFFER.with(|buf| {
-                            let mut float_data = buf.borrow_mut();
-                            float_data.clear();
-                            float_data.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
-                            Self::process_input(
-                                &float_data,
-                                input_channels,
-                                &producer,
-                                browser_stream_producer.as_ref(),
-                                &levels,
-                                &is_monitoring,
-                                &monitoring_volume,
-                                &processing_state,
-                                &effects_metering,
-                            );
-                        });
+                        let mut conv_buf = conversion_buffer.borrow_mut();
+                        let mut stereo_buf = stereo_buffer.borrow_mut();
+
+                        // Convert I32 to F32 using pre-allocated buffer
+                        conv_buf.clear();
+                        conv_buf.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
+
+                        Self::process_input(
+                            &conv_buf,
+                            input_channels,
+                            &mut stereo_buf,
+                            &producer,
+                            browser_stream_producer.as_ref(),
+                            &levels,
+                            &is_monitoring,
+                            &monitoring_volume,
+                            &processing_state,
+                            &effects_metering,
+                        );
                     },
                     |err| error!("Input stream error: {}", err),
                     None,
@@ -678,26 +683,32 @@ impl AudioEngine {
             }
             SampleFormat::I16 => {
                 let browser_stream_producer = self.browser_stream_producer.clone();
+                // Pre-allocate both conversion buffer and stereo buffer
+                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+
                 device.build_input_stream(
                     config,
                     move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                        // Use thread-local buffer to avoid allocation in real-time callback
-                        INPUT_CONVERSION_BUFFER.with(|buf| {
-                            let mut float_data = buf.borrow_mut();
-                            float_data.clear();
-                            float_data.extend(data.iter().map(|&s| s as f32 / i16::MAX as f32));
-                            Self::process_input(
-                                &float_data,
-                                input_channels,
-                                &producer,
-                                browser_stream_producer.as_ref(),
-                                &levels,
-                                &is_monitoring,
-                                &monitoring_volume,
-                                &processing_state,
-                                &effects_metering,
-                            );
-                        });
+                        let mut conv_buf = conversion_buffer.borrow_mut();
+                        let mut stereo_buf = stereo_buffer.borrow_mut();
+
+                        // Convert I16 to F32 using pre-allocated buffer
+                        conv_buf.clear();
+                        conv_buf.extend(data.iter().map(|&s| s as f32 / i16::MAX as f32));
+
+                        Self::process_input(
+                            &conv_buf,
+                            input_channels,
+                            &mut stereo_buf,
+                            &producer,
+                            browser_stream_producer.as_ref(),
+                            &levels,
+                            &is_monitoring,
+                            &monitoring_volume,
+                            &processing_state,
+                            &effects_metering,
+                        );
                     },
                     |err| error!("Input stream error: {}", err),
                     None,
@@ -726,12 +737,17 @@ impl AudioEngine {
         let levels = self.levels.clone();
         let processing_state = self.processing_state.clone();
 
+        // Pre-allocate remote levels buffer BEFORE building stream (allocation happens here, not in callback!)
+        let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
+
         let stream = match sample_format {
             SampleFormat::F32 => device.build_output_stream(
                 config,
                 move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                    let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
                     Self::process_output_f32(
                         data,
+                        &mut remote_levels_buf,
                         &local_consumer,
                         &remote_buffers,
                         &backing_consumer,
@@ -742,36 +758,56 @@ impl AudioEngine {
                 |err| error!("Output stream error: {}", err),
                 None,
             )?,
-            SampleFormat::I32 => device.build_output_stream(
-                config,
-                move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
-                    Self::process_output_i32(
-                        data,
-                        &local_consumer,
-                        &remote_buffers,
-                        &backing_consumer,
-                        &levels,
-                        &processing_state,
-                    );
-                },
-                |err| error!("Output stream error: {}", err),
-                None,
-            )?,
-            SampleFormat::I16 => device.build_output_stream(
-                config,
-                move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
-                    Self::process_output_i16(
-                        data,
-                        &local_consumer,
-                        &remote_buffers,
-                        &backing_consumer,
-                        &levels,
-                        &processing_state,
-                    );
-                },
-                |err| error!("Output stream error: {}", err),
-                None,
-            )?,
+            SampleFormat::I32 => {
+                // Pre-allocate conversion buffer and remote levels buffer
+                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
+
+                device.build_output_stream(
+                    config,
+                    move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
+                        let mut float_buf = float_buffer.borrow_mut();
+                        let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
+                        Self::process_output_i32(
+                            data,
+                            &mut float_buf,
+                            &mut remote_levels_buf,
+                            &local_consumer,
+                            &remote_buffers,
+                            &backing_consumer,
+                            &levels,
+                            &processing_state,
+                        );
+                    },
+                    |err| error!("Output stream error: {}", err),
+                    None,
+                )?
+            }
+            SampleFormat::I16 => {
+                // Pre-allocate conversion buffer and remote levels buffer
+                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
+
+                device.build_output_stream(
+                    config,
+                    move |data: &mut [i16], _: &cpal::OutputCallbackInfo| {
+                        let mut float_buf = float_buffer.borrow_mut();
+                        let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
+                        Self::process_output_i16(
+                            data,
+                            &mut float_buf,
+                            &mut remote_levels_buf,
+                            &local_consumer,
+                            &remote_buffers,
+                            &backing_consumer,
+                            &levels,
+                            &processing_state,
+                        );
+                    },
+                    |err| error!("Output stream error: {}", err),
+                    None,
+                )?
+            }
             _ => {
                 return Err(anyhow::anyhow!(
                     "Unsupported output format: {:?}",
@@ -784,9 +820,11 @@ impl AudioEngine {
     }
 
     /// Process input audio
+    /// stereo_buffer: Pre-allocated buffer for stereo extraction. MUST be allocated before ASIO starts!
     fn process_input(
         data: &[f32],
         input_channels: usize,
+        stereo_buffer: &mut Vec<f32>,
         producer: &Arc<std::sync::Mutex<HeapProd<f32>>>,
         browser_stream_producer: Option<&Arc<std::sync::Mutex<HeapProd<f32>>>>,
         levels: &Arc<RwLock<AudioLevels>>,
@@ -826,147 +864,145 @@ impl AudioEngine {
             info!("[INPUT] Raw input peak: {:.6}", raw_peak);
         }
 
-        // Use thread-local buffer to avoid allocation in real-time callback
-        // CRITICAL: Vec::with_capacity() STILL ALLOCATES - only reusing existing buffer avoids allocation
-        STEREO_BUFFER.with(|buf| {
-            let mut stereo_buffer = buf.borrow_mut();
-            stereo_buffer.clear();
+        // Clear and reuse the pre-allocated stereo buffer (no allocation!)
+        stereo_buffer.clear();
 
-            // Extract selected channels to stereo
-            for frame in data.chunks(input_channels) {
-                let left_sample = frame.get(left_ch).copied().unwrap_or(0.0);
-                let right_sample = if is_stereo {
-                    frame.get(right_ch).copied().unwrap_or(left_sample)
-                } else {
-                    left_sample
-                };
-                stereo_buffer.push(left_sample);
-                stereo_buffer.push(right_sample);
+        // Extract selected channels to stereo
+        for frame in data.chunks(input_channels) {
+            let left_sample = frame.get(left_ch).copied().unwrap_or(0.0);
+            let right_sample = if is_stereo {
+                frame.get(right_ch).copied().unwrap_or(left_sample)
+            } else {
+                left_sample
+            };
+            stereo_buffer.push(left_sample);
+            stereo_buffer.push(right_sample);
+        }
+
+        // Calculate input level
+        let level = stereo_buffer
+            .iter()
+            .map(|s| s.abs())
+            .fold(0.0_f32, f32::max);
+        if let Ok(mut lvl) = levels.try_write() {
+            lvl.input_level = level;
+            lvl.input_peak = lvl.input_peak.max(level);
+        }
+
+        if should_log {
+            info!(
+                "[INPUT] Extracted stereo peak: {:.6} | buffer_size={}",
+                level,
+                stereo_buffer.len()
+            );
+        }
+
+        // Stream RAW audio to browser for WET monitoring (BEFORE effects)
+        // The browser will apply effects using Web Audio, ensuring single effects codebase
+        // ALWAYS stream to browser when audio is running - the browser's audio chain
+        // has its own gain gates (armGain, monitorGain) to control output
+        if let Some(browser_prod) = browser_stream_producer {
+            if let Ok(mut prod) = browser_prod.try_lock() {
+                let available_space = prod.vacant_len();
+                let pushed = prod.push_slice(stereo_buffer);
+                if should_log || pushed < stereo_buffer.len() {
+                    info!(
+                        "[INPUT] Browser stream: pushed={}/{} space_was={}",
+                        pushed,
+                        stereo_buffer.len(),
+                        available_space
+                    );
+                }
+            } else if should_log {
+                warn!("[INPUT] Browser stream: failed to acquire lock!");
             }
+        } else if should_log {
+            warn!("[INPUT] Browser stream: producer is None!");
+        }
 
-            // Calculate input level
-            let level = stereo_buffer
+        // Get monitoring volume from atomic (can be updated independently)
+        let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
+
+        // Get all track state including monitoring_enabled from processing state
+        // This is updated by UpdateTrackState messages from the browser
+        let (is_armed, is_muted, monitoring_enabled) =
+            if let Ok(state) = processing_state.try_read() {
+                (
+                    state.track_state.is_armed,
+                    state.track_state.is_muted,
+                    state.track_state.monitoring_enabled,
+                )
+            } else {
+                (false, false, false)
+            };
+
+        // DRY monitoring (native bridge passthrough) is controlled by:
+        // - monitoring_enabled (Direct Monitoring toggle) - user wants to hear hardware bypass
+        // - !is_muted - track isn't muted
+        // Note: ARM is NOT required for DRY monitoring - it's hardware bypass for hearing yourself
+        // ARM only affects software monitoring (browser WET path with effects)
+        let should_monitor = monitoring_enabled && !is_muted;
+
+        if should_log {
+            info!("[INPUT] DRY Monitoring: enabled={} muted={} -> should_monitor={} (armed={} for info only)",
+                  monitoring_enabled, is_muted, should_monitor, is_armed);
+        }
+
+        // If monitoring enabled, do DRY monitoring (no effects - effects are in browser)
+        // This provides zero-latency monitoring of raw input
+        if should_monitor {
+            let (gain, volume) = if let Ok(state) = processing_state.try_read() {
+                // Apply input gain and monitoring volume only
+                let gain = state.track_state.input_gain_linear();
+                let volume = state.track_state.volume;
+                for sample in stereo_buffer.iter_mut() {
+                    *sample *= gain * volume * mon_vol;
+                }
+                (gain, volume)
+            } else {
+                if should_log {
+                    warn!("[INPUT] Could not acquire processing state lock!");
+                }
+                (1.0, 1.0)
+            };
+
+            // Calculate level after processing
+            let processed_peak: f32 = stereo_buffer
                 .iter()
                 .map(|s| s.abs())
                 .fold(0.0_f32, f32::max);
-            if let Ok(mut lvl) = levels.try_write() {
-                lvl.input_level = level;
-                lvl.input_peak = lvl.input_peak.max(level);
-            }
-
             if should_log {
                 info!(
-                    "[INPUT] Extracted stereo peak: {:.6} | buffer_size={}",
-                    level,
-                    stereo_buffer.len()
+                    "[INPUT] After processing: gain={:.2} vol={:.2} peak={:.6}",
+                    gain, volume, processed_peak
                 );
             }
 
-            // Stream RAW audio to browser for WET monitoring (BEFORE effects)
-            // The browser will apply effects using Web Audio, ensuring single effects codebase
-            // ALWAYS stream to browser when audio is running - the browser's audio chain
-            // has its own gain gates (armGain, monitorGain) to control output
-            if let Some(browser_prod) = browser_stream_producer {
-                if let Ok(mut prod) = browser_prod.try_lock() {
-                    let available_space = prod.vacant_len();
-                    let pushed = prod.push_slice(&stereo_buffer);
-                    if should_log || pushed < stereo_buffer.len() {
-                        info!(
-                            "[INPUT] Browser stream: pushed={}/{} space_was={}",
-                            pushed,
-                            stereo_buffer.len(),
-                            available_space
-                        );
+            // Push to ring buffer
+            let mut pushed = 0;
+            if let Ok(mut prod) = producer.try_lock() {
+                for sample in stereo_buffer.iter() {
+                    if prod.try_push(*sample).is_ok() {
+                        pushed += 1;
                     }
-                } else if should_log {
-                    warn!("[INPUT] Browser stream: failed to acquire lock!");
                 }
             } else if should_log {
-                warn!("[INPUT] Browser stream: producer is None!");
+                warn!("[INPUT] Could not acquire producer lock!");
             }
-
-            // Get monitoring volume from atomic (can be updated independently)
-            let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
-
-            // Get all track state including monitoring_enabled from processing state
-            // This is updated by UpdateTrackState messages from the browser
-            let (is_armed, is_muted, monitoring_enabled) =
-                if let Ok(state) = processing_state.try_read() {
-                    (
-                        state.track_state.is_armed,
-                        state.track_state.is_muted,
-                        state.track_state.monitoring_enabled,
-                    )
-                } else {
-                    (false, false, false)
-                };
-
-            // DRY monitoring (native bridge passthrough) is controlled by:
-            // - monitoring_enabled (Direct Monitoring toggle) - user wants to hear hardware bypass
-            // - !is_muted - track isn't muted
-            // Note: ARM is NOT required for DRY monitoring - it's hardware bypass for hearing yourself
-            // ARM only affects software monitoring (browser WET path with effects)
-            let should_monitor = monitoring_enabled && !is_muted;
 
             if should_log {
-                info!("[INPUT] DRY Monitoring: enabled={} muted={} -> should_monitor={} (armed={} for info only)",
-                      monitoring_enabled, is_muted, should_monitor, is_armed);
+                info!("[INPUT] Pushed {} samples to ring buffer", pushed);
             }
-
-            // If monitoring enabled, do DRY monitoring (no effects - effects are in browser)
-            // This provides zero-latency monitoring of raw input
-            if should_monitor {
-                let (gain, volume) = if let Ok(state) = processing_state.try_read() {
-                    // Apply input gain and monitoring volume only
-                    let gain = state.track_state.input_gain_linear();
-                    let volume = state.track_state.volume;
-                    for sample in stereo_buffer.iter_mut() {
-                        *sample *= gain * volume * mon_vol;
-                    }
-                    (gain, volume)
-                } else {
-                    if should_log {
-                        warn!("[INPUT] Could not acquire processing state lock!");
-                    }
-                    (1.0, 1.0)
-                };
-
-                // Calculate level after processing
-                let processed_peak: f32 = stereo_buffer
-                    .iter()
-                    .map(|s| s.abs())
-                    .fold(0.0_f32, f32::max);
-                if should_log {
-                    info!(
-                        "[INPUT] After processing: gain={:.2} vol={:.2} peak={:.6}",
-                        gain, volume, processed_peak
-                    );
-                }
-
-                // Push to ring buffer
-                let mut pushed = 0;
-                if let Ok(mut prod) = producer.try_lock() {
-                    for sample in stereo_buffer.iter() {
-                        if prod.try_push(*sample).is_ok() {
-                            pushed += 1;
-                        }
-                    }
-                } else if should_log {
-                    warn!("[INPUT] Could not acquire producer lock!");
-                }
-
-                if should_log {
-                    info!("[INPUT] Pushed {} samples to ring buffer", pushed);
-                }
-            } else if should_log {
-                info!("[INPUT] Monitoring DISABLED - not sending to output");
-            }
-        });
+        } else if should_log {
+            info!("[INPUT] Monitoring DISABLED - not sending to output");
+        }
     }
 
     /// Process output audio (mix all sources)
+    /// remote_levels_buffer: Pre-allocated buffer for remote user levels. MUST be allocated before ASIO starts!
     fn process_output_f32(
         data: &mut [f32],
+        remote_levels_buffer: &mut Vec<(String, f32)>,
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
@@ -1012,43 +1048,39 @@ impl AudioEngine {
             );
         }
 
-        // Mix remote user audio
-        // Use thread-local buffer to avoid allocation in real-time callback
-        REMOTE_LEVELS_BUFFER.with(|buf| {
-            let mut remote_levels_vec = buf.borrow_mut();
-            remote_levels_vec.clear();
+        // Mix remote user audio using pre-allocated buffer (no allocation!)
+        remote_levels_buffer.clear();
 
-            if let Ok(buffers) = remote_buffers.try_read() {
-                for (user_id, buffer) in buffers.iter() {
-                    if buffer.is_muted {
-                        continue;
+        if let Ok(buffers) = remote_buffers.try_read() {
+            for (user_id, buffer) in buffers.iter() {
+                if buffer.is_muted {
+                    continue;
+                }
+
+                if let Ok(mut cons) = buffer.consumer.try_lock() {
+                    let mut user_level = 0.0_f32;
+                    for sample in data.iter_mut() {
+                        let s = cons.try_pop().unwrap_or(0.0) * buffer.volume;
+                        user_level = user_level.max(s.abs());
+                        *sample += s;
                     }
-
-                    if let Ok(mut cons) = buffer.consumer.try_lock() {
-                        let mut user_level = 0.0_f32;
-                        for sample in data.iter_mut() {
-                            let s = cons.try_pop().unwrap_or(0.0) * buffer.volume;
-                            user_level = user_level.max(s.abs());
-                            *sample += s;
-                        }
-                        // Check if this user_id already exists in buffer to avoid String allocation
-                        let found = remote_levels_vec.iter_mut().find(|(id, _)| id == user_id);
-                        if let Some((_, level)) = found {
-                            *level = user_level;
-                        } else {
-                            // Only allocate String if this is a new user (happens once per user, not per callback)
-                            remote_levels_vec.push((user_id.clone(), user_level));
-                        }
+                    // Check if this user_id already exists in buffer to avoid String allocation
+                    let found = remote_levels_buffer.iter_mut().find(|(id, _)| id == user_id);
+                    if let Some((_, level)) = found {
+                        *level = user_level;
+                    } else {
+                        // Only allocate String if this is a new user (happens once per user, not per callback)
+                        remote_levels_buffer.push((user_id.clone(), user_level));
                     }
                 }
             }
+        }
 
-            // Copy levels to shared state (we have to clone the Vec contents here)
-            if let Ok(mut lvl) = levels.try_write() {
-                lvl.remote_levels.clear();
-                lvl.remote_levels.extend(remote_levels_vec.iter().cloned());
-            }
-        });
+        // Copy levels to shared state
+        if let Ok(mut lvl) = levels.try_write() {
+            lvl.remote_levels.clear();
+            lvl.remote_levels.extend(remote_levels_buffer.iter().cloned());
+        }
 
         // Mix backing track
         let backing_volume = processing_state
@@ -1112,63 +1144,67 @@ impl AudioEngine {
         }
     }
 
+    /// Process I32 output - converts to F32, processes, converts back
+    /// float_buffer: Pre-allocated buffer for F32 conversion. MUST be allocated before ASIO starts!
+    /// remote_levels_buffer: Pre-allocated buffer for remote user levels. MUST be allocated before ASIO starts!
     fn process_output_i32(
         data: &mut [i32],
+        float_buffer: &mut Vec<f32>,
+        remote_levels_buffer: &mut Vec<(String, f32)>,
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
-        // Use thread-local buffer to avoid allocation in real-time callback
-        OUTPUT_CONVERSION_BUFFER.with(|buf| {
-            let mut float_buffer = buf.borrow_mut();
-            // resize() doesn't allocate if capacity is sufficient
-            float_buffer.resize(data.len(), 0.0);
+        // resize() doesn't allocate if capacity is sufficient
+        float_buffer.resize(data.len(), 0.0);
 
-            Self::process_output_f32(
-                &mut float_buffer,
-                local_consumer,
-                remote_buffers,
-                backing_consumer,
-                levels,
-                processing_state,
-            );
+        Self::process_output_f32(
+            float_buffer,
+            remote_levels_buffer,
+            local_consumer,
+            remote_buffers,
+            backing_consumer,
+            levels,
+            processing_state,
+        );
 
-            // Convert to i32
-            for (out, &f) in data.iter_mut().zip(float_buffer.iter()) {
-                *out = (f * i32::MAX as f32) as i32;
-            }
-        });
+        // Convert to i32
+        for (out, &f) in data.iter_mut().zip(float_buffer.iter()) {
+            *out = (f * i32::MAX as f32) as i32;
+        }
     }
 
+    /// Process I16 output - converts to F32, processes, converts back
+    /// float_buffer: Pre-allocated buffer for F32 conversion. MUST be allocated before ASIO starts!
+    /// remote_levels_buffer: Pre-allocated buffer for remote user levels. MUST be allocated before ASIO starts!
     fn process_output_i16(
         data: &mut [i16],
+        float_buffer: &mut Vec<f32>,
+        remote_levels_buffer: &mut Vec<(String, f32)>,
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
-        // Use thread-local buffer to avoid allocation in real-time callback
-        OUTPUT_CONVERSION_BUFFER.with(|buf| {
-            let mut float_buffer = buf.borrow_mut();
-            // resize() doesn't allocate if capacity is sufficient
-            float_buffer.resize(data.len(), 0.0);
+        // resize() doesn't allocate if capacity is sufficient
+        float_buffer.resize(data.len(), 0.0);
 
-            Self::process_output_f32(
-                &mut float_buffer,
-                local_consumer,
-                remote_buffers,
-                backing_consumer,
-                levels,
-                processing_state,
-            );
+        Self::process_output_f32(
+            float_buffer,
+            remote_levels_buffer,
+            local_consumer,
+            remote_buffers,
+            backing_consumer,
+            levels,
+            processing_state,
+        );
 
-            for (out, &f) in data.iter_mut().zip(float_buffer.iter()) {
-                *out = (f * i16::MAX as f32) as i16;
-            }
-        });
+        for (out, &f) in data.iter_mut().zip(float_buffer.iter()) {
+            *out = (f * i16::MAX as f32) as i16;
+        }
     }
 
     // === ASIO Support ===
@@ -1247,25 +1283,34 @@ impl AudioEngine {
         let effects_metering = self.effects_metering.clone();
 
         // Build input stream
+        // CRITICAL: Pre-allocate ALL buffers BEFORE building streams!
+        // ASIO callbacks cannot tolerate ANY memory allocation.
         let input_stream = match input_sample_format {
-            SampleFormat::F32 => device.build_input_stream(
-                &stream_input_config,
-                move |data: &[f32], _: &cpal::InputCallbackInfo| {
-                    Self::process_input(
-                        data,
-                        input_channels,
-                        &producer,
-                        browser_stream_producer.as_ref(),
-                        &levels_in,
-                        &is_monitoring,
-                        &monitoring_volume,
-                        &processing_state_in,
-                        &effects_metering,
-                    );
-                },
-                |err| error!("ASIO input error: {}", err),
-                None,
-            )?,
+            SampleFormat::F32 => {
+                // Pre-allocate stereo buffer
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+
+                device.build_input_stream(
+                    &stream_input_config,
+                    move |data: &[f32], _: &cpal::InputCallbackInfo| {
+                        let mut stereo_buf = stereo_buffer.borrow_mut();
+                        Self::process_input(
+                            data,
+                            input_channels,
+                            &mut stereo_buf,
+                            &producer,
+                            browser_stream_producer.as_ref(),
+                            &levels_in,
+                            &is_monitoring,
+                            &monitoring_volume,
+                            &processing_state_in,
+                            &effects_metering,
+                        );
+                    },
+                    |err| error!("ASIO input error: {}", err),
+                    None,
+                )?
+            }
             SampleFormat::I32 => {
                 let producer = self.local_producer.clone().unwrap();
                 let browser_stream_producer = self.browser_stream_producer.clone();
@@ -1275,26 +1320,32 @@ impl AudioEngine {
                 let processing_state_in = self.processing_state.clone();
                 let effects_metering = self.effects_metering.clone();
 
+                // Pre-allocate both conversion buffer and stereo buffer
+                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+
                 device.build_input_stream(
                     &stream_input_config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
-                        // Use thread-local buffer to avoid allocation in real-time callback
-                        INPUT_CONVERSION_BUFFER.with(|buf| {
-                            let mut float_data = buf.borrow_mut();
-                            float_data.clear();
-                            float_data.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
-                            Self::process_input(
-                                &float_data,
-                                input_channels,
-                                &producer,
-                                browser_stream_producer.as_ref(),
-                                &levels_in,
-                                &is_monitoring,
-                                &monitoring_volume,
-                                &processing_state_in,
-                                &effects_metering,
-                            );
-                        });
+                        let mut conv_buf = conversion_buffer.borrow_mut();
+                        let mut stereo_buf = stereo_buffer.borrow_mut();
+
+                        // Convert I32 to F32 using pre-allocated buffer
+                        conv_buf.clear();
+                        conv_buf.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
+
+                        Self::process_input(
+                            &conv_buf,
+                            input_channels,
+                            &mut stereo_buf,
+                            &producer,
+                            browser_stream_producer.as_ref(),
+                            &levels_in,
+                            &is_monitoring,
+                            &monitoring_volume,
+                            &processing_state_in,
+                            &effects_metering,
+                        );
                     },
                     |err| error!("ASIO input error: {}", err),
                     None,
@@ -1316,21 +1367,28 @@ impl AudioEngine {
         let processing_state_out = self.processing_state.clone();
 
         let output_stream = match output_sample_format {
-            SampleFormat::F32 => device.build_output_stream(
-                &stream_output_config,
-                move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
-                    Self::process_output_f32(
-                        data,
-                        &local_consumer,
-                        &remote_buffers,
-                        &backing_consumer,
-                        &levels_out,
-                        &processing_state_out,
-                    );
-                },
-                |err| error!("ASIO output error: {}", err),
-                None,
-            )?,
+            SampleFormat::F32 => {
+                // Pre-allocate remote levels buffer
+                let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
+
+                device.build_output_stream(
+                    &stream_output_config,
+                    move |data: &mut [f32], _: &cpal::OutputCallbackInfo| {
+                        let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
+                        Self::process_output_f32(
+                            data,
+                            &mut remote_levels_buf,
+                            &local_consumer,
+                            &remote_buffers,
+                            &backing_consumer,
+                            &levels_out,
+                            &processing_state_out,
+                        );
+                    },
+                    |err| error!("ASIO output error: {}", err),
+                    None,
+                )?
+            }
             SampleFormat::I32 => {
                 let local_consumer = self.local_consumer.clone().unwrap();
                 let remote_buffers = self.remote_buffers.clone();
@@ -1338,11 +1396,19 @@ impl AudioEngine {
                 let levels_out = self.levels.clone();
                 let processing_state_out = self.processing_state.clone();
 
+                // Pre-allocate conversion buffer and remote levels buffer
+                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(8192));
+                let remote_levels_buffer = RefCell::new(Vec::<(String, f32)>::with_capacity(32));
+
                 device.build_output_stream(
                     &stream_output_config,
                     move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
+                        let mut float_buf = float_buffer.borrow_mut();
+                        let mut remote_levels_buf = remote_levels_buffer.borrow_mut();
                         Self::process_output_i32(
                             data,
+                            &mut float_buf,
+                            &mut remote_levels_buf,
                             &local_consumer,
                             &remote_buffers,
                             &backing_consumer,
