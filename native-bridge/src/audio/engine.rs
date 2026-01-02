@@ -897,7 +897,10 @@ impl AudioEngine {
             if let Ok(mut prod) = browser_prod.try_lock() {
                 let available_space = prod.vacant_len();
                 let pushed = prod.push_slice(stereo_buffer);
-                if should_log || pushed < stereo_buffer.len() {
+                // NOTE: Only log when should_log is true! Logging allocates memory
+                // which kills ASIO. Previously this logged on buffer overflow which
+                // caused the 0.7 second audio dropout.
+                if should_log {
                     info!(
                         "[INPUT] Browser stream: pushed={}/{} space_was={}",
                         pushed,
