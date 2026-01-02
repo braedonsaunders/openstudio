@@ -200,6 +200,21 @@ pub enum NativeMessage {
         packet_loss: f32,
     },
 
+    /// Stream health status (buffer overflow, connection health)
+    #[serde(rename = "streamHealth")]
+    StreamHealth {
+        #[serde(rename = "bufferOccupancy")]
+        buffer_occupancy: f32, // 0.0 - 1.0
+        #[serde(rename = "overflowCount")]
+        overflow_count: u64,
+        #[serde(rename = "overflowSamples")]
+        overflow_samples: u64,
+        #[serde(rename = "isHealthy")]
+        is_healthy: bool,
+        #[serde(rename = "msSinceLastRead")]
+        ms_since_last_read: u64,
+    },
+
     // === Metering ===
     /// Audio levels (sent at ~50ms intervals)
     #[serde(rename = "levels")]

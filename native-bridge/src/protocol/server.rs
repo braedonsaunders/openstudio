@@ -54,9 +54,13 @@ impl BridgeServer {
         let mut last_level_update = Instant::now();
         let level_interval = std::time::Duration::from_millis(50);
 
+        // Track time for health status updates (less frequent than levels)
+        let mut last_health_update = Instant::now();
+        let health_interval = std::time::Duration::from_millis(500);
+
         // Accumulate audio samples - allows batching multiple ring buffer reads per loop
         // but we send immediately (no artificial delay) for minimum latency
-        let mut audio_accumulator: Vec<f32> = Vec::with_capacity(1024);
+        let mut audio_accumulator: Vec<f32> = Vec::with_capacity(2048);
         let mut loop_counter: u64 = 0;
         let mut empty_read_counter: u64 = 0;
         let mut last_diagnostic = Instant::now();
@@ -87,6 +91,31 @@ impl BridgeServer {
                 last_level_update = Instant::now();
             }
 
+            // Send health status less frequently
+            if last_health_update.elapsed() >= health_interval {
+                let app = self.state.lock().await;
+                let (overflow_count, overflow_samples) = app.audio_engine.get_overflow_stats();
+                let (buffer_used, buffer_capacity) = app.audio_engine.get_browser_stream_occupancy();
+                let is_healthy = app.audio_engine.is_browser_stream_healthy();
+                let ms_since_last_read = app.audio_engine.ms_since_last_browser_read();
+                drop(app);
+
+                let health = NativeMessage::StreamHealth {
+                    buffer_occupancy: buffer_used as f32 / buffer_capacity as f32,
+                    overflow_count,
+                    overflow_samples,
+                    is_healthy,
+                    ms_since_last_read,
+                };
+
+                if let Ok(json) = serde_json::to_string(&health) {
+                    if write.send(Message::Text(json)).await.is_err() {
+                        break;
+                    }
+                }
+                last_health_update = Instant::now();
+            }
+
             // Stream raw audio to browser for WebRTC broadcast
             // Accumulate samples and send in batches to reduce WebSocket overhead
             loop_counter += 1;
@@ -94,11 +123,13 @@ impl BridgeServer {
                 let app = self.state.lock().await;
                 let is_running = app.audio_engine.is_running();
                 if is_running {
-                    // Read available samples into accumulator (up to 1024 at a time)
-                    let samples = app.audio_engine.get_browser_stream_audio(1024);
+                    // Read available samples into accumulator (up to 2048 at a time for lower latency)
+                    let samples = app.audio_engine.get_browser_stream_audio(2048);
                     if !samples.is_empty() {
                         audio_accumulator.extend_from_slice(&samples);
-                        empty_read_counter = 0; // Reset on successful read
+                        empty_read_counter = 0;
+                        // Mark successful read for health tracking
+                        app.audio_engine.mark_browser_read();
                     } else {
                         empty_read_counter += 1;
                     }
@@ -107,14 +138,23 @@ impl BridgeServer {
                 }
             }
 
-            // Periodic diagnostic logging
+            // Periodic diagnostic logging with overflow and health tracking
             if last_diagnostic.elapsed() >= diagnostic_interval {
-                let (input_cbs, output_cbs) = {
-                    let app = self.state.lock().await;
-                    app.audio_engine.get_callback_counts()
-                };
-                info!("[Server] Diagnostic: loop={}, empty_reads={}, accumulator_len={}, input_cbs={}, output_cbs={}",
-                      loop_counter, empty_read_counter, audio_accumulator.len(), input_cbs, output_cbs);
+                let app = self.state.lock().await;
+                let (input_cbs, output_cbs) = app.audio_engine.get_callback_counts();
+                let (overflow_count, overflow_samples) = app.audio_engine.get_and_reset_overflow_stats();
+                let (buffer_used, buffer_capacity) = app.audio_engine.get_browser_stream_occupancy();
+                let buffer_pct = (buffer_used as f64 / buffer_capacity as f64 * 100.0) as u32;
+                let healthy = app.audio_engine.is_browser_stream_healthy();
+                drop(app);
+
+                if overflow_count > 0 {
+                    warn!("[Server] BUFFER OVERFLOW: {} batches, {} samples dropped", overflow_count, overflow_samples);
+                }
+
+                info!("[Server] Diagnostic: loop={}, empty_reads={}, cbs=({},{}), buffer={}% ({}/{}), healthy={}",
+                      loop_counter, empty_read_counter, input_cbs, output_cbs,
+                      buffer_pct, buffer_used, buffer_capacity, healthy);
                 last_diagnostic = Instant::now();
             }
 
@@ -471,29 +511,53 @@ impl BridgeServer {
         }
     }
 
+    /// Handle binary audio data from browser
+    /// Format for msg_type 0 (remote audio):
+    ///   [header: 13 bytes][user_id_len: u8][user_id: utf8][samples: f32 LE...]
+    /// Format for msg_type 1 (backing track):
+    ///   [header: 13 bytes][samples: f32 LE...]
     async fn handle_audio_data(&self, data: &[u8]) {
         if let Some(header) = AudioMessageHeader::from_bytes(data) {
             let samples_offset = AudioMessageHeader::SIZE;
-            let sample_bytes = &data[samples_offset..];
-
-            let samples: Vec<f32> = sample_bytes
-                .chunks_exact(4)
-                .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
-                .collect();
 
             if header.msg_type == 0 {
-                // Remote user audio - route to audio engine
-                // The user_id is encoded in the first 32 bytes after header
-                // For now, we'll handle this when we add WebRTC support
-                // The samples would be pushed to the appropriate user's ring buffer
-                let _app = self.state.lock().await;
-                // Would extract user_id from binary format and call:
-                // _app.audio_engine.push_remote_audio(&user_id, &samples);
-                let _ = samples; // Prevent unused warning for now
+                // Remote user audio - extract user_id and route to audio engine
+                if data.len() <= samples_offset {
+                    return;
+                }
+
+                let user_id_len = data[samples_offset] as usize;
+                if user_id_len == 0 || data.len() <= samples_offset + 1 + user_id_len {
+                    return;
+                }
+
+                let user_id_start = samples_offset + 1;
+                let user_id_end = user_id_start + user_id_len;
+
+                if let Ok(user_id) = std::str::from_utf8(&data[user_id_start..user_id_end]) {
+                    let sample_bytes = &data[user_id_end..];
+                    let samples: Vec<f32> = sample_bytes
+                        .chunks_exact(4)
+                        .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                        .collect();
+
+                    if !samples.is_empty() {
+                        let app = self.state.lock().await;
+                        app.audio_engine.push_remote_audio(user_id, &samples);
+                    }
+                }
             } else if header.msg_type == 1 {
                 // Backing track audio - route to backing track buffer
-                let app = self.state.lock().await;
-                app.audio_engine.push_backing_audio(&samples);
+                let sample_bytes = &data[samples_offset..];
+                let samples: Vec<f32> = sample_bytes
+                    .chunks_exact(4)
+                    .map(|b| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                    .collect();
+
+                if !samples.is_empty() {
+                    let app = self.state.lock().await;
+                    app.audio_engine.push_backing_audio(&samples);
+                }
             }
         }
     }
