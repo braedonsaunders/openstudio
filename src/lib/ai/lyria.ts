@@ -1,5 +1,9 @@
 // Google Lyria RealTime - WebSocket-based real-time music generation
 // Documentation: https://ai.google.dev/gemini-api/docs/music-generation
+//
+// SECURITY: This module now requires authentication. The API key is stored
+// server-side and accessed via /api/lyria/connect which validates the user's
+// auth token and rate limits before returning the WebSocket URL.
 
 import type {
   LyriaConfig,
@@ -8,7 +12,38 @@ import type {
   LyriaScale,
 } from '@/types';
 
-const LYRIA_WS_ENDPOINT = 'wss://generativelanguage.googleapis.com/ws/google.ai.generativelanguage.v1alpha.GenerativeService.BidiGenerateMusic';
+// Rate limit status returned from the API
+export interface LyriaRateLimitStatus {
+  dailySecondsRemaining: number;
+  connectionsRemaining: number;
+  resetAt: string;
+  accountType: string;
+  maxSessionSeconds: number;
+  dailySecondsLimit?: number;
+}
+
+// Error types for better error handling
+export type LyriaErrorCode =
+  | 'AUTH_REQUIRED'
+  | 'PROFILE_NOT_FOUND'
+  | 'ACCOUNT_BANNED'
+  | 'EMAIL_NOT_VERIFIED'
+  | 'RATE_LIMIT_EXCEEDED'
+  | 'SERVICE_NOT_CONFIGURED'
+  | 'CONNECTION_FAILED'
+  | 'NETWORK_ERROR';
+
+export class LyriaAuthError extends Error {
+  code: LyriaErrorCode;
+  limits?: LyriaRateLimitStatus;
+
+  constructor(message: string, code: LyriaErrorCode, limits?: LyriaRateLimitStatus) {
+    super(message);
+    this.name = 'LyriaAuthError';
+    this.code = code;
+    this.limits = limits;
+  }
+}
 
 // Default configuration
 const DEFAULT_CONFIG: LyriaConfig = {
@@ -99,11 +134,15 @@ export interface LyriaSessionCallbacks {
   onStateChange?: (state: LyriaSessionState) => void;
   onError?: (error: Error) => void;
   onConfigApplied?: (config: LyriaConfig) => void;
+  onRateLimitUpdate?: (limits: LyriaRateLimitStatus) => void;
 }
 
 /**
  * Lyria RealTime Session
  * Manages WebSocket connection and audio streaming for real-time music generation
+ *
+ * SECURITY: This class now requires authentication via setAuthToken().
+ * The API key is fetched from the server via /api/lyria/connect.
  */
 export class LyriaSession {
   private ws: WebSocket | null = null;
@@ -114,7 +153,6 @@ export class LyriaSession {
   private config: LyriaConfig = { ...DEFAULT_CONFIG };
   private prompts: LyriaWeightedPrompt[] = [];
   private callbacks: LyriaSessionCallbacks = {};
-  private apiKey: string;
   private audioQueue: AudioBuffer[] = [];
   private isProcessingAudio = false;
   private nextStartTime = 0;
@@ -126,8 +164,67 @@ export class LyriaSession {
   // When true, audio is only sent to streamDestination (for external routing via AudioEngine)
   private useExternalRouting = false;
 
-  constructor(apiKey: string) {
-    this.apiKey = apiKey;
+  // Authentication token (Supabase JWT)
+  private authToken: string | null = null;
+
+  // Current session ID for usage tracking
+  private sessionId: string | null = null;
+
+  // Rate limit status from last auth check
+  private rateLimits: LyriaRateLimitStatus | null = null;
+
+  // Bytes streamed for usage tracking
+  private bytesStreamed = 0;
+
+  constructor() {
+    // No API key needed - fetched from server after auth
+  }
+
+  /**
+   * Set the authentication token (Supabase JWT)
+   * Must be called before connect()
+   */
+  setAuthToken(token: string): void {
+    this.authToken = token;
+  }
+
+  /**
+   * Get current rate limit status
+   * Available after calling connect() or checkRateLimits()
+   */
+  getRateLimits(): LyriaRateLimitStatus | null {
+    return this.rateLimits;
+  }
+
+  /**
+   * Check rate limits without connecting
+   * Returns the current rate limit status from the server
+   */
+  async checkRateLimits(): Promise<LyriaRateLimitStatus> {
+    if (!this.authToken) {
+      throw new LyriaAuthError('Authentication required', 'AUTH_REQUIRED');
+    }
+
+    const response = await fetch('/api/lyria/connect', {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${this.authToken}`,
+      },
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new LyriaAuthError(
+        data.error || 'Failed to check rate limits',
+        data.code || 'NETWORK_ERROR',
+        data.limits
+      );
+    }
+
+    this.rateLimits = data.limits;
+    this.callbacks.onRateLimitUpdate?.(data.limits);
+    return data.limits;
   }
 
   /**
@@ -172,17 +269,55 @@ export class LyriaSession {
 
   /**
    * Connect to Lyria RealTime
+   * Requires authentication - call setAuthToken() first
    */
   async connect(): Promise<void> {
     if (this.state !== 'disconnected' && this.state !== 'error') {
       throw new Error('Session already connected or connecting');
     }
 
+    if (!this.authToken) {
+      throw new LyriaAuthError('Authentication required - call setAuthToken() first', 'AUTH_REQUIRED');
+    }
+
     this.setState('connecting');
     this.setupComplete = false;
+    this.bytesStreamed = 0;
 
     try {
-      // Initialize Web Audio context
+      // 1. Authenticate with server and get WebSocket URL
+      const authResponse = await fetch('/api/lyria/connect', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          style: this.config.scale,
+          bpm: this.config.bpm,
+          prompt: this.prompts.map(p => p.text).join(', '),
+        }),
+      });
+
+      const authData = await authResponse.json();
+
+      if (!authResponse.ok) {
+        this.setState('error');
+        throw new LyriaAuthError(
+          authData.error || 'Authentication failed',
+          authData.code || 'CONNECTION_FAILED',
+          authData.limits
+        );
+      }
+
+      // Store session ID and rate limits
+      this.sessionId = authData.sessionId;
+      this.rateLimits = authData.limits;
+      this.callbacks.onRateLimitUpdate?.(authData.limits);
+
+      console.log('[Lyria] Authenticated, session:', this.sessionId);
+
+      // 2. Initialize Web Audio context
       this.audioContext = new AudioContext({ sampleRate: 48000 });
       this.gainNode = this.audioContext.createGain();
 
@@ -201,8 +336,8 @@ export class LyriaSession {
         this.gainNode.connect(this.streamDestination);
       }
 
-      // Connect WebSocket with API key
-      const wsUrl = `${LYRIA_WS_ENDPOINT}?key=${this.apiKey}`;
+      // 3. Connect WebSocket using URL from server (contains API key)
+      const wsUrl = authData.wsUrl;
       this.ws = new WebSocket(wsUrl);
       this.ws.binaryType = 'arraybuffer';
 
@@ -257,9 +392,29 @@ export class LyriaSession {
 
   /**
    * Disconnect from Lyria RealTime
+   * Ends the usage session and reports bytes streamed
    */
   disconnect(): void {
     this.stop();
+
+    // End the usage session
+    if (this.sessionId && this.authToken) {
+      fetch('/api/lyria/session/end', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${this.authToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          sessionId: this.sessionId,
+          bytesStreamed: this.bytesStreamed,
+        }),
+      }).catch((error) => {
+        console.warn('[Lyria] Failed to end session:', error);
+      });
+      this.sessionId = null;
+    }
+
     if (this.ws) {
       this.ws.close();
       this.ws = null;
@@ -566,6 +721,9 @@ export class LyriaSession {
   private handleAudioData(data: ArrayBuffer): void {
     if (!this.audioContext || this.state !== 'playing') return;
 
+    // Track bytes streamed for usage reporting
+    this.bytesStreamed += data.byteLength;
+
     // Lyria sends 48kHz stereo PCM
     const float32Data = new Float32Array(data);
     const numSamples = float32Data.length / 2; // Stereo
@@ -730,16 +888,16 @@ export class LyriaSession {
 }
 
 /**
- * Create a Lyria session with the API key from environment
- * Uses NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY for client-side access
+ * Create a Lyria session
+ *
+ * SECURITY: The session requires authentication before connecting.
+ * Call session.setAuthToken(token) with a valid Supabase JWT before calling connect().
+ *
+ * The API key is now stored server-side and retrieved securely via /api/lyria/connect
+ * after validating the user's authentication and rate limits.
  */
 export function createLyriaSession(): LyriaSession {
-  // Check for client-side accessible key (NEXT_PUBLIC_ prefix required for browser)
-  const apiKey = process.env.NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY || '';
-  if (!apiKey) {
-    console.warn('NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY not set - Lyria will not work. Add NEXT_PUBLIC_GOOGLE_GEMINI_API_KEY to your .env.local with your Gemini API key.');
-  }
-  return new LyriaSession(apiKey);
+  return new LyriaSession();
 }
 
 /**

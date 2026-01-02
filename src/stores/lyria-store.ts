@@ -6,11 +6,14 @@ import {
   createLyriaSession,
   buildPrompt,
   keyToLyriaScale,
+  LyriaAuthError,
   type LyriaStyleId,
   type LyriaMoodId,
+  type LyriaRateLimitStatus,
 } from '@/lib/ai/lyria';
 import type { LyriaSessionState, LyriaScale } from '@/types';
 import type { LyriaTrackConfig } from '@/types/songs';
+import { useAuthStore } from './auth-store';
 
 // =============================================================================
 // Lyria Store - Global Lyria session management for transport integration
@@ -21,6 +24,11 @@ interface LyriaStoreState {
   session: LyriaSession | null;
   sessionState: LyriaSessionState;
   error: string | null;
+  errorCode: string | null;
+
+  // Authentication state
+  isAuthenticated: boolean;
+  rateLimits: LyriaRateLimitStatus | null;
 
   // Active track config (when playing a song with a Lyria track)
   activeConfig: LyriaTrackConfig | null;
@@ -57,6 +65,10 @@ interface LyriaStoreState {
 
   // Cleanup
   dispose: () => void;
+
+  // Auth helpers
+  refreshAuthToken: () => void;
+  checkRateLimits: () => Promise<LyriaRateLimitStatus | null>;
 }
 
 export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
@@ -64,6 +76,9 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
   session: null,
   sessionState: 'disconnected',
   error: null,
+  errorCode: null,
+  isAuthenticated: false,
+  rateLimits: null,
   activeConfig: null,
   activeSongId: null,
   activeTrackId: null,
@@ -73,6 +88,42 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
   volume: 0.7,
   onConnected: undefined,
   onDisconnected: undefined,
+
+  // Refresh auth token from auth store
+  refreshAuthToken: () => {
+    const { session } = get();
+    if (!session) return;
+
+    const authState = useAuthStore.getState();
+    const token = authState.user ? authState.user.id : null;
+
+    // Get the actual access token from Supabase session
+    // We need to get this from the Supabase client
+    if (authState.user) {
+      // The auth store doesn't directly expose the access token,
+      // so we'll get it from the Supabase client when connecting
+      set({ isAuthenticated: true });
+    } else {
+      set({ isAuthenticated: false });
+    }
+  },
+
+  // Check rate limits without connecting
+  checkRateLimits: async () => {
+    const { session } = get();
+    if (!session) return null;
+
+    try {
+      const limits = await session.checkRateLimits();
+      set({ rateLimits: limits });
+      return limits;
+    } catch (error) {
+      if (error instanceof LyriaAuthError) {
+        set({ error: error.message, errorCode: error.code });
+      }
+      return null;
+    }
+  },
 
   // Initialize session (called once on app startup)
   initialize: () => {
@@ -87,15 +138,26 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
         if (state === 'error') {
           set({ error: 'Connection lost' });
         } else if (state === 'connected') {
-          set({ error: null });
+          set({ error: null, errorCode: null });
         }
       },
       onError: (err) => {
-        set({ error: err.message });
+        if (err instanceof LyriaAuthError) {
+          set({ error: err.message, errorCode: err.code, rateLimits: err.limits || null });
+        } else {
+          set({ error: err.message });
+        }
+      },
+      onRateLimitUpdate: (limits) => {
+        set({ rateLimits: limits });
       },
     });
 
-    set({ session: newSession });
+    // Check if user is authenticated
+    const authState = useAuthStore.getState();
+    const isAuthenticated = !!authState.user;
+
+    set({ session: newSession, isAuthenticated });
   },
 
   // Connect to Lyria
@@ -108,7 +170,34 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
     const currentSession = get().session;
     if (!currentSession) return;
 
-    set({ error: null });
+    // Get auth token from Supabase
+    const authState = useAuthStore.getState();
+    if (!authState.user) {
+      set({
+        error: 'Please sign in to use Lyria AI music',
+        errorCode: 'AUTH_REQUIRED',
+        isAuthenticated: false,
+      });
+      throw new LyriaAuthError('Authentication required', 'AUTH_REQUIRED');
+    }
+
+    // Get access token from Supabase client
+    const { supabaseAuth } = await import('@/lib/supabase/auth');
+    const { data: sessionData } = await supabaseAuth.auth.getSession();
+    const accessToken = sessionData?.session?.access_token;
+
+    if (!accessToken) {
+      set({
+        error: 'Session expired - please sign in again',
+        errorCode: 'AUTH_REQUIRED',
+        isAuthenticated: false,
+      });
+      throw new LyriaAuthError('Session expired', 'AUTH_REQUIRED');
+    }
+
+    // Set auth token on the session
+    currentSession.setAuthToken(accessToken);
+    set({ error: null, errorCode: null, isAuthenticated: true });
 
     try {
       await currentSession.connect();
@@ -127,7 +216,11 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
         await onConnected(outputStream);
       }
     } catch (err) {
-      set({ error: (err as Error).message });
+      if (err instanceof LyriaAuthError) {
+        set({ error: err.message, errorCode: err.code, rateLimits: err.limits || null });
+      } else {
+        set({ error: (err as Error).message });
+      }
       throw err;
     }
   },
