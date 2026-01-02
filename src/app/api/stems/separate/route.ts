@@ -55,6 +55,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Check for blob URLs which can't be fetched server-side
+    if (trackUrl.startsWith('blob:')) {
+      return NextResponse.json(
+        { error: 'Blob URLs are not supported. Please use an uploaded audio file.' },
+        { status: 400 }
+      );
+    }
+
     const jobId = uuidv4();
 
     // Initialize separation job
@@ -65,8 +73,13 @@ export async function POST(request: NextRequest) {
       message: 'Starting stem separation...',
     });
 
+    // Get the base URL for resolving relative URLs
+    const baseUrl = request.headers.get('origin') ||
+                    request.headers.get('referer')?.replace(/\/[^/]*$/, '') ||
+                    `${request.nextUrl.protocol}//${request.nextUrl.host}`;
+
     // Start async separation with Demucs
-    separateWithDemucs(jobId, trackId, trackUrl);
+    separateWithDemucs(jobId, trackId, trackUrl, baseUrl);
 
     return NextResponse.json({ jobId });
   } catch (error) {
@@ -86,7 +99,8 @@ export async function POST(request: NextRequest) {
 async function separateWithDemucs(
   jobId: string,
   trackId: string,
-  trackUrl: string
+  trackUrl: string,
+  baseUrl: string
 ) {
   const job = separations.get(jobId);
   if (!job) return;
@@ -94,16 +108,49 @@ async function separateWithDemucs(
   try {
     separations.set(jobId, {
       ...separations.get(jobId)!,
+      progress: 5,
+      message: 'Preparing audio file...',
+    });
+
+    // Resolve relative URLs to absolute
+    let absoluteUrl = trackUrl;
+    if (trackUrl.startsWith('/')) {
+      absoluteUrl = `${baseUrl}${trackUrl}`;
+    } else if (!trackUrl.startsWith('http://') && !trackUrl.startsWith('https://')) {
+      absoluteUrl = `${baseUrl}/${trackUrl}`;
+    }
+
+    separations.set(jobId, {
+      ...separations.get(jobId)!,
       progress: 10,
-      message: 'Uploading audio to Demucs...',
+      message: 'Downloading audio...',
+    });
+
+    // Fetch the audio file and convert to data URI for Replicate
+    // This allows us to handle internal/relative URLs that Replicate can't access directly
+    const audioResponse = await fetch(absoluteUrl);
+    if (!audioResponse.ok) {
+      throw new Error(`Failed to fetch audio: ${audioResponse.status} ${audioResponse.statusText}`);
+    }
+
+    const audioBuffer = await audioResponse.arrayBuffer();
+    const contentType = audioResponse.headers.get('content-type') || 'audio/mpeg';
+    const base64Audio = Buffer.from(audioBuffer).toString('base64');
+    const dataUri = `data:${contentType};base64,${base64Audio}`;
+
+    separations.set(jobId, {
+      ...separations.get(jobId)!,
+      progress: 25,
+      message: 'Uploading to Demucs...',
     });
 
     // Use ryan5453/demucs model on Replicate for stem separation
+    // Pass audio as data URI since Replicate may not be able to access our internal URLs
     const output = await replicate.run(
       "ryan5453/demucs:5a7041cc9b82e5a558fea6b3d7b12dea89625e89da33f0447bd727c2d0ab9e77",
       {
         input: {
-          audio: trackUrl,
+          audio: dataUri,
         }
       }
     );
