@@ -106,26 +106,37 @@ export async function POST(request: NextRequest) {
       }
     );
 
-    console.log('[Stems] Demucs completed, uploading stems to R2...');
+    console.log('[Stems] Demucs completed, raw output:', JSON.stringify(output, null, 2));
 
     // Parse the output - Demucs returns URLs for each stem
-    const replicateStems = output as unknown as {
-      vocals?: string;
-      drums?: string;
-      bass?: string;
-      guitar?: string;
-      other?: string;
-    };
+    // The output format may vary - could be direct URLs or objects
+    const replicateOutput = output as Record<string, unknown>;
 
     // Download stems from Replicate and upload to R2
     const stemNames = ['vocals', 'drums', 'bass', 'guitar', 'other'] as const;
     const stems: Record<string, { id: string; url: string; name: string }> = {};
 
     for (const stemName of stemNames) {
-      const replicateUrl = replicateStems[stemName];
+      let replicateUrl = replicateOutput[stemName];
+
+      // Handle different output formats
       if (!replicateUrl) continue;
 
+      // If it's an object with a url property, extract it
+      if (typeof replicateUrl === 'object' && replicateUrl !== null) {
+        const urlObj = replicateUrl as Record<string, unknown>;
+        replicateUrl = urlObj.url || urlObj.href || urlObj.uri;
+      }
+
+      // Must be a string URL at this point
+      if (typeof replicateUrl !== 'string') {
+        console.error(`[Stems] ${stemName} stem is not a valid URL:`, typeof replicateUrl, replicateUrl);
+        continue;
+      }
+
       try {
+        console.log(`[Stems] Downloading ${stemName} from: ${replicateUrl}`);
+
         // Download stem from Replicate
         const stemResponse = await fetch(replicateUrl);
         if (!stemResponse.ok) {
@@ -141,8 +152,8 @@ export async function POST(request: NextRequest) {
         let extension = 'mp3';
         if (stemContentType.includes('wav')) extension = 'wav';
         else if (stemContentType.includes('flac')) extension = 'flac';
-        else if (replicateUrl.includes('.wav')) extension = 'wav';
-        else if (replicateUrl.includes('.flac')) extension = 'flac';
+        else if (typeof replicateUrl === 'string' && replicateUrl.includes('.wav')) extension = 'wav';
+        else if (typeof replicateUrl === 'string' && replicateUrl.includes('.flac')) extension = 'flac';
 
         // Upload to R2 with user subdirectory (same structure as regular uploads)
         const key = `tracks/${userId}/${stemId}.${extension}`;
