@@ -171,12 +171,12 @@ export const DEFAULT_WALKING_CONFIG: WalkingConfig = {
 };
 
 export const DAW_WALKING_CONFIG: WalkingConfig = {
-  walkSpeed: 0.03,              // Faster than homepage
-  idleDuration: [2000, 5000],   // Shorter idles
-  walkDuration: [2000, 5000],
-  settlingDuration: 200,
+  walkSpeed: 0.04,              // Visible walking speed
+  idleDuration: [1000, 2000],   // Short idles for testing
+  walkDuration: [2000, 4000],
+  settlingDuration: 150,
   minEntityDistance: 10,
-  audioReactive: true,          // Stop when making sound
+  audioReactive: false,         // Disabled - was preventing walking when any audio played
   audioThreshold: 0.15,
   beatSync: true,               // Footsteps on beat
   tempoInfluence: true,         // Speed varies with tempo
