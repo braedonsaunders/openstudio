@@ -43,3 +43,6 @@ export { KeyboardShortcuts } from './keyboard-shortcuts';
 
 // Animations
 export { RoomExitAnimation } from './room-exit-animation';
+
+// Native Bridge
+export { NativeBridgeGate, UserConnectionBadge, RoomBridgeSettings } from './native-bridge-gate';

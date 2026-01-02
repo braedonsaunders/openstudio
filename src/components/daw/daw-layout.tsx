@@ -46,18 +46,41 @@ import type { BackingTrack, StemType, QualityPresetName, OpusEncodingSettings } 
 import type { SongTrackReference } from '@/types/songs';
 import type { LoopTrackState } from '@/types/loops';
 import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
+import { useListenOnly } from '@/hooks/useListenOnly';
+import { useAuthStore } from '@/stores/auth-store';
 
 interface DAWLayoutProps {
   roomId: string;
   onLeaveRoom?: () => void;
+  /** If true, user is in listen-only mode (no native bridge) */
+  listenerMode?: boolean;
 }
 
 export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai' | 'permissions'; // Note: 'queue' kept for backwards compat
 
-export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
+export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayoutProps) {
   // Theme
   const { resolvedTheme, toggleTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
+
+  // Auth state for user ID
+  const { user } = useAuthStore();
+  const userId = user?.id || 'anonymous';
+
+  // Listen-only mode for browsers without native bridge
+  const {
+    state: listenState,
+    isConnected: isListenConnected,
+    isSupported: isListenSupported,
+    stats: listenStats,
+    volume: listenVolume,
+    connect: listenConnect,
+    disconnect: listenDisconnect,
+    setVolume: setListenVolume,
+    error: listenError,
+  } = useListenOnly(roomId, userId, {
+    autoConnect: listenerMode,
+  });
 
   // iOS Safari viewport fix - prevent scroll bounce and ensure full height
   useEffect(() => {

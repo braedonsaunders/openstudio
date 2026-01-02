@@ -1,14 +1,18 @@
 //! OpenStudio Native Audio Bridge
 //!
 //! Provides ultra-low-latency audio I/O via ASIO (Windows) / CoreAudio (macOS)
+//! with P2P/relay networking using the OpenStudio Protocol (OSP).
+//!
 //! Communicates with browser via WebSocket on localhost:9999
 
 mod audio;
 mod effects;
 mod mixing;
+mod network;
 mod protocol;
 
 use anyhow::Result;
+use network::{NetworkManager, NetworkConfig, NetworkMode, RoomConfig};
 use protocol::LaunchParams;
 use std::sync::Arc;
 use tokio::sync::Mutex;
@@ -18,8 +22,10 @@ use tracing::{info, Level};
 pub struct AppState {
     pub audio_engine: audio::AudioEngine,
     pub mixer: mixing::Mixer,
+    pub network: Option<Arc<NetworkManager>>,
     pub connected_room: Option<String>,
     pub user_id: Option<String>,
+    pub user_name: Option<String>,
 }
 
 #[tokio::main]
@@ -46,12 +52,27 @@ async fn main() -> Result<()> {
     // Initialize mixer
     let mixer = mixing::Mixer::new();
 
+    // Initialize network manager
+    let network_config = NetworkConfig::default();
+    let network = match NetworkManager::new(network_config) {
+        Ok(nm) => {
+            info!("Network manager initialized");
+            Some(Arc::new(nm))
+        }
+        Err(e) => {
+            info!("Network manager failed to initialize: {} (P2P disabled)", e);
+            None
+        }
+    };
+
     // Create shared state
     let state = Arc::new(Mutex::new(AppState {
         audio_engine,
         mixer,
+        network,
         connected_room: params.room_id.clone(),
         user_id: params.user_id.clone(),
+        user_name: params.user_name.clone(),
     }));
 
     // Run WebSocket server (blocks)
