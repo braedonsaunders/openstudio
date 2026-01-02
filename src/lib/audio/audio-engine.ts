@@ -1098,12 +1098,13 @@ export class AudioEngine {
    * Called when receiving audio data from native bridge with trackId
    * @param trackId The target track
    * @param samples Interleaved stereo samples
+   * @param timestamp Native bridge timestamp for clock synchronization
    */
   private trackAudioLogCounter = 0;
-  pushTrackBridgeAudio(trackId: string, samples: Float32Array): void {
+  pushTrackBridgeAudio(trackId: string, samples: Float32Array, timestamp?: number): void {
     const processor = this.trackProcessors.get(trackId);
     if (processor) {
-      processor.pushBridgeAudio(samples);
+      processor.pushBridgeAudio(samples, timestamp);
       // Log occasionally to confirm audio is flowing
       if (this.trackAudioLogCounter++ % 500 === 0) {
         const state = processor.getState();
@@ -1113,6 +1114,7 @@ export class AudioEngine {
           isMuted: state.isMuted,
           monitoringEnabled: state.monitoringEnabled,
           inputSourceType: processor.getInputSourceType(),
+          usingSAB: processor.isUsingSharedBuffer(),
         });
       }
     } else if (this.trackAudioLogCounter++ % 500 === 0) {

@@ -45,6 +45,18 @@ export class TrackAudioProcessor {
   private channelMerger: ChannelMergerNode | null = null;
   private inputConfig: TrackInputConfig | null = null;
 
+  // SharedArrayBuffer for ultra-low-latency audio (when available)
+  private sharedAudioBuffer: SharedArrayBuffer | null = null;
+  private sharedFloatView: Float32Array | null = null;
+  private sharedUint32View: Uint32Array | null = null;
+  private useSharedBuffer: boolean = false;
+  private static sabSupported: boolean | null = null;
+
+  // Constants for SharedArrayBuffer layout
+  private static readonly SAB_HEADER_SIZE = 8; // Uint32 slots
+  private static readonly SAB_HEADER_BYTES = 32;
+  private static readonly SAB_AUDIO_BUFFER_SIZE = 4096; // ~42ms at 48kHz stereo, but we only fill ~5ms
+
   // Audio nodes
   private inputGainNode: GainNode;
   private armGainNode: GainNode; // Gates input when track is not armed
@@ -74,6 +86,35 @@ export class TrackAudioProcessor {
   // Track which AudioContexts have the bridge worklet module loaded
   // Using WeakSet so closed contexts can be garbage collected
   private static bridgeWorkletLoadedContexts = new WeakSet<AudioContext>();
+  private static sabWorkletLoadedContexts = new WeakSet<AudioContext>();
+
+  /**
+   * Check if SharedArrayBuffer is supported (requires COOP/COEP headers)
+   */
+  static isSharedArrayBufferSupported(): boolean {
+    if (TrackAudioProcessor.sabSupported !== null) {
+      return TrackAudioProcessor.sabSupported;
+    }
+
+    try {
+      // Check if SharedArrayBuffer is available
+      if (typeof SharedArrayBuffer === 'undefined') {
+        TrackAudioProcessor.sabSupported = false;
+        console.log('[TrackAudioProcessor] SharedArrayBuffer not available');
+        return false;
+      }
+
+      // Try to create one - will fail without proper COOP/COEP headers
+      const testBuffer = new SharedArrayBuffer(16);
+      TrackAudioProcessor.sabSupported = testBuffer.byteLength === 16;
+      console.log('[TrackAudioProcessor] SharedArrayBuffer supported:', TrackAudioProcessor.sabSupported);
+      return TrackAudioProcessor.sabSupported;
+    } catch (e) {
+      console.log('[TrackAudioProcessor] SharedArrayBuffer not supported:', e);
+      TrackAudioProcessor.sabSupported = false;
+      return false;
+    }
+  }
 
   // Metrics
   private lastProcessingTime = 0;
@@ -238,7 +279,8 @@ export class TrackAudioProcessor {
 
   /**
    * Set up bridge worklet input (native bridge mode)
-   * Receives audio via postMessage from native ASIO bridge
+   * Uses SharedArrayBuffer for ultra-low-latency when available,
+   * falls back to postMessage otherwise
    */
   async setBridgeInput(config: TrackInputConfig): Promise<void> {
     // Validate AudioContext is in a usable state
@@ -259,47 +301,113 @@ export class TrackAudioProcessor {
     this.inputConfig = config;
     this.inputSourceType = 'bridge';
 
-    // Load bridge worklet if not already loaded on this AudioContext
-    // Each AudioContext needs its own module registration
-    if (!TrackAudioProcessor.bridgeWorkletLoadedContexts.has(this.audioContext)) {
+    // Check if we can use SharedArrayBuffer for ultra-low-latency
+    const useSAB = TrackAudioProcessor.isSharedArrayBufferSupported();
+
+    if (useSAB) {
+      // Use SharedArrayBuffer worklet for ultra-low-latency
+      if (!TrackAudioProcessor.sabWorkletLoadedContexts.has(this.audioContext)) {
+        try {
+          await this.audioContext.audioWorklet.addModule('/audio/bridge-processor-sab.js');
+          TrackAudioProcessor.sabWorkletLoadedContexts.add(this.audioContext);
+          console.log(`[TrackAudioProcessor] ${this.trackId} - SAB Bridge worklet loaded`);
+        } catch (err) {
+          console.log(`[TrackAudioProcessor] ${this.trackId} - SAB worklet already loaded or error:`, err);
+          TrackAudioProcessor.sabWorkletLoadedContexts.add(this.audioContext);
+        }
+      }
+
+      // Create SharedArrayBuffer for audio data
+      // Layout: [header: 32 bytes][audio: 4096 floats = 16384 bytes]
+      const totalBytes = TrackAudioProcessor.SAB_HEADER_BYTES +
+        TrackAudioProcessor.SAB_AUDIO_BUFFER_SIZE * 4;
+      this.sharedAudioBuffer = new SharedArrayBuffer(totalBytes);
+      this.sharedFloatView = new Float32Array(
+        this.sharedAudioBuffer,
+        TrackAudioProcessor.SAB_HEADER_BYTES
+      );
+      this.sharedUint32View = new Uint32Array(
+        this.sharedAudioBuffer,
+        0,
+        TrackAudioProcessor.SAB_HEADER_SIZE
+      );
+      this.useSharedBuffer = true;
+
+      // Create SAB-enabled worklet node
       try {
-        await this.audioContext.audioWorklet.addModule('/audio/bridge-processor.js');
-        TrackAudioProcessor.bridgeWorkletLoadedContexts.add(this.audioContext);
-        console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge worklet module loaded on AudioContext`);
+        this.bridgeWorkletNode = new AudioWorkletNode(
+          this.audioContext,
+          'bridge-audio-processor-sab',
+          {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions: {
+              asioBufferSize: config.asioBufferSize || 128,
+            },
+          }
+        );
+
+        // Send SharedArrayBuffer to worklet
+        this.bridgeWorkletNode.port.postMessage({
+          type: 'init-sab',
+          buffer: this.sharedAudioBuffer,
+        });
+
+        console.log(`[TrackAudioProcessor] ${this.trackId} - Ultra-low-latency SAB mode enabled`);
       } catch (err) {
-        // Module may already be loaded on this context (e.g., by AudioEngine)
-        console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge worklet already loaded or error:`, err);
-        TrackAudioProcessor.bridgeWorkletLoadedContexts.add(this.audioContext);
+        console.error(`[TrackAudioProcessor] ${this.trackId} - Failed to create SAB worklet:`, err);
+        // Fall back to regular mode
+        this.useSharedBuffer = false;
+        this.sharedAudioBuffer = null;
+        this.sharedFloatView = null;
+        this.sharedUint32View = null;
       }
     }
 
-    // Create AudioWorkletNode for this track's bridge audio
-    // Pass ASIO buffer size for dynamic ring buffer sizing
-    try {
-      this.bridgeWorkletNode = new AudioWorkletNode(this.audioContext, 'bridge-audio-processor', {
-        numberOfInputs: 0,
-        numberOfOutputs: 1,
-        outputChannelCount: [2],
-        processorOptions: {
-          asioBufferSize: config.asioBufferSize || 128,
-        },
-      });
-    } catch (err) {
-      console.error(`[TrackAudioProcessor] ${this.trackId} - Failed to create AudioWorkletNode:`, err);
-      this.inputSourceType = 'none';
-      throw err;
+    // Fallback to postMessage mode if SAB not available or failed
+    if (!this.useSharedBuffer) {
+      if (!TrackAudioProcessor.bridgeWorkletLoadedContexts.has(this.audioContext)) {
+        try {
+          await this.audioContext.audioWorklet.addModule('/audio/bridge-processor.js');
+          TrackAudioProcessor.bridgeWorkletLoadedContexts.add(this.audioContext);
+          console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge worklet module loaded`);
+        } catch (err) {
+          console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge worklet already loaded:`, err);
+          TrackAudioProcessor.bridgeWorkletLoadedContexts.add(this.audioContext);
+        }
+      }
+
+      try {
+        this.bridgeWorkletNode = new AudioWorkletNode(
+          this.audioContext,
+          'bridge-audio-processor',
+          {
+            numberOfInputs: 0,
+            numberOfOutputs: 1,
+            outputChannelCount: [2],
+            processorOptions: {
+              asioBufferSize: config.asioBufferSize || 128,
+            },
+          }
+        );
+      } catch (err) {
+        console.error(`[TrackAudioProcessor] ${this.trackId} - Failed to create worklet:`, err);
+        this.inputSourceType = 'none';
+        throw err;
+      }
     }
 
     // Handle worklet messages (stats)
-    this.bridgeWorkletNode.port.onmessage = (event) => {
+    this.bridgeWorkletNode!.port.onmessage = (event) => {
       if (event.data.type === 'stats') {
-        const { underruns, overruns, bufferFill, samplesReceived, messageCount } = event.data;
+        const stats = event.data;
         console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} worklet stats:`, {
-          underruns,
-          overruns,
-          bufferFill: (bufferFill * 100).toFixed(1) + '%',
-          samplesReceived,
-          messageCount,
+          underruns: stats.underruns,
+          overruns: stats.overruns,
+          bufferFill: (stats.bufferFill * 100).toFixed(1) + '%',
+          latencyMs: stats.latencyMs || 'N/A',
+          useSharedBuffer: stats.useSharedBuffer ?? this.useSharedBuffer,
           armGain: this.armGainNode.gain.value,
           monitorGain: this.monitorGainNode.gain.value,
         });
@@ -307,16 +415,20 @@ export class TrackAudioProcessor {
     };
 
     // Connect worklet to input chain
-    this.bridgeWorkletNode.connect(this.inputGainNode);
+    this.bridgeWorkletNode!.connect(this.inputGainNode);
 
-    console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge input connected`, config);
+    console.log(`[TrackAudioProcessor] ${this.trackId} - Bridge input connected`, {
+      ...config,
+      useSharedBuffer: this.useSharedBuffer,
+    });
   }
 
   /**
    * Push audio samples to bridge worklet (called from native bridge WebSocket)
+   * Uses SharedArrayBuffer for zero-copy when available
    */
   private pushCounter = 0;
-  pushBridgeAudio(samples: Float32Array): void {
+  pushBridgeAudio(samples: Float32Array, timestamp?: number): void {
     this.pushCounter++;
 
     if (this.inputSourceType !== 'bridge' || !this.bridgeWorkletNode) {
@@ -335,13 +447,60 @@ export class TrackAudioProcessor {
       console.log(`[TrackAudioProcessor] ${this.trackId.slice(-8)} pushBridgeAudio:`, {
         pushCounter: this.pushCounter,
         samplesLength: samples.length,
+        useSharedBuffer: this.useSharedBuffer,
       });
     }
 
-    this.bridgeWorkletNode.port.postMessage({
-      type: 'audio',
-      samples: samples,
-    });
+    if (this.useSharedBuffer && this.sharedFloatView && this.sharedUint32View) {
+      // Zero-copy write to SharedArrayBuffer
+      const bufferLen = this.sharedFloatView.length;
+      let writePos = Atomics.load(this.sharedUint32View, 0);
+      const readPos = Atomics.load(this.sharedUint32View, 1);
+
+      for (let i = 0; i < samples.length; i += 2) {
+        // Check space available
+        const available = writePos >= readPos
+          ? bufferLen - writePos + readPos
+          : readPos - writePos;
+
+        if (available <= 2) {
+          // Buffer full - skip oldest samples (worklet will handle)
+          break;
+        }
+
+        // Write stereo pair
+        this.sharedFloatView[writePos] = samples[i];
+        writePos = (writePos + 1) % bufferLen;
+
+        this.sharedFloatView[writePos] = samples[i + 1] ?? samples[i];
+        writePos = (writePos + 1) % bufferLen;
+      }
+
+      // Update write position atomically
+      Atomics.store(this.sharedUint32View, 0, writePos);
+
+      // Send clock sync if timestamp provided (less frequently)
+      if (timestamp && this.pushCounter % 50 === 0) {
+        this.bridgeWorkletNode.port.postMessage({
+          type: 'clock-sync',
+          nativeTime: timestamp,
+        });
+      }
+    } else {
+      // Fallback: postMessage mode
+      this.bridgeWorkletNode.port.postMessage({
+        type: 'audio',
+        samples: samples,
+        timestamp: timestamp,
+      });
+    }
+  }
+
+  /**
+   * Check if using ultra-low-latency SharedArrayBuffer mode
+   */
+  isUsingSharedBuffer(): boolean {
+    return this.useSharedBuffer;
   }
 
   /**
@@ -369,6 +528,12 @@ export class TrackAudioProcessor {
       // Don't stop tracks - they may be shared with other tracks
       this.mediaStream = null;
     }
+    // Clean up SharedArrayBuffer resources
+    this.sharedAudioBuffer = null;
+    this.sharedFloatView = null;
+    this.sharedUint32View = null;
+    this.useSharedBuffer = false;
+
     this.inputSourceType = 'none';
     this.inputConfig = null;
   }
