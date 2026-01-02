@@ -18,6 +18,7 @@ use ringbuf::{
     traits::{Consumer, Observer, Producer, Split},
     HeapCons, HeapProd, HeapRb,
 };
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, AtomicU32, AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -27,6 +28,14 @@ use tracing::{error, info, warn};
 /// Debug frame counter for periodic logging
 static INPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
 static OUTPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
+
+/// Thread-local buffers for I32/I16 to F32 conversion in audio callbacks.
+/// CRITICAL: Real-time audio callbacks must NEVER allocate memory.
+/// These pre-allocated buffers are reused across callbacks to avoid heap allocations.
+thread_local! {
+    static INPUT_CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(8192));
+    static OUTPUT_CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(8192));
+}
 
 /// Ring buffer size for local audio (samples, stereo)
 const LOCAL_RING_BUFFER_SIZE: usize = 8192;
@@ -641,19 +650,23 @@ impl AudioEngine {
                 device.build_input_stream(
                     config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
-                        let float_data: Vec<f32> =
-                            data.iter().map(|&s| s as f32 / i32::MAX as f32).collect();
-                        Self::process_input(
-                            &float_data,
-                            input_channels,
-                            &producer,
-                            browser_stream_producer.as_ref(),
-                            &levels,
-                            &is_monitoring,
-                            &monitoring_volume,
-                            &processing_state,
-                            &effects_metering,
-                        );
+                        // Use thread-local buffer to avoid allocation in real-time callback
+                        INPUT_CONVERSION_BUFFER.with(|buf| {
+                            let mut float_data = buf.borrow_mut();
+                            float_data.clear();
+                            float_data.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
+                            Self::process_input(
+                                &float_data,
+                                input_channels,
+                                &producer,
+                                browser_stream_producer.as_ref(),
+                                &levels,
+                                &is_monitoring,
+                                &monitoring_volume,
+                                &processing_state,
+                                &effects_metering,
+                            );
+                        });
                     },
                     |err| error!("Input stream error: {}", err),
                     None,
@@ -664,19 +677,23 @@ impl AudioEngine {
                 device.build_input_stream(
                     config,
                     move |data: &[i16], _: &cpal::InputCallbackInfo| {
-                        let float_data: Vec<f32> =
-                            data.iter().map(|&s| s as f32 / i16::MAX as f32).collect();
-                        Self::process_input(
-                            &float_data,
-                            input_channels,
-                            &producer,
-                            browser_stream_producer.as_ref(),
-                            &levels,
-                            &is_monitoring,
-                            &monitoring_volume,
-                            &processing_state,
-                            &effects_metering,
-                        );
+                        // Use thread-local buffer to avoid allocation in real-time callback
+                        INPUT_CONVERSION_BUFFER.with(|buf| {
+                            let mut float_data = buf.borrow_mut();
+                            float_data.clear();
+                            float_data.extend(data.iter().map(|&s| s as f32 / i16::MAX as f32));
+                            Self::process_input(
+                                &float_data,
+                                input_channels,
+                                &producer,
+                                browser_stream_producer.as_ref(),
+                                &levels,
+                                &is_monitoring,
+                                &monitoring_volume,
+                                &processing_state,
+                                &effects_metering,
+                            );
+                        });
                     },
                     |err| error!("Input stream error: {}", err),
                     None,
@@ -1074,21 +1091,26 @@ impl AudioEngine {
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
-        // Process to float buffer first
-        let mut float_buffer = vec![0.0_f32; data.len()];
-        Self::process_output_f32(
-            &mut float_buffer,
-            local_consumer,
-            remote_buffers,
-            backing_consumer,
-            levels,
-            processing_state,
-        );
+        // Use thread-local buffer to avoid allocation in real-time callback
+        OUTPUT_CONVERSION_BUFFER.with(|buf| {
+            let mut float_buffer = buf.borrow_mut();
+            // resize() doesn't allocate if capacity is sufficient
+            float_buffer.resize(data.len(), 0.0);
 
-        // Convert to i32
-        for (out, &f) in data.iter_mut().zip(float_buffer.iter()) {
-            *out = (f * i32::MAX as f32) as i32;
-        }
+            Self::process_output_f32(
+                &mut float_buffer,
+                local_consumer,
+                remote_buffers,
+                backing_consumer,
+                levels,
+                processing_state,
+            );
+
+            // Convert to i32
+            for (out, &f) in data.iter_mut().zip(float_buffer.iter()) {
+                *out = (f * i32::MAX as f32) as i32;
+            }
+        });
     }
 
     fn process_output_i16(
@@ -1099,19 +1121,25 @@ impl AudioEngine {
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
     ) {
-        let mut float_buffer = vec![0.0_f32; data.len()];
-        Self::process_output_f32(
-            &mut float_buffer,
-            local_consumer,
-            remote_buffers,
-            backing_consumer,
-            levels,
-            processing_state,
-        );
+        // Use thread-local buffer to avoid allocation in real-time callback
+        OUTPUT_CONVERSION_BUFFER.with(|buf| {
+            let mut float_buffer = buf.borrow_mut();
+            // resize() doesn't allocate if capacity is sufficient
+            float_buffer.resize(data.len(), 0.0);
 
-        for (out, &f) in data.iter_mut().zip(float_buffer.iter()) {
-            *out = (f * i16::MAX as f32) as i16;
-        }
+            Self::process_output_f32(
+                &mut float_buffer,
+                local_consumer,
+                remote_buffers,
+                backing_consumer,
+                levels,
+                processing_state,
+            );
+
+            for (out, &f) in data.iter_mut().zip(float_buffer.iter()) {
+                *out = (f * i16::MAX as f32) as i16;
+            }
+        });
     }
 
     // === ASIO Support ===
@@ -1221,19 +1249,23 @@ impl AudioEngine {
                 device.build_input_stream(
                     &stream_input_config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
-                        let float_data: Vec<f32> =
-                            data.iter().map(|&s| s as f32 / i32::MAX as f32).collect();
-                        Self::process_input(
-                            &float_data,
-                            input_channels,
-                            &producer,
-                            browser_stream_producer.as_ref(),
-                            &levels_in,
-                            &is_monitoring,
-                            &monitoring_volume,
-                            &processing_state_in,
-                            &effects_metering,
-                        );
+                        // Use thread-local buffer to avoid allocation in real-time callback
+                        INPUT_CONVERSION_BUFFER.with(|buf| {
+                            let mut float_data = buf.borrow_mut();
+                            float_data.clear();
+                            float_data.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
+                            Self::process_input(
+                                &float_data,
+                                input_channels,
+                                &producer,
+                                browser_stream_producer.as_ref(),
+                                &levels_in,
+                                &is_monitoring,
+                                &monitoring_volume,
+                                &processing_state_in,
+                                &effects_metering,
+                            );
+                        });
                     },
                     |err| error!("ASIO input error: {}", err),
                     None,
