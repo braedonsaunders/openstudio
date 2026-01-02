@@ -78,7 +78,8 @@ pub enum P2PEvent {
 /// P2P network manager
 pub struct P2PNetwork {
     config: P2PConfig,
-    socket: Option<Arc<TokioUdpSocket>>,
+    /// UDP socket (wrapped in RwLock for interior mutability)
+    socket: RwLock<Option<Arc<TokioUdpSocket>>>,
     peers: Arc<PeerRegistry>,
     clock: Arc<ClockSync>,
     codec: Arc<OpusCodec>,
@@ -96,8 +97,8 @@ pub struct P2PNetwork {
     event_tx: RwLock<Option<broadcast::Sender<P2PEvent>>>,
     /// Our public address (from STUN)
     public_addr: RwLock<Option<SocketAddr>>,
-    /// Is running
-    running: RwLock<bool>,
+    /// Is running (Arc for sharing with async tasks)
+    running: Arc<std::sync::atomic::AtomicBool>,
     /// Audio output buffer (peer_id, track_id) -> samples
     audio_output: DashMap<(u32, u8), Vec<f32>>,
     /// Stats
@@ -112,7 +113,7 @@ impl P2PNetwork {
 
         Ok(Self {
             config,
-            socket: None,
+            socket: RwLock::new(None),
             peers: Arc::new(PeerRegistry::new()),
             clock: Arc::new(ClockSync::new(ClockConfig::default())),
             codec: Arc::new(codec),
@@ -124,7 +125,7 @@ impl P2PNetwork {
             session_start: RwLock::new(None),
             event_tx: RwLock::new(None),
             public_addr: RwLock::new(None),
-            running: RwLock::new(false),
+            running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             audio_output: DashMap::new(),
             stats: RwLock::new(NetworkStats::default()),
             outgoing_audio: RwLock::new(Vec::new()),
@@ -144,28 +145,236 @@ impl P2PNetwork {
             }
         }
 
-        let _socket = Arc::new(socket);
+        let socket = Arc::new(socket);
+        *self.socket.write() = Some(socket.clone());
         *self.session_start.write() = Some(Instant::now());
-        *self.running.write() = true;
+        self.running.store(true, std::sync::atomic::Ordering::SeqCst);
 
         // Create event channel
         let (tx, rx) = broadcast::channel(1000);
-        *self.event_tx.write() = Some(tx);
+        *self.event_tx.write() = Some(tx.clone());
 
-        // Store socket
-        // Note: In real implementation, spawn receive/send loops here
-        // For now, we'll handle this in the manager
+        // Spawn receive loop
+        self.spawn_receive_loop(socket.clone(), tx.clone());
+
+        // Spawn heartbeat loop for peer keepalive
+        self.spawn_heartbeat_loop(socket.clone());
+
+        info!("P2P network started with receive and heartbeat loops");
 
         Ok(rx)
     }
 
+    /// Spawn the UDP receive loop
+    fn spawn_receive_loop(&self, socket: Arc<TokioUdpSocket>, event_tx: broadcast::Sender<P2PEvent>) {
+        let running = self.running.clone();
+        let peers = self.peers.clone();
+        let codec = self.codec.clone();
+        let clock = self.clock.clone();
+
+        tokio::spawn(async move {
+            let mut buf = [0u8; 2048]; // Max OSP packet size
+
+            while running.load(std::sync::atomic::Ordering::SeqCst) {
+                match socket.recv_from(&mut buf).await {
+                    Ok((len, from)) => {
+                        if len == 0 {
+                            continue;
+                        }
+
+                        // Parse OSP packet
+                        if let Some(packet) = OspPacket::from_bytes(&buf[..len]) {
+                            if let Err(e) = Self::process_received_packet(
+                                &packet,
+                                from,
+                                &peers,
+                                &codec,
+                                &clock,
+                                &event_tx,
+                            ) {
+                                warn!("Failed to process packet from {}: {}", from, e);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        // Check if we're still running before logging error
+                        if running.load(std::sync::atomic::Ordering::SeqCst) {
+                            warn!("UDP receive error: {}", e);
+                        }
+                        // Brief pause on error to avoid tight loop
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                }
+            }
+
+            info!("P2P receive loop stopped");
+        });
+    }
+
+    /// Process a received OSP packet (static to avoid self-reference in async)
+    fn process_received_packet(
+        packet: &OspPacket,
+        from: SocketAddr,
+        peers: &PeerRegistry,
+        codec: &OpusCodec,
+        clock: &ClockSync,
+        event_tx: &broadcast::Sender<P2PEvent>,
+    ) -> Result<()> {
+        match packet.message_type {
+            OspMessageType::AudioFrame => {
+                let frame = AudioFrameMessage::from_bytes(&packet.payload)
+                    .ok_or_else(|| NetworkError::Serialization("Invalid audio frame".to_string()))?;
+
+                // Decode audio
+                let samples = if frame.codec == 1 {
+                    codec.decoder.decode(&frame.data)?
+                } else {
+                    // PCM fallback
+                    frame
+                        .data
+                        .chunks(4)
+                        .filter_map(|b| {
+                            if b.len() == 4 {
+                                Some(f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+                            } else {
+                                None
+                            }
+                        })
+                        .collect()
+                };
+
+                // Find or create peer
+                if let Some(peer) = peers.get(frame.user_id) {
+                    // Ensure track exists
+                    if peer.track(frame.track_id).is_none() {
+                        peer.add_track(
+                            frame.track_id,
+                            format!("Track {}", frame.track_id),
+                            JitterConfig::live_jamming(),
+                        );
+                    }
+
+                    // Push to jitter buffer
+                    peer.push_audio(
+                        frame.track_id,
+                        packet.header.sequence,
+                        packet.header.timestamp,
+                        samples.clone(),
+                    );
+
+                    // Update last seen
+                    peer.touch();
+
+                    // Emit event
+                    let _ = event_tx.send(P2PEvent::AudioReceived {
+                        peer_id: frame.user_id,
+                        track_id: frame.track_id,
+                        samples,
+                    });
+                }
+            }
+
+            OspMessageType::ClockSync => {
+                if let Ok(msg) = bincode::deserialize::<ClockSyncMessage>(&packet.payload) {
+                    clock.update_beat_position(
+                        msg.beat_position,
+                        msg.bpm,
+                        (msg.time_sig_num, msg.time_sig_denom),
+                    );
+
+                    let _ = event_tx.send(P2PEvent::ClockSync {
+                        beat_position: msg.beat_position,
+                        bpm: msg.bpm,
+                    });
+                }
+            }
+
+            _ => {
+                // Forward control messages
+                if let Some(peer) = peers.all().into_iter().find(|p| p.direct_addr() == Some(from)) {
+                    peer.touch();
+                    let _ = event_tx.send(P2PEvent::ControlMessage {
+                        peer_id: peer.id,
+                        message_type: packet.message_type,
+                        payload: packet.payload.clone(),
+                    });
+                }
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Spawn heartbeat loop for peer keepalive
+    fn spawn_heartbeat_loop(&self, socket: Arc<TokioUdpSocket>) {
+        let running = self.running.clone();
+        let peers = self.peers.clone();
+        let heartbeat_interval = Duration::from_millis(self.config.heartbeat_interval_ms);
+        let peer_timeout = Duration::from_millis(self.config.peer_timeout_ms);
+        let event_tx = self.event_tx.read().clone();
+
+        tokio::spawn(async move {
+            let mut interval = tokio::time::interval(heartbeat_interval);
+            let mut ping_id: u32 = 0;
+
+            while running.load(std::sync::atomic::Ordering::SeqCst) {
+                interval.tick().await;
+
+                let now = Instant::now();
+
+                // Check for timed-out peers and send pings
+                for peer in peers.connected() {
+                    if now.duration_since(peer.last_seen()) > peer_timeout {
+                        warn!("Peer {} timed out", peer.id);
+                        peer.set_state(PeerState::Closed);
+
+                        if let Some(ref tx) = event_tx {
+                            let _ = tx.send(P2PEvent::PeerDisconnected {
+                                peer_id: peer.id,
+                                reason: "Timeout".to_string(),
+                            });
+                        }
+                        continue;
+                    }
+
+                    // Send ping to connected peers
+                    if let Some(addr) = peer.direct_addr() {
+                        ping_id = ping_id.wrapping_add(1);
+                        let ping = PingMessage {
+                            ping_id,
+                            send_time: ClockSync::now_ms(),
+                        };
+
+                        if let Ok(payload) = bincode::serialize(&ping) {
+                            let packet = OspPacket::new(
+                                OspMessageType::Ping,
+                                payload,
+                                0, // Sequence not critical for ping
+                                0,
+                            );
+
+                            if let Err(e) = socket.send_to(&packet.to_bytes(), addr).await {
+                                warn!("Failed to send ping to {}: {}", addr, e);
+                            }
+                        }
+                    }
+                }
+            }
+
+            info!("P2P heartbeat loop stopped");
+        });
+    }
+
     /// Stop the P2P network
     pub async fn stop(&self) {
-        *self.running.write() = false;
+        self.running.store(false, std::sync::atomic::Ordering::SeqCst);
         // Disconnect all peers
         for peer in self.peers.all() {
             peer.set_state(PeerState::Closed);
         }
+        // Clear socket
+        *self.socket.write() = None;
+        info!("P2P network stopped");
     }
 
     /// Join a room
@@ -261,7 +470,8 @@ impl P2PNetwork {
     ) -> Result<()> {
         let socket = self
             .socket
-            .as_ref()
+            .read()
+            .clone()
             .ok_or_else(|| NetworkError::ConnectionFailed("Socket not initialized".to_string()))?;
 
         let addr = peer.direct_addr().ok_or_else(|| {
@@ -286,6 +496,20 @@ impl P2PNetwork {
         let mut stats = self.stats.write();
         stats.bytes_sent_per_sec += bytes_len as u64;
 
+        Ok(())
+    }
+
+    /// Broadcast a control message to all connected peers
+    pub async fn broadcast_control(
+        &self,
+        msg_type: OspMessageType,
+        payload: Vec<u8>,
+    ) -> Result<()> {
+        for peer in self.peers.connected() {
+            if let Err(e) = self.send_packet(&peer, msg_type, payload.clone(), msg_type.is_reliable()).await {
+                warn!("Failed to broadcast control to peer {}: {}", peer.id, e);
+            }
+        }
         Ok(())
     }
 
@@ -807,6 +1031,6 @@ impl P2PNetwork {
 
     /// Is running
     pub fn is_running(&self) -> bool {
-        *self.running.read()
+        self.running.load(std::sync::atomic::Ordering::SeqCst)
     }
 }
