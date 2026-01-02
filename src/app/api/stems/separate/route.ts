@@ -117,20 +117,40 @@ export async function POST(request: NextRequest) {
     const stems: Record<string, { id: string; url: string; name: string }> = {};
 
     for (const stemName of stemNames) {
-      let replicateUrl = replicateOutput[stemName];
+      const stemOutput = replicateOutput[stemName];
 
       // Handle different output formats
-      if (!replicateUrl) continue;
+      if (!stemOutput) continue;
 
-      // If it's an object with a url property, extract it
-      if (typeof replicateUrl === 'object' && replicateUrl !== null) {
-        const urlObj = replicateUrl as Record<string, unknown>;
-        replicateUrl = urlObj.url || urlObj.href || urlObj.uri;
+      let replicateUrl: string | undefined;
+
+      // Replicate FileOutput objects have a url() method
+      if (typeof stemOutput === 'object' && stemOutput !== null) {
+        const fileOutput = stemOutput as { url?: (() => string) | string; href?: string };
+
+        // Check if url is a function (Replicate FileOutput)
+        if (typeof fileOutput.url === 'function') {
+          replicateUrl = fileOutput.url();
+        } else if (typeof fileOutput.url === 'string') {
+          replicateUrl = fileOutput.url;
+        } else if (typeof fileOutput.href === 'string') {
+          replicateUrl = fileOutput.href;
+        }
+
+        // Also try toString() as FileOutput might convert to URL string
+        if (!replicateUrl && typeof stemOutput.toString === 'function') {
+          const strValue = stemOutput.toString();
+          if (strValue.startsWith('http')) {
+            replicateUrl = strValue;
+          }
+        }
+      } else if (typeof stemOutput === 'string') {
+        replicateUrl = stemOutput;
       }
 
       // Must be a string URL at this point
-      if (typeof replicateUrl !== 'string') {
-        console.error(`[Stems] ${stemName} stem is not a valid URL:`, typeof replicateUrl, replicateUrl);
+      if (!replicateUrl || typeof replicateUrl !== 'string') {
+        console.error(`[Stems] ${stemName} stem is not a valid URL:`, typeof stemOutput, Object.keys(stemOutput as object));
         continue;
       }
 
