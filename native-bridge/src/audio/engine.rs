@@ -10,7 +10,7 @@
 
 use super::{AudioDevice, BufferSize, ChannelConfig, DeviceInfo, SampleRate};
 use crate::effects::EffectsChain;
-use crate::mixing::TrackState;
+use crate::mixing::{PartialTrackState, TrackState};
 use anyhow::Result;
 use cpal::traits::{DeviceTrait, StreamTrait};
 use cpal::SampleFormat;
@@ -324,9 +324,10 @@ impl AudioEngine {
 
     // === Track State ===
 
-    pub fn update_track_state(&self, state: TrackState) {
+    /// Update track state with partial update - only fields that are Some will be changed
+    pub fn update_track_state(&self, partial: PartialTrackState) {
         if let Ok(mut proc_state) = self.processing_state.write() {
-            proc_state.track_state = state;
+            proc_state.track_state.merge(&partial);
         }
     }
 
