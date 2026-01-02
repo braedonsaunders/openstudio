@@ -1152,26 +1152,32 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I32 => {
-                // DIAGNOSTIC: Absolute minimum - no ring buffer operations at all
-                // Just convert I32->F32 and discard, to test if ring buffers are the issue
-                let input_cb_count = self.input_callback_count.clone();
+                // Pre-allocate ALL buffers BEFORE building stream
+                let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
+                let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_input_stream(
                     &stream_input_config,
                     move |data: &[i32], _: &cpal::InputCallbackInfo| {
-                        input_cb_count.fetch_add(1, Ordering::Relaxed);
+                        let mut conv_buf = conversion_buffer.borrow_mut();
+                        let mut stereo_buf = stereo_buffer.borrow_mut();
 
-                        // Just convert and calculate a dummy value to prevent optimization
-                        let mut sum = 0.0f32;
-                        for &sample in data.iter() {
-                            sum += sample as f32 / i32::MAX as f32;
-                        }
-                        // Prevent compiler from optimizing away the conversion
-                        std::hint::black_box(sum);
+                        // Convert I32 to F32 using pre-allocated buffer
+                        conv_buf.clear();
+                        conv_buf.extend(data.iter().map(|&s| s as f32 / i32::MAX as f32));
 
-                        // Skip ALL ring buffer operations
-                        let _ = &browser_stream_producer;
-                        let _ = &producer;
+                        Self::process_input(
+                            &conv_buf,
+                            input_channels,
+                            &mut stereo_buf,
+                            &producer,
+                            browser_stream_producer.as_ref(),
+                            &levels_in,
+                            &is_monitoring,
+                            &monitoring_volume,
+                            &processing_state_in,
+                            &effects_metering,
+                        );
                     },
                     |_err| {},
                     None,
@@ -1211,26 +1217,22 @@ impl AudioEngine {
                 )?
             }
             SampleFormat::I32 => {
-                // DIAGNOSTIC: Absolute minimum output - just silence
-                // No ring buffer reads at all
-                let output_cb_count = self.output_callback_count.clone();
+                // Pre-allocate conversion buffer BEFORE building stream
+                let float_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
 
                 device.build_output_stream(
                     &stream_output_config,
                     move |data: &mut [i32], _: &cpal::OutputCallbackInfo| {
-                        output_cb_count.fetch_add(1, Ordering::Relaxed);
-
-                        // Just output silence
-                        for sample in data.iter_mut() {
-                            *sample = 0;
-                        }
-
-                        // Keep references alive
-                        let _ = &local_consumer;
-                        let _ = &remote_buffers;
-                        let _ = &backing_consumer;
-                        let _ = &levels_out;
-                        let _ = &processing_state_out;
+                        let mut float_buf = float_buffer.borrow_mut();
+                        Self::process_output_i32(
+                            data,
+                            &mut float_buf,
+                            &local_consumer,
+                            &remote_buffers,
+                            &backing_consumer,
+                            &levels_out,
+                            &processing_state_out,
+                        );
                     },
                     |_err| {},
                     None,
