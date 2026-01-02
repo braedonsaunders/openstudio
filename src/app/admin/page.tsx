@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuthStore } from '@/stores/auth-store';
 import { supabaseAuth, getAdminStats, getAllUsers, searchUsers, banUser, unbanUser, setUserAdmin, logAdminAction } from '@/lib/supabase/auth';
-import { adminGet } from '@/lib/api/admin';
+import { adminGet, adminDelete } from '@/lib/api/admin';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card } from '@/components/ui/card';
@@ -756,9 +756,7 @@ function RoomsTab() {
     setDeleteInProgress(true);
     setDeleteError(null);
     try {
-      const response = await fetch(`/api/rooms?id=${selectedRoom}`, {
-        method: 'DELETE',
-      });
+      const response = await adminDelete(`/api/rooms?id=${selectedRoom}`);
       const data = await response.json();
 
       if (response.ok && data.success) {
