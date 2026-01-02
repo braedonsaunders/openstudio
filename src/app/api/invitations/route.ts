@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
     // Transform to response format
     const pendingInvitations: PendingInvitation[] = (invitations || []).map(inv => {
       const inviter = inviterMap.get(inv.invited_by);
-      const room = inv.rooms as { name: string; color?: string; icon?: string };
+      const room = inv.rooms as unknown as { name: string; color?: string; icon?: string };
 
       return {
         id: inv.id,
@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Invitation has expired' }, { status: 400 });
     }
 
-    const room = invitation.rooms as { name: string; default_role?: string };
+    const room = invitation.rooms as unknown as { name: string; default_role?: string };
 
     if (action === 'decline') {
       // Update invitation status to declined

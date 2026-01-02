@@ -77,7 +77,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       .eq('id', invitation.invited_by)
       .single();
 
-    const room = invitation.rooms as { name: string; color?: string; icon?: string };
+    const room = invitation.rooms as unknown as { name: string; color?: string; icon?: string };
 
     const info: InviteLinkInfo = {
       valid: true,
@@ -133,7 +133,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: 'Invite link has expired' }, { status: 400 });
     }
 
-    const room = invitation.rooms as { name: string; default_role?: string };
+    const room = invitation.rooms as unknown as { name: string; default_role?: string };
 
     // Check if user is already a member
     const { data: existingMember } = await supabase
