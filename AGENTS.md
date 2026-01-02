@@ -93,6 +93,7 @@ Before implementing features, reference these docs:
 
 | Component | Documentation |
 |-----------|--------------|
+| **Database Schema** | `/docs/DATABASE.md` |
 | Native Bridge | `/docs/native-bridge-roadmap.md` |
 | Opus Codec | https://opus-codec.org/docs/ |
 | QUIC/Quinn | https://docs.rs/quinn/latest/quinn/ |
