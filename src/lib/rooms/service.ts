@@ -1,6 +1,7 @@
 // Room service for managing rooms
 import type { RoomListItem, CreateRoomInput, RoomSearchParams, RoomActivity } from '@/types';
 import { generateRoomId } from '@/lib/utils';
+import { authFetch, authFetchJson } from '@/lib/auth-fetch';
 
 const API_BASE = '/api/rooms';
 
@@ -41,24 +42,18 @@ export async function createRoom(
 ): Promise<RoomListItem> {
   const roomId = generateRoomId();
 
-  const response = await fetch(API_BASE, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      id: roomId,
-      name: input.name,
-      createdBy,
-      isPublic: input.isPublic,
-      maxUsers: input.maxUsers,
-      description: input.description,
-      genre: input.genre,
-      tags: input.tags,
-      settings: input.settings || {},
-      color: input.color || 'indigo',
-      icon: input.icon || 'music',
-    }),
+  const response = await authFetchJson(API_BASE, 'POST', {
+    id: roomId,
+    name: input.name,
+    createdBy,
+    isPublic: input.isPublic,
+    maxUsers: input.maxUsers,
+    description: input.description,
+    genre: input.genre,
+    tags: input.tags,
+    settings: input.settings || {},
+    color: input.color || 'indigo',
+    icon: input.icon || 'music',
   });
 
   if (!response.ok) {
@@ -70,7 +65,7 @@ export async function createRoom(
 
 // Delete a room
 export async function deleteRoom(roomId: string): Promise<void> {
-  const response = await fetch(`${API_BASE}?id=${roomId}`, {
+  const response = await authFetch(`${API_BASE}?id=${roomId}`, {
     method: 'DELETE',
   });
 
