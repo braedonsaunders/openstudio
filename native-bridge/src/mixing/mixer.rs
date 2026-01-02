@@ -134,10 +134,9 @@ impl Mixer {
     }
 
     pub fn set_stem_state(&mut self, stem_name: &str, enabled: bool, volume: f32) {
-        self.backing_track.stems.insert(
-            stem_name.to_string(),
-            StemState { enabled, volume },
-        );
+        self.backing_track
+            .stems
+            .insert(stem_name.to_string(), StemState { enabled, volume });
     }
 
     pub fn get_backing_track_state(&self) -> &BackingTrackState {
@@ -197,7 +196,13 @@ impl Mixer {
     }
 
     /// Mix all audio sources into output buffer
-    pub fn mix_to_output(&mut self, output: &mut [f32], local_audio: &[f32], remote_audio: &HashMap<String, Vec<f32>>, backing_audio: Option<&[f32]>) {
+    pub fn mix_to_output(
+        &mut self,
+        output: &mut [f32],
+        local_audio: &[f32],
+        remote_audio: &HashMap<String, Vec<f32>>,
+        backing_audio: Option<&[f32]>,
+    ) {
         // Clear output
         for sample in output.iter_mut() {
             *sample = 0.0;

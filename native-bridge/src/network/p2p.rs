@@ -4,8 +4,7 @@
 //! Handles NAT traversal, direct connections, and mesh topology.
 
 use super::{
-    osp::*, peer::*, codec::*, jitter::*, clock::*,
-    NetworkError, Result, RoomConfig, NetworkStats,
+    clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, Result, RoomConfig,
 };
 use dashmap::DashMap;
 use parking_lot::RwLock;
@@ -14,8 +13,8 @@ use std::net::{SocketAddr, UdpSocket};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::UdpSocket as TokioUdpSocket;
-use tokio::sync::{mpsc, broadcast};
-use tracing::{debug, info, warn, error};
+use tokio::sync::{broadcast, mpsc};
+use tracing::{debug, error, info, warn};
 
 /// P2P network configuration
 #[derive(Debug, Clone)]
@@ -58,9 +57,17 @@ pub enum P2PEvent {
     /// Peer disconnected
     PeerDisconnected { peer_id: u32, reason: String },
     /// Audio frame received
-    AudioReceived { peer_id: u32, track_id: u8, samples: Vec<f32> },
+    AudioReceived {
+        peer_id: u32,
+        track_id: u8,
+        samples: Vec<f32>,
+    },
     /// Control message received
-    ControlMessage { peer_id: u32, message_type: OspMessageType, payload: Vec<u8> },
+    ControlMessage {
+        peer_id: u32,
+        message_type: OspMessageType,
+        payload: Vec<u8>,
+    },
     /// Clock sync update
     ClockSync { beat_position: f64, bpm: f32 },
     /// Network stats update
@@ -181,7 +188,12 @@ impl P2PNetwork {
     }
 
     /// Connect to a specific peer
-    pub async fn connect_peer(&self, addr: SocketAddr, user_id: String, user_name: String) -> Result<Arc<Peer>> {
+    pub async fn connect_peer(
+        &self,
+        addr: SocketAddr,
+        user_id: String,
+        user_name: String,
+    ) -> Result<Arc<Peer>> {
         let peer_id = hash_user_id(&user_id);
 
         // Check if already connected
@@ -236,7 +248,8 @@ impl P2PNetwork {
         let payload = bincode::serialize(&handshake)
             .map_err(|e| NetworkError::Serialization(e.to_string()))?;
 
-        self.send_packet(peer, OspMessageType::Handshake, payload, true).await
+        self.send_packet(peer, OspMessageType::Handshake, payload, true)
+            .await
     }
 
     /// Send a packet to a peer
@@ -247,11 +260,14 @@ impl P2PNetwork {
         payload: Vec<u8>,
         reliable: bool,
     ) -> Result<()> {
-        let socket = self.socket.as_ref()
+        let socket = self
+            .socket
+            .as_ref()
             .ok_or_else(|| NetworkError::ConnectionFailed("Socket not initialized".to_string()))?;
 
-        let addr = peer.direct_addr()
-            .ok_or_else(|| NetworkError::ConnectionFailed("Peer has no direct address".to_string()))?;
+        let addr = peer.direct_addr().ok_or_else(|| {
+            NetworkError::ConnectionFailed("Peer has no direct address".to_string())
+        })?;
 
         let sequence = self.next_sequence();
         let timestamp = self.current_timestamp();
@@ -292,7 +308,10 @@ impl P2PNetwork {
 
         // Send to all connected peers
         for peer in self.peers.connected() {
-            if let Err(e) = self.send_packet(&peer, OspMessageType::AudioFrame, payload.clone(), false).await {
+            if let Err(e) = self
+                .send_packet(&peer, OspMessageType::AudioFrame, payload.clone(), false)
+                .await
+            {
                 warn!("Failed to send audio to peer {}: {}", peer.id, e);
             }
         }
@@ -328,7 +347,12 @@ impl P2PNetwork {
         match packet.message_type {
             OspMessageType::AudioFrame => {
                 // Use sequence and timestamp from packet header for jitter buffer
-                self.handle_audio_frame_with_header(packet.sequence, packet.timestamp, &packet.payload).await?;
+                self.handle_audio_frame_with_header(
+                    packet.sequence,
+                    packet.timestamp,
+                    &packet.payload,
+                )
+                .await?;
             }
             OspMessageType::AudioLevels => {
                 self.handle_audio_levels(&packet.payload).await?;
@@ -367,7 +391,12 @@ impl P2PNetwork {
     }
 
     /// Handle incoming audio frame with sequence tracking
-    async fn handle_audio_frame_with_header(&self, header_seq: u16, header_ts: u16, payload: &[u8]) -> Result<()> {
+    async fn handle_audio_frame_with_header(
+        &self,
+        header_seq: u16,
+        header_ts: u16,
+        payload: &[u8],
+    ) -> Result<()> {
         let frame = AudioFrameMessage::from_bytes(payload)
             .ok_or_else(|| NetworkError::Serialization("Invalid audio frame".to_string()))?;
 
@@ -377,7 +406,9 @@ impl P2PNetwork {
             self.codec.decoder.decode(&frame.data)?
         } else {
             // PCM (convert from bytes)
-            frame.data.chunks(4)
+            frame
+                .data
+                .chunks(4)
                 .filter_map(|b| {
                     if b.len() == 4 {
                         Some(f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
@@ -470,8 +501,8 @@ impl P2PNetwork {
             recv_time: ClockSync::now_ms(),
         };
 
-        let payload = bincode::serialize(&pong)
-            .map_err(|e| NetworkError::Serialization(e.to_string()))?;
+        let payload =
+            bincode::serialize(&pong).map_err(|e| NetworkError::Serialization(e.to_string()))?;
 
         // Send pong directly
         if let Some(socket) = self.socket.as_ref() {
@@ -525,7 +556,9 @@ impl P2PNetwork {
         let expected_hash = blake3::hash(room.room_secret.as_bytes());
         if handshake.room_secret_hash != *expected_hash.as_bytes() {
             warn!("Handshake failed: invalid room secret");
-            return Err(NetworkError::AuthenticationFailed("Invalid room secret".to_string()));
+            return Err(NetworkError::AuthenticationFailed(
+                "Invalid room secret".to_string(),
+            ));
         }
 
         // Create or update peer
@@ -550,16 +583,28 @@ impl P2PNetwork {
         // Build current room state for new peer
         let room_state = {
             let clock_state = self.clock.state();
-            let peers: Vec<(u32, String, String, bool)> = self.peers.all()
+            let peers: Vec<(u32, String, String, bool)> = self
+                .peers
+                .all()
                 .iter()
-                .map(|p| (p.id, p.user_id.clone(), p.user_name.clone(), p.has_native_bridge))
+                .map(|p| {
+                    (
+                        p.id,
+                        p.user_id.clone(),
+                        p.user_name.clone(),
+                        p.has_native_bridge,
+                    )
+                })
                 .collect();
-            let tracks: Vec<(u32, u8, String, bool, f32, f32)> = self.peers.all()
+            let tracks: Vec<(u32, u8, String, bool, f32, f32)> = self
+                .peers
+                .all()
                 .iter()
                 .flat_map(|p| {
-                    p.all_tracks().iter().map(|t| {
-                        (p.id, t.track_id, t.name.clone(), t.muted, t.volume, t.pan)
-                    }).collect::<Vec<_>>()
+                    p.all_tracks()
+                        .iter()
+                        .map(|t| (p.id, t.track_id, t.name.clone(), t.muted, t.volume, t.pan))
+                        .collect::<Vec<_>>()
                 })
                 .collect();
 
@@ -570,7 +615,11 @@ impl P2PNetwork {
                 time_sig_denom: clock_state.time_signature.1,
                 beat_position: clock_state.beat_position,
                 is_playing: false,
-                master_user_id: if self.clock.is_master() { *self.local_peer_id.read() } else { 0 },
+                master_user_id: if self.clock.is_master() {
+                    *self.local_peer_id.read()
+                } else {
+                    0
+                },
                 peers,
                 tracks,
             }
@@ -585,10 +634,11 @@ impl P2PNetwork {
             is_master: self.clock.is_master(),
         };
 
-        let ack_payload = bincode::serialize(&ack)
-            .map_err(|e| NetworkError::Serialization(e.to_string()))?;
+        let ack_payload =
+            bincode::serialize(&ack).map_err(|e| NetworkError::Serialization(e.to_string()))?;
 
-        self.send_packet(&peer, OspMessageType::HandshakeAck, ack_payload, true).await?;
+        self.send_packet(&peer, OspMessageType::HandshakeAck, ack_payload, true)
+            .await?;
 
         // Emit event
         if let Some(tx) = self.event_tx.read().as_ref() {
@@ -608,7 +658,7 @@ impl P2PNetwork {
 
         if !ack.success {
             return Err(NetworkError::AuthenticationFailed(
-                ack.error.unwrap_or_else(|| "Unknown error".to_string())
+                ack.error.unwrap_or_else(|| "Unknown error".to_string()),
             ));
         }
 
@@ -637,7 +687,10 @@ impl P2PNetwork {
 
     /// Find peer by address
     fn find_peer_by_addr(&self, addr: SocketAddr) -> Option<Arc<Peer>> {
-        self.peers.all().into_iter().find(|p| p.direct_addr() == Some(addr))
+        self.peers
+            .all()
+            .into_iter()
+            .find(|p| p.direct_addr() == Some(addr))
     }
 
     /// Get next sequence number
@@ -659,13 +712,20 @@ impl P2PNetwork {
     }
 
     /// Discover public address via STUN
-    async fn discover_public_addr(&self, socket: &TokioUdpSocket, stun_server: &str) -> Result<SocketAddr> {
+    async fn discover_public_addr(
+        &self,
+        socket: &TokioUdpSocket,
+        stun_server: &str,
+    ) -> Result<SocketAddr> {
         // Parse STUN server address
         let addr_str = stun_server.trim_start_matches("stun:");
-        let stun_addr: SocketAddr = tokio::net::lookup_host(addr_str)
-            .await?
-            .next()
-            .ok_or_else(|| NetworkError::NatTraversalFailed("Could not resolve STUN server".to_string()))?;
+        let stun_addr: SocketAddr =
+            tokio::net::lookup_host(addr_str)
+                .await?
+                .next()
+                .ok_or_else(|| {
+                    NetworkError::NatTraversalFailed("Could not resolve STUN server".to_string())
+                })?;
 
         // Simple STUN binding request
         // This is a minimal implementation - a real one would use the stun-rs crate properly
@@ -697,7 +757,12 @@ impl P2PNetwork {
                         if attr_type == 0x0020 && attr_len >= 8 {
                             // XOR-MAPPED-ADDRESS found
                             let xor_port = u16::from_be_bytes([buf[i + 6], buf[i + 7]]) ^ 0x2112;
-                            let xor_ip = u32::from_be_bytes([buf[i + 8], buf[i + 9], buf[i + 10], buf[i + 11]]) ^ 0x2112a442;
+                            let xor_ip = u32::from_be_bytes([
+                                buf[i + 8],
+                                buf[i + 9],
+                                buf[i + 10],
+                                buf[i + 11],
+                            ]) ^ 0x2112a442;
                             let ip = std::net::Ipv4Addr::from(xor_ip);
                             return Ok(SocketAddr::new(ip.into(), xor_port));
                         }
@@ -705,7 +770,9 @@ impl P2PNetwork {
                         i += 4 + attr_len + (4 - (attr_len % 4)) % 4; // Padding
                     }
                 }
-                Err(NetworkError::NatTraversalFailed("Could not parse STUN response".to_string()))
+                Err(NetworkError::NatTraversalFailed(
+                    "Could not parse STUN response".to_string(),
+                ))
             }
             Ok(Err(e)) => Err(NetworkError::Io(e)),
             Err(_) => Err(NetworkError::NatTraversalFailed("STUN timeout".to_string())),
