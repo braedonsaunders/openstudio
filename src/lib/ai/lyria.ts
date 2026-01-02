@@ -180,6 +180,7 @@ export class LyriaSession {
   private sessionStartTime: number | null = null;
 
   // Max session duration (from rate limits, default 600 seconds = 10 minutes)
+  // NOTE: Google Lyria API has a hard 10-minute limit per session regardless of account type
   private maxSessionSeconds: number = 600;
 
   constructor() {
@@ -353,10 +354,13 @@ export class LyriaSession {
       // Store session ID and rate limits
       this.sessionId = authData.sessionId;
       this.rateLimits = authData.limits;
-      this.maxSessionSeconds = authData.limits?.maxSessionSeconds || 600;
+      // NOTE: Google Lyria API has a hard 10-minute (600s) limit per session
+      // Our app's maxSessionSeconds from rate limits is for internal tracking only
+      // Always use 600 for the actual Google session limit
+      this.maxSessionSeconds = 600;
       this.callbacks.onRateLimitUpdate?.(authData.limits);
 
-      console.log('[Lyria] Authenticated, session:', this.sessionId, 'maxSeconds:', this.maxSessionSeconds);
+      console.log('[Lyria] Authenticated, session:', this.sessionId, '(10-min Google limit)');
 
       // 2. Initialize Web Audio context
       this.audioContext = new AudioContext({ sampleRate: 48000 });
