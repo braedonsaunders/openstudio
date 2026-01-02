@@ -124,56 +124,106 @@ export async function POST(request: NextRequest) {
 
       let replicateUrl: string | undefined;
 
-      // Replicate FileOutput objects have a url() method
-      if (typeof stemOutput === 'object' && stemOutput !== null) {
-        const fileOutput = stemOutput as { url?: (() => string) | string; href?: string };
+      // Replicate SDK v1.x returns FileOutput objects
+      // FileOutput has url() method and can be read as a Blob
+      // See: https://github.com/replicate/replicate-javascript
 
-        // Check if url is a function (Replicate FileOutput)
-        if (typeof fileOutput.url === 'function') {
-          replicateUrl = fileOutput.url();
-        } else if (typeof fileOutput.url === 'string') {
-          replicateUrl = fileOutput.url;
-        } else if (typeof fileOutput.href === 'string') {
-          replicateUrl = fileOutput.href;
+      let stemBuffer: ArrayBuffer | undefined;
+
+      if (typeof stemOutput === 'string') {
+        // Direct string URL - fetch it
+        replicateUrl = stemOutput;
+        console.log(`[Stems] ${stemName} is a string URL: ${replicateUrl}`);
+      } else if (stemOutput && typeof stemOutput === 'object') {
+        // FileOutput object from Replicate SDK v1.x
+        const fileOutput = stemOutput as {
+          url?: () => string;
+          blob?: () => Promise<Blob>;
+          arrayBuffer?: () => Promise<ArrayBuffer>;
+        };
+
+        console.log(`[Stems] ${stemName} FileOutput methods:`,
+          'url:', typeof fileOutput.url,
+          'blob:', typeof fileOutput.blob,
+          'arrayBuffer:', typeof fileOutput.arrayBuffer
+        );
+
+        // Method 1: Try to get the URL
+        try {
+          if (typeof fileOutput.url === 'function') {
+            replicateUrl = fileOutput.url();
+            console.log(`[Stems] ${stemName} URL from url():`, replicateUrl);
+          }
+        } catch (e) {
+          console.error(`[Stems] Error calling url() on ${stemName}:`, e);
         }
 
-        // Also try toString() as FileOutput might convert to URL string
-        if (!replicateUrl && typeof stemOutput.toString === 'function') {
-          const strValue = stemOutput.toString();
-          if (strValue.startsWith('http')) {
-            replicateUrl = strValue;
+        // Method 2: Read directly as ArrayBuffer (preferred - avoids extra network request)
+        if (!replicateUrl && typeof fileOutput.arrayBuffer === 'function') {
+          try {
+            console.log(`[Stems] ${stemName} reading as arrayBuffer...`);
+            stemBuffer = await fileOutput.arrayBuffer();
+            console.log(`[Stems] ${stemName} arrayBuffer size:`, stemBuffer.byteLength);
+          } catch (e) {
+            console.error(`[Stems] Error reading arrayBuffer from ${stemName}:`, e);
           }
         }
-      } else if (typeof stemOutput === 'string') {
-        replicateUrl = stemOutput;
+
+        // Method 3: Read as Blob then convert
+        if (!stemBuffer && !replicateUrl && typeof fileOutput.blob === 'function') {
+          try {
+            console.log(`[Stems] ${stemName} reading as blob...`);
+            const blob = await fileOutput.blob();
+            stemBuffer = await blob.arrayBuffer();
+            console.log(`[Stems] ${stemName} blob size:`, stemBuffer.byteLength);
+          } catch (e) {
+            console.error(`[Stems] Error reading blob from ${stemName}:`, e);
+          }
+        }
       }
 
-      // Must be a string URL at this point
-      if (!replicateUrl || typeof replicateUrl !== 'string') {
-        console.error(`[Stems] ${stemName} stem is not a valid URL:`, typeof stemOutput, Object.keys(stemOutput as object));
+      // Either need a URL to fetch or already have the buffer
+      if (!replicateUrl && !stemBuffer) {
+        console.error(`[Stems] ${stemName} - Could not extract URL or data from:`,
+          typeof stemOutput,
+          stemOutput?.constructor?.name
+        );
         continue;
       }
 
       try {
-        console.log(`[Stems] Downloading ${stemName} from: ${replicateUrl}`);
+        console.log(`[Stems] Processing ${stemName}...`);
 
-        // Download stem from Replicate
-        const stemResponse = await fetch(replicateUrl);
-        if (!stemResponse.ok) {
-          console.error(`Failed to download ${stemName} stem: ${stemResponse.status}`);
+        let finalBuffer: ArrayBuffer;
+        let stemContentType = 'audio/mpeg';
+
+        if (stemBuffer) {
+          // Already have the buffer from FileOutput
+          finalBuffer = stemBuffer;
+          console.log(`[Stems] Using direct buffer for ${stemName}, size: ${finalBuffer.byteLength}`);
+        } else if (replicateUrl) {
+          // Fetch from URL
+          console.log(`[Stems] Fetching ${stemName} from: ${replicateUrl}`);
+          const stemResponse = await fetch(replicateUrl);
+          if (!stemResponse.ok) {
+            console.error(`Failed to download ${stemName} stem: ${stemResponse.status}`);
+            continue;
+          }
+          finalBuffer = await stemResponse.arrayBuffer();
+          stemContentType = stemResponse.headers.get('content-type') || 'audio/mpeg';
+        } else {
+          console.error(`[Stems] No buffer or URL for ${stemName}`);
           continue;
         }
 
-        const stemBuffer = await stemResponse.arrayBuffer();
         const stemId = uuidv4();
 
         // Determine file extension from content-type or URL
-        const stemContentType = stemResponse.headers.get('content-type') || 'audio/mpeg';
         let extension = 'mp3';
         if (stemContentType.includes('wav')) extension = 'wav';
         else if (stemContentType.includes('flac')) extension = 'flac';
-        else if (typeof replicateUrl === 'string' && replicateUrl.includes('.wav')) extension = 'wav';
-        else if (typeof replicateUrl === 'string' && replicateUrl.includes('.flac')) extension = 'flac';
+        else if (replicateUrl?.includes('.wav')) extension = 'wav';
+        else if (replicateUrl?.includes('.flac')) extension = 'flac';
 
         // Upload to R2 with user subdirectory (same structure as regular uploads)
         const key = `tracks/${userId}/${stemId}.${extension}`;
@@ -181,7 +231,7 @@ export async function POST(request: NextRequest) {
         await s3Client.send(new PutObjectCommand({
           Bucket: BUCKET_NAME,
           Key: key,
-          Body: Buffer.from(stemBuffer),
+          Body: Buffer.from(finalBuffer),
           ContentType: stemContentType,
         }));
 
