@@ -52,6 +52,8 @@ import {
   Moon,
   Layers,
   Users2,
+  Bookmark,
+  BookmarkCheck,
 } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import type { MainViewType } from './main-view-switcher';
@@ -98,6 +100,9 @@ interface MenuBarProps {
   onRoomSettings?: () => void;
   onLeaveRoom?: () => void;
   onTransferMaster?: () => void;
+  onSaveRoom?: () => void;
+  isRoomSaved?: boolean;
+  canSaveRoom?: boolean;
   onShowShortcuts?: () => void;
   onShowDocs?: () => void;
   onShowAbout?: () => void;
@@ -142,6 +147,9 @@ export function MenuBar({
   onRoomSettings,
   onLeaveRoom,
   onTransferMaster,
+  onSaveRoom,
+  isRoomSaved = false,
+  canSaveRoom = false,
   onShowShortcuts,
   onShowDocs,
   onShowAbout,
@@ -266,6 +274,12 @@ export function MenuBar({
         { label: 'Invite Users...', icon: <UserPlus className="w-3.5 h-3.5" />, action: onInviteUsers },
         { label: 'Room Settings...', icon: <Settings className="w-3.5 h-3.5" />, action: onRoomSettings },
         { label: 'divider', divider: true },
+        {
+          label: isRoomSaved ? 'Room Saved' : 'Save Room',
+          icon: isRoomSaved ? <BookmarkCheck className="w-3.5 h-3.5 text-green-500" /> : <Bookmark className="w-3.5 h-3.5" />,
+          action: onSaveRoom,
+          disabled: isRoomSaved || !canSaveRoom,
+        },
         { label: 'Transfer Master', icon: <Crown className="w-3.5 h-3.5" />, action: onTransferMaster, disabled: !isMaster },
         { label: 'divider', divider: true },
         { label: 'Leave Room', shortcut: '⌘W', icon: <LogOut className="w-3.5 h-3.5" />, action: onLeaveRoom },

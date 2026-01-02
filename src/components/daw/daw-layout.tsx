@@ -38,6 +38,7 @@ import { AvatarWorldView } from './avatar-world-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
+import { authFetch } from '@/lib/auth-fetch';
 import type { BackingTrack, StemType, QualityPresetName, OpusEncodingSettings } from '@/types';
 import type { SongTrackReference } from '@/types/songs';
 import type { LoopTrackState } from '@/types/loops';
@@ -98,6 +99,55 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+
+  // Saved room state
+  const [isRoomSaved, setIsRoomSaved] = useState(false);
+  const [canSaveRoom, setCanSaveRoom] = useState(false);
+
+  // Check if room is saved on mount
+  useEffect(() => {
+    const checkSavedStatus = async () => {
+      try {
+        const response = await authFetch(`/api/user/saved-rooms/check?roomId=${roomId}`);
+        if (response.ok) {
+          const data = await response.json();
+          setIsRoomSaved(data.isSaved);
+          setCanSaveRoom(data.canSave && data.isOwner);
+        }
+      } catch (error) {
+        console.error('Error checking saved room status:', error);
+      }
+    };
+    checkSavedStatus();
+  }, [roomId]);
+
+  // Handle saving room
+  const handleSaveRoom = useCallback(async () => {
+    if (isRoomSaved || !canSaveRoom) return;
+
+    try {
+      const response = await authFetch('/api/user/saved-rooms', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ roomId }),
+      });
+
+      if (response.ok) {
+        setIsRoomSaved(true);
+        toast.success('Room saved! Find it in Settings > Saved Rooms');
+      } else {
+        const data = await response.json();
+        if (data.error === 'limit_reached') {
+          toast.error(`You've reached your limit of ${data.limit} saved rooms`);
+        } else {
+          toast.error(data.message || 'Failed to save room');
+        }
+      }
+    } catch (error) {
+      console.error('Error saving room:', error);
+      toast.error('Failed to save room');
+    }
+  }, [roomId, isRoomSaved, canSaveRoom]);
 
   // Separation state
   const [isSeparating, setIsSeparating] = useState(false);
@@ -1033,6 +1083,9 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         onSeparateStems={handleSeparateTrack}
         onRoomSettings={() => setIsSettingsModalOpen(true)}
         onLeaveRoom={onLeaveRoom || leave}
+        onSaveRoom={handleSaveRoom}
+        isRoomSaved={isRoomSaved}
+        canSaveRoom={canSaveRoom}
         onShowShortcuts={() => setShowShortcuts(true)}
         isPlaying={isPlaying}
         isMaster={isMaster}

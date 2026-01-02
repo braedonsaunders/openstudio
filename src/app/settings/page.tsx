@@ -17,6 +17,7 @@ const AvatarCanvasEditor = dynamic(
 );
 import { SavedTrackCard } from '@/components/settings/SavedTrackCard';
 import { SavedTrackEditor } from '@/components/settings/SavedTrackEditor';
+import { SavedRoomsTab } from '@/components/settings/SavedRoomsTab';
 import { InstrumentIcon } from '@/components/ui/instrument-icon';
 import { INSTRUMENTS, getInstrumentEmoji, type SavedTrackPreset, type InstrumentCategory } from '@/types/user';
 import {
@@ -39,6 +40,7 @@ import {
   Sun,
   Moon,
   Monitor,
+  Bookmark,
 } from 'lucide-react';
 import { useTheme } from '@/components/theme/ThemeProvider';
 
@@ -54,7 +56,7 @@ const INSTRUMENT_CATEGORY_LABELS: Record<InstrumentCategory, string> = {
   other: 'Other',
 };
 
-type Tab = 'profile' | 'avatar' | 'instruments' | 'tracks' | 'appearance' | 'privacy' | 'notifications';
+type Tab = 'profile' | 'avatar' | 'instruments' | 'tracks' | 'rooms' | 'appearance' | 'privacy' | 'notifications';
 
 export default function SettingsPage() {
   const router = useRouter();
@@ -171,6 +173,7 @@ export default function SettingsPage() {
     { id: 'avatar', icon: Palette, label: 'Avatar' },
     { id: 'instruments', icon: Music, label: 'Instruments' },
     { id: 'tracks', icon: Sliders, label: 'Saved Tracks' },
+    { id: 'rooms', icon: Bookmark, label: 'Saved Rooms' },
     { id: 'appearance', icon: Sun, label: 'Appearance' },
     { id: 'privacy', icon: Shield, label: 'Privacy' },
     { id: 'notifications', icon: Bell, label: 'Notifications' },
@@ -480,6 +483,18 @@ export default function SettingsPage() {
                 transition={{ duration: 0.2, ease: 'easeInOut' }}
               >
               <TracksTab userId={profile.id} />
+              </motion.div>
+            )}
+
+            {activeTab === 'rooms' && (
+              <motion.div
+                key="rooms"
+                initial={{ opacity: 0, x: 20 }}
+                animate={{ opacity: 1, x: 0 }}
+                exit={{ opacity: 0, x: -20 }}
+                transition={{ duration: 0.2, ease: 'easeInOut' }}
+              >
+              <SavedRoomsTab />
               </motion.div>
             )}
 
