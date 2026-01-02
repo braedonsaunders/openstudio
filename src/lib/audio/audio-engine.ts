@@ -1412,7 +1412,12 @@ export class AudioEngine {
       }
 
       const contentType = response.headers.get('Content-Type') || '';
-      if (!contentType.startsWith('audio/')) {
+      // Accept audio/* types, application/octet-stream (common fallback), and empty content types
+      // The browser's decodeAudioData will fail if it's not actually audio
+      const isValidContentType = contentType.startsWith('audio/') ||
+        contentType === 'application/octet-stream' ||
+        contentType === '';
+      if (!isValidContentType) {
         console.error('Response is not audio:', contentType);
         throw new Error(`Invalid content type: ${contentType}`);
       }

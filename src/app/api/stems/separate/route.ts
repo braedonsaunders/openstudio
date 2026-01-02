@@ -203,7 +203,6 @@ export async function POST(request: NextRequest) {
         console.log(`[Stems] Processing ${stemName}...`);
 
         let finalBuffer: ArrayBuffer;
-        let stemContentType = 'audio/mpeg';
 
         if (stemBuffer) {
           // Already have the buffer from FileOutput
@@ -218,7 +217,6 @@ export async function POST(request: NextRequest) {
             continue;
           }
           finalBuffer = await stemResponse.arrayBuffer();
-          stemContentType = stemResponse.headers.get('content-type') || 'audio/mpeg';
         } else {
           console.error(`[Stems] No buffer or URL for ${stemName}`);
           continue;
@@ -226,12 +224,9 @@ export async function POST(request: NextRequest) {
 
         const stemId = uuidv4();
 
-        // Determine file extension from content-type or URL
-        let extension = 'mp3';
-        if (stemContentType.includes('wav')) extension = 'wav';
-        else if (stemContentType.includes('flac')) extension = 'flac';
-        else if (replicateUrl?.includes('.wav')) extension = 'wav';
-        else if (replicateUrl?.includes('.flac')) extension = 'flac';
+        // Demucs outputs MP3 files - always use audio/mpeg
+        const extension = 'mp3';
+        const stemContentType = 'audio/mpeg';
 
         // Upload to R2 with user subdirectory (same structure as regular uploads)
         const key = `tracks/${userId}/${stemId}.${extension}`;
@@ -246,11 +241,13 @@ export async function POST(request: NextRequest) {
         console.log(`[Stems] Uploaded ${stemName} to R2: ${key}`);
 
         // Store stem info with the proxy URL format
+        // Put stem name at front for clarity
         const baseName = trackName || 'Track';
+        const stemLabel = stemName.charAt(0).toUpperCase() + stemName.slice(1);
         stems[stemName] = {
           id: stemId,
           url: `/api/audio/${stemId}`,
-          name: `${baseName} (${stemName.charAt(0).toUpperCase() + stemName.slice(1)})`,
+          name: `${stemLabel} - ${baseName}`,
         };
       } catch (error) {
         console.error(`Error processing ${stemName} stem:`, error);
