@@ -185,6 +185,15 @@ export class RealtimeRoomManager {
       this.emit('tempo:timesig', payload);
     });
 
+    // World position events (for synced avatar movement)
+    this.channel.on('broadcast', { event: 'world:position' }, ({ payload }) => {
+      this.emit('world:position', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'world:scene' }, ({ payload }) => {
+      this.emit('world:scene', payload);
+    });
+
     // Permission events
     this.channel.on('broadcast', { event: 'permissions:role_update' }, ({ payload }) => {
       this.emit('permissions:role_update', payload);
@@ -583,6 +592,30 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'permissions:sync',
       payload: { members, defaultRole, userId: this.userId },
+    });
+  }
+
+  // World position broadcasts (for synced avatar movement)
+  async broadcastWorldPosition(position: {
+    x: number;
+    y: number;
+    facingRight: boolean;
+    isWalking: boolean;
+    targetX?: number;
+    targetY?: number;
+  }): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'world:position',
+      payload: { ...position, userId: this.userId, timestamp: Date.now() },
+    });
+  }
+
+  async broadcastWorldScene(scene: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'world:scene',
+      payload: { scene, userId: this.userId },
     });
   }
 
