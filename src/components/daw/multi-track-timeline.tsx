@@ -472,11 +472,16 @@ export function MultiTrackTimeline({
           youtubeId: audioTrack?.youtubeId,
           aiGenerated: audioTrack?.aiGenerated,
           audioUrl: audioTrack?.url,
-          waveformData: audioTrack?.url ? waveformDataCache.get(audioTrack.url) : undefined,
+          // waveformData is looked up separately to avoid dependency cascade
         };
       }
     });
-  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, waveformDataCache, getCustomLoop]);
+  }, [currentSong, loopTracks, queue.tracks, getLoopDuration, getCustomLoop]);
+
+  // Lookup waveform data for a track URL - separate from unifiedTracks to avoid cascade
+  const getWaveformData = useCallback((url: string | undefined) => {
+    return url ? waveformDataCache.get(url) : undefined;
+  }, [waveformDataCache]);
 
   // Group tracks by position (track row) for rendering multiple clips on same row
   const trackRows = useMemo(() => {
@@ -1736,7 +1741,7 @@ export function MultiTrackTimeline({
                             width={clipWidth - 3}
                             height={trackHeight - 8}
                             color={track.color}
-                            waveformData={track.waveformData}
+                            waveformData={getWaveformData(track.audioUrl)}
                           />
                         )}
                       </div>
