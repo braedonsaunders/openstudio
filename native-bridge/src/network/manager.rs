@@ -137,6 +137,9 @@ struct ManagerState {
 }
 
 /// The main network manager
+///
+/// NetworkManager is designed to be wrapped in Arc and shared across async tasks.
+/// Use `NetworkManager::new_shared()` to create an Arc-wrapped instance.
 pub struct NetworkManager {
     config: NetworkConfig,
     state: RwLock<ManagerState>,
@@ -156,9 +159,12 @@ pub struct NetworkManager {
     stats: RwLock<NetworkStats>,
     /// Codec
     codec: Arc<OpusCodec>,
+    /// Self-reference for spawning async tasks (set after Arc creation)
+    self_ref: RwLock<Option<std::sync::Weak<Self>>>,
 }
 
 impl NetworkManager {
+    /// Create a new NetworkManager. For proper async task support, prefer `new_shared()`.
     pub fn new(config: NetworkConfig) -> Result<Self> {
         let p2p = Arc::new(P2PNetwork::new(config.p2p.clone())?);
         let relay = Arc::new(MoqRelay::new(config.moq.clone())?);
@@ -189,7 +195,22 @@ impl NetworkManager {
             outgoing_tx: RwLock::new(None),
             stats: RwLock::new(NetworkStats::default()),
             codec,
+            self_ref: RwLock::new(None),
         })
+    }
+
+    /// Create a new NetworkManager wrapped in Arc with self-reference initialized.
+    /// This is the preferred way to create a NetworkManager for production use.
+    pub fn new_shared(config: NetworkConfig) -> Result<Arc<Self>> {
+        let manager = Arc::new(Self::new(config)?);
+        *manager.self_ref.write() = Some(Arc::downgrade(&manager));
+        Ok(manager)
+    }
+
+    /// Initialize self-reference after wrapping in Arc.
+    /// Call this if you created the manager with `new()` instead of `new_shared()`.
+    pub fn init_self_ref(self: &Arc<Self>) {
+        *self.self_ref.write() = Some(Arc::downgrade(self));
     }
 
     /// Connect to a room
@@ -562,13 +583,11 @@ impl NetworkManager {
                         self.p2p.send_audio(track_id, &samples).await?;
                     }
                     OutgoingMessage::Control {
-                        message_type: _,
-                        payload: _,
+                        message_type,
+                        payload,
                     } => {
-                        // Broadcast to all peers
-                        for _peer in self.p2p.peers().connected() {
-                            // Note: send_packet is private, need to expose or use different approach
-                        }
+                        // Broadcast to all peers using the public broadcast_control method
+                        self.p2p.broadcast_control(message_type, payload).await?;
                     }
                     OutgoingMessage::ClockSync {
                         beat_position,
@@ -583,9 +602,10 @@ impl NetworkManager {
                             time_sig_denom: time_sig.1,
                             sync_sequence: 0,
                         };
-                        let _payload = bincode::serialize(&msg)
+                        let payload = bincode::serialize(&msg)
                             .map_err(|e| NetworkError::Serialization(e.to_string()))?;
-                        // Broadcast clock sync
+                        // Broadcast clock sync to all peers
+                        self.p2p.broadcast_control(OspMessageType::ClockSync, payload).await?;
                     }
                 }
             }
@@ -704,14 +724,16 @@ impl NetworkManager {
         }
     }
 
-    /// Clone reference for async tasks
+    /// Clone reference for async tasks.
+    ///
+    /// This upgrades the weak self-reference to a strong Arc.
+    /// Panics if the self-reference was not initialized (use `new_shared()` or `init_self_ref()`).
     fn clone_for_task(&self) -> Arc<Self> {
-        // Note: This is a simplified approach. In real implementation,
-        // you'd want proper Arc wrapping of the NetworkManager itself.
-        // For now, this method signature indicates intent.
-        unimplemented!("Clone network manager reference for async task")
+        self.self_ref
+            .read()
+            .as_ref()
+            .expect("NetworkManager self_ref not initialized. Use new_shared() or init_self_ref().")
+            .upgrade()
+            .expect("NetworkManager was dropped while async task was being spawned")
     }
 }
-
-// Note: In real implementation, NetworkManager would be wrapped in Arc
-// and cloned for async tasks. For now, the methods above show the structure.

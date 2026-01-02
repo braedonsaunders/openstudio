@@ -565,7 +565,7 @@ impl BridgeServer {
                 user_name,
             } => {
                 info!("JoinRoom: {} as {}", room_id, user_name);
-                let app = self.state.lock().await;
+                let mut app = self.state.lock().await;
 
                 if let Some(ref network) = app.network {
                     let room_config = crate::network::RoomConfig {
@@ -583,10 +583,19 @@ impl BridgeServer {
                         .connect(room_config, user_id.clone(), user_name)
                         .await
                     {
-                        Ok(_event_rx) => {
-                            // TODO: Start AudioNetworkBridge with event_rx
+                        Ok(event_rx) => {
+                            // Start AudioNetworkBridge to connect audio engine with network
+                            let audio_handle = app.audio_engine.create_bridge_handle();
+                            let bridge = crate::network::bridge::create_and_start_bridge(
+                                network.clone(),
+                                audio_handle,
+                                event_rx,
+                            );
+                            app.audio_bridge = Some(bridge);
+
                             let mode = network.mode();
                             let is_master = network.is_master();
+                            info!("Audio-network bridge started for room {}", room_id);
                             Some(NativeMessage::RoomJoined {
                                 room_id,
                                 network_mode: format!("{:?}", mode),
@@ -608,8 +617,15 @@ impl BridgeServer {
 
             BrowserMessage::LeaveRoom => {
                 info!("LeaveRoom");
-                let app = self.state.lock().await;
+                let mut app = self.state.lock().await;
 
+                // Stop the audio-network bridge first
+                if let Some(ref bridge) = app.audio_bridge {
+                    bridge.stop();
+                }
+                app.audio_bridge = None;
+
+                // Then disconnect from the network
                 if let Some(ref network) = app.network {
                     network.disconnect().await;
                 }

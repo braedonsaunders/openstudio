@@ -23,6 +23,8 @@ pub struct AppState {
     pub audio_engine: audio::AudioEngine,
     pub mixer: mixing::Mixer,
     pub network: Option<Arc<NetworkManager>>,
+    /// Audio-network bridge (started when joining a room)
+    pub audio_bridge: Option<network::bridge::AudioNetworkBridge>,
     pub connected_room: Option<String>,
     pub user_id: Option<String>,
     pub user_name: Option<String>,
@@ -52,12 +54,12 @@ async fn main() -> Result<()> {
     // Initialize mixer
     let mixer = mixing::Mixer::new();
 
-    // Initialize network manager
+    // Initialize network manager with proper Arc-based self-reference
     let network_config = NetworkConfig::default();
-    let network = match NetworkManager::new(network_config) {
+    let network = match NetworkManager::new_shared(network_config) {
         Ok(nm) => {
             info!("Network manager initialized");
-            Some(Arc::new(nm))
+            Some(nm)
         }
         Err(e) => {
             info!("Network manager failed to initialize: {} (P2P disabled)", e);
@@ -70,6 +72,7 @@ async fn main() -> Result<()> {
         audio_engine,
         mixer,
         network,
+        audio_bridge: None,
         connected_room: params.room_id.clone(),
         user_id: params.user_id.clone(),
         user_name: params.user_name.clone(),

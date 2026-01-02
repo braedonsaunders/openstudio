@@ -5,14 +5,36 @@
 //! - Outgoing audio from AudioEngine → Network transmission
 //! - Peer lifecycle (add/remove remote users)
 //! - Control message forwarding (track state, effects, etc.)
+//! - Transport/metronome state synchronization
 
 use super::{NetworkEvent, NetworkManager, NetworkMode};
 use crate::audio::AudioBridgeHandle;
-use crate::network::osp::{OspMessageType, TrackStateMessage};
+use crate::network::osp::{OspMessageType, TrackStateMessage, TransportAction};
+use parking_lot::RwLock;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
 use tracing::{debug, error, info, warn};
+
+/// Transport events for metronome/playback synchronization
+#[derive(Debug, Clone)]
+pub enum TransportEvent {
+    /// Clock sync received - beat position, tempo, time signature
+    ClockSync {
+        beat_position: f64,
+        bpm: f32,
+        time_sig: (u8, u8),
+    },
+    /// Transport state changed (play/stop/pause)
+    TransportStateChanged {
+        action: TransportAction,
+        position: f64,
+    },
+    /// Tempo changed
+    TempoChanged {
+        bpm: f32,
+    },
+}
 
 /// Audio-Network Bridge configuration
 #[derive(Debug, Clone)]
@@ -47,6 +69,8 @@ pub struct AudioNetworkBridge {
     network: Arc<NetworkManager>,
     audio: AudioBridgeHandle,
     running: Arc<std::sync::atomic::AtomicBool>,
+    /// Transport event sender for metronome/playback sync
+    transport_tx: RwLock<Option<broadcast::Sender<TransportEvent>>>,
 }
 
 impl AudioNetworkBridge {
@@ -60,7 +84,23 @@ impl AudioNetworkBridge {
             network,
             audio,
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            transport_tx: RwLock::new(None),
         }
+    }
+
+    /// Subscribe to transport events (clock sync, tempo changes, etc.)
+    pub fn subscribe_transport(&self) -> broadcast::Receiver<TransportEvent> {
+        let mut tx_guard = self.transport_tx.write();
+        if tx_guard.is_none() {
+            let (tx, _) = broadcast::channel(100);
+            *tx_guard = Some(tx);
+        }
+        tx_guard.as_ref().unwrap().subscribe()
+    }
+
+    /// Get a clone of the transport sender for internal use
+    fn get_transport_tx(&self) -> Option<broadcast::Sender<TransportEvent>> {
+        self.transport_tx.read().clone()
     }
 
     /// Start the bridge
@@ -75,10 +115,20 @@ impl AudioNetworkBridge {
             .store(true, std::sync::atomic::Ordering::SeqCst);
         info!("Starting audio-network bridge");
 
+        // Initialize transport channel if not already done
+        {
+            let mut tx_guard = self.transport_tx.write();
+            if tx_guard.is_none() {
+                let (tx, _) = broadcast::channel(100);
+                *tx_guard = Some(tx);
+            }
+        }
+
         // Spawn incoming event processor on dedicated thread
         // AudioBridgeHandle is Send+Sync so it can be safely moved to another thread
         let audio = self.audio.clone();
         let running = self.running.clone();
+        let transport_tx = self.get_transport_tx();
         std::thread::Builder::new()
             .name("audio-bridge-events".to_string())
             .spawn(move || {
@@ -86,7 +136,7 @@ impl AudioNetworkBridge {
                     .enable_all()
                     .build()
                     .expect("Failed to create runtime");
-                rt.block_on(Self::event_loop(audio, event_rx, running));
+                rt.block_on(Self::event_loop(audio, event_rx, running, transport_tx));
             })
             .expect("Failed to spawn event processor thread");
 
@@ -114,11 +164,12 @@ impl AudioNetworkBridge {
         audio: AudioBridgeHandle,
         mut event_rx: broadcast::Receiver<NetworkEvent>,
         running: Arc<std::sync::atomic::AtomicBool>,
+        transport_tx: Option<broadcast::Sender<TransportEvent>>,
     ) {
         while running.load(std::sync::atomic::Ordering::SeqCst) {
             match event_rx.recv().await {
                 Ok(event) => {
-                    Self::handle_network_event(&audio, event).await;
+                    Self::handle_network_event(&audio, event, &transport_tx).await;
                 }
                 Err(broadcast::error::RecvError::Lagged(n)) => {
                     warn!("Dropped {} network events (receiver lagging)", n);
@@ -139,7 +190,11 @@ impl AudioNetworkBridge {
     }
 
     /// Handle incoming network events
-    async fn handle_network_event(audio: &AudioBridgeHandle, event: NetworkEvent) {
+    async fn handle_network_event(
+        audio: &AudioBridgeHandle,
+        event: NetworkEvent,
+        transport_tx: &Option<broadcast::Sender<TransportEvent>>,
+    ) {
         match event {
             NetworkEvent::AudioReceived {
                 user_id,
@@ -169,7 +224,7 @@ impl AudioNetworkBridge {
                 message,
                 payload,
             } => {
-                Self::handle_control_message(audio, &from_user_id, message, &payload).await;
+                Self::handle_control_message(audio, &from_user_id, message, &payload, transport_tx).await;
             }
 
             NetworkEvent::StateChanged { mode } => {
@@ -192,7 +247,14 @@ impl AudioNetworkBridge {
                     "Clock sync: beat={:.2}, bpm={:.1}, time_sig={}/{}",
                     beat_position, bpm, time_sig.0, time_sig.1
                 );
-                // TODO: Forward to transport/metronome
+                // Forward to transport/metronome via transport channel
+                if let Some(tx) = transport_tx {
+                    let _ = tx.send(TransportEvent::ClockSync {
+                        beat_position,
+                        bpm,
+                        time_sig,
+                    });
+                }
             }
 
             NetworkEvent::RoomState { state } => {
@@ -224,6 +286,7 @@ impl AudioNetworkBridge {
         from_user_id: &str,
         message_type: OspMessageType,
         payload: &[u8],
+        transport_tx: &Option<broadcast::Sender<TransportEvent>>,
     ) {
         match message_type {
             OspMessageType::TrackState => {
@@ -237,18 +300,32 @@ impl AudioNetworkBridge {
             }
 
             OspMessageType::EffectParam => {
-                // TODO: Could apply effects to remote user's audio
                 debug!("Received effect param from {}: {:?}", from_user_id, payload);
             }
 
             OspMessageType::Transport => {
-                // TODO: Forward to transport system
-                debug!("Received transport command from {}", from_user_id);
+                // Parse transport message and forward to transport system
+                if let Ok(msg) = bincode::deserialize::<crate::network::osp::TransportMessage>(payload) {
+                    debug!("Received transport command from {}: {:?}", from_user_id, msg.action);
+                    if let Some(tx) = transport_tx {
+                        let _ = tx.send(TransportEvent::TransportStateChanged {
+                            action: msg.action,
+                            position: msg.position,
+                        });
+                    }
+                }
             }
 
             OspMessageType::TempoChange => {
-                // TODO: Forward to tempo/metronome
-                debug!("Received tempo change from {}", from_user_id);
+                // Parse tempo change and forward to metronome
+                if let Ok(msg) = bincode::deserialize::<crate::network::osp::TempoChangeMessage>(payload) {
+                    debug!("Received tempo change from {}: {} bpm", from_user_id, msg.bpm);
+                    if let Some(tx) = transport_tx {
+                        let _ = tx.send(TransportEvent::TempoChanged {
+                            bpm: msg.bpm,
+                        });
+                    }
+                }
             }
 
             _ => {
