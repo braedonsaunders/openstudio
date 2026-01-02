@@ -273,6 +273,7 @@ impl P2PNetwork {
 
         let packet = OspPacket::new(msg_type, payload.clone(), sequence, timestamp);
         let bytes = packet.to_bytes();
+        let bytes_len = bytes.len();
 
         socket.send_to(&bytes, addr).await?;
 
@@ -283,7 +284,7 @@ impl P2PNetwork {
 
         // Update stats
         let mut stats = self.stats.write();
-        stats.bytes_sent_per_sec += bytes.len() as u64;
+        stats.bytes_sent_per_sec += bytes_len as u64;
 
         Ok(())
     }
@@ -347,8 +348,8 @@ impl P2PNetwork {
             OspMessageType::AudioFrame => {
                 // Use sequence and timestamp from packet header for jitter buffer
                 self.handle_audio_frame_with_header(
-                    packet.sequence,
-                    packet.timestamp,
+                    packet.header.sequence,
+                    packet.header.timestamp,
                     &packet.payload,
                 )
                 .await?;
@@ -581,36 +582,39 @@ impl P2PNetwork {
 
         // Build current room state for new peer
         let room_state = {
-            let clock_state = self.clock.state();
-            let peers: Vec<(u32, String, String, bool)> = self
+            let users: Vec<UserJoinMessage> = self
                 .peers
                 .all()
                 .iter()
-                .map(|p| {
-                    (
-                        p.id,
-                        p.user_id.clone(),
-                        p.user_name.clone(),
-                        p.has_native_bridge,
-                    )
+                .map(|p| UserJoinMessage {
+                    user_id: p.user_id.clone(),
+                    user_name: p.user_name.clone(),
+                    avatar_url: p.avatar_url.read().clone(),
+                    instrument: p.instrument.read().clone(),
+                    has_native_bridge: p.has_native_bridge,
+                    role: p.role.read().clone(),
                 })
                 .collect();
-            let tracks: Vec<(u32, u8, String, bool, f32, f32)> = self
+
+            let tracks: Vec<TrackCreateMessage> = self
                 .peers
                 .all()
                 .iter()
                 .flat_map(|p| {
                     p.tracks()
                         .iter()
-                        .map(|t| {
-                            (
-                                p.id,
-                                t.track_id,
-                                t.track_name.clone(),
-                                t.is_muted,
-                                t.volume,
-                                0.0, // Default pan to center
-                            )
+                        .map(|t| TrackCreateMessage {
+                            user_id: p.user_id.clone(),
+                            track_id: t.track_id.to_string(),
+                            track_name: t.track_name.clone(),
+                            track_type: "audio".to_string(),
+                            color: "#4f46e5".to_string(),
+                            audio_settings: TrackAudioSettings {
+                                input_mode: "mono".to_string(),
+                                sample_rate: 48000,
+                                buffer_size: 480,
+                                channel_count: 2,
+                            },
                         })
                         .collect::<Vec<_>>()
                 })
@@ -618,18 +622,14 @@ impl P2PNetwork {
 
             RoomStateMessage {
                 room_id: room.room_id.clone(),
-                bpm: clock_state.bpm,
-                time_sig_num: clock_state.time_signature.0,
-                time_sig_denom: clock_state.time_signature.1,
-                beat_position: clock_state.beat_position,
-                is_playing: false,
-                master_user_id: if self.clock.is_master() {
-                    *self.local_peer_id.read()
-                } else {
-                    0
-                },
-                peers,
+                users,
                 tracks,
+                tempo: 120.0,
+                key: "C".to_string(),
+                scale: "major".to_string(),
+                time_signature: (4, 4),
+                transport_state: TransportAction::Stop,
+                transport_position: 0.0,
             }
         };
 

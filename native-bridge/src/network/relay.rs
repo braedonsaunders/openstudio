@@ -6,7 +6,7 @@
 use super::{clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, Result};
 use parking_lot::RwLock;
 use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, TransportConfig, VarInt};
-use rustls::{Certificate, ServerName};
+use rustls::Certificate;
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
@@ -247,19 +247,27 @@ impl MoqRelay {
     fn build_client_config(&self) -> Result<ClientConfig> {
         let mut roots = rustls::RootCertStore::empty();
 
-        // Add webpki roots for production
-        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        // Add webpki roots for production (rustls 0.21 compatible)
+        roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
+            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                ta.subject.as_ref(),
+                ta.subject_public_key_info.as_ref(),
+                ta.name_constraints.as_ref().map(|nc| nc.as_ref()),
+            )
+        }));
 
-        let mut crypto = rustls::ClientConfig::builder()
-            .with_root_certificates(roots)
-            .with_no_client_auth();
-
-        // Allow self-signed certs in development
-        if !self.config.verify_certs {
-            crypto
-                .dangerous()
-                .set_certificate_verifier(Arc::new(SkipServerVerification));
-        }
+        let crypto = if self.config.verify_certs {
+            rustls::ClientConfig::builder()
+                .with_safe_defaults()
+                .with_root_certificates(roots)
+                .with_no_client_auth()
+        } else {
+            // Allow self-signed certs in development
+            rustls::ClientConfig::builder()
+                .with_safe_defaults()
+                .with_custom_certificate_verifier(Arc::new(SkipServerVerification))
+                .with_no_client_auth()
+        };
 
         let mut transport = TransportConfig::default();
         transport.max_idle_timeout(Some(VarInt::from_u32(30_000).into())); // 30s idle timeout
@@ -313,8 +321,6 @@ impl MoqRelay {
             .split(':')
             .next()
             .unwrap_or("localhost");
-        let server_name = ServerName::try_from(host.to_string())
-            .map_err(|_| NetworkError::ConnectionFailed("Invalid server name".to_string()))?;
 
         // Connect with timeout
         let connecting = endpoint
@@ -388,11 +394,8 @@ impl MoqRelay {
         mut shutdown_rx: oneshot::Receiver<()>,
     ) {
         let event_tx = self.event_tx.read().clone();
-        let subscribed_tracks = Arc::new(self.subscribed_tracks.read().clone());
         let codec = self.codec.clone();
-        let clock = self.clock.clone();
         let peers = self.peers.clone();
-        let stats = Arc::new(RwLock::new(NetworkStats::default()));
 
         // Control stream receiver
         let event_tx_ctrl = event_tx.clone();
@@ -987,11 +990,18 @@ impl WebTransportListener {
         let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap())
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
-        // Build client config
+        // Build client config (rustls 0.21 compatible)
         let mut roots = rustls::RootCertStore::empty();
-        roots.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
+            rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
+                ta.subject.as_ref(),
+                ta.subject_public_key_info.as_ref(),
+                ta.name_constraints.as_ref().map(|nc| nc.as_ref()),
+            )
+        }));
 
         let crypto = rustls::ClientConfig::builder()
+            .with_safe_defaults()
             .with_root_certificates(roots)
             .with_no_client_auth();
 
@@ -1044,7 +1054,6 @@ impl WebTransportListener {
         let event_tx_clone = tx.clone();
         let codec = self.codec.clone();
         let subscribed = self.subscribed_tracks.clone();
-        let stats = Arc::new(self.stats.clone());
 
         tokio::spawn(async move {
             loop {
