@@ -349,9 +349,6 @@ function UserProfilePopup({
 }) {
   const instrumentType = user.instrument || 'other';
   const instrumentIcon = INSTRUMENT_ICONS[instrumentType.toLowerCase()] || INSTRUMENT_ICONS.other;
-  const tags = user.tags || [];
-  const level = user.level || 1;
-  const xp = user.xp || 0;
 
   return (
     <motion.div
@@ -372,10 +369,15 @@ function UserProfilePopup({
       </div>
 
       <div className="flex items-center gap-2 mb-2 p-2 rounded-lg bg-white/5">
-        <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
-        <span className="text-xs font-medium text-white">Lvl {level}</span>
-        <div className="w-px h-4 bg-white/20" />
-        <span className="text-[10px] text-white/60">{xp.toLocaleString()} XP</span>
+        <span className="text-sm">{instrumentIcon}</span>
+        <span className="text-xs font-medium text-white capitalize">{instrumentType}</span>
+        {user.isMaster && (
+          <>
+            <div className="w-px h-4 bg-white/20" />
+            <Sparkles className="w-3.5 h-3.5 text-yellow-400" />
+            <span className="text-[10px] text-yellow-400">Master</span>
+          </>
+        )}
       </div>
 
       <div className="flex gap-2">
