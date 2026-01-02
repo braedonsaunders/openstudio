@@ -320,11 +320,9 @@ impl P2PNetwork {
             while running.load(std::sync::atomic::Ordering::SeqCst) {
                 interval.tick().await;
 
-                let now = Instant::now();
-
                 // Check for timed-out peers and send pings
                 for peer in peers.connected() {
-                    if now.duration_since(peer.last_seen()) > peer_timeout {
+                    if peer.idle_duration() > peer_timeout {
                         warn!("Peer {} timed out", peer.id);
                         peer.set_state(PeerState::Closed);
 
@@ -729,7 +727,7 @@ impl P2PNetwork {
             bincode::serialize(&pong).map_err(|e| NetworkError::Serialization(e.to_string()))?;
 
         // Send pong directly
-        if let Some(socket) = self.socket.as_ref() {
+        if let Some(ref socket) = *self.socket.read() {
             let response = OspPacket::new(
                 OspMessageType::Pong,
                 payload,

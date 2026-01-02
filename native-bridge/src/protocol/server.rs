@@ -567,51 +567,55 @@ impl BridgeServer {
                 info!("JoinRoom: {} as {}", room_id, user_name);
                 let mut app = self.state.lock().await;
 
-                if let Some(ref network) = app.network {
-                    let room_config = crate::network::RoomConfig {
-                        room_id: room_id.clone(),
-                        room_secret,
-                        ..Default::default()
-                    };
-
-                    let user_id = app
-                        .user_id
-                        .clone()
-                        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
-
-                    match network
-                        .connect(room_config, user_id.clone(), user_name)
-                        .await
-                    {
-                        Ok(event_rx) => {
-                            // Start AudioNetworkBridge to connect audio engine with network
-                            let audio_handle = app.audio_engine.create_bridge_handle();
-                            let bridge = crate::network::bridge::create_and_start_bridge(
-                                network.clone(),
-                                audio_handle,
-                                event_rx,
-                            );
-                            app.audio_bridge = Some(bridge);
-
-                            let mode = network.mode();
-                            let is_master = network.is_master();
-                            info!("Audio-network bridge started for room {}", room_id);
-                            Some(NativeMessage::RoomJoined {
-                                room_id,
-                                network_mode: format!("{:?}", mode),
-                                is_master,
-                            })
-                        }
-                        Err(e) => Some(NativeMessage::Error {
-                            code: "ROOM_JOIN_ERROR".to_string(),
-                            message: e.to_string(),
-                        }),
+                // Clone the network Arc to avoid holding a reference while mutating app
+                let network = match app.network.clone() {
+                    Some(n) => n,
+                    None => {
+                        return Some(NativeMessage::Error {
+                            code: "NETWORK_UNAVAILABLE".to_string(),
+                            message: "Network manager not initialized".to_string(),
+                        });
                     }
-                } else {
-                    Some(NativeMessage::Error {
-                        code: "NETWORK_UNAVAILABLE".to_string(),
-                        message: "Network manager not initialized".to_string(),
-                    })
+                };
+
+                let room_config = crate::network::RoomConfig {
+                    room_id: room_id.clone(),
+                    room_secret,
+                    ..Default::default()
+                };
+
+                let user_id = app
+                    .user_id
+                    .clone()
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+                match network
+                    .connect(room_config, user_id.clone(), user_name)
+                    .await
+                {
+                    Ok(event_rx) => {
+                        // Start AudioNetworkBridge to connect audio engine with network
+                        let audio_handle = app.audio_engine.create_bridge_handle();
+                        let bridge = crate::network::bridge::create_and_start_bridge(
+                            network.clone(),
+                            audio_handle,
+                            event_rx,
+                        );
+                        app.audio_bridge = Some(bridge);
+
+                        let mode = network.mode();
+                        let is_master = network.is_master();
+                        info!("Audio-network bridge started for room {}", room_id);
+                        Some(NativeMessage::RoomJoined {
+                            room_id,
+                            network_mode: format!("{:?}", mode),
+                            is_master,
+                        })
+                    }
+                    Err(e) => Some(NativeMessage::Error {
+                        code: "ROOM_JOIN_ERROR".to_string(),
+                        message: e.to_string(),
+                    }),
                 }
             }
 

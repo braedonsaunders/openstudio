@@ -24,48 +24,52 @@
 
 | Component | Status | Notes |
 |-----------|--------|-------|
-| Audio Engine Core | Done | ASIO/CoreAudio device access, ringbuffers |
-| AudioBridgeHandle | Done | Thread-safe handle for network ops |
-| Opus Codec | Done | Full encode/decode with FEC |
-| Jitter Buffer | Done | Adaptive for live jamming |
-| Clock Sync | Done | NTP-style sub-ms sync |
-| QUIC/MoQ Relay Client | Done | Connects to relay servers |
-| P2P Network | Partial | Socket binding works, loops not spawned |
-| Effects Chain | Stub | All 15 effects are empty stubs |
-| Audio-Network Bridge | Partial | Exists but not started from server |
+| Audio Engine Core | ✅ Done | ASIO/CoreAudio device access, ringbuffers |
+| AudioBridgeHandle | ✅ Done | Thread-safe handle for network ops |
+| Opus Codec | ✅ Done | Full encode/decode with FEC |
+| Jitter Buffer | ✅ Done | Adaptive for live jamming |
+| Clock Sync | ✅ Done | NTP-style sub-ms sync |
+| QUIC/MoQ Relay Client | ✅ Done | Connects to relay servers |
+| P2P Network | ✅ Done | UDP receive/heartbeat loops implemented |
+| Effects Chain | ❌ Stub | All 15 effects are empty stubs |
+| Audio-Network Bridge | ✅ Done | Started from server on room join |
+| Transport Forwarding | ✅ Done | Clock sync, tempo, transport events forwarded |
 
 ---
 
-## Task List
+## Completed Tasks Checklist
 
-### CRITICAL - Blocking Production
+### CRITICAL - Blocking Production ✅ COMPLETE
 
-These must be completed before any real-world testing.
+- [x] **1. Fix `unimplemented!()` Panic** (commit 629f9a3)
+  - Added `new_shared()` method for Arc-wrapped creation
+  - Added `init_self_ref()` for post-Arc initialization
+  - Fixed `clone_for_task()` to use weak reference pattern
+  - File: `src/network/manager.rs`
 
-#### 1. Fix `unimplemented!()` Panic
-- **File**: `src/network/manager.rs:709-714`
-- **Issue**: `clone_for_async` calls `unimplemented!()` which panics at runtime
-- **Fix**: Wrap `NetworkManager` in `Arc` and implement proper cloning
+- [x] **2. Spawn P2P Receive/Send Loops** (commit 629f9a3)
+  - Implemented `spawn_receive_loop()` for UDP packet processing
+  - Implemented `spawn_heartbeat_loop()` for peer keepalive/timeout
+  - Changed socket to `RwLock<Option<Arc<...>>>` pattern
+  - Changed running flag to `Arc<AtomicBool>` for async safety
+  - File: `src/network/p2p.rs`
 
-#### 2. Spawn P2P Receive/Send Loops
-- **File**: `src/network/p2p.rs:156`
-- **Issue**: Comment says "In real implementation, spawn receive/send loops here" but nothing is spawned
-- **Fix**: Implement UDP receive loop that decodes OSP packets and emits events
+- [x] **3. Start AudioNetworkBridge from Protocol Server** (commit 629f9a3)
+  - Bridge starts when user joins room via JoinRoom message
+  - Bridge stops and cleans up on LeaveRoom
+  - Added `audio_bridge` field to AppState
+  - Files: `src/protocol/server.rs`, `src/main.rs`
 
-#### 3. Start AudioNetworkBridge from Protocol Server
-- **File**: `src/protocol/server.rs:587`
-- **Issue**: TODO comment, bridge is never instantiated when room is joined
-- **Fix**: Call `create_and_start_bridge()` when user joins a room with native bridge enabled
+- [x] **4. Wire Up Transport/Metronome Forwarding** (commit 629f9a3)
+  - Added `TransportEvent` enum for clock sync, tempo, transport state
+  - Bridge emits transport events via broadcast channel
+  - Added `subscribe_transport()` method for UI consumption
+  - File: `src/network/bridge.rs`
 
-#### 4. Wire Up Transport/Metronome Forwarding
-- **Files**: `src/network/bridge.rs:195,245,250`
-- **Issue**: Clock sync, transport, and tempo events are received but only logged
-- **Fix**: Forward to a transport system that the UI can subscribe to
-
-#### 5. Expose `send_packet` for P2P Control Broadcast
-- **File**: `src/network/manager.rs:567-570`
-- **Issue**: Cannot send control messages in P2P mode because `send_packet` is private
-- **Fix**: Add public `broadcast_control` method to P2P network
+- [x] **5. Expose `send_packet` for P2P Control Broadcast** (commit 629f9a3)
+  - Added public `broadcast_control()` method to P2P network
+  - Manager now uses `broadcast_control()` for control/clock sync messages
+  - Files: `src/network/p2p.rs`, `src/network/manager.rs`
 
 ---
 
