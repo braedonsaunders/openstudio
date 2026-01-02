@@ -23,6 +23,9 @@ export class EssentiaAnalyzer {
   // Track disposal state to prevent sending messages during cleanup
   private isDisposing = false;
 
+  // Resolve function for flush acknowledgment
+  private flushResolve: (() => void) | null = null;
+
   async initialize(sampleRate: number = 44100): Promise<void> {
     if (this.isInitialized) return;
 
@@ -64,6 +67,14 @@ export class EssentiaAnalyzer {
             case 'result':
               if (data && this.onAnalysis) {
                 this.onAnalysis(data);
+              }
+              break;
+
+            case 'flushed':
+              // Worker acknowledged flush - safe to terminate
+              if (this.flushResolve) {
+                this.flushResolve();
+                this.flushResolve = null;
               }
               break;
           }
@@ -290,25 +301,41 @@ export class EssentiaAnalyzer {
     this.stopAnalysis();
 
     if (this.worker) {
-      // Send flush message to allow worker to complete any pending operations
-      try {
-        this.worker.postMessage({ type: 'flush' });
-      } catch {
-        // Worker may already be in a bad state, ignore
-      }
-
-      // Delay termination slightly to allow pending messages to be processed
-      // This prevents "message channel closed before response" errors
       const workerToTerminate = this.worker;
       this.worker = null;
 
-      setTimeout(() => {
+      // Create a promise that resolves when worker acknowledges flush
+      const flushPromise = new Promise<void>((resolve) => {
+        this.flushResolve = resolve;
+
+        // Timeout fallback in case worker doesn't respond
+        setTimeout(() => {
+          if (this.flushResolve) {
+            this.flushResolve = null;
+            resolve();
+          }
+        }, 200);
+      });
+
+      // Send flush message to allow worker to complete any pending operations
+      try {
+        workerToTerminate.postMessage({ type: 'flush' });
+      } catch {
+        // Worker may already be in a bad state, resolve immediately
+        if (this.flushResolve) {
+          this.flushResolve();
+          this.flushResolve = null;
+        }
+      }
+
+      // Wait for flush acknowledgment before terminating
+      flushPromise.then(() => {
         try {
           workerToTerminate.terminate();
         } catch {
           // Worker may already be terminated, ignore
         }
-      }, 50);
+      });
     }
 
     if (this.analyserNode) {
