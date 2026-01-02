@@ -217,13 +217,34 @@ function DAWWalkingAvatar({
   audioLevels: Map<string, number>;
 }) {
   const [showPopup, setShowPopup] = useState(false);
+  const popupRef = useRef<HTMLDivElement>(null);
   const instrumentType = user.instrument || 'other';
   const instrumentIcon = INSTRUMENT_ICONS[instrumentType.toLowerCase()] || INSTRUMENT_ICONS.other;
+
+  // Click outside to close popup
+  useEffect(() => {
+    if (!showPopup) return;
+
+    const handleClickOutside = (event: MouseEvent) => {
+      if (popupRef.current && !popupRef.current.contains(event.target as Node)) {
+        setShowPopup(false);
+      }
+    };
+
+    // Delay to prevent immediate close on the same click
+    const timeoutId = setTimeout(() => {
+      document.addEventListener('mousedown', handleClickOutside);
+    }, 10);
+
+    return () => {
+      clearTimeout(timeoutId);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showPopup]);
 
   return (
     <WalkingEntity
       id={user.id}
-      name={user.name}
       state={state}
       groundConfig={groundConfig}
       containerWidth={containerWidth}
@@ -232,7 +253,7 @@ function DAWWalkingAvatar({
       musicalContext={musicalContext}
       audioLevel={audioLevel}
       audioLevels={audioLevels}
-      showName={true}
+      showName={false}
       showGlow={true}
       glowColor={keyColor}
       isCurrentUser={isCurrentUser}
@@ -240,13 +261,15 @@ function DAWWalkingAvatar({
       onClick={() => setShowPopup(!showPopup)}
     >
       {/* Custom avatar content */}
-      <div className="relative w-full h-full">
-        {/* Instrument icon above */}
+      <div className="relative w-full h-full" ref={popupRef}>
+        {/* Instrument icon + name above */}
         <div
-          className="absolute -top-6 left-1/2 -translate-x-1/2 flex items-center gap-1 px-2 py-0.5 rounded-full bg-black/50 backdrop-blur-sm border border-white/20 whitespace-nowrap"
+          className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 whitespace-nowrap pointer-events-none"
           style={{ transform: `translateX(-50%) scaleX(${state.facingRight ? 1 : -1})` }}
         >
-          <div className="text-white/70 scale-[0.6]">{instrumentIcon}</div>
+          <div className="text-white/80 scale-75">{instrumentIcon}</div>
+          <span className="text-[10px] font-medium text-white/90">{user.name}</span>
+          {isCurrentUser && <span className="text-[9px] text-indigo-400">(you)</span>}
         </div>
 
         {/* Avatar */}
