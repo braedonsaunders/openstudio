@@ -219,9 +219,9 @@ export function AIPanel() {
   // Do NOT add a sync here as it would bypass the debounce
 
   // Live update Lyria session when sliders change (works when connected/playing/paused)
+  // Must include sessionState in deps so effect re-runs when session becomes active
   useEffect(() => {
-    const lyriaStore = useLyriaStore.getState();
-    const { sessionState, session } = lyriaStore;
+    const session = useLyriaStore.getState().session;
 
     // Update for any active session state
     const isActiveSession = sessionState === 'playing' || sessionState === 'connected' || sessionState === 'paused';
@@ -232,13 +232,13 @@ export function AIPanel() {
     session.setDrums(drums);
     session.setBass(bass);
     session.setTemperature(temperature * 3); // Scale to 0-3
-  }, [density, brightness, drums, bass, temperature]);
+  }, [density, brightness, drums, bass, temperature, sessionState]);
 
   // Live update prompts when style/mood changes (works when connected/playing/paused)
   // Debounce custom prompt changes to avoid sending on every keystroke
+  // Must include sessionState in deps so effect re-runs when session becomes active
   useEffect(() => {
-    const lyriaStore = useLyriaStore.getState();
-    const { sessionState, session } = lyriaStore;
+    const session = useLyriaStore.getState().session;
 
     // Update for any active session state
     const isActiveSession = sessionState === 'playing' || sessionState === 'connected' || sessionState === 'paused';
@@ -252,7 +252,7 @@ export function AIPanel() {
     }, 500);
 
     return () => clearTimeout(timeoutId);
-  }, [selectedStyle, selectedMood, customPrompt]);
+  }, [selectedStyle, selectedMood, customPrompt, sessionState]);
 
   // Get current config as LyriaTrackConfig
   const getCurrentConfig = useCallback((): LyriaTrackConfig => ({
