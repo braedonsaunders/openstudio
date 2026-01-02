@@ -907,7 +907,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     setSeparationProgress(0);
 
     try {
-      const response = await fetch('/api/sam/separate', {
+      const response = await fetch('/api/stems/separate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -926,7 +926,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       while (!complete) {
         await new Promise((r) => setTimeout(r, 1000));
 
-        const statusRes = await fetch(`/api/sam/status/${jobId}`);
+        const statusRes = await fetch(`/api/stems/status/${jobId}`);
         const status = await statusRes.json();
 
         setSeparationProgress(status.progress);

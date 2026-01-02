@@ -76,7 +76,7 @@ export function StemMixer({
         </div>
         <Progress value={separationProgress} showLabel />
         <p className="mt-2 text-sm text-gray-400">
-          Using Meta SAM to separate instruments from the track
+          Using Demucs AI to separate instruments from the track
         </p>
       </div>
     );
@@ -108,7 +108,7 @@ export function StemMixer({
     <div className={cn('space-y-4', className)}>
       <div className="flex items-center justify-between">
         <h4 className="font-medium text-white">Stem Mixer</h4>
-        <span className="text-xs text-gray-500">Powered by Meta SAM</span>
+        <span className="text-xs text-gray-500">Powered by Demucs</span>
       </div>
 
       <div className="space-y-3">
