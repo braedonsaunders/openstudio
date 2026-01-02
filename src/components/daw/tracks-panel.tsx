@@ -352,11 +352,12 @@ export const TracksPanel = forwardRef<TracksPanelRef, TracksPanelProps>(function
           complete = true;
 
           // Create new audio assets for each stem
-          const stemNames = ['vocals', 'drums', 'bass', 'other'] as const;
+          const stemNames = ['vocals', 'drums', 'bass', 'guitar', 'other'] as const;
           const stemColors = {
             vocals: '#ec4899',
             drums: '#f97316',
             bass: '#22c55e',
+            guitar: '#a855f7',
             other: '#3b82f6',
           };
 
