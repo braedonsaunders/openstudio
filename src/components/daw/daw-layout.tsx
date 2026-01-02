@@ -35,6 +35,9 @@ import { OutputSettingsModal } from '../settings/output-settings-modal';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 import { MixerView } from './mixer-view';
 import { AvatarWorldView } from './avatar-world-view';
+import { SharedCanvasView } from './shared-canvas-view';
+import { NotationView } from './notation-view';
+import { TeleprompterView } from './teleprompter-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
 import { Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -664,6 +667,21 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
             setMainView('avatar-world');
           }
           break;
+        case '4':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('canvas');
+          }
+          break;
+        case '5':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('notation');
+          }
+          break;
+        case '6':
+          if (!e.ctrlKey && !e.metaKey) {
+            setMainView('teleprompter');
+          }
+          break;
       }
     };
 
@@ -1151,6 +1169,27 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
                 users={users}
                 currentUser={currentUser}
                 audioLevels={audioLevels}
+              />
+            )}
+
+            {mainView === 'canvas' && (
+              <SharedCanvasView
+                isMaster={isMaster}
+                roomId={roomId}
+              />
+            )}
+
+            {mainView === 'notation' && (
+              <NotationView
+                isMaster={isMaster}
+                roomId={roomId}
+              />
+            )}
+
+            {mainView === 'teleprompter' && (
+              <TeleprompterView
+                isMaster={isMaster}
+                roomId={roomId}
               />
             )}
           </div>
