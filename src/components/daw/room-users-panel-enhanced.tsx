@@ -12,6 +12,7 @@ import {
   Check,
   UserX,
   Ban,
+  UserPlus,
 } from 'lucide-react';
 import type { User, UserPerformanceInfo, JamCompatibility, QualityPresetName, OpusEncodingSettings } from '@/types';
 import { UserPerformanceCard } from './user-performance-card';
@@ -22,6 +23,8 @@ import { usePermissions } from '@/hooks/usePermissions';
 import { useRoomPermissions } from '@/hooks/useRoomPermissions';
 import { PermissionModal } from './permission-modal';
 import { RolePresetsModal } from './role-presets-modal';
+import { InviteMemberModal } from '@/components/room/invite-member-modal';
+import { PendingInvitationsPanel } from '@/components/room/pending-invitations-panel';
 import {
   RoomRole,
   RoomMember,
@@ -65,6 +68,8 @@ export function EnhancedRoomUsersPanel({
   const [openRoleDropdown, setOpenRoleDropdown] = useState<string | null>(null);
   const [selectedMember, setSelectedMember] = useState<RoomMember | null>(null);
   const [showRolePresets, setShowRolePresets] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showPendingInvitations, setShowPendingInvitations] = useState(false);
 
   // Get performance data from store
   const {
@@ -253,12 +258,21 @@ export function EnhancedRoomUsersPanel({
               <Shield className="w-3.5 h-3.5 text-indigo-500" />
               <span className="text-xs font-medium text-gray-700 dark:text-zinc-300">Room Settings</span>
             </div>
-            <button
-              onClick={() => setShowRolePresets(true)}
-              className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400"
-            >
-              View Roles
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowInviteModal(true)}
+                className="flex items-center gap-1 text-[10px] text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+              >
+                <UserPlus className="w-3 h-3" />
+                Invite
+              </button>
+              <button
+                onClick={() => setShowRolePresets(true)}
+                className="text-[10px] text-indigo-500 hover:text-indigo-600 dark:hover:text-indigo-400"
+              >
+                View Roles
+              </button>
+            </div>
           </div>
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-2">
@@ -285,6 +299,20 @@ export function EnhancedRoomUsersPanel({
               </span>
             </label>
           </div>
+
+          {/* Pending Invitations Toggle */}
+          <button
+            onClick={() => setShowPendingInvitations(!showPendingInvitations)}
+            className="mt-2 text-[10px] text-gray-500 dark:text-zinc-500 hover:text-gray-700 dark:hover:text-zinc-300"
+          >
+            {showPendingInvitations ? 'Hide' : 'Show'} pending invitations
+          </button>
+
+          {showPendingInvitations && (
+            <div className="mt-2 -mx-3 px-3 pt-2 border-t border-gray-200 dark:border-white/5">
+              <PendingInvitationsPanel roomId={roomId} />
+            </div>
+          )}
         </div>
       )}
 
@@ -427,6 +455,13 @@ export function EnhancedRoomUsersPanel({
       {showRolePresets && (
         <RolePresetsModal onClose={() => setShowRolePresets(false)} />
       )}
+
+      {/* Invite Member Modal */}
+      <InviteMemberModal
+        isOpen={showInviteModal}
+        onClose={() => setShowInviteModal(false)}
+        roomId={roomId}
+      />
     </div>
   );
 }
