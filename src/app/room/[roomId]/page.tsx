@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { DAWLayout } from '@/components/daw';
+import { DAWLayout, NativeBridgeGate } from '@/components/daw';
 import { RoomExitAnimation } from '@/components/daw/room-exit-animation';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -18,12 +18,16 @@ import { INSTRUMENTS, getInstrumentEmoji, type SavedTrackPreset } from '@/types/
 import {
   Music,
   ArrowRight,
+  ArrowLeft,
   AlertCircle,
   Check,
   Sliders,
   ChevronDown,
   ChevronUp,
+  Headphones,
 } from 'lucide-react';
+
+type JoinMode = 'undecided' | 'performer' | 'listener';
 
 const instruments = [
   { id: 'guitar', label: 'Guitar', icon: '🎸' },
@@ -67,6 +71,7 @@ export default function RoomPage() {
   const [userName, setUserName] = useState('');
   const [instrument, setInstrument] = useState('');
   const [showSavedTracks, setShowSavedTracks] = useState(false);
+  const [joinMode, setJoinMode] = useState<JoinMode>('undecided');
 
   // Auth initialization is handled by onAuthStateChange in auth-store
 
@@ -158,6 +163,9 @@ export default function RoomPage() {
     }
   }, [userName, instrument, join, getSelectedPresets, addTrack, addMidiTrack, user?.id, incrementUseCount]);
 
+  // Check if user is in listener mode (no native bridge)
+  const isListenerMode = joinMode === 'listener';
+
   // Show DAW layout once joined, with exit animation wrapper
   if (hasJoined && (isConnected || isExiting)) {
     return (
@@ -165,8 +173,19 @@ export default function RoomPage() {
         isExiting={isExiting}
         onAnimationComplete={handleExitAnimationComplete}
       >
-        <DAWLayout roomId={roomId} onLeaveRoom={handleLeaveRoom} />
+        <DAWLayout roomId={roomId} onLeaveRoom={handleLeaveRoom} listenerMode={isListenerMode} />
       </RoomExitAnimation>
+    );
+  }
+
+  // Show native bridge gate before join form - encourage native bridge usage
+  if (joinMode === 'undecided') {
+    return (
+      <NativeBridgeGate
+        roomName={`Room ${roomId}`}
+        onJoinAsPerformer={() => setJoinMode('performer')}
+        onJoinAsListener={() => setJoinMode('listener')}
+      />
     );
   }
 
@@ -174,6 +193,14 @@ export default function RoomPage() {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center p-4">
       <Card variant="elevated" className="w-full max-w-md">
         <CardHeader className="text-center">
+          {/* Listener mode badge */}
+          {isListenerMode && (
+            <div className="flex items-center justify-center gap-2 mb-4 py-2 px-4 bg-amber-500/10 border border-amber-500/20 rounded-lg">
+              <Headphones className="w-4 h-4 text-amber-500" />
+              <span className="text-sm text-amber-500 font-medium">Listen-Only Mode</span>
+            </div>
+          )}
+
           {/* Show user avatar if logged in, otherwise show music icon */}
           {user && profile ? (
             <div className="flex flex-col items-center mb-4">
@@ -189,10 +216,16 @@ export default function RoomPage() {
             </div>
           ) : (
             <div className="w-16 h-16 mx-auto bg-indigo-500/20 rounded-2xl flex items-center justify-center mb-4">
-              <Music className="w-8 h-8 text-indigo-500" />
+              {isListenerMode ? (
+                <Headphones className="w-8 h-8 text-amber-500" />
+              ) : (
+                <Music className="w-8 h-8 text-indigo-500" />
+              )}
             </div>
           )}
-          <CardTitle className="text-2xl">Join Room</CardTitle>
+          <CardTitle className="text-2xl">
+            {isListenerMode ? 'Join as Listener' : 'Join Room'}
+          </CardTitle>
           <CardDescription>
             Room code: <span className="text-gray-900 dark:text-white font-mono">{roomId}</span>
           </CardDescription>
@@ -216,32 +249,44 @@ export default function RoomPage() {
             disabled={isJoining}
           />
 
-          {/* Instrument selection */}
-          <div className="space-y-2">
-            <label className="text-sm text-gray-500 dark:text-gray-400">Instrument (optional)</label>
-            <div className="grid grid-cols-3 gap-2">
-              {instruments.map((inst) => (
-                <button
-                  key={inst.id}
-                  onClick={() => setInstrument(inst.id === instrument ? '' : inst.id)}
-                  disabled={isJoining}
-                  className={`
-                    flex flex-col items-center gap-1 p-3 rounded-lg transition-all
-                    ${instrument === inst.id
-                      ? 'bg-indigo-500 text-white'
-                      : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}
-                    ${isJoining && 'opacity-50 cursor-not-allowed'}
-                  `}
-                >
-                  <span className="text-xl">{inst.icon}</span>
-                  <span className="text-xs">{inst.label}</span>
-                </button>
-              ))}
+          {/* Listener mode info */}
+          {isListenerMode && (
+            <div className="p-4 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
+              <p className="text-sm text-gray-600 dark:text-gray-400">
+                You'll be able to hear all performers but won't be able to send audio.
+                Perfect for spectating or when you don't have the native bridge installed.
+              </p>
             </div>
-          </div>
+          )}
 
-          {/* Saved Tracks Selection */}
-          {user && presets.length > 0 && (
+          {/* Instrument selection - only for performers */}
+          {!isListenerMode && (
+            <div className="space-y-2">
+              <label className="text-sm text-gray-500 dark:text-gray-400">Instrument (optional)</label>
+              <div className="grid grid-cols-3 gap-2">
+                {instruments.map((inst) => (
+                  <button
+                    key={inst.id}
+                    onClick={() => setInstrument(inst.id === instrument ? '' : inst.id)}
+                    disabled={isJoining}
+                    className={`
+                      flex flex-col items-center gap-1 p-3 rounded-lg transition-all
+                      ${instrument === inst.id
+                        ? 'bg-indigo-500 text-white'
+                        : 'bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700'}
+                      ${isJoining && 'opacity-50 cursor-not-allowed'}
+                    `}
+                  >
+                    <span className="text-xl">{inst.icon}</span>
+                    <span className="text-xs">{inst.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Saved Tracks Selection - only for performers */}
+          {!isListenerMode && user && presets.length > 0 && (
             <div className="space-y-3">
               <button
                 onClick={() => setShowSavedTracks(!showSavedTracks)}
@@ -311,17 +356,32 @@ export default function RoomPage() {
 
         </CardContent>
 
-        <CardFooter>
+        <CardFooter className="flex flex-col gap-3">
           <Button
             onClick={handleJoin}
             disabled={!userName.trim() || isJoining}
             loading={isJoining}
             className="w-full"
             size="lg"
+            variant={isListenerMode ? 'secondary' : 'primary'}
           >
-            {isJoining ? 'Joining...' : 'Join Room'}
-            {!isJoining && <ArrowRight className="w-4 h-4 ml-2" />}
+            {isJoining
+              ? 'Joining...'
+              : isListenerMode
+                ? 'Join as Listener'
+                : 'Join as Performer'}
+            {!isJoining && (isListenerMode
+              ? <Headphones className="w-4 h-4 ml-2" />
+              : <ArrowRight className="w-4 h-4 ml-2" />)}
           </Button>
+          <button
+            onClick={() => setJoinMode('undecided')}
+            disabled={isJoining}
+            className="flex items-center justify-center gap-2 text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors disabled:opacity-50"
+          >
+            <ArrowLeft className="w-4 h-4" />
+            Back to mode selection
+          </button>
         </CardFooter>
       </Card>
     </div>

@@ -1,8 +1,8 @@
 [package]
 name = "openstudio-bridge"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2021"
-description = "Native audio bridge for OpenStudio - ASIO/CoreAudio low-latency audio"
+description = "Native audio bridge for OpenStudio - ASIO/CoreAudio low-latency audio with P2P networking"
 authors = ["OpenStudio"]
 license = "MIT"
 
@@ -15,15 +15,16 @@ asio = ["cpal/asio"]
 cpal = "0.15"
 
 # Async runtime
-tokio = { version = "1.35", features = ["rt-multi-thread", "net", "sync", "macros", "time", "io-util"] }
+tokio = { version = "1.35", features = ["rt-multi-thread", "net", "sync", "macros", "time", "io-util", "io-std"] }
 
-# WebSocket server
+# WebSocket server (for browser communication)
 tokio-tungstenite = "0.21"
 futures-util = "0.3"
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
+bincode = "1.3"
 
 # Error handling
 anyhow = "1.0"
@@ -38,6 +39,44 @@ ringbuf = "0.4"
 
 # URL parsing for protocol handler
 url = "2.5"
+
+# === NEW: OSP Networking Dependencies ===
+
+# Opus audio codec (low-latency)
+audiopus = "0.3.0-rc.0"
+
+# UDP networking
+socket2 = "0.5"
+
+# QUIC/WebTransport for MoQ relay
+quinn = "0.11"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std"] }
+rcgen = "0.13"
+webpki-roots = "0.26"
+
+# HTTP/3 for MoQ
+h3 = "0.0.6"
+h3-quinn = "0.0.7"
+bytes = "1.5"
+
+# NAT traversal (STUN/TURN)
+stun-rs = "0.1"
+
+# Time synchronization
+ntp = "0.5"
+
+# Cryptography for peer authentication
+blake3 = "1.5"
+x25519-dalek = "2.0"
+rand = "0.8"
+
+# Concurrent data structures
+dashmap = "6.0"
+crossbeam-channel = "0.5"
+parking_lot = "0.12"
+
+# CRC for packet validation
+crc32fast = "1.4"
 
 # Protocol registration (Windows only)
 [target.'cfg(windows)'.dependencies]

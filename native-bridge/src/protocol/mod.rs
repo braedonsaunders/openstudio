@@ -24,6 +24,7 @@ pub async fn run_server(addr: &str, state: Arc<Mutex<AppState>>) -> Result<()> {
 pub struct LaunchParams {
     pub room_id: Option<String>,
     pub user_id: Option<String>,
+    pub user_name: Option<String>,
     pub token: Option<String>,
 }
 
@@ -43,6 +44,7 @@ impl LaunchParams {
                         match key.as_ref() {
                             "room" => params.room_id = Some(value.to_string()),
                             "user" => params.user_id = Some(value.to_string()),
+                            "name" => params.user_name = Some(value.to_string()),
                             "token" => params.token = Some(value.to_string()),
                             _ => {}
                         }
