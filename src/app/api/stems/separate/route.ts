@@ -137,7 +137,7 @@ export async function POST(request: NextRequest) {
       } else if (stemOutput && typeof stemOutput === 'object') {
         // FileOutput object from Replicate SDK v1.x
         const fileOutput = stemOutput as {
-          url?: () => string;
+          url?: () => string | URL;
           blob?: () => Promise<Blob>;
           arrayBuffer?: () => Promise<ArrayBuffer>;
         };
