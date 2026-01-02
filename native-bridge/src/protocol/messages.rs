@@ -2,7 +2,7 @@
 
 use crate::audio::{ChannelConfig, DeviceInfo};
 use crate::effects::EffectsSettings;
-use crate::mixing::TrackState;
+use crate::mixing::PartialTrackState;
 use serde::{Deserialize, Serialize};
 
 /// All messages from browser to native bridge
@@ -50,12 +50,12 @@ pub enum BrowserMessage {
     SetSampleRate { rate: u32 },
 
     // === Track State ===
-    /// Update track arm/mute/solo/volume
+    /// Update track arm/mute/solo/volume (partial - only sent fields are updated)
     UpdateTrackState {
         #[serde(rename = "trackId")]
         track_id: String,
         #[serde(flatten)]
-        state: TrackState,
+        state: PartialTrackState,
     },
 
     /// Update track effects

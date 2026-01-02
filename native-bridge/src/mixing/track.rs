@@ -22,6 +22,27 @@ pub struct TrackState {
     pub monitoring_volume: f32,
 }
 
+/// Partial track state for updates - only includes fields that were sent
+/// Missing fields are None and will NOT overwrite existing values
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PartialTrackState {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_armed: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_muted: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub is_solo: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub volume: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_gain_db: Option<f32>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitoring_enabled: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub monitoring_volume: Option<f32>,
+}
+
 impl TrackState {
     pub fn new() -> Self {
         Self {
@@ -52,6 +73,31 @@ impl TrackState {
             return false;
         }
         true
+    }
+
+    /// Merge a partial update into this state, only updating fields that are Some
+    pub fn merge(&mut self, partial: &PartialTrackState) {
+        if let Some(v) = partial.is_armed {
+            self.is_armed = v;
+        }
+        if let Some(v) = partial.is_muted {
+            self.is_muted = v;
+        }
+        if let Some(v) = partial.is_solo {
+            self.is_solo = v;
+        }
+        if let Some(v) = partial.volume {
+            self.volume = v;
+        }
+        if let Some(v) = partial.input_gain_db {
+            self.input_gain_db = v;
+        }
+        if let Some(v) = partial.monitoring_enabled {
+            self.monitoring_enabled = v;
+        }
+        if let Some(v) = partial.monitoring_volume {
+            self.monitoring_volume = v;
+        }
     }
 }
 
