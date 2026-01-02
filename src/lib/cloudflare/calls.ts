@@ -1418,6 +1418,12 @@ export class CloudflareCalls {
   }
 
   async disconnect(): Promise<void> {
+    // Capture sessionId and immediately nullify to prevent duplicate close requests
+    // This is critical because disconnect() can be called multiple times
+    // (e.g., from component cleanup + exit animation callback)
+    const sessionIdToClose = this.sessionId;
+    this.sessionId = null;
+
     this.stopClockBroadcast();
     this.stopPerformanceBroadcast();
 
@@ -1448,15 +1454,15 @@ export class CloudflareCalls {
     this.clockSync.reset();
     this.latencyCompensator.dispose();
 
-    // Notify server
-    if (this.sessionId) {
+    // Notify server (only if we had a valid session)
+    if (sessionIdToClose) {
       try {
         await fetch('/api/cloudflare/session', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             action: 'close',
-            sessionId: this.sessionId,
+            sessionId: sessionIdToClose,
             roomId: this.roomId,
           }),
         });
@@ -1465,7 +1471,6 @@ export class CloudflareCalls {
       }
     }
 
-    this.sessionId = null;
     this.remoteStreams.clear();
     this.remoteTracks.clear();
     this.participantPerformanceData.clear();
