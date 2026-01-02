@@ -1026,6 +1026,192 @@ Admin action audit trail.
 
 ---
 
+## Row Level Security (RLS) Policies
+
+All tables have RLS enabled. Policies control access based on authentication state and user roles.
+
+### Access Patterns
+
+| Pattern | Description |
+|---------|-------------|
+| `auth.uid()` | Current authenticated user's ID |
+| `account_type = 'admin'` | Admin role check via user_profiles |
+| `auth.jwt() ->> 'role' = 'service_role'` | Service role (backend) access |
+| `is_active = true` | Only active records visible |
+
+### User System Policies
+
+#### `user_profiles`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Public profiles are viewable by everyone | SELECT | `profile_visibility = 'public' OR auth.uid() = id` |
+| Users can insert own profile | INSERT | `auth.uid() = id` |
+| Users can update own profile | UPDATE | `auth.uid() = id` |
+
+#### `user_stats`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Stats viewable based on profile settings | SELECT | `show_stats = true OR auth.uid() = user_id` |
+| Users can view all stats | SELECT | `true` |
+| Users can insert own stats | INSERT | `auth.uid() = user_id` |
+| Users can update own stats | UPDATE | `auth.uid() = user_id` |
+
+#### `user_instruments`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Instruments are viewable by everyone | SELECT | `true` |
+| Users can manage own instruments | ALL | `auth.uid() = user_id` |
+
+#### `user_achievements`
+| Policy | Command | Rule |
+|--------|---------|------|
+| User achievements viewable by everyone | SELECT | `true` |
+| Users can insert own achievements | INSERT | `auth.uid() = user_id` |
+
+#### `user_xp_transactions`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Users can view own xp | SELECT | `auth.uid() = user_id` |
+| Users can insert own xp | INSERT | `auth.uid() = user_id` |
+
+### Social Policies
+
+#### `follows`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Follows are viewable by everyone | SELECT | `true` |
+| Users can manage own follows | ALL | `auth.uid() = follower_id` |
+
+#### `friendships`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Users can view their friendships | SELECT | `auth.uid() = user_id OR auth.uid() = friend_id` |
+| Users can create friend requests | INSERT | `auth.uid() = user_id` |
+| Users can update friendships they're part of | UPDATE | `auth.uid() = user_id OR auth.uid() = friend_id` |
+| Users can delete friendships they're part of | DELETE | `auth.uid() = user_id OR auth.uid() = friend_id` |
+
+#### `activity_feed`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Users can view own activity | SELECT | `auth.uid() = user_id OR user_id IN (accepted friends)` |
+| Users can create own activity | INSERT | `auth.uid() = user_id` |
+| Users can manage own activity | ALL | `auth.uid() = user_id` |
+
+#### `notifications`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Users can view own notifications | SELECT | `auth.uid() = user_id` |
+| Users can update own notifications | UPDATE | `auth.uid() = user_id` |
+| System can insert notifications | INSERT | `true` |
+
+### Room Policies
+
+#### `rooms`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Public read access | SELECT | `is_public = true` |
+| Allow insert | INSERT | `true` |
+
+#### `saved_rooms`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Public rooms are viewable by everyone | SELECT | `room_type = 'public' OR owner_id = auth.uid()` |
+| Users can manage own rooms | ALL | `auth.uid() = owner_id` |
+
+#### `room_invitations`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Users can view their own invitations | SELECT | `invited_user_id = auth.uid() OR invited_email matches` |
+| Room moderators can view room invitations | SELECT | `user is owner/co-host` |
+| Room moderators can create invitations | INSERT | `invited_by = auth.uid() AND user is owner/co-host` |
+| Invited users can respond to invitations | UPDATE | `invited_user_id = auth.uid()` (accept/decline only) |
+| Room moderators can revoke invitations | UPDATE | `user is owner/co-host` (revoke only) |
+| Room moderators can delete invitations | DELETE | `user is owner/co-host` |
+
+#### `room_chat_messages`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Chat messages are viewable by everyone | SELECT | `true` |
+| Authenticated users can send messages | INSERT | `auth.uid() = user_id` |
+
+#### `session_history`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Users can view own session history | SELECT | `auth.uid() = user_id` |
+| Users can insert own sessions | INSERT | `auth.uid() = user_id` |
+| Users can update own sessions | UPDATE | `auth.uid() = user_id` |
+| Users can manage own sessions | ALL | `auth.uid() = user_id` |
+
+### Real-time Collaboration (Open Access)
+
+These tables allow all operations for real-time collaboration:
+
+| Table | Policy |
+|-------|--------|
+| `room_loop_tracks` | Allow all operations |
+| `room_tracks` | Allow all operations |
+| `room_webrtc_sessions` | Allow all operations |
+| `user_tracks` | Allow all operations |
+| `songs` | Allow all operations |
+| `saved_track_presets` | Allow all operations |
+| `user_custom_loops` | Allow all operations |
+
+### Avatar System Policies
+
+#### `avatar_categories`, `avatar_components`, `avatar_color_palettes`, `avatar_unlock_rules`, `avatar_generation_presets`, `avatar_component_unlocks`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Public read (active only) | SELECT | `is_active = true` (or `true` for palettes/unlocks) |
+| Admins can manage | ALL | `account_type = 'admin'` |
+
+#### `user_avatar_canvas`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Public can read avatar URLs | SELECT | `true` |
+| Users can read own avatar canvas | SELECT | `auth.uid() = user_id` |
+| Users can insert own avatar canvas | INSERT | `auth.uid() = user_id` |
+| Users can update own avatar canvas | UPDATE | `auth.uid() = user_id` |
+| Users can delete own avatar canvas | DELETE | `auth.uid() = user_id` |
+
+#### `user_unlocked_components`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Users read own unlocked_components | SELECT | `auth.uid() = user_id` |
+| Admins can manage user unlocks | ALL | `account_type = 'admin'` |
+
+### System Configuration Policies
+
+#### `system_loops`, `system_instruments`, `system_loop_categories`, `system_loop_subcategories`, `system_instrument_categories`, `system_instant_band_presets`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Public read access (active only) | SELECT | `is_active = true` (or `true` for categories) |
+| Admin write access | ALL | `auth.jwt() ->> 'role' = 'admin'` |
+
+### Admin Policies
+
+#### `admin_audit_log`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Admins can view audit log | SELECT | `account_type = 'admin'` |
+| Admins can insert audit log | INSERT | `account_type = 'admin'` |
+
+#### `reports`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Admins can view all reports | SELECT | `auth.uid() = reporter_id OR account_type = 'admin'` |
+| Users can create reports | INSERT | `auth.uid() = reporter_id` |
+| Admins can update reports | UPDATE | `account_type = 'admin'` |
+
+### Service Role Policies
+
+#### `lyria_rate_limits`, `lyria_usage`
+| Policy | Command | Rule |
+|--------|---------|------|
+| Users can view own | SELECT | `auth.uid() = user_id` |
+| Service role can manage | ALL | `auth.jwt() ->> 'role' = 'service_role'` |
+
+---
+
 ## Foreign Key Relationships
 
 ```
