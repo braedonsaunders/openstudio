@@ -1,9 +1,9 @@
 'use client';
 
 import { cn } from '@/lib/utils';
-import { Layers, Sliders, Users2 } from 'lucide-react';
+import { Layers, Sliders, Users2, PenTool, Music, ScrollText } from 'lucide-react';
 
-export type MainViewType = 'timeline' | 'mixer' | 'avatar-world';
+export type MainViewType = 'timeline' | 'mixer' | 'avatar-world' | 'canvas' | 'notation' | 'teleprompter';
 
 interface MainViewSwitcherProps {
   activeView: MainViewType;
@@ -15,6 +15,9 @@ const views: { id: MainViewType; icon: typeof Layers; label: string; description
   { id: 'timeline', icon: Layers, label: 'Timeline', description: 'Track lanes view', shortcut: '1' },
   { id: 'mixer', icon: Sliders, label: 'Mixer', description: 'Stem mixing console', shortcut: '2' },
   { id: 'avatar-world', icon: Users2, label: 'World', description: 'Live jam scene', shortcut: '3' },
+  { id: 'canvas', icon: PenTool, label: 'Canvas', description: 'Shared whiteboard', shortcut: '4' },
+  { id: 'notation', icon: Music, label: 'Notation', description: 'Chords & tabs', shortcut: '5' },
+  { id: 'teleprompter', icon: ScrollText, label: 'Lyrics', description: 'Synced lyrics', shortcut: '6' },
 ];
 
 export function MainViewSwitcher({
