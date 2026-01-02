@@ -1,5 +1,5 @@
 // Unified World Scene Configuration
-// Shared between homepage and DAW world views
+// Single source of truth for all scene configs - homepage and DAW
 
 import type { HomepageSceneType } from '@/types/avatar';
 
@@ -35,15 +35,26 @@ export interface SceneGroundConfig {
   };
 }
 
+// Scene element (decorations, interactives)
+export interface SceneElement {
+  id: string;
+  type: 'decoration' | 'interactive';
+  component: string; // Component name to render
+  position: { x: number; y: number }; // Percentages
+  scale?: number;
+  zIndex?: number;
+}
+
 export interface SceneConfig {
   id: SceneType;
   name: string;
   description: string;
   emoji: string;
   ground: SceneGroundConfig;
+  elements?: SceneElement[]; // Optional scene decorations
 }
 
-// Default scene configurations with perspective ground
+// Complete scene configurations with decorations
 export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
   campfire: {
     id: 'campfire',
@@ -71,6 +82,10 @@ export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
         colors: ['#0f0c29', '#302b63', '#24243e'],
       },
     },
+    elements: [
+      { id: 'fire', type: 'decoration', component: 'Campfire', position: { x: 50, y: 65 }, zIndex: 10 },
+      { id: 'logs', type: 'decoration', component: 'Logs', position: { x: 48, y: 70 }, zIndex: 5 },
+    ],
   },
   rooftop: {
     id: 'rooftop',
@@ -98,6 +113,9 @@ export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
         colors: ['#1a1a2e', '#4a3f6b', '#6b5b95'],
       },
     },
+    elements: [
+      { id: 'skyline', type: 'decoration', component: 'CitySkyline', position: { x: 50, y: 25 }, zIndex: 1 },
+    ],
   },
   beach: {
     id: 'beach',
@@ -125,6 +143,11 @@ export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
         colors: ['#ff6b6b', '#feca57', '#48dbfb'],
       },
     },
+    elements: [
+      { id: 'palm1', type: 'decoration', component: 'PalmTree', position: { x: 10, y: 40 }, scale: 1.2, zIndex: 2 },
+      { id: 'palm2', type: 'decoration', component: 'PalmTree', position: { x: 88, y: 38 }, scale: 1.0, zIndex: 2 },
+      { id: 'waves', type: 'decoration', component: 'Waves', position: { x: 50, y: 32 }, zIndex: 1 },
+    ],
   },
   studio: {
     id: 'studio',
@@ -153,6 +176,10 @@ export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
         colors: ['#121212', '#1e1e1e', '#252525'],
       },
     },
+    elements: [
+      { id: 'console', type: 'decoration', component: 'MixingConsole', position: { x: 50, y: 22 }, zIndex: 1 },
+      { id: 'leds', type: 'decoration', component: 'LEDStrip', position: { x: 50, y: 15 }, zIndex: 0 },
+    ],
   },
   space: {
     id: 'space',
@@ -180,6 +207,11 @@ export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
         colors: ['#000000', '#0a0a20', '#15152d'],
       },
     },
+    elements: [
+      { id: 'stars', type: 'decoration', component: 'StarField', position: { x: 50, y: 20 }, zIndex: 0 },
+      { id: 'planet', type: 'decoration', component: 'Planet', position: { x: 75, y: 15 }, zIndex: 1 },
+      { id: 'platform', type: 'decoration', component: 'SpacePlatform', position: { x: 50, y: 60 }, zIndex: 5 },
+    ],
   },
   forest: {
     id: 'forest',
@@ -207,6 +239,11 @@ export const SCENE_CONFIGS: Record<SceneType, SceneConfig> = {
         colors: ['#87ceeb', '#98d8c8', '#b5e7a0'],
       },
     },
+    elements: [
+      { id: 'tree1', type: 'decoration', component: 'Tree', position: { x: 8, y: 30 }, scale: 1.5, zIndex: 2 },
+      { id: 'tree2', type: 'decoration', component: 'Tree', position: { x: 92, y: 28 }, scale: 1.3, zIndex: 2 },
+      { id: 'flowers', type: 'decoration', component: 'Flowers', position: { x: 50, y: 85 }, zIndex: 3 },
+    ],
   },
 };
 
@@ -272,4 +309,15 @@ export function clampToWalkableArea(
     x: Math.max(walkableArea.minX, Math.min(walkableArea.maxX, x)),
     y: Math.max(walkableArea.minY, Math.min(walkableArea.maxY, y)),
   };
+}
+
+// Get biased spawn position (for homepage - bottom of screen only)
+export function getBiasedSpawnPosition(
+  config: SceneGroundConfig,
+  spawnMinY: number = 85
+): { x: number; y: number } {
+  const { walkableArea } = config;
+  const x = walkableArea.minX + 5 + Math.random() * (walkableArea.maxX - walkableArea.minX - 10);
+  const y = spawnMinY + Math.random() * (walkableArea.maxY - spawnMinY - 3);
+  return { x, y };
 }

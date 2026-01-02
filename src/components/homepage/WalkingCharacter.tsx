@@ -1,27 +1,31 @@
 'use client';
 
-import { useState, useEffect, useRef, memo } from 'react';
+import { useState, useEffect, useRef, memo, useMemo } from 'react';
 import { motion, useMotionValue, useSpring } from 'framer-motion';
 import {
   SceneGroundConfig,
   calculateAvatarScale,
   calculateAvatarZIndex,
-  getRandomWalkablePosition,
 } from './scene-config';
 import type { HomepageCharacter, IdleAnimation } from '@/types/avatar';
+import { HOMEPAGE_WALKING_CONFIG, IDLE_ANIMATIONS, EntityState } from '@/components/world/types';
+import { useVisibilityAwareAnimationFrame } from '@/components/world/hooks/useWorldVisibility';
 
 interface WalkingCharacterProps {
   character: HomepageCharacter;
   groundConfig: SceneGroundConfig;
   containerWidth: number;
   containerHeight: number;
-  initialPosition?: { x: number; y: number }; // For distributed spawning
+  initialPosition?: { x: number; y: number };
   onPositionUpdate?: (id: string, x: number, y: number) => void;
   getOtherPositions?: (excludeId: string) => Array<{ x: number; y: number }>;
 }
 
-// Minimum distance between characters (in percentage units)
-const MIN_CHARACTER_DISTANCE = 8;
+// ============================================
+// Walking Logic (uses shared config)
+// ============================================
+
+const config = HOMEPAGE_WALKING_CONFIG;
 
 // Check if a position would collide with any other character
 function wouldCollide(
@@ -33,7 +37,7 @@ function wouldCollide(
     const dx = x - other.x;
     const dy = y - other.y;
     const distance = Math.sqrt(dx * dx + dy * dy);
-    if (distance < MIN_CHARACTER_DISTANCE) {
+    if (distance < config.minEntityDistance) {
       return true;
     }
   }
@@ -48,19 +52,16 @@ function findNonCollidingPosition(
   walkableArea: { minX: number; maxX: number; minY: number; maxY: number },
   maxAttempts: number = 8
 ): { x: number; y: number } {
-  // If no collision at base position, use it
   if (!wouldCollide(baseX, baseY, otherPositions)) {
     return { x: baseX, y: baseY };
   }
 
-  // Try different directions to find a non-colliding spot
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const angle = (attempt / maxAttempts) * Math.PI * 2;
-    const distance = MIN_CHARACTER_DISTANCE + Math.random() * 5;
+    const distance = config.minEntityDistance + Math.random() * 5;
     const newX = baseX + Math.cos(angle) * distance;
     const newY = baseY + Math.sin(angle) * distance;
 
-    // Clamp to walkable area
     const clampedX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, newX));
     const clampedY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, newY));
 
@@ -69,41 +70,14 @@ function findNonCollidingPosition(
     }
   }
 
-  // If all attempts fail, return the base position anyway
   return { x: baseX, y: baseY };
 }
 
-interface CharacterState {
-  x: number;
-  y: number;
-  targetX: number;
-  targetY: number;
-  isWalking: boolean;
-  isSettling: boolean; // Brief transition state between walking and idle
-  facingRight: boolean;
-  walkTimer: number;
-  idleTimer: number;
-  settlingTimer: number;
-}
-
-// Slow, casual lobby movement - characters meander around
-const WALK_SPEED = 0.005; // Very slow strolling pace
-const IDLE_DURATION_MIN = 3000; // Longer idles - characters hang around
-const IDLE_DURATION_MAX = 7000; // Can stand still quite a while
-const WALK_DURATION_MIN = 2000; // Short walks between stops
-const WALK_DURATION_MAX = 4000; // Not too long walks
-const SETTLING_DURATION = 300; // Pause to let spring animation settle
-
-// Content card exclusion zone - characters walk AROUND this, never through it
-// The card is centered (max-w-2xl = ~672px), positioned in the upper-middle area
-const CONTENT_CARD_ZONE = {
-  minX: 18, // Left edge of card (percentage)
-  maxX: 82, // Right edge of card (percentage)
-  minY: 15, // Top edge of card (percentage)
-  maxY: 58, // Bottom edge of card (percentage)
+// Content card exclusion zone helpers (from shared config)
+const CONTENT_CARD_ZONE = config.exclusionZones?.[0] || {
+  minX: 18, maxX: 82, minY: 15, maxY: 58
 };
 
-// Check if a point is inside the content card exclusion zone
 function isInsideCardZone(x: number, y: number): boolean {
   return (
     x >= CONTENT_CARD_ZONE.minX &&
@@ -113,15 +87,11 @@ function isInsideCardZone(x: number, y: number): boolean {
   );
 }
 
-// Check if a line segment from (x1,y1) to (x2,y2) crosses the card zone
 function pathCrossesCardZone(x1: number, y1: number, x2: number, y2: number): boolean {
-  // Check if either endpoint is inside the card
   if (isInsideCardZone(x1, y1) || isInsideCardZone(x2, y2)) {
     return true;
   }
 
-  // Check if the path crosses the card zone (simplified line-box intersection)
-  // Sample points along the path
   const steps = 10;
   for (let i = 1; i < steps; i++) {
     const t = i / steps;
@@ -134,19 +104,15 @@ function pathCrossesCardZone(x1: number, y1: number, x2: number, y2: number): bo
   return false;
 }
 
-// Get a valid position that avoids the content card
 function getValidPosition(
   baseX: number,
   baseY: number,
   walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
 ): { x: number; y: number } {
-  // Clamp to walkable area
   let x = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, baseX));
   let y = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, baseY));
 
-  // If inside the card zone, push to nearest edge
   if (isInsideCardZone(x, y)) {
-    // Find nearest edge to push to
     const distToLeft = x - CONTENT_CARD_ZONE.minX;
     const distToRight = CONTENT_CARD_ZONE.maxX - x;
     const distToTop = y - CONTENT_CARD_ZONE.minY;
@@ -154,17 +120,11 @@ function getValidPosition(
 
     const minDist = Math.min(distToLeft, distToRight, distToTop, distToBottom);
 
-    if (minDist === distToLeft) {
-      x = CONTENT_CARD_ZONE.minX - 3;
-    } else if (minDist === distToRight) {
-      x = CONTENT_CARD_ZONE.maxX + 3;
-    } else if (minDist === distToTop) {
-      y = CONTENT_CARD_ZONE.minY - 3;
-    } else {
-      y = CONTENT_CARD_ZONE.maxY + 3;
-    }
+    if (minDist === distToLeft) x = CONTENT_CARD_ZONE.minX - 3;
+    else if (minDist === distToRight) x = CONTENT_CARD_ZONE.maxX + 3;
+    else if (minDist === distToTop) y = CONTENT_CARD_ZONE.minY - 3;
+    else y = CONTENT_CARD_ZONE.maxY + 3;
 
-    // Re-clamp to walkable area
     x = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, x));
     y = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, y));
   }
@@ -172,41 +132,36 @@ function getValidPosition(
   return { x, y };
 }
 
-// Generate a position in the bottom 15% of the screen ONLY
+// Generate position in bottom 15% of screen (from shared config)
 function getBiasedPosition(
   walkableArea: { minX: number; maxX: number; minY: number; maxY: number }
 ): { x: number; y: number } {
-  // ONLY spawn in bottom 15% of screen - Y >= 85
-  const SPAWN_MIN_Y = 85;
-
+  const SPAWN_MIN_Y = config.spawnMinY || 85;
   const x = walkableArea.minX + 5 + Math.random() * (walkableArea.maxX - walkableArea.minX - 10);
   const y = SPAWN_MIN_Y + Math.random() * (walkableArea.maxY - SPAWN_MIN_Y - 3);
-
   return { x, y };
 }
 
-// Idle animation variants
-const idleAnimations: Record<IdleAnimation, {
-  animate: Record<string, number | number[]>;
-  transition: Record<string, unknown>;
-}> = {
-  bounce: {
-    animate: { y: [0, -4, 0] },
-    transition: { duration: 1.2, repeat: Infinity, ease: 'easeInOut' },
-  },
-  sway: {
-    animate: { rotate: [-2, 2, -2] },
-    transition: { duration: 2, repeat: Infinity, ease: 'easeInOut' },
-  },
-  still: {
-    animate: {},
-    transition: {},
-  },
-  dance: {
-    animate: { y: [0, -6, 0], rotate: [-3, 3, -3] },
-    transition: { duration: 0.8, repeat: Infinity, ease: 'easeInOut' },
-  },
-};
+// ============================================
+// Character State Type
+// ============================================
+
+interface CharacterState {
+  x: number;
+  y: number;
+  targetX: number;
+  targetY: number;
+  isWalking: boolean;
+  isSettling: boolean;
+  facingRight: boolean;
+  walkTimer: number;
+  idleTimer: number;
+  settlingTimer: number;
+}
+
+// ============================================
+// Walking Character Component
+// ============================================
 
 export const WalkingCharacter = memo(function WalkingCharacter({
   character,
@@ -218,7 +173,6 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   getOtherPositions,
 }: WalkingCharacterProps) {
   const [state, setState] = useState<CharacterState>(() => {
-    // Use provided initial position or fall back to biased random position
     const initial = initialPosition || getBiasedPosition(groundConfig.walkableArea);
     return {
       x: initial.x,
@@ -229,12 +183,11 @@ export const WalkingCharacter = memo(function WalkingCharacter({
       isSettling: false,
       facingRight: Math.random() > 0.5,
       walkTimer: 0,
-      idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
+      idleTimer: config.idleDuration[0] + Math.random() * (config.idleDuration[1] - config.idleDuration[0]),
       settlingTimer: 0,
     };
   });
 
-  const animationRef = useRef<number | null>(null);
   const lastTimeRef = useRef<number>(0);
 
   // Use motion values with springs for smooth animation transitions
@@ -254,39 +207,33 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   // Track bounce animation phase
   const bouncePhaseRef = useRef(0);
 
-  // Get idle animation config
-  const idleConfig = idleAnimations[character.idleAnimation];
+  // Get idle animation config from shared IDLE_ANIMATIONS
+  const idleConfig = IDLE_ANIMATIONS[character.idleAnimation];
 
   // Combined animation loop for movement AND bounce animation
-  useEffect(() => {
-    const animate = (currentTime: number) => {
-      if (!lastTimeRef.current) {
-        lastTimeRef.current = currentTime;
-      }
-      const deltaTime = currentTime - lastTimeRef.current;
-      lastTimeRef.current = currentTime;
-
+  useVisibilityAwareAnimationFrame(
+    (deltaTime) => {
       // Update bounce animation based on current state
       if (state.isWalking) {
         // Walking bounce: fast, subtle
-        bouncePhaseRef.current += deltaTime * 0.015; // ~400ms cycle
+        bouncePhaseRef.current += deltaTime * 0.015;
         const bounce = Math.sin(bouncePhaseRef.current) * -2;
         const wobble = Math.sin(bouncePhaseRef.current) * 0.5;
         targetBounceY.set(bounce);
         targetRotate.set(wobble);
       } else if (state.isSettling) {
-        // Settling: spring back to neutral (springs handle this automatically)
+        // Settling: spring back to neutral
         targetBounceY.set(0);
         targetRotate.set(0);
       } else {
         // Idle animation based on character type
-        const idleSpeed = (idleConfig.transition.duration as number) || 1.2;
+        const idleSpeed = idleConfig.transition.duration || 1.2;
         bouncePhaseRef.current += deltaTime * (0.001 / (idleSpeed / 2));
 
         const animateProps = idleConfig.animate;
         if (animateProps.y) {
           const yRange = Array.isArray(animateProps.y) ? animateProps.y : [0];
-          const maxY = Math.min(...yRange); // Most negative value
+          const maxY = Math.min(...yRange);
           targetBounceY.set(Math.sin(bouncePhaseRef.current) * Math.abs(maxY));
         } else {
           targetBounceY.set(0);
@@ -308,7 +255,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
 
       // Update position state
       setState(prev => {
-        const walkSpeed = WALK_SPEED * character.walkSpeed;
+        const walkSpeed = config.walkSpeed * character.walkSpeed;
 
         if (prev.isWalking) {
           const dx = prev.targetX - prev.x;
@@ -325,7 +272,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
               y: Math.max(walkableArea.minY, Math.min(walkableArea.maxY, finalY)),
               isWalking: false,
               isSettling: true,
-              settlingTimer: SETTLING_DURATION,
+              settlingTimer: config.settlingDuration,
             };
           }
 
@@ -341,7 +288,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
               ...prev,
               isWalking: false,
               isSettling: true,
-              settlingTimer: SETTLING_DURATION,
+              settlingTimer: config.settlingDuration,
             };
           }
 
@@ -351,7 +298,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
               ...prev,
               isWalking: false,
               isSettling: true,
-              settlingTimer: SETTLING_DURATION,
+              settlingTimer: config.settlingDuration,
             };
           }
 
@@ -367,7 +314,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             return {
               ...prev,
               isSettling: false,
-              idleTimer: IDLE_DURATION_MIN + Math.random() * (IDLE_DURATION_MAX - IDLE_DURATION_MIN),
+              idleTimer: config.idleDuration[0] + Math.random() * (config.idleDuration[1] - config.idleDuration[0]),
             };
           }
           return {
@@ -381,7 +328,6 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             const maxStepY = 10;
             const otherPositions = getOtherPositions?.(character.id) ?? [];
 
-            // Try multiple times to find a valid target that doesn't cross the card
             let bestTarget: { x: number; y: number } | null = null;
             for (let attempt = 0; attempt < 8; attempt++) {
               const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
@@ -397,18 +343,16 @@ export const WalkingCharacter = memo(function WalkingCharacter({
                 walkableArea
               );
 
-              // Check if this path would cross the card zone
               if (!pathCrossesCardZone(prev.x, prev.y, nonCollidingPos.x, nonCollidingPos.y)) {
                 bestTarget = nonCollidingPos;
                 break;
               }
             }
 
-            // If no valid path found, stay idle a bit longer
             if (!bestTarget) {
               return {
                 ...prev,
-                idleTimer: IDLE_DURATION_MIN * 0.5, // Try again soon
+                idleTimer: config.idleDuration[0] * 0.5,
               };
             }
 
@@ -419,7 +363,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
               isWalking: true,
               isSettling: false,
               facingRight: bestTarget.x > prev.x,
-              walkTimer: WALK_DURATION_MIN + Math.random() * (WALK_DURATION_MAX - WALK_DURATION_MIN),
+              walkTimer: config.walkDuration[0] + Math.random() * (config.walkDuration[1] - config.walkDuration[0]),
             };
           }
 
@@ -429,18 +373,26 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           };
         }
       });
-
-      animationRef.current = requestAnimationFrame(animate);
-    };
-
-    animationRef.current = requestAnimationFrame(animate);
-
-    return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
-    };
-  }, [character.walkSpeed, groundConfig, getOtherPositions, state.isWalking, state.isSettling, state.x, state.y, containerWidth, containerHeight, targetBounceY, targetRotate, targetPosX, targetPosY, idleConfig]);
+    },
+    true, // isVisible - homepage is always visible when rendered
+    [
+      character.walkSpeed,
+      character.id,
+      groundConfig,
+      getOtherPositions,
+      state.isWalking,
+      state.isSettling,
+      state.x,
+      state.y,
+      containerWidth,
+      containerHeight,
+      targetBounceY,
+      targetRotate,
+      targetPosX,
+      targetPosY,
+      idleConfig,
+    ]
+  );
 
   // Report position updates to parent for collision tracking
   useEffect(() => {
@@ -451,7 +403,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
   const scale = calculateAvatarScale(state.y, groundConfig);
   const zIndex = calculateAvatarZIndex(state.y, groundConfig);
 
-  // Base size for avatar (will be scaled) - larger for lobby presence
+  // Base size for avatar - larger for lobby presence
   const baseSize = 120;
 
   // Shadow size scales with character
@@ -465,7 +417,7 @@ export const WalkingCharacter = memo(function WalkingCharacter({
         left: springPosX,
         top: springPosY,
         zIndex,
-        transform: `translate(-50%, -100%)`, // Anchor at bottom center
+        transform: `translate(-50%, -100%)`,
       }}
     >
       {/* Ground shadow - ellipse at character's feet */}
@@ -478,7 +430,6 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           borderRadius: '50%',
           background: 'radial-gradient(ellipse at center, rgba(0,0,0,0.35) 0%, rgba(0,0,0,0.15) 50%, transparent 70%)',
           filter: `blur(${Math.max(2, 4 * scale)}px)`,
-          // Shadow squishes slightly when character bounces
           scaleY: springBounceY.get() < -2 ? 1.1 : 1,
         }}
       />
@@ -499,12 +450,10 @@ export const WalkingCharacter = memo(function WalkingCharacter({
             alt={character.name}
             className="w-full h-full object-contain"
             style={{
-              // Subtle drop shadow for depth
               filter: `drop-shadow(0 ${2 * scale}px ${4 * scale}px rgba(0,0,0,0.15))`,
             }}
           />
         ) : (
-          // Fallback placeholder
           <div
             className="w-full h-full rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white font-bold"
             style={{ fontSize: 20 * scale }}
