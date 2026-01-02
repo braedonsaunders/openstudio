@@ -107,6 +107,19 @@ Before implementing features, reference these docs:
 3. Follow established error handling patterns
 4. Add tests for new functionality
 
+### Database Schema Changes
+
+**When modifying the database schema, you MUST update `/docs/DATABASE.md`:**
+
+- Adding tables → Document table structure, columns, types, and defaults
+- Adding columns → Update the relevant table documentation
+- Adding RLS policies → Document in the RLS Policies section
+- Adding functions/triggers → Document in Functions/Triggers sections
+- Adding indexes → Document in Indexes section
+- Adding foreign keys → Update the Foreign Key Relationships tree
+
+Use the SQL queries in the "Schema Update SQL" section to regenerate schema information if needed.
+
 ---
 
 ## Prohibited Patterns
