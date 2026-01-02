@@ -1293,6 +1293,90 @@ Key performance indexes:
 
 ---
 
+## Unique Constraints
+
+| Table | Constraint | Columns |
+|-------|------------|---------|
+| `user_profiles` | `user_profiles_username_key` | username |
+| `user_achievements` | `user_achievements_user_id_achievement_id_key` | user_id, achievement_id |
+| `user_instruments` | `user_instruments_user_id_instrument_id_key` | user_id, instrument_id |
+| `user_avatar_canvas` | `user_avatar_canvas_user_id_key` | user_id |
+| `user_saved_rooms` | `user_saved_rooms_user_id_room_id_key` | user_id, room_id |
+| `friendships` | `friendships_user_id_friend_id_key` | user_id, friend_id |
+| `room_members` | `room_members_room_id_user_id_key` | room_id, user_id |
+| `room_bans` | `room_bans_room_id_user_id_key` | room_id, user_id |
+| `room_invitations` | `room_invitations_invite_code_key` | invite_code |
+| `room_webrtc_sessions` | `room_webrtc_sessions_room_id_user_id_key` | room_id, user_id |
+| `saved_rooms` | `saved_rooms_code_key` | code |
+
+---
+
+## Functions
+
+### XP & Leveling
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `add_user_xp` | `p_user_id, p_amount, p_reason, p_source_type?, p_source_id?` | `TABLE(new_xp, new_level, leveled_up)` | Add XP to user, handles leveling |
+| `calculate_level` | `xp` | `integer` | Calculate level from XP |
+| `xp_for_level` | `lvl` | `integer` | XP required for a level |
+| `update_user_streak` | `p_user_id` | `TABLE(new_streak, streak_continued)` | Update daily streak |
+| `increment_stat` | `p_user_id, p_stat, p_amount?` | `void` | Increment a user stat |
+
+### AI Music (Lyria)
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `check_lyria_rate_limit` | `p_user_id` | `TABLE(allowed, daily_seconds_remaining, connections_remaining, reset_at)` | Check rate limits |
+| `add_lyria_usage_seconds` | `p_user_id, p_seconds` | `void` | Track usage time |
+| `increment_lyria_connection` | `p_user_id` | `void` | Track connections |
+| `get_lyria_rate_limit_config` | `account_type` | `TABLE(daily_seconds_limit, connections_per_minute, max_session_seconds)` | Get limits by tier |
+
+### Room Management
+
+| Function | Arguments | Returns | Description |
+|----------|-----------|---------|-------------|
+| `can_save_room` | `p_user_id` | `boolean` | Check if user can save more rooms |
+| `check_room_ownership` | - | `trigger` | Enforce room ownership on save |
+| `generate_invite_code` | `length?` | `text` | Generate unique invite code |
+| `is_invitation_valid` | `invitation_id` | `boolean` | Check invitation validity |
+| `get_my_pending_invitations` | - | `TABLE(...)` | Get user's pending invites |
+| `cleanup_expired_invitations` | - | `integer` | Clean up expired invites |
+
+### Triggers
+
+| Function | Returns | Description |
+|----------|---------|-------------|
+| `handle_new_user` | `trigger` | Create profile on auth signup |
+| `update_updated_at_column` | `trigger` | Generic updated_at trigger |
+| `update_avatar_canvas_updated_at` | `trigger` | Avatar canvas timestamp |
+| `update_homepage_characters_updated_at` | `trigger` | Homepage characters timestamp |
+| `update_room_loop_tracks_updated_at` | `trigger` | Room loop tracks timestamp |
+| `update_saved_track_presets_updated_at` | `trigger` | Track presets timestamp |
+| `update_user_custom_loops_updated_at` | `trigger` | Custom loops timestamp |
+| `update_user_tracks_updated_at` | `trigger` | User tracks timestamp |
+
+---
+
+## Triggers
+
+| Trigger | Table | Event | Timing | Function |
+|---------|-------|-------|--------|----------|
+| `update_avatar_canvas_timestamp` | `user_avatar_canvas` | UPDATE | BEFORE | `update_avatar_canvas_updated_at` |
+| `update_homepage_characters_timestamp` | `homepage_characters` | UPDATE | BEFORE | `update_homepage_characters_updated_at` |
+| `room_loop_tracks_updated_at` | `room_loop_tracks` | UPDATE | BEFORE | `update_room_loop_tracks_updated_at` |
+| `user_custom_loops_updated_at` | `user_custom_loops` | UPDATE | BEFORE | `update_user_custom_loops_updated_at` |
+| `user_tracks_updated_at` | `user_tracks` | UPDATE | BEFORE | `update_user_tracks_updated_at` |
+| `enforce_room_ownership` | `user_saved_rooms` | INSERT | BEFORE | `check_room_ownership` |
+| `update_system_loops_updated_at` | `system_loops` | UPDATE | BEFORE | `update_updated_at_column` |
+| `update_system_instruments_updated_at` | `system_instruments` | UPDATE | BEFORE | `update_updated_at_column` |
+| `update_system_loop_categories_updated_at` | `system_loop_categories` | UPDATE | BEFORE | `update_updated_at_column` |
+| `update_system_loop_subcategories_updated_at` | `system_loop_subcategories` | UPDATE | BEFORE | `update_updated_at_column` |
+| `update_system_instrument_categories_updated_at` | `system_instrument_categories` | UPDATE | BEFORE | `update_updated_at_column` |
+| `update_system_instant_band_presets_updated_at` | `system_instant_band_presets` | UPDATE | BEFORE | `update_updated_at_column` |
+
+---
+
 ## Schema Update SQL
 
 Run this query in Supabase SQL Editor to regenerate this documentation:
