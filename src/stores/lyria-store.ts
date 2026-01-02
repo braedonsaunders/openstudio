@@ -30,6 +30,11 @@ interface LyriaStoreState {
   isAuthenticated: boolean;
   rateLimits: LyriaRateLimitStatus | null;
 
+  // Session timing (for 10-minute limit handling)
+  sessionStartedAt: number | null;
+  maxSessionSeconds: number;
+  isSessionExpired: boolean;
+
   // Active track config (when playing a song with a Lyria track)
   activeConfig: LyriaTrackConfig | null;
   activeSongId: string | null;
@@ -55,6 +60,11 @@ interface LyriaStoreState {
   pause: () => void;
   stop: () => void;
 
+  // Session time limit handling
+  extendSession: () => Promise<void>;
+  handleSessionExpired: () => void;
+  getSessionRemainingSeconds: () => number | null;
+
   // Config updates
   setActiveConfig: (config: LyriaTrackConfig | null, songId?: string, trackId?: string) => void;
   setRoomContext: (bpm: number, key: string | null, keyScale: 'major' | 'minor' | null) => void;
@@ -79,6 +89,9 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
   errorCode: null,
   isAuthenticated: false,
   rateLimits: null,
+  sessionStartedAt: null,
+  maxSessionSeconds: 600, // Default 10 minutes
+  isSessionExpired: false,
   activeConfig: null,
   activeSongId: null,
   activeTrackId: null,
@@ -202,6 +215,15 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
     try {
       await currentSession.connect();
 
+      // Store session timing info
+      const sessionStartTime = currentSession.getSessionStartTime();
+      const maxSeconds = currentSession.getMaxSessionSeconds();
+      set({
+        sessionStartedAt: sessionStartTime,
+        maxSessionSeconds: maxSeconds,
+        isSessionExpired: false,
+      });
+
       // Set initial config from room
       const scale = keyToLyriaScale(roomKey, roomKeyScale);
       currentSession.setConfig({
@@ -234,6 +256,8 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
     }
     set({
       sessionState: 'disconnected',
+      sessionStartedAt: null,
+      isSessionExpired: false,
       activeConfig: null,
       activeSongId: null,
       activeTrackId: null,
@@ -287,6 +311,65 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
     session?.stop();
   },
 
+  // Get remaining seconds in the current session
+  getSessionRemainingSeconds: () => {
+    const { sessionStartedAt, maxSessionSeconds, sessionState } = get();
+    if (!sessionStartedAt || sessionState === 'disconnected') return null;
+    const elapsed = Math.floor((Date.now() - sessionStartedAt) / 1000);
+    return Math.max(0, maxSessionSeconds - elapsed);
+  },
+
+  // Handle session expiration (called when timer reaches 0)
+  handleSessionExpired: () => {
+    const { session } = get();
+    if (session) {
+      session.pause();
+    }
+    set({ isSessionExpired: true });
+    console.log('[LyriaStore] Session expired (10-minute limit reached)');
+  },
+
+  // Extend session by disconnecting and reconnecting with same config
+  extendSession: async () => {
+    const { session, activeConfig, onDisconnected, onConnected, roomBpm, roomKey, roomKeyScale, volume } = get();
+
+    // Store current config before disconnect
+    const configToRestore = activeConfig;
+    const wasPlaying = get().sessionState === 'playing';
+
+    console.log('[LyriaStore] Extending session, preserving config:', configToRestore?.styleId);
+
+    // Disconnect current session
+    if (session) {
+      session.disconnect();
+      onDisconnected?.();
+    }
+
+    set({
+      sessionState: 'disconnected',
+      sessionStartedAt: null,
+      isSessionExpired: false,
+    });
+
+    // Brief delay for cleanup
+    await new Promise(resolve => setTimeout(resolve, 200));
+
+    // Reconnect
+    try {
+      await get().connect();
+
+      // Restore config and resume playback if we were playing
+      if (configToRestore && wasPlaying) {
+        await get().play(configToRestore);
+      }
+
+      console.log('[LyriaStore] Session extended successfully');
+    } catch (err) {
+      console.error('[LyriaStore] Failed to extend session:', err);
+      throw err;
+    }
+  },
+
   // Set active config for current song/track
   setActiveConfig: (config, songId, trackId) => {
     set({
@@ -331,6 +414,8 @@ export const useLyriaStore = create<LyriaStoreState>((set, get) => ({
     set({
       session: null,
       sessionState: 'disconnected',
+      sessionStartedAt: null,
+      isSessionExpired: false,
       activeConfig: null,
       activeSongId: null,
       activeTrackId: null,

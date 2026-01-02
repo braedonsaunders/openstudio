@@ -11,6 +11,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { useShallow } from 'zustand/shallow';
 import { useAIPermissions } from '@/hooks/usePermissions';
 import { useStatsTracker } from '@/hooks/useStatsTracker';
+import { useLyriaSessionTimer, type SessionWarningLevel } from '@/hooks/useLyriaSessionTimer';
 import { Slider } from '../ui/slider';
 import {
   Sparkles,
@@ -31,6 +32,8 @@ import {
   User,
   Clock,
   AlertCircle,
+  Timer,
+  RefreshCw,
 } from 'lucide-react';
 import {
   LYRIA_STYLES,
@@ -41,9 +44,110 @@ import {
 } from '@/lib/ai/lyria';
 import { DEFAULT_LYRIA_CONFIG, type LyriaTrackConfig } from '@/types/songs';
 
+// Session timer component for displaying remaining time
+function SessionTimer({
+  remainingSeconds,
+  warningLevel,
+  formattedTime,
+  isSessionExpired,
+  extendSession,
+  isExtending,
+}: {
+  remainingSeconds: number | null;
+  warningLevel: SessionWarningLevel;
+  formattedTime: string;
+  isSessionExpired: boolean;
+  extendSession: () => Promise<void>;
+  isExtending: boolean;
+}) {
+  if (remainingSeconds === null && !isSessionExpired) return null;
+
+  const showExtendButton = (remainingSeconds !== null && remainingSeconds <= 120) || isSessionExpired;
+
+  return (
+    <div
+      className={cn(
+        'flex items-center justify-between p-2.5 rounded-xl border transition-all',
+        warningLevel === 'expired' && 'bg-red-500/20 border-red-500/30',
+        warningLevel === 'urgent' && 'bg-red-500/15 border-red-500/25',
+        warningLevel === 'warning' && 'bg-orange-500/15 border-orange-500/25',
+        warningLevel === 'info' && 'bg-yellow-500/10 border-yellow-500/20',
+        warningLevel === 'none' && 'bg-gray-100 dark:bg-white/5 border-gray-200 dark:border-white/10'
+      )}
+    >
+      <div className="flex items-center gap-2">
+        <Timer
+          className={cn(
+            'w-4 h-4',
+            warningLevel === 'expired' && 'text-red-400',
+            warningLevel === 'urgent' && 'text-red-400 animate-pulse',
+            warningLevel === 'warning' && 'text-orange-400',
+            warningLevel === 'info' && 'text-yellow-400',
+            warningLevel === 'none' && 'text-gray-400 dark:text-zinc-400'
+          )}
+        />
+        <div className="flex flex-col">
+          <span
+            className={cn(
+              'text-sm font-mono font-medium',
+              warningLevel === 'expired' && 'text-red-400',
+              warningLevel === 'urgent' && 'text-red-400',
+              warningLevel === 'warning' && 'text-orange-400',
+              warningLevel === 'info' && 'text-yellow-500',
+              warningLevel === 'none' && 'text-gray-700 dark:text-zinc-300'
+            )}
+          >
+            {isSessionExpired ? 'Expired' : formattedTime}
+          </span>
+          <span className="text-[9px] text-gray-500 dark:text-zinc-500">
+            {isSessionExpired ? 'Session ended' : 'Session time left'}
+          </span>
+        </div>
+      </div>
+
+      {showExtendButton && (
+        <button
+          onClick={extendSession}
+          disabled={isExtending}
+          className={cn(
+            'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg transition-all',
+            isSessionExpired
+              ? 'bg-purple-500 hover:bg-purple-600 text-white'
+              : 'bg-purple-500/20 hover:bg-purple-500/30 text-purple-400 border border-purple-500/30',
+            isExtending && 'opacity-50 cursor-not-allowed'
+          )}
+        >
+          <RefreshCw className={cn('w-3 h-3', isExtending && 'animate-spin')} />
+          {isSessionExpired ? 'Reconnect' : 'Extend'}
+        </button>
+      )}
+    </div>
+  );
+}
+
 export function AIPanel() {
   const { canGenerateMusic } = useAIPermissions();
   const { trackAIGeneration } = useStatsTracker();
+
+  // Session timer hook
+  const {
+    remainingSeconds,
+    warningLevel,
+    formattedTime,
+    isSessionExpired,
+    extendSession,
+  } = useLyriaSessionTimer();
+  const [isExtending, setIsExtending] = useState(false);
+
+  // Wrap extendSession to track loading state
+  const handleExtendSession = useCallback(async () => {
+    setIsExtending(true);
+    try {
+      await extendSession();
+    } finally {
+      setIsExtending(false);
+    }
+  }, [extendSession]);
 
   // Auth state
   const user = useAuthStore((state) => state.user);
@@ -357,6 +461,18 @@ export function AIPanel() {
                   </p>
                 )}
               </div>
+            )}
+
+            {/* Session Timer - shows when connected/playing */}
+            {(sessionState === 'playing' || sessionState === 'connected' || sessionState === 'paused' || isSessionExpired) && (
+              <SessionTimer
+                remainingSeconds={remainingSeconds}
+                warningLevel={warningLevel}
+                formattedTime={formattedTime}
+                isSessionExpired={isSessionExpired}
+                extendSession={handleExtendSession}
+                isExtending={isExtending}
+              />
             )}
 
             {/* Error Display */}
