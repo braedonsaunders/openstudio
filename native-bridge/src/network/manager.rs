@@ -387,14 +387,17 @@ impl NetworkManager {
             return Ok(());
         }
 
-        let state = self.state.read();
-        let room_config = state
-            .room_config
-            .clone()
-            .ok_or_else(|| NetworkError::ConnectionFailed("Not in room".to_string()))?;
-        let user_id = state.user_id.clone().unwrap_or_default();
-        let user_name = state.user_name.clone().unwrap_or_default();
-        drop(state);
+        // Extract needed data in a block to ensure guard is dropped before any await
+        let (room_config, user_id, user_name) = {
+            let state = self.state.read();
+            let room_config = state
+                .room_config
+                .clone()
+                .ok_or_else(|| NetworkError::ConnectionFailed("Not in room".to_string()))?;
+            let user_id = state.user_id.clone().unwrap_or_default();
+            let user_name = state.user_name.clone().unwrap_or_default();
+            (room_config, user_id, user_name)
+        }; // guard dropped here
 
         info!("Switching mode from {:?} to {:?}", current_mode, new_mode);
 

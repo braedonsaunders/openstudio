@@ -1063,7 +1063,7 @@ impl WebTransportListener {
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         // Open control stream and send listen-only join
-        let (mut control_send, mut control_recv) = connection
+        let (mut control_send, _control_recv) = connection
             .open_bi()
             .await
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
