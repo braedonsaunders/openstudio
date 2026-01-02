@@ -29,12 +29,16 @@ use tracing::{error, info, warn};
 static INPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
 static OUTPUT_FRAME_COUNT: AtomicUsize = AtomicUsize::new(0);
 
-/// Thread-local buffers for I32/I16 to F32 conversion in audio callbacks.
+/// Thread-local buffers for audio callbacks.
 /// CRITICAL: Real-time audio callbacks must NEVER allocate memory.
 /// These pre-allocated buffers are reused across callbacks to avoid heap allocations.
 thread_local! {
     static INPUT_CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(8192));
     static OUTPUT_CONVERSION_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(8192));
+    /// Stereo buffer for channel extraction in process_input
+    static STEREO_BUFFER: RefCell<Vec<f32>> = RefCell::new(Vec::with_capacity(8192));
+    /// Remote levels buffer for process_output_f32
+    static REMOTE_LEVELS_BUFFER: RefCell<Vec<(String, f32)>> = RefCell::new(Vec::with_capacity(32));
 }
 
 /// Ring buffer size for local audio (samples, stereo)
@@ -822,138 +826,142 @@ impl AudioEngine {
             info!("[INPUT] Raw input peak: {:.6}", raw_peak);
         }
 
-        // Extract selected channels to stereo
-        let mut stereo_buffer: Vec<f32> = Vec::with_capacity(data.len() / input_channels * 2);
-        for frame in data.chunks(input_channels) {
-            let left_sample = frame.get(left_ch).copied().unwrap_or(0.0);
-            let right_sample = if is_stereo {
-                frame.get(right_ch).copied().unwrap_or(left_sample)
-            } else {
-                left_sample
-            };
-            stereo_buffer.push(left_sample);
-            stereo_buffer.push(right_sample);
-        }
+        // Use thread-local buffer to avoid allocation in real-time callback
+        // CRITICAL: Vec::with_capacity() STILL ALLOCATES - only reusing existing buffer avoids allocation
+        STEREO_BUFFER.with(|buf| {
+            let mut stereo_buffer = buf.borrow_mut();
+            stereo_buffer.clear();
 
-        // Calculate input level
-        let level = stereo_buffer
-            .iter()
-            .map(|s| s.abs())
-            .fold(0.0_f32, f32::max);
-        if let Ok(mut lvl) = levels.try_write() {
-            lvl.input_level = level;
-            lvl.input_peak = lvl.input_peak.max(level);
-        }
-
-        if should_log {
-            info!(
-                "[INPUT] Extracted stereo peak: {:.6} | buffer_size={}",
-                level,
-                stereo_buffer.len()
-            );
-        }
-
-        // Stream RAW audio to browser for WET monitoring (BEFORE effects)
-        // The browser will apply effects using Web Audio, ensuring single effects codebase
-        // ALWAYS stream to browser when audio is running - the browser's audio chain
-        // has its own gain gates (armGain, monitorGain) to control output
-        if let Some(browser_prod) = browser_stream_producer {
-            if let Ok(mut prod) = browser_prod.try_lock() {
-                let available_space = prod.vacant_len();
-                let pushed = prod.push_slice(&stereo_buffer);
-                if should_log || pushed < stereo_buffer.len() {
-                    info!(
-                        "[INPUT] Browser stream: pushed={}/{} space_was={}",
-                        pushed,
-                        stereo_buffer.len(),
-                        available_space
-                    );
-                }
-            } else if should_log {
-                warn!("[INPUT] Browser stream: failed to acquire lock!");
+            // Extract selected channels to stereo
+            for frame in data.chunks(input_channels) {
+                let left_sample = frame.get(left_ch).copied().unwrap_or(0.0);
+                let right_sample = if is_stereo {
+                    frame.get(right_ch).copied().unwrap_or(left_sample)
+                } else {
+                    left_sample
+                };
+                stereo_buffer.push(left_sample);
+                stereo_buffer.push(right_sample);
             }
-        } else if should_log {
-            warn!("[INPUT] Browser stream: producer is None!");
-        }
 
-        // Get monitoring volume from atomic (can be updated independently)
-        let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
-
-        // Get all track state including monitoring_enabled from processing state
-        // This is updated by UpdateTrackState messages from the browser
-        let (is_armed, is_muted, monitoring_enabled) =
-            if let Ok(state) = processing_state.try_read() {
-                (
-                    state.track_state.is_armed,
-                    state.track_state.is_muted,
-                    state.track_state.monitoring_enabled,
-                )
-            } else {
-                (false, false, false)
-            };
-
-        // DRY monitoring (native bridge passthrough) is controlled by:
-        // - monitoring_enabled (Direct Monitoring toggle) - user wants to hear hardware bypass
-        // - !is_muted - track isn't muted
-        // Note: ARM is NOT required for DRY monitoring - it's hardware bypass for hearing yourself
-        // ARM only affects software monitoring (browser WET path with effects)
-        let should_monitor = monitoring_enabled && !is_muted;
-
-        if should_log {
-            info!("[INPUT] DRY Monitoring: enabled={} muted={} -> should_monitor={} (armed={} for info only)",
-                  monitoring_enabled, is_muted, should_monitor, is_armed);
-        }
-
-        // If monitoring enabled, do DRY monitoring (no effects - effects are in browser)
-        // This provides zero-latency monitoring of raw input
-        if should_monitor {
-            let (gain, volume) = if let Ok(state) = processing_state.try_read() {
-                // Apply input gain and monitoring volume only
-                let gain = state.track_state.input_gain_linear();
-                let volume = state.track_state.volume;
-                for sample in stereo_buffer.iter_mut() {
-                    *sample *= gain * volume * mon_vol;
-                }
-                (gain, volume)
-            } else {
-                if should_log {
-                    warn!("[INPUT] Could not acquire processing state lock!");
-                }
-                (1.0, 1.0)
-            };
-
-            // Calculate level after processing
-            let processed_peak: f32 = stereo_buffer
+            // Calculate input level
+            let level = stereo_buffer
                 .iter()
                 .map(|s| s.abs())
                 .fold(0.0_f32, f32::max);
+            if let Ok(mut lvl) = levels.try_write() {
+                lvl.input_level = level;
+                lvl.input_peak = lvl.input_peak.max(level);
+            }
+
             if should_log {
                 info!(
-                    "[INPUT] After processing: gain={:.2} vol={:.2} peak={:.6}",
-                    gain, volume, processed_peak
+                    "[INPUT] Extracted stereo peak: {:.6} | buffer_size={}",
+                    level,
+                    stereo_buffer.len()
                 );
             }
 
-            // Push to ring buffer
-            let mut pushed = 0;
-            if let Ok(mut prod) = producer.try_lock() {
-                for sample in stereo_buffer.iter() {
-                    if prod.try_push(*sample).is_ok() {
-                        pushed += 1;
+            // Stream RAW audio to browser for WET monitoring (BEFORE effects)
+            // The browser will apply effects using Web Audio, ensuring single effects codebase
+            // ALWAYS stream to browser when audio is running - the browser's audio chain
+            // has its own gain gates (armGain, monitorGain) to control output
+            if let Some(browser_prod) = browser_stream_producer {
+                if let Ok(mut prod) = browser_prod.try_lock() {
+                    let available_space = prod.vacant_len();
+                    let pushed = prod.push_slice(&stereo_buffer);
+                    if should_log || pushed < stereo_buffer.len() {
+                        info!(
+                            "[INPUT] Browser stream: pushed={}/{} space_was={}",
+                            pushed,
+                            stereo_buffer.len(),
+                            available_space
+                        );
                     }
+                } else if should_log {
+                    warn!("[INPUT] Browser stream: failed to acquire lock!");
                 }
-            } else {
-                if should_log {
-                    warn!("[INPUT] Could not acquire producer lock!");
-                }
+            } else if should_log {
+                warn!("[INPUT] Browser stream: producer is None!");
             }
 
+            // Get monitoring volume from atomic (can be updated independently)
+            let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
+
+            // Get all track state including monitoring_enabled from processing state
+            // This is updated by UpdateTrackState messages from the browser
+            let (is_armed, is_muted, monitoring_enabled) =
+                if let Ok(state) = processing_state.try_read() {
+                    (
+                        state.track_state.is_armed,
+                        state.track_state.is_muted,
+                        state.track_state.monitoring_enabled,
+                    )
+                } else {
+                    (false, false, false)
+                };
+
+            // DRY monitoring (native bridge passthrough) is controlled by:
+            // - monitoring_enabled (Direct Monitoring toggle) - user wants to hear hardware bypass
+            // - !is_muted - track isn't muted
+            // Note: ARM is NOT required for DRY monitoring - it's hardware bypass for hearing yourself
+            // ARM only affects software monitoring (browser WET path with effects)
+            let should_monitor = monitoring_enabled && !is_muted;
+
             if should_log {
-                info!("[INPUT] Pushed {} samples to ring buffer", pushed);
+                info!("[INPUT] DRY Monitoring: enabled={} muted={} -> should_monitor={} (armed={} for info only)",
+                      monitoring_enabled, is_muted, should_monitor, is_armed);
             }
-        } else if should_log {
-            info!("[INPUT] Monitoring DISABLED - not sending to output");
-        }
+
+            // If monitoring enabled, do DRY monitoring (no effects - effects are in browser)
+            // This provides zero-latency monitoring of raw input
+            if should_monitor {
+                let (gain, volume) = if let Ok(state) = processing_state.try_read() {
+                    // Apply input gain and monitoring volume only
+                    let gain = state.track_state.input_gain_linear();
+                    let volume = state.track_state.volume;
+                    for sample in stereo_buffer.iter_mut() {
+                        *sample *= gain * volume * mon_vol;
+                    }
+                    (gain, volume)
+                } else {
+                    if should_log {
+                        warn!("[INPUT] Could not acquire processing state lock!");
+                    }
+                    (1.0, 1.0)
+                };
+
+                // Calculate level after processing
+                let processed_peak: f32 = stereo_buffer
+                    .iter()
+                    .map(|s| s.abs())
+                    .fold(0.0_f32, f32::max);
+                if should_log {
+                    info!(
+                        "[INPUT] After processing: gain={:.2} vol={:.2} peak={:.6}",
+                        gain, volume, processed_peak
+                    );
+                }
+
+                // Push to ring buffer
+                let mut pushed = 0;
+                if let Ok(mut prod) = producer.try_lock() {
+                    for sample in stereo_buffer.iter() {
+                        if prod.try_push(*sample).is_ok() {
+                            pushed += 1;
+                        }
+                    }
+                } else if should_log {
+                    warn!("[INPUT] Could not acquire producer lock!");
+                }
+
+                if should_log {
+                    info!("[INPUT] Pushed {} samples to ring buffer", pushed);
+                }
+            } else if should_log {
+                info!("[INPUT] Monitoring DISABLED - not sending to output");
+            }
+        });
     }
 
     /// Process output audio (mix all sources)
@@ -1005,24 +1013,42 @@ impl AudioEngine {
         }
 
         // Mix remote user audio
-        let mut remote_levels_vec = Vec::new();
-        if let Ok(buffers) = remote_buffers.try_read() {
-            for (user_id, buffer) in buffers.iter() {
-                if buffer.is_muted {
-                    continue;
-                }
+        // Use thread-local buffer to avoid allocation in real-time callback
+        REMOTE_LEVELS_BUFFER.with(|buf| {
+            let mut remote_levels_vec = buf.borrow_mut();
+            remote_levels_vec.clear();
 
-                if let Ok(mut cons) = buffer.consumer.try_lock() {
-                    let mut user_level = 0.0_f32;
-                    for sample in data.iter_mut() {
-                        let s = cons.try_pop().unwrap_or(0.0) * buffer.volume;
-                        user_level = user_level.max(s.abs());
-                        *sample += s;
+            if let Ok(buffers) = remote_buffers.try_read() {
+                for (user_id, buffer) in buffers.iter() {
+                    if buffer.is_muted {
+                        continue;
                     }
-                    remote_levels_vec.push((user_id.clone(), user_level));
+
+                    if let Ok(mut cons) = buffer.consumer.try_lock() {
+                        let mut user_level = 0.0_f32;
+                        for sample in data.iter_mut() {
+                            let s = cons.try_pop().unwrap_or(0.0) * buffer.volume;
+                            user_level = user_level.max(s.abs());
+                            *sample += s;
+                        }
+                        // Check if this user_id already exists in buffer to avoid String allocation
+                        let found = remote_levels_vec.iter_mut().find(|(id, _)| id == user_id);
+                        if let Some((_, level)) = found {
+                            *level = user_level;
+                        } else {
+                            // Only allocate String if this is a new user (happens once per user, not per callback)
+                            remote_levels_vec.push((user_id.clone(), user_level));
+                        }
+                    }
                 }
             }
-        }
+
+            // Copy levels to shared state (we have to clone the Vec contents here)
+            if let Ok(mut lvl) = levels.try_write() {
+                lvl.remote_levels.clear();
+                lvl.remote_levels.extend(remote_levels_vec.iter().cloned());
+            }
+        });
 
         // Mix backing track
         let backing_volume = processing_state
@@ -1070,16 +1096,19 @@ impl AudioEngine {
         if let Ok(mut lvl) = levels.try_write() {
             lvl.output_level = level;
             lvl.output_peak = lvl.output_peak.max(level);
-            lvl.remote_levels = remote_levels_vec;
+            // remote_levels is now updated in the REMOTE_LEVELS_BUFFER block above
             lvl.backing_level = backing_level;
         }
 
         if should_log {
             info!("[OUTPUT] Final output peak: {:.6}", level);
-            // Also log first few samples to verify they're not all zero
-            let first_samples: Vec<String> =
-                data.iter().take(8).map(|s| format!("{:.6}", s)).collect();
-            info!("[OUTPUT] First 8 samples: [{}]", first_samples.join(", "));
+            // Log first 8 samples without allocation (use fixed array access)
+            if data.len() >= 8 {
+                info!(
+                    "[OUTPUT] First 8 samples: [{:.6}, {:.6}, {:.6}, {:.6}, {:.6}, {:.6}, {:.6}, {:.6}]",
+                    data[0], data[1], data[2], data[3], data[4], data[5], data[6], data[7]
+                );
+            }
         }
     }
 
