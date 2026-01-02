@@ -410,9 +410,9 @@ function DAWWalkingAvatar({
     >
       {/* Custom avatar content */}
       <div className="relative w-full h-full" ref={popupRef}>
-        {/* Instrument icon + name above */}
+        {/* Instrument icon + name above - counteract parent flip so text stays readable */}
         <div
-          className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 whitespace-nowrap pointer-events-none"
+          className="absolute -top-7 left-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 whitespace-nowrap pointer-events-none"
           style={{ transform: `translateX(-50%) scaleX(${walkState.facingRight ? 1 : -1})` }}
         >
           <div className="text-white/80 scale-75">{instrumentIcon}</div>
@@ -420,10 +420,8 @@ function DAWWalkingAvatar({
           {isCurrentUser && <span className="text-[9px] text-indigo-400">(you)</span>}
         </div>
 
-        {/* Avatar */}
-        <div style={{ transform: `scaleX(${walkState.facingRight ? 1 : -1})` }}>
-          <UserAvatar userId={user.id} username={user.name} size={100} variant="fullBody" />
-        </div>
+        {/* Avatar - no flip needed, WalkingEntity handles it */}
+        <UserAvatar userId={user.id} username={user.name} size={100} variant="fullBody" />
 
         {/* Profile popup */}
         <AnimatePresence>
@@ -522,19 +520,17 @@ function RemoteUserAvatar({
       onClick={() => setShowPopup(!showPopup)}
     >
       <div className="relative w-full h-full" ref={popupRef}>
-        {/* Instrument icon + name above */}
+        {/* Instrument icon + name above - counteract parent flip */}
         <div
-          className="absolute -top-7 left-1/2 -translate-x-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 whitespace-nowrap pointer-events-none"
+          className="absolute -top-7 left-1/2 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-black/60 backdrop-blur-sm border border-white/20 whitespace-nowrap pointer-events-none"
           style={{ transform: `translateX(-50%) scaleX(${state.facingRight ? 1 : -1})` }}
         >
           <div className="text-white/80 scale-75">{instrumentIcon}</div>
           <span className="text-[10px] font-medium text-white/90">{user.name}</span>
         </div>
 
-        {/* Avatar */}
-        <div style={{ transform: `scaleX(${state.facingRight ? 1 : -1})` }}>
-          <UserAvatar userId={user.id} username={user.name} size={100} variant="fullBody" />
-        </div>
+        {/* Avatar - no flip needed, WalkingEntity handles it */}
+        <UserAvatar userId={user.id} username={user.name} size={100} variant="fullBody" />
 
         {/* Profile popup */}
         <AnimatePresence>
