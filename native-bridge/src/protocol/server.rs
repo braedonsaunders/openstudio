@@ -400,6 +400,8 @@ impl BridgeServer {
             }
 
             BrowserMessage::UpdateTrackState { state: track_state, .. } => {
+                info!("UpdateTrackState received: monitoring_enabled={:?}, is_muted={:?}, volume={:?}",
+                      track_state.monitoring_enabled, track_state.is_muted, track_state.volume);
                 let app = self.state.lock().await;
                 app.audio_engine.update_track_state(track_state);
                 None
@@ -412,6 +414,7 @@ impl BridgeServer {
             }
 
             BrowserMessage::SetMonitoring { enabled, volume } => {
+                info!("SetMonitoring received: enabled={}, volume={}", enabled, volume);
                 let app = self.state.lock().await;
                 app.audio_engine.set_monitoring(enabled);
                 app.audio_engine.set_monitoring_volume(volume);
