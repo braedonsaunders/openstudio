@@ -10,72 +10,90 @@ import type {
 } from './types';
 
 // ============================================
-// Guitar Pro Parser
+// Guitar Pro Parser with Safe Bounds Checking
 // ============================================
 
 // Standard guitar tuning (E standard)
 const STANDARD_TUNING = ['E4', 'B3', 'G3', 'D3', 'A2', 'E2'];
 
-// Key signatures mapping (GP uses fifths like MusicXML)
+// Key signatures mapping
 const KEY_SIGNATURES: Record<string, string> = {
   '-7': 'Cb', '-6': 'Gb', '-5': 'Db', '-4': 'Ab', '-3': 'Eb', '-2': 'Bb', '-1': 'F',
   '0': 'C', '1': 'G', '2': 'D', '3': 'A', '4': 'E', '5': 'B', '6': 'F#', '7': 'C#',
 };
 
-// Binary reader utility class
-class BinaryReader {
+// Binary reader with bounds checking
+class SafeBinaryReader {
   private view: DataView;
-  private offset: number = 0;
+  private bytes: Uint8Array;
+  private _offset: number = 0;
+  private _length: number;
 
   constructor(buffer: ArrayBuffer) {
     this.view = new DataView(buffer);
+    this.bytes = new Uint8Array(buffer);
+    this._length = buffer.byteLength;
   }
 
   get position(): number {
-    return this.offset;
+    return this._offset;
   }
 
   set position(pos: number) {
-    this.offset = pos;
+    this._offset = Math.max(0, Math.min(pos, this._length));
   }
 
   get remaining(): number {
-    return this.view.byteLength - this.offset;
+    return this._length - this._offset;
+  }
+
+  get length(): number {
+    return this._length;
+  }
+
+  private checkBounds(size: number): boolean {
+    return this._offset + size <= this._length;
   }
 
   readByte(): number {
-    const value = this.view.getUint8(this.offset);
-    this.offset += 1;
+    if (!this.checkBounds(1)) return 0;
+    const value = this.bytes[this._offset];
+    this._offset += 1;
     return value;
   }
 
   readSignedByte(): number {
-    const value = this.view.getInt8(this.offset);
-    this.offset += 1;
+    if (!this.checkBounds(1)) return 0;
+    const value = this.view.getInt8(this._offset);
+    this._offset += 1;
     return value;
   }
 
   readShort(): number {
-    const value = this.view.getInt16(this.offset, true);
-    this.offset += 2;
+    if (!this.checkBounds(2)) return 0;
+    const value = this.view.getInt16(this._offset, true);
+    this._offset += 2;
     return value;
   }
 
   readInt(): number {
-    const value = this.view.getInt32(this.offset, true);
-    this.offset += 4;
+    if (!this.checkBounds(4)) return 0;
+    const value = this.view.getInt32(this._offset, true);
+    this._offset += 4;
     return value;
   }
 
   readFloat(): number {
-    const value = this.view.getFloat32(this.offset, true);
-    this.offset += 4;
+    if (!this.checkBounds(4)) return 0;
+    const value = this.view.getFloat32(this._offset, true);
+    this._offset += 4;
     return value;
   }
 
   readDouble(): number {
-    const value = this.view.getFloat64(this.offset, true);
-    this.offset += 8;
+    if (!this.checkBounds(8)) return 0;
+    const value = this.view.getFloat64(this._offset, true);
+    this._offset += 8;
     return value;
   }
 
@@ -84,43 +102,54 @@ class BinaryReader {
   }
 
   readString(length: number): string {
-    const bytes = new Uint8Array(this.view.buffer, this.offset, length);
-    this.offset += length;
+    const safeLength = Math.min(length, this.remaining);
+    if (safeLength <= 0) return '';
+    const bytes = this.bytes.slice(this._offset, this._offset + safeLength);
+    this._offset += safeLength;
     return new TextDecoder('latin1').decode(bytes);
   }
 
   readStringByte(): string {
     const length = this.readByte();
+    if (length <= 0 || length > 255) return '';
     return this.readString(length);
   }
 
   readStringInt(): string {
     const length = this.readInt();
+    if (length <= 0 || length > 10000) return '';
     return this.readString(length);
   }
 
   readStringByteInt(): string {
     const fullLength = this.readInt();
-    if (fullLength <= 0) return '';
+    if (fullLength <= 0 || fullLength > 10000) return '';
     const stringLength = this.readByte();
+    if (stringLength <= 0 || stringLength > fullLength) {
+      this.skip(fullLength - 1);
+      return '';
+    }
     const value = this.readString(stringLength);
-    this.skip(fullLength - stringLength - 1);
+    const remaining = fullLength - stringLength - 1;
+    if (remaining > 0) this.skip(remaining);
     return value;
   }
 
   skip(bytes: number): void {
-    this.offset += bytes;
+    this._offset = Math.min(this._offset + bytes, this._length);
   }
-}
 
-// Parse GP file version
-function parseVersion(reader: BinaryReader): string {
-  const versionString = reader.readStringByteInt();
-  return versionString;
+  // Peek without advancing
+  peekByte(): number {
+    if (!this.checkBounds(1)) return 0;
+    return this.bytes[this._offset];
+  }
 }
 
 // Detect GP version from header
 function detectGPVersion(buffer: ArrayBuffer): number {
+  if (buffer.byteLength < 31) return 0;
+
   const bytes = new Uint8Array(buffer, 0, 31);
   const header = new TextDecoder('latin1').decode(bytes);
 
@@ -128,19 +157,15 @@ function detectGPVersion(buffer: ArrayBuffer): number {
   if (header.includes('FICHIER GUITAR PRO v4')) return 4;
   if (header.includes('FICHIER GUITAR PRO v3')) return 3;
   if (header.includes('FICHIER GUITAR PRO ')) return 2;
-  if (header.includes('PTAB')) return -1; // Power Tab
 
-  // GPX (newer format) uses ZIP/XML structure
-  const zipHeader = new Uint8Array(buffer, 0, 4);
-  if (zipHeader[0] === 0x50 && zipHeader[1] === 0x4B) {
-    return 6; // GPX format (ZIP-based)
-  }
+  // Check for ZIP signature (GPX format)
+  if (bytes[0] === 0x50 && bytes[1] === 0x4B) return 6;
 
   return 0;
 }
 
-// Parse GP3/GP4/GP5 format
-function parseGP345(reader: BinaryReader, version: number): ParsedNotation {
+// Parse GP3/GP4/GP5 format with safe reading
+function parseGP345(reader: SafeBinaryReader, version: number): ParsedNotation {
   const result: ParsedNotation = {
     tempo: 120,
     timeSignature: { beats: 4, beatType: 4 },
@@ -155,623 +180,452 @@ function parseGP345(reader: BinaryReader, version: number): ParsedNotation {
     sourceFormat: 'gp',
   };
 
-  try {
-    // Skip version string (already read in detection)
-    reader.position = 31;
+  // Skip version string
+  reader.position = 31;
 
-    // Song info
-    result.title = reader.readStringByteInt() || undefined;
-    const subtitle = reader.readStringByteInt();
-    result.artist = reader.readStringByteInt() || undefined;
-    result.album = reader.readStringByteInt() || undefined;
+  // Read song info
+  result.title = reader.readStringByteInt() || undefined;
+  reader.readStringByteInt(); // subtitle
+  result.artist = reader.readStringByteInt() || undefined;
+  result.album = reader.readStringByteInt() || undefined;
 
-    // More metadata based on version
-    if (version >= 5) {
-      const words = reader.readStringByteInt(); // words by
-      const music = reader.readStringByteInt(); // music by
-      const copyright = reader.readStringByteInt();
-      result.transcriber = reader.readStringByteInt() || undefined;
-      const instructions = reader.readStringByteInt();
+  // Version-specific metadata
+  if (version >= 5) {
+    reader.readStringByteInt(); // words by
+    reader.readStringByteInt(); // music by
+    reader.readStringByteInt(); // copyright
+    result.transcriber = reader.readStringByteInt() || undefined;
+    reader.readStringByteInt(); // instructions
 
-      // Notice lines
-      const noticeLines = reader.readInt();
-      for (let i = 0; i < noticeLines; i++) {
-        reader.readStringByteInt();
-      }
-    } else {
-      result.transcriber = reader.readStringByteInt() || undefined;
-      const copyright = reader.readStringByteInt();
-      const notice = reader.readStringByteInt();
+    const noticeLines = reader.readInt();
+    for (let i = 0; i < Math.min(noticeLines, 100); i++) {
+      reader.readStringByteInt();
     }
+  } else {
+    result.transcriber = reader.readStringByteInt() || undefined;
+    reader.readStringByteInt(); // copyright
+    reader.readStringByteInt(); // notice
+  }
 
-    // Triplet feel (shuffle)
-    if (version >= 4) {
-      reader.readByte(); // triplet feel
-    }
+  // Triplet feel
+  if (version >= 4) {
+    reader.readByte();
+  }
 
-    // Lyrics (GP4+)
-    if (version >= 4) {
-      const lyricTrack = reader.readInt();
-      for (let i = 0; i < 5; i++) {
-        const startMeasure = reader.readInt();
-        const lyricText = reader.readStringInt();
-        if (lyricText && i === 0) {
-          result.lyrics.push({
-            text: lyricText,
-            startBeat: (startMeasure - 1) * 4,
-            endBeat: (startMeasure - 1) * 4 + 4,
-          });
-        }
+  // Lyrics
+  if (version >= 4) {
+    reader.readInt(); // lyric track
+    for (let i = 0; i < 5; i++) {
+      const startMeasure = reader.readInt();
+      const text = reader.readStringInt();
+      if (text && i === 0) {
+        result.lyrics.push({
+          text,
+          startBeat: (startMeasure - 1) * 4,
+          endBeat: (startMeasure - 1) * 4 + 4,
+        });
       }
     }
+  }
 
-    // Page setup (GP5)
-    if (version >= 5) {
-      reader.skip(30); // Page setup data
-      for (let i = 0; i < 11; i++) {
-        reader.readStringByteInt(); // Header/footer strings
-      }
+  // Page setup (GP5)
+  if (version >= 5) {
+    reader.skip(30);
+    for (let i = 0; i < 11; i++) {
+      reader.readStringByteInt();
+    }
+  }
+
+  // Tempo
+  const tempo = reader.readInt();
+  if (tempo > 0 && tempo < 500) {
+    result.tempo = tempo;
+  }
+
+  // Key (GP4+)
+  if (version >= 4) {
+    const keyFifths = reader.readSignedByte();
+    reader.skip(3);
+    result.keySignature = {
+      fifths: keyFifths,
+      mode: 'major',
+      key: KEY_SIGNATURES[keyFifths.toString()] || 'C',
+    };
+  }
+
+  // Octave (GP4+)
+  if (version >= 4) {
+    reader.readByte();
+  }
+
+  // MIDI channels (64 entries = 32 ports x 2)
+  for (let i = 0; i < 64; i++) {
+    reader.skip(12); // instrument(4) + volume(1) + balance(1) + 6 effects
+  }
+
+  // Measures and tracks count
+  const measureCount = reader.readInt();
+  const trackCount = reader.readInt();
+
+  // Validate counts
+  if (measureCount <= 0 || measureCount > 10000 || trackCount <= 0 || trackCount > 100) {
+    console.warn('Invalid measure/track count:', measureCount, trackCount);
+    return result;
+  }
+
+  result.totalMeasures = measureCount;
+
+  // Parse measure headers
+  let totalBeats = 0;
+  for (let m = 0; m < measureCount && reader.remaining > 0; m++) {
+    const header = reader.readByte();
+
+    let beats = 4;
+    let beatType = 4;
+
+    if (header & 0x01) beats = reader.readByte() || 4;
+    if (header & 0x02) beatType = reader.readByte() || 4;
+
+    const repeatStart = (header & 0x04) !== 0;
+    let repeatEnd = false;
+    let repeatCount = 1;
+
+    if (header & 0x08) {
+      repeatEnd = true;
+      repeatCount = reader.readByte();
     }
 
-    // Tempo
-    result.tempo = reader.readInt();
+    if (header & 0x10) reader.readByte(); // alternate endings
 
-    // Key signature (GP4+)
-    if (version >= 4) {
-      const keyFifths = reader.readSignedByte();
-      reader.skip(3); // Reserved
-      result.keySignature = {
-        fifths: keyFifths,
-        mode: 'major',
-        key: KEY_SIGNATURES[keyFifths.toString()] || 'C',
-      };
-    }
+    if (header & 0x20) {
+      const markerName = reader.readStringByteInt();
+      reader.readInt(); // color
 
-    // Octave (GP4+)
-    if (version >= 4) {
-      reader.readByte();
-    }
-
-    // MIDI channels (32 channels)
-    const channels: Array<{ instrument: number; volume: number }> = [];
-    for (let i = 0; i < 64; i++) {
-      const instrument = reader.readInt();
-      const volume = reader.readByte();
-      const balance = reader.readByte();
-      reader.skip(6); // Chorus, reverb, phaser, tremolo, blank1, blank2
-
-      if (i % 2 === 0) {
-        channels.push({ instrument, volume });
-      }
-    }
-
-    // Number of measures and tracks
-    const measureCount = reader.readInt();
-    const trackCount = reader.readInt();
-
-    result.totalMeasures = measureCount;
-
-    // Parse measure headers
-    let totalBeats = 0;
-    for (let m = 0; m < measureCount; m++) {
-      const header = reader.readByte();
-
-      let beats = 4;
-      let beatType = 4;
-
-      // Time signature numerator
-      if (header & 0x01) {
-        beats = reader.readByte();
-      }
-      // Time signature denominator
-      if (header & 0x02) {
-        beatType = reader.readByte();
-      }
-
-      // Repeat start
-      const repeatStart = (header & 0x04) !== 0;
-
-      // Repeat end
-      let repeatEnd = false;
-      let repeatCount = 1;
-      if (header & 0x08) {
-        repeatEnd = true;
-        repeatCount = reader.readByte();
-      }
-
-      // Alternate endings
-      if (header & 0x10) {
-        reader.readByte();
-      }
-
-      // Marker
-      if (header & 0x20) {
-        const markerName = reader.readStringByteInt();
-        const markerColor = reader.readInt();
-
-        // Add as section
+      if (markerName) {
         result.sections.push({
           id: `section-${m}`,
           name: markerName,
-          type: markerName.toLowerCase().includes('verse') ? 'verse'
-            : markerName.toLowerCase().includes('chorus') ? 'chorus'
-            : markerName.toLowerCase().includes('bridge') ? 'bridge'
-            : markerName.toLowerCase().includes('intro') ? 'intro'
-            : markerName.toLowerCase().includes('outro') ? 'outro'
-            : markerName.toLowerCase().includes('solo') ? 'solo'
-            : 'custom',
+          type: detectSectionType(markerName),
           startBeat: totalBeats,
           endBeat: totalBeats + beats,
         });
       }
-
-      // Key signature change
-      if (header & 0x40) {
-        const keyFifths = reader.readSignedByte();
-        reader.readByte(); // Minor flag
-      }
-
-      // Double bar (GP3+)
-      if (version >= 3 && (header & 0x80)) {
-        // Double bar line
-      }
-
-      // Calculate measure duration
-      const beatsPerMeasure = (beats * 4) / beatType;
-
-      result.measures.push({
-        number: m + 1,
-        startBeat: totalBeats,
-        duration: beatsPerMeasure,
-        timeSignature: { beats, beatType },
-        repeatStart,
-        repeatEnd,
-        repeatCount,
-      });
-
-      totalBeats += beatsPerMeasure;
     }
 
-    result.totalBeats = totalBeats;
+    if (header & 0x40) {
+      reader.readSignedByte();
+      reader.readByte();
+    }
 
-    // Parse tracks
-    for (let t = 0; t < trackCount; t++) {
-      const trackHeader = reader.readByte();
+    if (version >= 3 && (header & 0x80)) {
+      // double bar
+    }
 
-      const track: Track = {
-        id: `track-${t}`,
-        name: reader.readStringByte().trim() || `Track ${t + 1}`,
-        notes: [],
-        measures: [...result.measures],
-        tuning: [...STANDARD_TUNING],
-      };
+    const beatsPerMeasure = (beats * 4) / beatType;
 
-      // Pad name to 40 bytes
-      reader.skip(40 - track.name.length);
+    result.measures.push({
+      number: m + 1,
+      startBeat: totalBeats,
+      duration: beatsPerMeasure,
+      timeSignature: { beats, beatType },
+      repeatStart,
+      repeatEnd,
+      repeatCount,
+    });
 
-      // String count and tuning
-      const stringCount = reader.readInt();
-      const tuning: string[] = [];
-      for (let s = 0; s < 7; s++) {
-        const midiNote = reader.readInt();
-        if (s < stringCount) {
-          // Convert MIDI note to pitch string
-          const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
-          const octave = Math.floor(midiNote / 12) - 1;
-          const noteName = noteNames[midiNote % 12];
-          tuning.push(`${noteName}${octave}`);
+    totalBeats += beatsPerMeasure;
+  }
+
+  result.totalBeats = totalBeats;
+
+  // Parse tracks
+  for (let t = 0; t < trackCount && reader.remaining > 0; t++) {
+    reader.readByte(); // header
+
+    const trackName = reader.readStringByte().trim() || `Track ${t + 1}`;
+    reader.skip(40 - Math.min(trackName.length, 40));
+
+    const stringCount = reader.readInt();
+    const tuning: string[] = [];
+
+    for (let s = 0; s < 7; s++) {
+      const midiNote = reader.readInt();
+      if (s < stringCount && midiNote >= 0 && midiNote < 128) {
+        const noteNames = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+        const octave = Math.floor(midiNote / 12) - 1;
+        const noteName = noteNames[midiNote % 12];
+        tuning.push(`${noteName}${octave}`);
+      }
+    }
+
+    reader.skip(4); // port
+    reader.readInt(); // channel
+    reader.skip(4); // channel effects
+    reader.readInt(); // frets
+    const capo = reader.readInt();
+    reader.readInt(); // color
+
+    result.tracks.push({
+      id: `track-${t}`,
+      name: trackName,
+      notes: [],
+      measures: [...result.measures],
+      tuning: tuning.length > 0 ? tuning.reverse() : [...STANDARD_TUNING],
+      capo: capo > 0 && capo < 24 ? capo : undefined,
+    });
+  }
+
+  // Parse measure data - simplified approach for robustness
+  for (let m = 0; m < measureCount && reader.remaining > 0; m++) {
+    const measure = result.measures[m];
+
+    for (let t = 0; t < trackCount && reader.remaining > 0; t++) {
+      const track = result.tracks[t];
+      const voiceCount = version >= 5 ? 2 : 1;
+
+      for (let v = 0; v < voiceCount && reader.remaining > 0; v++) {
+        const beatCount = reader.readInt();
+
+        if (beatCount < 0 || beatCount > 1000) {
+          // Invalid beat count, skip rest of parsing
+          continue;
         }
-      }
-      track.tuning = tuning.reverse();
 
-      // Port, channel, channel effects, frets
-      reader.skip(4); // Port
-      const channel = reader.readInt() - 1;
-      reader.skip(4); // Channel effects
-      const frets = reader.readInt();
+        let beatPosition = measure.startBeat;
 
-      // Capo
-      track.capo = reader.readInt();
+        for (let b = 0; b < beatCount && reader.remaining > 0; b++) {
+          const beatHeader = reader.readByte();
+          const dotted = (beatHeader & 0x01) !== 0;
 
-      // Track color
-      reader.readInt();
-
-      // Get instrument from channel
-      if (channel >= 0 && channel < channels.length) {
-        const inst = channels[channel].instrument;
-        if (inst >= 25 && inst <= 31) track.instrument = 'Electric Guitar';
-        else if (inst >= 32 && inst <= 39) track.instrument = 'Bass';
-        else if (inst === 0) track.instrument = 'Acoustic Piano';
-        else track.instrument = 'Guitar';
-      }
-
-      result.tracks.push(track);
-    }
-
-    // Parse measure data for each track
-    for (let m = 0; m < measureCount; m++) {
-      for (let t = 0; t < trackCount; t++) {
-        const track = result.tracks[t];
-        const measure = result.measures[m];
-
-        // Number of voices (usually 2 in GP5)
-        const voiceCount = version >= 5 ? 2 : 1;
-
-        for (let v = 0; v < voiceCount; v++) {
-          const beatCount = reader.readInt();
-
-          let beatPosition = measure.startBeat;
-
-          for (let b = 0; b < beatCount; b++) {
-            const beatHeader = reader.readByte();
-
-            // Dotted note
-            const dotted = (beatHeader & 0x01) !== 0;
-
-            // Has chord diagram
-            if (beatHeader & 0x02) {
-              // Parse chord diagram
-              if (version >= 5) {
-                reader.readByte(); // Format
-              }
-              const chordExists = reader.readBool();
-              if (chordExists) {
-                const sharpFlat = reader.readByte();
-                reader.skip(3); // Blank
-                const root = reader.readByte();
-                const chordType = reader.readByte();
-                const extension = reader.readByte();
-                const bass = reader.readInt();
-                const tonality = reader.readInt();
-                const addedNote = reader.readBool();
-                const chordName = reader.readStringByte();
-                reader.skip(40 - chordName.length);
-                reader.skip(2); // Fifth/ninth
-                const baseFret = reader.readInt();
-
-                // Frets for each string
-                const frets: number[] = [];
-                for (let s = 0; s < 7; s++) {
-                  frets.push(reader.readInt());
-                }
-
-                // Barre count
-                const barreCount = reader.readByte();
-                reader.skip(barreCount * 5); // Barre data
-
-                reader.skip(1); // Omissions
-                reader.skip(1); // Blank
-
-                // Fingering
-                const fingers: number[] = [];
-                for (let s = 0; s < 7; s++) {
-                  fingers.push(reader.readSignedByte());
-                }
-
-                reader.readBool(); // Show diagram
-
-                // Add chord to result
-                if (chordName) {
-                  result.chords.push({
-                    name: chordName,
-                    root: String.fromCharCode(65 + root), // A-G
-                    quality: '',
-                    startBeat: beatPosition,
-                    duration: 4,
-                    frets: frets.slice(0, track.tuning?.length || 6),
-                    fingers: fingers.slice(0, track.tuning?.length || 6),
-                  });
-                }
-              } else {
-                // GP3/4 chord format
-                reader.skip(17); // Chord header
-                const chordName = reader.readString(21);
-                reader.skip(4); // Base fret
-                for (let s = 0; s < 7; s++) {
-                  reader.readInt(); // Fret
-                }
-                reader.skip(32); // Additional data
-
-                if (chordName.trim()) {
-                  result.chords.push({
-                    name: chordName.trim(),
-                    root: chordName.charAt(0),
-                    quality: chordName.slice(1).trim(),
-                    startBeat: beatPosition,
-                    duration: 4,
-                  });
-                }
-              }
-            }
-
-            // Has text
-            if (beatHeader & 0x04) {
-              const text = reader.readStringByteInt();
-            }
-
-            // Beat effects
-            if (beatHeader & 0x08) {
-              const effectHeader1 = reader.readByte();
-              let effectHeader2 = 0;
-              if (version >= 4) {
-                effectHeader2 = reader.readByte();
-              }
-
-              // Tap/slap/pop
-              if (effectHeader1 & 0x20) {
-                reader.readByte();
-              }
-
-              // Tremolo bar (GP4+)
-              if (version >= 4 && (effectHeader2 & 0x04)) {
-                readBend(reader);
-              }
-
-              // Stroke
-              if (effectHeader1 & 0x40) {
-                reader.readByte(); // Upstroke
-                reader.readByte(); // Downstroke
-              }
-
-              // Pickstroke
-              if (version >= 4 && (effectHeader2 & 0x02)) {
-                reader.readByte();
-              }
-            }
-
-            // Mix table change
-            if (beatHeader & 0x10) {
-              reader.readSignedByte(); // Instrument
-              if (version >= 5) {
-                reader.skip(16); // RSE data
-              }
-              reader.readSignedByte(); // Volume
-              reader.readSignedByte(); // Pan
-              reader.readSignedByte(); // Chorus
-              reader.readSignedByte(); // Reverb
-              reader.readSignedByte(); // Phaser
-              reader.readSignedByte(); // Tremolo
-              if (version >= 5) {
-                reader.readStringByteInt(); // Tempo name
-              }
-              const tempoChange = reader.readInt();
-              if (tempoChange > 0) {
-                // Tempo change transitions (hidden based on flags)
-                reader.skip(2);
-                if (version >= 5) {
-                  reader.readByte(); // Hide tempo
-                }
-              }
-              reader.skip(1); // Mix table change flags
-              if (version >= 5) {
-                reader.skip(1);
-                reader.readStringByteInt(); // Effect 2
-              }
-            }
-
-            // Duration
-            const duration = reader.readSignedByte();
-            let beatDuration = 4.0 / Math.pow(2, duration + 2);
-            if (dotted) beatDuration *= 1.5;
-
-            // Tuplet
-            if (beatHeader & 0x20) {
-              const tuplet = reader.readInt();
-              if (tuplet === 3) beatDuration *= 2.0 / 3.0;
-              else if (tuplet === 5) beatDuration *= 4.0 / 5.0;
-              else if (tuplet === 6) beatDuration *= 2.0 / 3.0;
-              else if (tuplet === 7) beatDuration *= 4.0 / 7.0;
-            }
-
-            // String flags
-            const stringFlags = reader.readByte();
-
-            // Parse notes for each string
-            for (let s = 6; s >= 0; s--) {
-              if (stringFlags & (1 << s)) {
-                const noteHeader = reader.readByte();
-
-                // Accentuated
-                const accent = (noteHeader & 0x02) !== 0;
-
-                // Ghost note
-                const ghost = (noteHeader & 0x04) !== 0;
-
-                // Note effect
-                const hasEffect = (noteHeader & 0x08) !== 0;
-
-                // Dynamic
-                if (noteHeader & 0x10) {
-                  reader.readSignedByte();
-                }
-
-                // Note type
-                let fret = 0;
-                if (noteHeader & 0x20) {
-                  const noteType = reader.readByte();
-                  if (noteType === 2) {
-                    fret = reader.readSignedByte();
-                  }
-                }
-
-                // Fingering (GP5)
-                if (version >= 5 && (noteHeader & 0x80)) {
-                  reader.readSignedByte(); // Left hand
-                  reader.readSignedByte(); // Right hand
-                }
-
-                // Duration percent
-                if (noteHeader & 0x01) {
-                  reader.readDouble();
-                }
-
-                // Swap accidentals (GP5)
-                if (version >= 5) {
-                  reader.readByte();
-                }
-
-                // Note effects
-                let hammer = false;
-                let pull = false;
-                let slide = false;
-                let bend = 0;
-                let harmonic = false;
-                let palmMute = false;
-                let letRing = false;
-
-                if (hasEffect) {
-                  const effectFlags1 = reader.readByte();
-                  let effectFlags2 = 0;
-                  if (version >= 4) {
-                    effectFlags2 = reader.readByte();
-                  }
-
-                  // Bend
-                  if (effectFlags1 & 0x01) {
-                    bend = readBend(reader);
-                  }
-
-                  // Grace note
-                  if (effectFlags1 & 0x02) {
-                    reader.readByte(); // Fret
-                    reader.readByte(); // Dynamic
-                    reader.readByte(); // Transition
-                    reader.readByte(); // Duration
-                    if (version >= 5) {
-                      reader.readByte(); // Flags
-                    }
-                  }
-
-                  // Tremolo picking
-                  if (effectFlags2 & 0x04) {
-                    reader.readByte();
-                  }
-
-                  // Slide
-                  if (effectFlags2 & 0x08) {
-                    slide = true;
-                    reader.readSignedByte();
-                  }
-
-                  // Harmonic
-                  if (effectFlags2 & 0x10) {
-                    harmonic = true;
-                    reader.readByte();
-                  }
-
-                  // Trill
-                  if (effectFlags2 & 0x20) {
-                    reader.readByte(); // Fret
-                    reader.readByte(); // Period
-                  }
-
-                  // Let ring
-                  if (effectFlags1 & 0x08) {
-                    letRing = true;
-                  }
-
-                  // Hammer on / Pull off
-                  if (effectFlags1 & 0x02) {
-                    // Determined by fret relationship
-                  }
-
-                  // Palm mute
-                  if (effectFlags1 & 0x10) {
-                    palmMute = true;
-                  }
-                }
-
-                // Add note to track
-                if (fret >= 0) {
-                  const stringNumber = 6 - s;
-                  const tuning = track.tuning || STANDARD_TUNING;
-                  const openPitch = tuning[stringNumber - 1] || 'E4';
-
-                  track.notes.push({
-                    pitch: openPitch, // Would need proper calculation
-                    duration: beatDuration,
-                    startBeat: beatPosition,
-                    string: stringNumber,
-                    fret,
-                    accent,
-                    hammer,
-                    pull,
-                    bend,
-                    harmonic: harmonic ? 'natural' : undefined,
-                    palmMute,
-                    letRing,
-                  });
-                }
-              }
-            }
-
-            beatPosition += beatDuration;
+          // Chord diagram
+          if (beatHeader & 0x02) {
+            skipChordDiagram(reader, version);
           }
+
+          // Text
+          if (beatHeader & 0x04) {
+            reader.readStringByteInt();
+          }
+
+          // Beat effects
+          if (beatHeader & 0x08) {
+            skipBeatEffects(reader, version);
+          }
+
+          // Mix table
+          if (beatHeader & 0x10) {
+            skipMixTable(reader, version);
+          }
+
+          // Duration
+          const durationByte = reader.readSignedByte();
+          let beatDuration = 4.0 / Math.pow(2, Math.max(-2, Math.min(6, durationByte + 2)));
+          if (dotted) beatDuration *= 1.5;
+
+          // Tuplet
+          if (beatHeader & 0x20) {
+            const tuplet = reader.readInt();
+            if (tuplet === 3) beatDuration *= 2.0 / 3.0;
+            else if (tuplet === 5) beatDuration *= 4.0 / 5.0;
+            else if (tuplet === 6) beatDuration *= 2.0 / 3.0;
+            else if (tuplet === 7) beatDuration *= 4.0 / 7.0;
+          }
+
+          // String flags
+          const stringFlags = reader.readByte();
+
+          // Parse notes
+          for (let s = 6; s >= 0; s--) {
+            if (stringFlags & (1 << s)) {
+              const noteData = parseNote(reader, version);
+
+              if (noteData.fret >= 0 && noteData.fret < 30) {
+                track.notes.push({
+                  pitch: `${6 - s}:${noteData.fret}`,
+                  duration: beatDuration,
+                  startBeat: beatPosition,
+                  string: 6 - s + 1,
+                  fret: noteData.fret,
+                  accent: noteData.accent,
+                  hammer: noteData.hammer,
+                  pull: noteData.pull,
+                  bend: noteData.bend,
+                  harmonic: noteData.harmonic ? 'natural' : undefined,
+                  palmMute: noteData.palmMute,
+                  letRing: noteData.letRing,
+                });
+              }
+            }
+          }
+
+          beatPosition += beatDuration;
         }
       }
     }
-
-    return result;
-  } catch (error) {
-    console.error('GP parsing error:', error);
-    throw new Error('Failed to parse Guitar Pro file: ' + (error as Error).message);
   }
-}
-
-// Read bend data
-function readBend(reader: BinaryReader): number {
-  const bendType = reader.readByte();
-  const bendValue = reader.readInt(); // In cents (100 = 1 semitone)
-  const pointCount = reader.readInt();
-
-  for (let i = 0; i < pointCount; i++) {
-    reader.readInt(); // Position
-    reader.readInt(); // Value
-    reader.readByte(); // Vibrato
-  }
-
-  return bendValue / 100; // Return in semitones
-}
-
-// Parse GPX (Guitar Pro 6+) format
-// GPX files are ZIP archives containing XML
-async function parseGPX(buffer: ArrayBuffer): Promise<ParsedNotation> {
-  // GPX files are ZIP archives - we need to extract and parse the XML inside
-  // For now, return a placeholder with instructions
-
-  const result: ParsedNotation = {
-    tempo: 120,
-    timeSignature: { beats: 4, beatType: 4 },
-    keySignature: { fifths: 0, mode: 'major', key: 'C' },
-    tracks: [],
-    chords: [],
-    sections: [],
-    lyrics: [],
-    measures: [],
-    totalBeats: 0,
-    totalMeasures: 0,
-    sourceFormat: 'gp',
-  };
-
-  // GPX is a ZIP file - need JSZip or similar to extract
-  // The content is in score.gpif (XML format)
-
-  // For now, try to find any readable content
-  const decoder = new TextDecoder('utf-8', { fatal: false });
-  const text = decoder.decode(buffer);
-
-  // Look for title in GPX XML
-  const titleMatch = text.match(/<Title>([^<]+)<\/Title>/);
-  if (titleMatch) result.title = titleMatch[1];
-
-  const artistMatch = text.match(/<Artist>([^<]+)<\/Artist>/);
-  if (artistMatch) result.artist = artistMatch[1];
-
-  // Look for tempo
-  const tempoMatch = text.match(/<Tempo>(\d+)<\/Tempo>/);
-  if (tempoMatch) result.tempo = parseInt(tempoMatch[1]);
 
   return result;
+}
+
+// Helper to detect section type
+function detectSectionType(name: string): Section['type'] {
+  const lower = name.toLowerCase();
+  if (lower.includes('intro')) return 'intro';
+  if (lower.includes('verse')) return 'verse';
+  if (lower.includes('chorus') || lower.includes('refrain')) return 'chorus';
+  if (lower.includes('bridge')) return 'bridge';
+  if (lower.includes('solo')) return 'solo';
+  if (lower.includes('outro') || lower.includes('coda')) return 'outro';
+  if (lower.includes('break')) return 'breakdown';
+  return 'custom';
+}
+
+// Skip chord diagram data
+function skipChordDiagram(reader: SafeBinaryReader, version: number): void {
+  if (version >= 5) {
+    reader.readByte();
+  }
+
+  const exists = reader.readBool();
+  if (exists) {
+    reader.skip(4); // sharp/flat + blank
+    reader.skip(4); // root, type, extension
+    reader.readInt(); // bass
+    reader.readInt(); // tonality
+    reader.readBool(); // added note
+    const nameLen = reader.readByte();
+    reader.skip(40); // name (padded)
+    reader.skip(2); // fifth/ninth
+    reader.readInt(); // base fret
+    reader.skip(28); // 7 frets as ints
+    const barreCount = reader.readByte();
+    reader.skip(barreCount * 5);
+    reader.skip(2); // omissions + blank
+    reader.skip(7); // fingering
+    reader.readBool(); // show diagram
+  } else {
+    // GP3/4 format
+    reader.skip(17);
+    reader.skip(21); // name
+    reader.skip(4); // base fret
+    reader.skip(28); // frets
+    reader.skip(32); // additional
+  }
+}
+
+// Skip beat effects
+function skipBeatEffects(reader: SafeBinaryReader, version: number): void {
+  const flags1 = reader.readByte();
+  let flags2 = 0;
+  if (version >= 4) {
+    flags2 = reader.readByte();
+  }
+
+  if (flags1 & 0x20) reader.readByte();
+  if (version >= 4 && (flags2 & 0x04)) skipBend(reader);
+  if (flags1 & 0x40) reader.skip(2);
+  if (version >= 4 && (flags2 & 0x02)) reader.readByte();
+}
+
+// Skip mix table
+function skipMixTable(reader: SafeBinaryReader, version: number): void {
+  reader.readSignedByte(); // instrument
+  if (version >= 5) reader.skip(16);
+  reader.skip(6); // volume, pan, chorus, reverb, phaser, tremolo
+  if (version >= 5) reader.readStringByteInt();
+  const tempo = reader.readInt();
+  if (tempo > 0) {
+    reader.skip(2);
+    if (version >= 5) reader.readByte();
+  }
+  reader.readByte();
+  if (version >= 5) {
+    reader.readByte();
+    reader.readStringByteInt();
+  }
+}
+
+// Skip bend data
+function skipBend(reader: SafeBinaryReader): void {
+  reader.readByte();
+  reader.readInt();
+  const points = reader.readInt();
+  reader.skip(Math.min(points, 100) * 9);
+}
+
+// Parse note data
+function parseNote(reader: SafeBinaryReader, version: number): {
+  fret: number;
+  accent: boolean;
+  hammer: boolean;
+  pull: boolean;
+  bend: number;
+  harmonic: boolean;
+  palmMute: boolean;
+  letRing: boolean;
+} {
+  const header = reader.readByte();
+
+  const accent = (header & 0x02) !== 0;
+  const hasEffect = (header & 0x08) !== 0;
+
+  if (header & 0x10) reader.readSignedByte(); // dynamic
+
+  let fret = 0;
+  if (header & 0x20) {
+    const noteType = reader.readByte();
+    if (noteType === 2) {
+      fret = reader.readSignedByte();
+    }
+  }
+
+  if (version >= 5 && (header & 0x80)) {
+    reader.skip(2); // fingering
+  }
+
+  if (header & 0x01) {
+    reader.readDouble(); // duration percent
+  }
+
+  if (version >= 5) {
+    reader.readByte(); // swap accidentals
+  }
+
+  let hammer = false, pull = false, harmonic = false, palmMute = false, letRing = false;
+  let bend = 0;
+
+  if (hasEffect) {
+    const eFlags1 = reader.readByte();
+    let eFlags2 = 0;
+    if (version >= 4) {
+      eFlags2 = reader.readByte();
+    }
+
+    if (eFlags1 & 0x01) {
+      reader.readByte();
+      bend = reader.readInt() / 100;
+      const pts = reader.readInt();
+      reader.skip(Math.min(pts, 100) * 9);
+    }
+
+    if (eFlags1 & 0x02) {
+      reader.skip(4);
+      if (version >= 5) reader.readByte();
+    }
+
+    if (eFlags2 & 0x04) reader.readByte();
+    if (eFlags2 & 0x08) reader.readSignedByte();
+    if (eFlags2 & 0x10) {
+      harmonic = true;
+      reader.readByte();
+    }
+    if (eFlags2 & 0x20) reader.skip(2);
+
+    letRing = (eFlags1 & 0x08) !== 0;
+    palmMute = (eFlags1 & 0x10) !== 0;
+  }
+
+  return { fret, accent, hammer, pull, bend, harmonic, palmMute, letRing };
 }
 
 // Main parser function
@@ -779,20 +633,14 @@ export async function parseGuitarPro(buffer: ArrayBuffer): Promise<ParsedNotatio
   const version = detectGPVersion(buffer);
 
   if (version === 0) {
-    throw new Error('Unknown or unsupported file format');
-  }
-
-  if (version === -1) {
-    throw new Error('Power Tab format is not supported. Please export as Guitar Pro or MusicXML.');
+    throw new Error('Unknown Guitar Pro format');
   }
 
   if (version >= 6) {
-    // GPX format (GP6, GP7)
-    return parseGPX(buffer);
+    throw new Error('GP6/7 format should be handled by GPX parser');
   }
 
-  // GP3/GP4/GP5 format
-  const reader = new BinaryReader(buffer);
+  const reader = new SafeBinaryReader(buffer);
   return parseGP345(reader, version);
 }
 
