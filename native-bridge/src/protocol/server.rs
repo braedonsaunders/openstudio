@@ -248,8 +248,9 @@ impl BridgeServer {
                     } else {
                         empty_read_counter += 1;
                     }
-                } else if loop_counter % 1000 == 0 {
-                    warn!("[Server] Audio engine not running (loop {})", loop_counter);
+                } else if loop_counter == 5000 {
+                    // Only log once after ~5 seconds if audio hasn't started yet
+                    info!("[Server] Waiting for audio engine to start...");
                 }
             }
 

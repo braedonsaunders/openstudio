@@ -567,6 +567,7 @@ export class NativeBridge {
       isMuted?: boolean;
       isSolo?: boolean;
       volume?: number;
+      pan?: number;
       inputGainDb?: number;
       monitoringEnabled?: boolean;
       monitoringVolume?: number;
@@ -581,6 +582,7 @@ export class NativeBridge {
       isMuted: state.isMuted,
       isSolo: state.isSolo,
       volume: state.volume,
+      pan: state.pan,
       inputGainDb: state.inputGainDb,
       monitoringEnabled: state.monitoringEnabled,
       monitoringVolume: state.monitoringVolume,

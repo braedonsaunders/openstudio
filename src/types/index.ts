@@ -318,6 +318,7 @@ export interface UserTrack {
   isMuted: boolean;
   isSolo: boolean;
   volume: number;
+  pan: number; // -1 (full left) to 1 (full right), 0 = center
   isArmed: boolean; // Ready to record
   isRecording: boolean;
   stream?: MediaStream;

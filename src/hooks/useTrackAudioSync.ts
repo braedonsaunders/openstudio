@@ -12,6 +12,7 @@ interface TrackSyncState {
   isMuted: boolean;
   isSolo: boolean;
   volume: number;
+  pan: number;
   inputGainDb: number;
   monitoringEnabled: boolean;
   monitoringVolume: number;
@@ -73,6 +74,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           isMuted: isEffectivelyMuted,
           isSolo: track.isSolo,
           volume: track.volume,
+          pan: track.pan ?? 0,
           inputGainDb: track.audioSettings.inputGain || 0,
           monitoringEnabled: directMonitoring,
           monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
@@ -85,6 +87,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         isMuted: isEffectivelyMuted,
         isSolo: track.isSolo,
         volume: track.volume,
+        pan: track.pan ?? 0,
         inputGainDb: track.audioSettings.inputGain || 0,
         monitoringEnabled: directMonitoring,
         monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
@@ -151,6 +154,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
           isMuted: isEffectivelyMuted,
           isSolo: track.isSolo,
           volume: track.volume,
+          pan: track.pan ?? 0,
           inputGainDb: track.audioSettings.inputGain || 0,
           monitoringEnabled: track.audioSettings.directMonitoring ?? true,
           monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
@@ -206,6 +210,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
             lastState.isMuted !== currentState.isMuted ||
             lastState.isSolo !== currentState.isSolo ||
             lastState.volume !== currentState.volume ||
+            lastState.pan !== currentState.pan ||
             lastState.inputGainDb !== currentState.inputGainDb ||
             lastState.monitoringEnabled !== currentState.monitoringEnabled ||
             lastState.monitoringVolume !== currentState.monitoringVolume;
@@ -216,6 +221,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
               isMuted: currentState.isMuted,
               isSolo: currentState.isSolo,
               volume: currentState.volume,
+              pan: currentState.pan,
               inputGainDb: currentState.inputGainDb,
               monitoringEnabled: currentState.monitoringEnabled,
               monitoringVolume: currentState.monitoringVolume,
