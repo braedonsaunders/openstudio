@@ -67,13 +67,17 @@ impl Default for EngineConfig {
     }
 }
 
-/// Real-time audio levels
+/// Real-time audio levels (stereo)
 #[derive(Debug, Clone, Default)]
 pub struct AudioLevels {
-    pub input_level: f32,
-    pub output_level: f32,
-    pub input_peak: f32,
-    pub output_peak: f32,
+    pub input_level_l: f32,
+    pub input_level_r: f32,
+    pub output_level_l: f32,
+    pub output_level_r: f32,
+    pub input_peak_l: f32,
+    pub input_peak_r: f32,
+    pub output_peak_l: f32,
+    pub output_peak_r: f32,
     pub remote_levels: Vec<(String, f32)>,
     pub backing_level: f32,
 }
@@ -944,14 +948,17 @@ impl AudioEngine {
             stereo_buffer.push(right_sample);
         }
 
-        // Calculate input level
-        let level = stereo_buffer
-            .iter()
-            .map(|s| s.abs())
-            .fold(0.0_f32, f32::max);
+        // Calculate input levels (stereo) - interleaved L/R samples
+        let (level_l, level_r) = stereo_buffer
+            .chunks_exact(2)
+            .fold((0.0_f32, 0.0_f32), |(max_l, max_r), chunk| {
+                (max_l.max(chunk[0].abs()), max_r.max(chunk[1].abs()))
+            });
         if let Ok(mut lvl) = levels.try_write() {
-            lvl.input_level = level;
-            lvl.input_peak = lvl.input_peak.max(level);
+            lvl.input_level_l = level_l;
+            lvl.input_level_r = level_r;
+            lvl.input_peak_l = lvl.input_peak_l.max(level_l);
+            lvl.input_peak_r = lvl.input_peak_r.max(level_r);
         }
 
         // Stream audio to browser (browser applies effects via Web Audio)
@@ -1084,11 +1091,17 @@ impl AudioEngine {
             *sample = sample.tanh();
         }
 
-        // Update output level for metering
-        let level = data.iter().map(|s| s.abs()).fold(0.0_f32, f32::max);
+        // Update output levels for metering (stereo) - interleaved L/R samples
+        let (level_l, level_r) = data
+            .chunks_exact(2)
+            .fold((0.0_f32, 0.0_f32), |(max_l, max_r), chunk| {
+                (max_l.max(chunk[0].abs()), max_r.max(chunk[1].abs()))
+            });
         if let Ok(mut lvl) = levels.try_write() {
-            lvl.output_level = level;
-            lvl.output_peak = lvl.output_peak.max(level);
+            lvl.output_level_l = level_l;
+            lvl.output_level_r = level_r;
+            lvl.output_peak_l = lvl.output_peak_l.max(level_l);
+            lvl.output_peak_r = lvl.output_peak_r.max(level_r);
             lvl.backing_level = backing_level;
         }
     }

@@ -117,12 +117,19 @@ impl BridgeServer {
 
                     // Send to TUI if channel exists
                     if let Some(ref tx) = app.tui_tx {
-                        // Audio levels (mono for now - TODO: stereo from audio engine)
+                        // Convert linear amplitude to dB for TUI display
+                        // dB = 20 * log10(linear), clamped to -60dB minimum
+                        let to_db = |linear: f32| -> f32 {
+                            if linear <= 0.000001 { -60.0 }
+                            else { (20.0 * linear.log10()).clamp(-60.0, 6.0) }
+                        };
+
+                        // Audio levels (true stereo from audio engine)
                         let _ = tx.try_send(AppEvent::AudioLevels {
-                            input_l: audio_levels.input_level,
-                            input_r: audio_levels.input_level,
-                            output_l: audio_levels.output_level,
-                            output_r: audio_levels.output_level,
+                            input_l: to_db(audio_levels.input_level_l),
+                            input_r: to_db(audio_levels.input_level_r),
+                            output_l: to_db(audio_levels.output_level_l),
+                            output_r: to_db(audio_levels.output_level_r),
                         });
 
                         // Effects metering (dynamics)
@@ -146,10 +153,10 @@ impl BridgeServer {
                     }
 
                     let msg = NativeMessage::Levels {
-                        input_level: audio_levels.input_level,
-                        input_peak: audio_levels.input_peak,
-                        output_level: audio_levels.output_level,
-                        output_peak: audio_levels.output_peak,
+                        input_level: audio_levels.input_level_l.max(audio_levels.input_level_r),
+                        input_peak: audio_levels.input_peak_l.max(audio_levels.input_peak_r),
+                        output_level: audio_levels.output_level_l.max(audio_levels.output_level_r),
+                        output_peak: audio_levels.output_peak_l.max(audio_levels.output_peak_r),
                         remote_levels: audio_levels.remote_levels,
                     };
 
