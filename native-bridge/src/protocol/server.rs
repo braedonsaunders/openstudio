@@ -272,9 +272,17 @@ impl BridgeServer {
                     );
                 }
 
-                info!("[Server] Diagnostic: loop={}, empty_reads={}, cbs=({},{}), buffer={}% ({}/{}), healthy={}",
+                // Get monitoring state for diagnostics
+                let app = self.state.lock().await;
+                let levels = app.audio_engine.get_levels();
+                let is_monitoring = app.audio_engine.is_monitoring();
+                drop(app);
+
+                info!("[Server] Diagnostic: loop={}, empty_reads={}, cbs=({},{}), buffer={}% healthy={}, mon={}, in={:.3}/{:.3} out={:.3}/{:.3}",
                       loop_counter, empty_read_counter, input_cbs, output_cbs,
-                      buffer_pct, buffer_used, buffer_capacity, healthy);
+                      buffer_pct, healthy, is_monitoring,
+                      levels.input_level_l, levels.input_level_r,
+                      levels.output_level_l, levels.output_level_r);
                 last_diagnostic = Instant::now();
             }
 
@@ -541,6 +549,11 @@ impl BridgeServer {
             }
 
             BrowserMessage::UpdateEffects { effects, .. } => {
+                info!("UpdateEffects received: {} effects configured",
+                      [effects.wah.enabled, effects.overdrive.enabled, effects.distortion.enabled,
+                       effects.amp.enabled, effects.compressor.enabled, effects.eq.enabled,
+                       effects.reverb.enabled, effects.delay.enabled, effects.chorus.enabled]
+                       .iter().filter(|&&e| e).count());
                 let app = self.state.lock().await;
                 app.audio_engine.update_effects(effects.clone());
 

@@ -358,20 +358,31 @@ fn draw_network_panel(f: &mut Frame, app: &App, area: Rect) {
         ])
         .split(inner);
 
-    // Connection info
-    let mode_color = match app.network_mode {
-        NetworkMode::Disconnected => Color::Red,
-        NetworkMode::Connecting => Color::Yellow,
-        NetworkMode::P2P => Color::Green,
-        NetworkMode::Relay => Color::Blue,
-        NetworkMode::Hybrid => Color::Cyan,
+    // Connection info - distinguish browser connection from P2P room status
+    let (mode_text, mode_color) = if app.network_connected {
+        match app.network_mode {
+            NetworkMode::Disconnected => ("Standby (no room)".to_string(), Color::Yellow),
+            NetworkMode::Connecting => ("Connecting...".to_string(), Color::Yellow),
+            NetworkMode::P2P => ("P2P Direct".to_string(), Color::Green),
+            NetworkMode::Relay => ("Relay Server".to_string(), Color::Blue),
+            NetworkMode::Hybrid => ("Hybrid P2P+Relay".to_string(), Color::Cyan),
+        }
+    } else {
+        ("Offline".to_string(), Color::Red)
     };
 
     let conn_info = Paragraph::new(vec![
         Line::from(vec![
-            Span::raw("Mode:    "),
+            Span::raw("Browser: "),
             Span::styled(
-                format!("{}", app.network_mode),
+                if app.network_connected { "Connected" } else { "Disconnected" },
+                Style::default().fg(if app.network_connected { Color::Green } else { Color::Red }).add_modifier(Modifier::BOLD),
+            ),
+        ]),
+        Line::from(vec![
+            Span::raw("Room:    "),
+            Span::styled(
+                mode_text,
                 Style::default().fg(mode_color).add_modifier(Modifier::BOLD),
             ),
         ]),
@@ -571,16 +582,19 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
     .block(Block::default().title("Meters").borders(Borders::TOP));
     f.render_widget(levels, chunks[0]);
 
-    // Mini network
-    let net_status = if app.network_connected {
-        format!("{} ({})", app.network_mode, app.peer_count)
+    // Mini network - show clearer status
+    let (net_status, net_color) = if app.network_connected {
+        match app.network_mode {
+            NetworkMode::Disconnected => ("Standby".to_string(), Color::Yellow),  // Browser connected, no room
+            _ => (format!("{} ({})", app.network_mode, app.peer_count), Color::Green),
+        }
     } else {
-        "Offline".to_string()
+        ("Offline".to_string(), Color::Red)
     };
     let network = Paragraph::new(vec![
         Line::from(Span::styled(
             net_status,
-            Style::default().fg(if app.network_connected { Color::Green } else { Color::Red }),
+            Style::default().fg(net_color),
         )),
         Line::from(vec![
             Span::raw("RTT: "),
