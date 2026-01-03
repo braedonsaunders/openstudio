@@ -306,10 +306,22 @@ impl AudioEngine {
             return Ok(());
         }
 
+        info!("Setting channel config: {:?}", config);
         self.config.channel_config = config.clone();
-        if let Ok(mut state) = self.processing_state.write() {
-            state.channel_config = config;
+
+        // CRITICAL: Must update processing_state - this is what the audio callback reads
+        // Use blocking write to ensure the config is applied
+        match self.processing_state.write() {
+            Ok(mut state) => {
+                state.channel_config = config;
+                info!("Channel config updated in processing_state");
+            }
+            Err(e) => {
+                // This should never happen in practice, but log if it does
+                tracing::error!("Failed to acquire write lock for channel config: {:?}", e);
+            }
         }
+
         if self.is_running.load(Ordering::SeqCst) {
             self.stop()?;
             self.start()?;
@@ -587,6 +599,18 @@ impl AudioEngine {
     pub fn start(&mut self) -> Result<()> {
         if self.is_running.load(Ordering::SeqCst) {
             return Ok(());
+        }
+
+        // CRITICAL: Sync channel config from self.config to processing_state before starting
+        // This ensures the audio callback uses the correct config from the first frame
+        if let Ok(mut state) = self.processing_state.write() {
+            if state.channel_config != self.config.channel_config {
+                info!(
+                    "Syncing channel config at start: {:?} -> {:?}",
+                    state.channel_config, self.config.channel_config
+                );
+                state.channel_config = self.config.channel_config.clone();
+            }
         }
 
         // Create ring buffers

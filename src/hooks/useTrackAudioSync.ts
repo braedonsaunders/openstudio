@@ -230,6 +230,12 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
 
           // Note: Channel config is now handled at the global level via setChannelConfig()
           // Native bridge uses single-track audio capture; multi-track is handled in browser
+
+          // Sync effects to native bridge when changed
+          if (currentState.effects && (!lastState || lastState.effects !== currentState.effects)) {
+            console.log('[useTrackAudioSync] Syncing effects to native bridge for track:', track.id);
+            nativeBridge.updateEffects(track.id, currentState.effects);
+          }
         }
 
         lastSyncRef.current.set(track.id, currentState);
