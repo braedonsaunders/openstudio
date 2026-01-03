@@ -333,17 +333,51 @@ pub fn snap_to_scale(freq: f32, key_offset: i32, scale: &Scale) -> f32 {
     440.0 * 2.0f32.powf((adjusted_target - 69.0) / 12.0)
 }
 
-/// Get harmony intervals for a chord type
+/// Get harmony intervals for a chord type, using the scale to determine
+/// musically correct intervals. Falls back to chromatic intervals if scale
+/// doesn't have enough degrees.
 pub fn get_harmony_intervals(harmony_type: &str, scale: &Scale) -> Vec<i32> {
+    let intervals = scale.intervals();
+
+    // Helper to get nth scale degree (0-indexed), with fallback
+    let get_degree = |degree: usize, fallback: i32| -> i32 {
+        intervals.get(degree).copied().unwrap_or(fallback)
+    };
+
     match harmony_type.to_lowercase().as_str() {
-        "third" => vec![4], // Major third (or use scale degree)
-        "fifth" => vec![7],
-        "octave" => vec![12],
-        "powerchord" => vec![7, 12],
-        "majorchord" => vec![4, 7],
-        "minorchord" => vec![3, 7],
+        "third" => {
+            // 3rd scale degree (index 2)
+            vec![get_degree(2, 4)]
+        }
+        "fifth" => {
+            // 5th scale degree (index 4)
+            vec![get_degree(4, 7)]
+        }
+        "octave" => vec![12], // Octave is always 12 semitones
+        "powerchord" => {
+            // Root + 5th + octave
+            let fifth = get_degree(4, 7);
+            vec![fifth, 12]
+        }
+        "majorchord" => {
+            // Major third + perfect fifth (force major regardless of scale)
+            vec![4, 7]
+        }
+        "minorchord" => {
+            // Minor third + perfect fifth (force minor regardless of scale)
+            vec![3, 7]
+        }
+        "scalechord" => {
+            // 3rd and 5th from the scale (will be major/minor depending on scale)
+            let third = get_degree(2, 4);
+            let fifth = get_degree(4, 7);
+            vec![third, fifth]
+        }
         "custom" => vec![], // Custom intervals set separately
-        _ => vec![4], // Default to third
+        _ => {
+            // Default to scale-aware third
+            vec![get_degree(2, 4)]
+        }
     }
 }
 

@@ -1,6 +1,6 @@
 //! Parametric EQ - multi-band equalizer with various filter types
 
-use super::dsp::{Biquad, BiquadType, StereoBiquad};
+use super::dsp::{BiquadType, StereoBiquad};
 use super::types::{EqBandType, EqSettings};
 use super::AudioEffect;
 

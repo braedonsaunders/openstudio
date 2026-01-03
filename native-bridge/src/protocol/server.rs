@@ -1,6 +1,7 @@
 //! WebSocket server for browser communication
 
 use super::{AudioMessageHeader, BrowserMessage, NativeMessage};
+use crate::tui::AppEvent;
 use crate::AppState;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
@@ -75,14 +76,35 @@ impl BridgeServer {
                 let levels = {
                     let app = self.state.lock().await;
                     let audio_levels = app.audio_engine.get_levels();
+                    let effects_metering = app.audio_engine.get_effects_metering();
 
-                    NativeMessage::Levels {
+                    // Send to TUI if channel exists
+                    if let Some(ref tx) = app.tui_tx {
+                        // Audio levels
+                        let _ = tx.try_send(AppEvent::AudioLevels {
+                            input_l: audio_levels.input_level,
+                            input_r: audio_levels.input_level, // Mono for now
+                            output_l: audio_levels.output_level,
+                            output_r: audio_levels.output_level,
+                        });
+
+                        // Effects metering (dynamics)
+                        let _ = tx.try_send(AppEvent::EffectsMetering {
+                            noise_gate_open: effects_metering.noise_gate_open,
+                            compressor_reduction: effects_metering.compressor_reduction,
+                            limiter_reduction: effects_metering.limiter_reduction,
+                        });
+                    }
+
+                    let msg = NativeMessage::Levels {
                         input_level: audio_levels.input_level,
                         input_peak: audio_levels.input_peak,
                         output_level: audio_levels.output_level,
                         output_peak: audio_levels.output_peak,
                         remote_levels: audio_levels.remote_levels,
-                    }
+                    };
+
+                    msg
                 };
 
                 if let Ok(json) = serde_json::to_string(&levels) {

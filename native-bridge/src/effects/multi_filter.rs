@@ -1,6 +1,6 @@
 //! Multi-Filter - versatile filter with LFO and envelope modulation
 
-use super::dsp::{Biquad, BiquadType, EnvelopeFollower, Lfo, LfoWaveform, StereoBiquad};
+use super::dsp::{BiquadType, EnvelopeFollower, Lfo, LfoWaveform, StereoBiquad};
 use super::types::{MultiFilterSettings, MultiFilterType};
 use super::AudioEffect;
 

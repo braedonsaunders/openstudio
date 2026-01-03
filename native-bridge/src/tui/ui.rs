@@ -8,7 +8,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{
         Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Wrap,
+        ScrollbarOrientation, ScrollbarState, Tabs, Wrap,
     },
     Frame,
 };
@@ -36,15 +36,8 @@ pub fn draw(f: &mut Frame, app: &App) {
 }
 
 fn draw_header(f: &mut Frame, app: &App, area: Rect) {
-    let title = format!(
-        " OpenStudio Native Bridge │ {} │ {}Hz/{}smp │ {} ",
-        app.uptime_str(),
-        app.sample_rate,
-        app.buffer_size,
-        if app.network_connected { "●" } else { "○" }
-    );
-
-    let tabs = vec!["[A]udio", "[E]ffects", "[N]etwork", "[L]ogs"];
+    // Build tab titles with hotkeys
+    let tab_titles = vec!["[A]udio", "[E]ffects", "[N]etwork", "[L]ogs"];
     let selected = match app.active_panel {
         ActivePanel::Audio => 0,
         ActivePanel::Effects => 1,
@@ -52,36 +45,34 @@ fn draw_header(f: &mut Frame, app: &App, area: Rect) {
         ActivePanel::Logs => 3,
     };
 
-    let header = Paragraph::new(Line::from(vec![
-        Span::styled("█▀▀ ", Style::default().fg(Color::Cyan)),
-        Span::styled("OpenStudio", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)),
-        Span::styled(" Native Bridge ", Style::default().fg(Color::White)),
-        Span::raw("│ "),
-        Span::styled(app.uptime_str(), Style::default().fg(Color::Yellow)),
-        Span::raw(" │ "),
-        Span::styled(
-            format!("{}Hz", app.sample_rate),
-            Style::default().fg(Color::Green),
-        ),
-        Span::raw("/"),
-        Span::styled(
-            format!("{}smp", app.buffer_size),
-            Style::default().fg(Color::Green),
-        ),
-        Span::raw(" │ "),
-        if app.network_connected {
-            Span::styled("● Connected", Style::default().fg(Color::Green))
-        } else {
-            Span::styled("○ Offline", Style::default().fg(Color::DarkGray))
-        },
-    ]))
-    .block(
-        Block::default()
-            .borders(Borders::ALL)
-            .border_style(Style::default().fg(Color::Cyan)),
+    // Create title with status info
+    let title = format!(
+        " █▀▀ OpenStudio │ {} │ {}Hz/{}smp │ {} ",
+        app.uptime_str(),
+        app.sample_rate,
+        app.buffer_size,
+        if app.network_connected { "●" } else { "○" }
     );
 
-    f.render_widget(header, area);
+    // Build tabs widget with proper highlighting
+    let tabs = Tabs::new(tab_titles)
+        .select(selected)
+        .style(Style::default().fg(Color::DarkGray))
+        .highlight_style(
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
+        )
+        .divider("│")
+        .block(
+            Block::default()
+                .title(title)
+                .title_style(Style::default().fg(Color::Cyan))
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan)),
+        );
+
+    f.render_widget(tabs, area);
 }
 
 fn draw_content(f: &mut Frame, app: &App, area: Rect) {
@@ -213,62 +204,84 @@ fn draw_effects_panel(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Group effects by category
+    // Define category order and colors
     let categories = [
-        EffectCategory::Guitar,
-        EffectCategory::Dynamics,
-        EffectCategory::Modulation,
-        EffectCategory::TimeBased,
-        EffectCategory::Pitch,
-        EffectCategory::Spatial,
+        (EffectCategory::Guitar, Color::Yellow, "Guitar"),
+        (EffectCategory::Dynamics, Color::Cyan, "Dynamics"),
+        (EffectCategory::Modulation, Color::Magenta, "Modulation"),
+        (EffectCategory::TimeBased, Color::Blue, "Time-Based"),
+        (EffectCategory::Pitch, Color::Green, "Pitch"),
+        (EffectCategory::Spatial, Color::Red, "Spatial"),
     ];
 
-    let items: Vec<ListItem> = app
-        .effects
-        .iter()
-        .skip(app.effects_scroll)
-        .take(inner.height as usize)
-        .map(|effect| {
+    // Build grouped list with category headers
+    let mut items: Vec<ListItem> = Vec::new();
+
+    for (category, color, name) in &categories {
+        // Get effects in this category
+        let category_effects: Vec<_> = app
+            .effects
+            .iter()
+            .filter(|e| &e.category == category)
+            .collect();
+
+        if category_effects.is_empty() {
+            continue;
+        }
+
+        // Add category header
+        items.push(ListItem::new(Line::from(vec![
+            Span::styled(
+                format!("── {} ", name),
+                Style::default().fg(*color).add_modifier(Modifier::BOLD),
+            ),
+            Span::styled(
+                format!("({}) ", category_effects.iter().filter(|e| e.enabled).count()),
+                Style::default().fg(Color::DarkGray),
+            ),
+            Span::styled(
+                "──────────",
+                Style::default().fg(*color),
+            ),
+        ])));
+
+        // Add effects in this category
+        for effect in category_effects {
             let style = if effect.enabled {
                 Style::default().fg(Color::Green)
             } else {
                 Style::default().fg(Color::DarkGray)
             };
-
             let indicator = if effect.enabled { "●" } else { "○" };
-            let category_color = match effect.category {
-                EffectCategory::Guitar => Color::Yellow,
-                EffectCategory::Dynamics => Color::Cyan,
-                EffectCategory::Modulation => Color::Magenta,
-                EffectCategory::TimeBased => Color::Blue,
-                EffectCategory::Pitch => Color::Green,
-                EffectCategory::Spatial => Color::Red,
-            };
 
-            ListItem::new(Line::from(vec![
+            items.push(ListItem::new(Line::from(vec![
+                Span::raw("  "),
                 Span::styled(indicator, style),
                 Span::raw(" "),
-                Span::styled(
-                    format!("{:<12}", effect.name),
-                    style,
-                ),
-                Span::styled(
-                    format!("[{}]", effect.category),
-                    Style::default().fg(category_color),
-                ),
-            ]))
-        })
+                Span::styled(effect.name.clone(), style),
+            ])));
+        }
+    }
+
+    // Calculate total items for scrollbar
+    let total_items = items.len();
+
+    // Apply scrolling
+    let visible_items: Vec<ListItem> = items
+        .into_iter()
+        .skip(app.effects_scroll)
+        .take(inner.height as usize)
         .collect();
 
-    let list = List::new(items);
+    let list = List::new(visible_items);
     f.render_widget(list, inner);
 
-    // Scrollbar
-    if app.effects.len() > inner.height as usize {
+    // Scrollbar (use total_items which includes category headers)
+    if total_items > inner.height as usize {
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("▲"))
             .end_symbol(Some("▼"));
-        let mut scrollbar_state = ScrollbarState::new(app.effects.len())
+        let mut scrollbar_state = ScrollbarState::new(total_items)
             .position(app.effects_scroll);
         f.render_stateful_widget(
             scrollbar,
@@ -534,7 +547,7 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(effects, chunks[3]);
 }
 
-fn draw_footer(f: &mut Frame, app: &App, area: Rect) {
+fn draw_footer(f: &mut Frame, _app: &App, area: Rect) {
     let help = " [Q]uit │ [E]ffects │ [N]etwork │ [?]Help │ [Tab] Switch │ [↑↓] Scroll ";
 
     let footer = Paragraph::new(Line::from(vec![

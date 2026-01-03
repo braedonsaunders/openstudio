@@ -114,7 +114,9 @@ async fn main() -> Result<()> {
     }));
 
     if enable_tui {
-        // Run TUI mode
+        // Run TUI mode with LocalSet to allow non-Send futures
+        // AppState contains cpal::Stream which has RefCell closures (not Send)
+        // LocalSet allows spawning non-Send futures on a single-threaded executor
         info!("Starting TUI interface...");
 
         let tui_rx = tui_rx.unwrap();
@@ -122,36 +124,40 @@ async fn main() -> Result<()> {
         // Create TUI app
         let app = tui::App::new();
 
-        // Send initial device info
-        if let Some(tx) = &tui_tx {
-            let _ = tx.send(tui::AppEvent::DeviceInfo {
-                input_device,
-                output_device,
-                sample_rate,
-                buffer_size,
-            }).await;
+        // Use LocalSet to run both WebSocket server and TUI on same thread
+        let local = tokio::task::LocalSet::new();
+        local.run_until(async move {
+            // Send initial device info
+            if let Some(tx) = &tui_tx {
+                let _ = tx.send(tui::AppEvent::DeviceInfo {
+                    input_device,
+                    output_device,
+                    sample_rate,
+                    buffer_size,
+                }).await;
 
-            let _ = tx.send(tui::AppEvent::Log {
-                level: tui::LogLevel::Info,
-                message: format!("OpenStudio Bridge v{} started", env!("CARGO_PKG_VERSION")),
-            }).await;
-        }
-
-        // Spawn WebSocket server in background task
-        let server_state = state.clone();
-        tokio::spawn(async move {
-            if let Err(e) = protocol::run_server("127.0.0.1:9999", server_state).await {
-                tracing::error!("WebSocket server error: {}", e);
+                let _ = tx.send(tui::AppEvent::Log {
+                    level: tui::LogLevel::Info,
+                    message: format!("OpenStudio Bridge v{} started", env!("CARGO_PKG_VERSION")),
+                }).await;
             }
-        });
 
-        // Run TUI on main thread (uses blocking I/O for terminal events)
-        // Small delay to ensure server is listening before TUI takes over terminal
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            // Spawn WebSocket server in background local task (non-Send safe)
+            let server_state = state.clone();
+            tokio::task::spawn_local(async move {
+                if let Err(e) = protocol::run_server("127.0.0.1:9999", server_state).await {
+                    tracing::error!("WebSocket server error: {}", e);
+                }
+            });
 
-        if let Err(e) = tui::run(app, tui_rx).await {
-            tracing::error!("TUI error: {}", e);
-        }
+            // Small delay to ensure server is listening before TUI takes over terminal
+            tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+            // Run TUI on main thread
+            if let Err(e) = tui::run(app, tui_rx).await {
+                tracing::error!("TUI error: {}", e);
+            }
+        }).await;
     } else {
         // Run headless mode
         info!("Bridge running on ws://localhost:9999 (headless mode)");

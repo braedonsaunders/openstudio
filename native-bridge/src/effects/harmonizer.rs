@@ -2,7 +2,6 @@
 //!
 //! Creates up to 3 additional voices at scale-correct intervals.
 
-use super::dsp::{crossfade, OnePoleLowpass};
 use super::pitch::{key_to_offset, PitchDetector, PitchShifter, Scale};
 use super::types::{HarmonizerSettings, HarmonyType, PitchCorrectionScale};
 use super::AudioEffect;

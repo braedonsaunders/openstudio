@@ -111,11 +111,14 @@ impl AudioEffect for DeEsser {
             let env_r = self.envelope_r.process(detect_r);
 
             // Calculate gain reduction
+            // - Apply reduction based on how much above threshold
+            // - Limit to max_reduction (minimum gain from reduction setting)
+            // - Never go below range (absolute floor)
             let calc_gain = |env: f32| -> f32 {
                 if env > threshold {
                     let over_db = 20.0 * (env / threshold).log10();
                     let reduction_db = over_db.min(self.settings.reduction);
-                    db_to_linear(-reduction_db).max(range)
+                    db_to_linear(-reduction_db).max(max_reduction).max(range)
                 } else {
                     1.0
                 }
