@@ -35,8 +35,8 @@ pub struct AppState {
 
 #[tokio::main]
 async fn main() -> Result<()> {
-    // Check for TUI mode flag
-    let enable_tui = std::env::args().any(|arg| arg == "--tui" || arg == "-t");
+    // TUI is enabled by default, use --headless to disable
+    let enable_tui = !std::env::args().any(|arg| arg == "--headless" || arg == "-h");
 
     // Initialize logging (only to file/quiet when TUI is enabled)
     if enable_tui {
@@ -152,10 +152,9 @@ async fn main() -> Result<()> {
             }
         }
     } else {
-        // Run headless mode (original behavior)
-        info!("Bridge running on ws://localhost:9999");
+        // Run headless mode
+        info!("Bridge running on ws://localhost:9999 (headless mode)");
         info!("Press Ctrl+C to quit");
-        info!("Run with --tui flag for terminal interface");
 
         protocol::run_server("127.0.0.1:9999", state).await?;
     }
