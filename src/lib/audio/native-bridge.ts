@@ -593,6 +593,11 @@ export class NativeBridge {
    * Update effects
    */
   updateEffects(trackId: string, effects: Partial<UnifiedEffectsChain>): void {
+    // Log which effects are enabled for debugging
+    const enabledEffects = Object.entries(effects)
+      .filter(([, v]) => v && typeof v === 'object' && 'enabled' in v && v.enabled)
+      .map(([k]) => k);
+    console.log('[NativeBridge] updateEffects:', { trackId, enabledEffects });
     this.send({ type: 'updateEffects', trackId: trackId, effects });
   }
 

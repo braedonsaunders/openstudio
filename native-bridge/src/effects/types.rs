@@ -6,21 +6,36 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EffectsSettings {
-    // Base effects (15)
+    // Base effects (15) - all have defaults so partial updates work
+    #[serde(default)]
     pub wah: WahSettings,
+    #[serde(default)]
     pub overdrive: OverdriveSettings,
+    #[serde(default)]
     pub distortion: DistortionSettings,
+    #[serde(default)]
     pub amp: AmpSettings,
+    #[serde(default)]
     pub cabinet: CabinetSettings,
+    #[serde(default)]
     pub noise_gate: NoiseGateSettings,
+    #[serde(default)]
     pub eq: EqSettings,
+    #[serde(default)]
     pub compressor: CompressorSettings,
+    #[serde(default)]
     pub chorus: ChorusSettings,
+    #[serde(default)]
     pub flanger: FlangerSettings,
+    #[serde(default)]
     pub phaser: PhaserSettings,
+    #[serde(default)]
     pub delay: DelaySettings,
+    #[serde(default)]
     pub tremolo: TremoloSettings,
+    #[serde(default)]
     pub reverb: ReverbSettings,
+    #[serde(default)]
     pub limiter: LimiterSettings,
     // Extended effects (20)
     #[serde(default)]
