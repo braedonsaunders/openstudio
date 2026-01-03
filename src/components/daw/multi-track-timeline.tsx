@@ -1757,12 +1757,16 @@ export function MultiTrackTimeline({
           <div
             data-playhead
             className={cn(
-              'absolute top-0 bottom-0 z-30 group',
+              'absolute top-0 z-30 group',
               isLyriaSong
                 ? 'cursor-default'
                 : isPlayheadDragging ? 'cursor-grabbing' : 'cursor-grab'
             )}
-            style={{ left: currentTime * zoom + TRACK_LABEL_WIDTH - 6 }}
+            style={{
+              left: currentTime * zoom + TRACK_LABEL_WIDTH - 6,
+              // Use explicit height to extend through all track rows (20px ruler + track rows)
+              height: 20 + trackRows.length * trackHeight,
+            }}
             onMouseDown={handlePlayheadDragStart}
           >
             {/* Wider hit area for easier grabbing */}
