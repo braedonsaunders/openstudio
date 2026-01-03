@@ -664,11 +664,21 @@ function TabDisplay({
   currentBeat: number;
   onImport: () => void;
 }) {
-  const STRINGS = 6;
+  const [selectedTrackIdx, setSelectedTrackIdx] = useState(0);
   const STRING_LABELS = ['e', 'B', 'G', 'D', 'A', 'E'];
+  const MEASURES_PER_ROW = 4;
 
-  // Get notes grouped by measure
-  const track = tracks[0];
+  // Find tracks with notes
+  const tracksWithNotes = tracks.filter(t => t.notes.length > 0);
+
+  // Auto-select first track with notes
+  useEffect(() => {
+    if (tracksWithNotes.length > 0 && selectedTrackIdx >= tracksWithNotes.length) {
+      setSelectedTrackIdx(0);
+    }
+  }, [tracksWithNotes.length, selectedTrackIdx]);
+
+  const track = tracksWithNotes[selectedTrackIdx];
 
   if (!track || track.notes.length === 0) {
     return (
@@ -694,78 +704,104 @@ function TabDisplay({
     ),
   }));
 
+  // Group measures into rows
+  const measureRows: typeof measureNotes[] = [];
+  for (let i = 0; i < measureNotes.length; i += MEASURES_PER_ROW) {
+    measureRows.push(measureNotes.slice(i, i + MEASURES_PER_ROW));
+  }
+
   return (
     <div className="space-y-4 font-mono text-sm">
-      {/* Track info */}
-      <div className="flex items-center gap-2 text-zinc-400 text-xs">
+      {/* Track selector */}
+      <div className="flex items-center gap-3 text-zinc-400 text-xs flex-wrap">
         <Guitar className="w-4 h-4" />
-        <span className="font-medium">{track.name}</span>
+        {tracksWithNotes.length > 1 ? (
+          <select
+            value={selectedTrackIdx}
+            onChange={(e) => setSelectedTrackIdx(Number(e.target.value))}
+            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-white text-xs"
+          >
+            {tracksWithNotes.map((t, idx) => (
+              <option key={t.id} value={idx}>
+                {t.name} ({t.notes.length} notes)
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="font-medium">{track.name}</span>
+        )}
         {track.tuning && (
           <span className="text-zinc-600">
             Tuning: {track.tuning.join(' ')}
           </span>
         )}
+        <span className="text-zinc-600">({track.notes.length} notes)</span>
       </div>
 
-      {/* Tab lines */}
-      <div className="overflow-x-auto">
-        {measureNotes.map(({ measure, notes }) => (
-          <div
-            key={measure.number}
-            className={cn(
-              'inline-block min-w-[200px] border-r border-zinc-700 pr-2 mr-2',
-              currentBeat >= measure.startBeat &&
-                currentBeat < measure.startBeat + measure.duration &&
-                'bg-indigo-500/10'
-            )}
-          >
-            {/* Measure number */}
-            <div className="text-[10px] text-zinc-600 mb-1">
-              {measure.number}
-            </div>
+      {/* Tab rows */}
+      <div className="space-y-6">
+        {measureRows.map((row, rowIdx) => (
+          <div key={rowIdx} className="flex">
+            {row.map(({ measure, notes }) => (
+              <div
+                key={measure.number}
+                className={cn(
+                  'flex-1 min-w-0 border-r border-zinc-600',
+                  currentBeat >= measure.startBeat &&
+                    currentBeat < measure.startBeat + measure.duration &&
+                    'bg-indigo-500/10'
+                )}
+              >
+                {/* Measure number */}
+                <div className="text-[10px] text-zinc-600 mb-0.5 pl-1">
+                  {measure.number}
+                </div>
 
-            {/* Tab staff */}
-            <div className="relative">
-              {STRING_LABELS.map((label, stringIdx) => {
-                const stringNumber = stringIdx + 1;
-                const stringNotes = notes.filter(n => n.string === stringNumber);
+                {/* Tab staff */}
+                <div className="relative">
+                  {STRING_LABELS.map((label, stringIdx) => {
+                    const stringNumber = stringIdx + 1;
+                    const stringNotes = notes.filter(n => n.string === stringNumber);
 
-                return (
-                  <div key={stringIdx} className="flex items-center h-5">
-                    <span className="w-4 text-zinc-500 text-xs">{label}</span>
-                    <div className="flex-1 relative border-b border-zinc-700">
-                      {stringNotes.map((note, noteIdx) => {
-                        const position = ((note.startBeat - measure.startBeat) / measure.duration) * 100;
-                        const isActive = currentBeat >= note.startBeat &&
-                          currentBeat < note.startBeat + note.duration;
+                    return (
+                      <div key={stringIdx} className="flex items-center h-4">
+                        {measure.number === row[0].measure.number && (
+                          <span className="w-3 text-zinc-500 text-[10px] shrink-0">{label}</span>
+                        )}
+                        <div className="flex-1 relative border-b border-zinc-700 h-full">
+                          {stringNotes.map((note, noteIdx) => {
+                            const position = ((note.startBeat - measure.startBeat) / measure.duration) * 100;
+                            const isActive = currentBeat >= note.startBeat &&
+                              currentBeat < note.startBeat + note.duration;
 
-                        let displayFret = String(note.fret ?? '-');
-                        if (note.hammer) displayFret = `h${note.fret}`;
-                        if (note.pull) displayFret = `p${note.fret}`;
-                        if (note.slide) displayFret = `/${note.fret}`;
-                        if (note.harmonic) displayFret = `<${note.fret}>`;
+                            let displayFret = String(note.fret ?? '-');
+                            if (note.hammer) displayFret += 'h';
+                            if (note.pull) displayFret += 'p';
+                            if (note.slide) displayFret = '/' + displayFret;
 
-                        return (
-                          <span
-                            key={noteIdx}
-                            className={cn(
-                              'absolute -translate-x-1/2 text-xs px-0.5',
-                              isActive ? 'text-indigo-400 font-bold' : 'text-white',
-                              note.palmMute && 'text-orange-400',
-                              note.letRing && 'text-green-400'
-                            )}
-                            style={{ left: `${position}%` }}
-                            title={note.palmMute ? 'Palm mute' : note.letRing ? 'Let ring' : undefined}
-                          >
-                            {displayFret}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
+                            return (
+                              <span
+                                key={noteIdx}
+                                className={cn(
+                                  'absolute -translate-x-1/2 -translate-y-1/2 top-1/2 text-[10px] leading-none',
+                                  isActive ? 'text-indigo-400 font-bold' : 'text-white',
+                                  note.palmMute && 'text-orange-400',
+                                  note.letRing && 'text-green-400',
+                                  note.harmonic && 'text-cyan-400'
+                                )}
+                                style={{ left: `${Math.max(8, Math.min(92, position))}%` }}
+                              >
+                                {displayFret}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
           </div>
         ))}
       </div>
@@ -775,7 +811,7 @@ function TabDisplay({
         <span><span className="text-white">h</span> = hammer-on</span>
         <span><span className="text-white">p</span> = pull-off</span>
         <span><span className="text-white">/</span> = slide</span>
-        <span><span className="text-white">&lt;&gt;</span> = harmonic</span>
+        <span><span className="text-cyan-400">●</span> = harmonic</span>
         <span><span className="text-orange-400">●</span> = palm mute</span>
         <span><span className="text-green-400">●</span> = let ring</span>
       </div>
@@ -816,7 +852,20 @@ function SheetMusicDisplay({
   currentBeat: number;
   onImport: () => void;
 }) {
-  const track = tracks[0];
+  const [selectedTrackIdx, setSelectedTrackIdx] = useState(0);
+  const MEASURES_PER_ROW = 4;
+
+  // Find tracks with notes
+  const tracksWithNotes = tracks.filter(t => t.notes.length > 0);
+
+  // Auto-select first track with notes
+  useEffect(() => {
+    if (tracksWithNotes.length > 0 && selectedTrackIdx >= tracksWithNotes.length) {
+      setSelectedTrackIdx(0);
+    }
+  }, [tracksWithNotes.length, selectedTrackIdx]);
+
+  const track = tracksWithNotes[selectedTrackIdx];
 
   if (!track || track.notes.length === 0) {
     return (
@@ -842,6 +891,12 @@ function SheetMusicDisplay({
     ),
   }));
 
+  // Group measures into rows
+  const measureRows: typeof measureNotes[] = [];
+  for (let i = 0; i < measureNotes.length; i += MEASURES_PER_ROW) {
+    measureRows.push(measureNotes.slice(i, i + MEASURES_PER_ROW));
+  }
+
   // Parse pitch to get note position on staff
   const getNotePosition = (pitch: string): number => {
     // Handle tab format (string:fret) - convert to approximate position
@@ -850,114 +905,114 @@ function SheetMusicDisplay({
       // Standard tuning MIDI: E4(64), B3(59), G3(55), D3(50), A2(45), E2(40)
       const stringMidi = [64, 59, 55, 50, 45, 40][string - 1] || 60;
       const midi = stringMidi + fret;
-      // Convert MIDI to staff position (middle C = 60 = position 0)
-      return Math.round((midi - 60) / 2);
+      // Convert MIDI to staff position (E4 = position 2 on treble clef)
+      // E4 = 64, middle line (B4) = position 4
+      return Math.round((midi - 64) * 0.5) + 2;
     }
 
     // Handle standard pitch format (e.g., "E4", "C#5")
     const match = pitch.match(/^([A-G])(#|b)?(\d+)$/);
     if (!match) return 0;
 
-    const [, note, accidental, octaveStr] = match;
+    const [, note, , octaveStr] = match;
     const octave = parseInt(octaveStr);
     const basePosition = NOTE_POSITIONS[note] || 0;
-    // Each octave is 7 positions, middle C (C4) is position 0
+    // E4 = position 2, each octave is 7 positions
     return basePosition + (octave - 4) * 7;
   };
 
-  // Staff lines represent E4, G4, B4, D5, F5 (treble clef)
-  const STAFF_LINES = [0, 2, 4, 6, 8]; // positions for lines
-  const LEDGER_BELOW = [-2, -4]; // C4, A3
-  const LEDGER_ABOVE = [10, 12]; // A5, C6
+  // Staff lines (5 lines for treble clef)
+  const STAFF_LINES = [0, 1, 2, 3, 4];
 
   return (
     <div className="space-y-4">
-      {/* Track info */}
-      <div className="flex items-center gap-2 text-zinc-400 text-xs">
+      {/* Track selector */}
+      <div className="flex items-center gap-3 text-zinc-400 text-xs">
         <Music className="w-4 h-4" />
-        <span className="font-medium">{track.name}</span>
+        {tracksWithNotes.length > 1 ? (
+          <select
+            value={selectedTrackIdx}
+            onChange={(e) => setSelectedTrackIdx(Number(e.target.value))}
+            className="bg-zinc-800 border border-zinc-700 rounded px-2 py-1 text-white text-xs"
+          >
+            {tracksWithNotes.map((t, idx) => (
+              <option key={t.id} value={idx}>
+                {t.name} ({t.notes.length} notes)
+              </option>
+            ))}
+          </select>
+        ) : (
+          <span className="font-medium">{track.name}</span>
+        )}
         <span className="text-zinc-600">({track.notes.length} notes)</span>
       </div>
 
-      {/* Staff display */}
-      <div className="overflow-x-auto">
-        <div className="flex">
-          {measureNotes.map(({ measure, notes }) => (
-            <div
-              key={measure.number}
-              className={cn(
-                'relative min-w-[180px] h-[100px] border-r border-zinc-600 mr-1',
-                currentBeat >= measure.startBeat &&
-                  currentBeat < measure.startBeat + measure.duration &&
-                  'bg-indigo-500/10'
-              )}
-            >
-              {/* Measure number */}
-              <div className="absolute -top-4 left-1 text-[10px] text-zinc-600">
-                {measure.number}
-              </div>
+      {/* Staff rows */}
+      <div className="space-y-8">
+        {measureRows.map((row, rowIdx) => (
+          <div key={rowIdx} className="flex">
+            {row.map(({ measure, notes }, measureIdx) => (
+              <div
+                key={measure.number}
+                className={cn(
+                  'flex-1 relative h-20 border-r border-zinc-500',
+                  currentBeat >= measure.startBeat &&
+                    currentBeat < measure.startBeat + measure.duration &&
+                    'bg-indigo-500/10'
+                )}
+              >
+                {/* Measure number (first measure of row only) */}
+                {measureIdx === 0 && (
+                  <div className="absolute -top-4 left-1 text-[10px] text-zinc-600">
+                    {measure.number}
+                  </div>
+                )}
 
-              {/* Staff lines */}
-              {STAFF_LINES.map((pos, idx) => (
-                <div
-                  key={idx}
-                  className="absolute w-full h-px bg-zinc-600"
-                  style={{ top: `${50 - pos * 5}%` }}
-                />
-              ))}
+                {/* Staff lines */}
+                {STAFF_LINES.map((lineIdx) => (
+                  <div
+                    key={lineIdx}
+                    className="absolute w-full h-px bg-zinc-600"
+                    style={{ top: `${20 + lineIdx * 15}%` }}
+                  />
+                ))}
 
-              {/* Notes */}
-              {notes.map((note, noteIdx) => {
-                const position = ((note.startBeat - measure.startBeat) / measure.duration) * 100;
-                const staffPos = getNotePosition(note.pitch);
-                const topPercent = 50 - staffPos * 5;
-                const isActive = currentBeat >= note.startBeat &&
-                  currentBeat < note.startBeat + note.duration;
+                {/* Notes */}
+                {notes.map((note, noteIdx) => {
+                  const position = ((note.startBeat - measure.startBeat) / measure.duration) * 100;
+                  const staffPos = getNotePosition(note.pitch);
+                  // Map staff position to vertical position (higher note = higher on staff)
+                  // Position 0 = bottom line (E4), position 8 = top line (F5)
+                  const topPercent = 80 - staffPos * 7.5;
+                  const isActive = currentBeat >= note.startBeat &&
+                    currentBeat < note.startBeat + note.duration;
 
-                // Determine if we need ledger lines
-                const needsLedgerBelow = staffPos < 0;
-                const needsLedgerAbove = staffPos > 8;
-
-                return (
-                  <div key={noteIdx}>
-                    {/* Ledger lines */}
-                    {needsLedgerBelow && staffPos <= -2 && (
-                      <div
-                        className="absolute w-4 h-px bg-zinc-500"
-                        style={{ left: `calc(${position}% - 8px)`, top: `${50 + 10}%` }}
-                      />
-                    )}
-                    {needsLedgerAbove && staffPos >= 10 && (
-                      <div
-                        className="absolute w-4 h-px bg-zinc-500"
-                        style={{ left: `calc(${position}% - 8px)`, top: `${50 - 50}%` }}
-                      />
-                    )}
-                    {/* Note head */}
+                  return (
                     <div
+                      key={noteIdx}
                       className={cn(
-                        'absolute w-3 h-2.5 rounded-full border transform -translate-x-1/2',
+                        'absolute w-2.5 h-2 rounded-full transform -translate-x-1/2 -translate-y-1/2',
                         isActive
-                          ? 'bg-indigo-500 border-indigo-400'
-                          : 'bg-white border-white'
+                          ? 'bg-indigo-500 border border-indigo-400'
+                          : 'bg-white'
                       )}
                       style={{
-                        left: `${Math.max(5, Math.min(95, position))}%`,
-                        top: `${Math.max(5, Math.min(95, topPercent))}%`,
+                        left: `${Math.max(8, Math.min(92, position))}%`,
+                        top: `${Math.max(10, Math.min(90, topPercent))}%`,
                       }}
                       title={note.pitch}
                     />
-                  </div>
-                );
-              })}
-            </div>
-          ))}
-        </div>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        ))}
       </div>
 
       {/* Note about limitations */}
       <div className="text-[10px] text-zinc-600 pt-2 border-t border-zinc-800">
-        Basic staff view • Note positions approximated from pitch data
+        Basic staff view • Note positions approximated from pitch/tab data
       </div>
     </div>
   );
