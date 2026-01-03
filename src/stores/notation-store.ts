@@ -200,6 +200,27 @@ export const useNotationStore = create<NotationState>()(
     },
 
     loadFromSong: (notation, lyrics) => {
+      // Convert SongNotationTracks to Tracks by adding measures
+      const measures: Measure[] = (notation?.measures || []).map(m => ({
+        number: m.number,
+        startBeat: m.startBeat,
+        duration: m.duration,
+        timeSignature: m.timeSignature,
+        repeatStart: m.repeatStart,
+        repeatEnd: m.repeatEnd,
+        repeatCount: m.repeatCount,
+      }));
+
+      const tracks: Track[] = (notation?.tracks || []).map(t => ({
+        id: t.id,
+        name: t.name,
+        notes: t.notes,
+        tuning: t.tuning,
+        capo: t.capo,
+        instrument: t.instrument,
+        measures: measures, // All tracks share the same measures
+      }));
+
       set({
         format: notation?.format || 'chord-chart',
         sections: notation?.sections || [],
@@ -209,6 +230,16 @@ export const useNotationStore = create<NotationState>()(
         tuning: notation?.tuning || STANDARD_GUITAR_TUNING,
         capo: notation?.capo || 0,
         lyrics: lyrics?.lines || [],
+        // Load imported tracks/measures if present
+        importedTracks: tracks,
+        importedMeasures: measures,
+        importedTempo: notation?.tempo || null,
+        importedTimeSignature: notation?.timeSignature || null,
+        importedKeySignature: notation?.keySignature || null,
+        importedMetadata: notation?.metadata ? {
+          ...notation.metadata,
+          sourceFile: notation.sourceFile,
+        } : null,
         isDirty: false,
         currentBeat: 0,
         scrollOffset: 0,
@@ -225,6 +256,18 @@ export const useNotationStore = create<NotationState>()(
         instrument: state.instrument,
         tuning: state.tuning,
         capo: state.capo,
+        // Include imported data for persistence
+        tracks: state.importedTracks.length > 0 ? state.importedTracks : undefined,
+        measures: state.importedMeasures.length > 0 ? state.importedMeasures : undefined,
+        tempo: state.importedTempo || undefined,
+        timeSignature: state.importedTimeSignature || undefined,
+        keySignature: state.importedKeySignature || undefined,
+        sourceFile: state.importedMetadata?.sourceFile,
+        metadata: state.importedMetadata ? {
+          title: state.importedMetadata.title,
+          artist: state.importedMetadata.artist,
+          sourceFormat: state.importedMetadata.sourceFormat,
+        } : undefined,
       };
     },
 

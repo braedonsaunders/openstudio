@@ -30,6 +30,41 @@ export interface SongSection {
   color?: string;
 }
 
+export interface SongNotationNote {
+  pitch: string;
+  duration: number;
+  startBeat: number;
+  string?: number;
+  fret?: number;
+  hammer?: boolean;
+  pull?: boolean;
+  slide?: 'up' | 'down';
+  bend?: number;
+  harmonic?: 'natural' | 'artificial';
+  palmMute?: boolean;
+  letRing?: boolean;
+  accent?: boolean;
+}
+
+export interface SongNotationTrack {
+  id: string;
+  name: string;
+  notes: SongNotationNote[];
+  tuning?: string[];
+  capo?: number;
+  instrument?: string;
+}
+
+export interface SongNotationMeasure {
+  number: number;
+  startBeat: number;
+  duration: number;
+  timeSignature?: { beats: number; beatType: number };
+  repeatStart?: boolean;
+  repeatEnd?: boolean;
+  repeatCount?: number;
+}
+
 export interface SongNotation {
   format: 'chord-chart' | 'tab' | 'sheet' | 'nashville' | 'lead-sheet';
   sections: SongSection[];
@@ -38,6 +73,22 @@ export interface SongNotation {
   instrument?: 'guitar' | 'bass' | 'ukulele';
   tuning?: string[];          // e.g., ['E', 'A', 'D', 'G', 'B', 'E']
   capo?: number;
+  // Imported tab/sheet data
+  tracks?: SongNotationTrack[];
+  measures?: SongNotationMeasure[];
+  tempo?: number;
+  timeSignature?: { beats: number; beatType: number };
+  keySignature?: { fifths: number; mode: 'major' | 'minor'; key: string };
+  sourceFile?: {
+    name: string;
+    key?: string;
+    uploadedAt?: string;
+  };
+  metadata?: {
+    title?: string;
+    artist?: string;
+    sourceFormat?: string;
+  };
 }
 
 // =============================================================================
