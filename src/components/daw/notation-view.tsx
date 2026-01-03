@@ -39,6 +39,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { parseNotationFile, NOTATION_FILE_EXTENSIONS } from '@/lib/notation';
+import { authFetchJson } from '@/lib/auth-fetch';
 
 // ============================================
 // Types
@@ -979,16 +980,12 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
       // Parse the file locally
       const parsed = await parseNotationFile(file);
 
-      // Upload to R2 for storage
-      const presignResponse = await fetch('/api/notation/upload', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          fileName: file.name,
-          fileSize: file.size,
-          songId: currentSongId,
-          roomId,
-        }),
+      // Upload to R2 for storage (requires auth)
+      const presignResponse = await authFetchJson('/api/notation/upload', 'POST', {
+        fileName: file.name,
+        fileSize: file.size,
+        songId: currentSongId,
+        roomId,
       });
 
       let storageKey: string | undefined;
