@@ -5,7 +5,7 @@ mod engine;
 mod stream;
 
 pub use device::{AudioDevice, ChannelConfig, DeviceInfo};
-pub use engine::{AudioBridgeHandle, AudioEngine, TuiDeviceInfo};
+pub use engine::{AudioBridgeHandle, AudioEngine};
 
 /// Supported sample rates
 #[derive(Debug, Clone, Copy, PartialEq, serde::Serialize, serde::Deserialize)]

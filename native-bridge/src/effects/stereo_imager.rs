@@ -107,10 +107,6 @@ impl AudioEffect for StereoImager {
             let left = frame[0];
             let right = frame[1];
 
-            // Convert to M/S
-            let mid = (left + right) * 0.5;
-            let side = (left - right) * 0.5;
-
             // Split into low and high bands
             let low_l = self.lp_filter_l.process(left);
             let low_r = self.lp_filter_r.process(right);

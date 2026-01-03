@@ -75,12 +75,6 @@ impl AudioEffect for Delay {
         let feedback = self.settings.feedback.clamp(0.0, 0.95);
         let mix = self.settings.mix;
         let modulation = self.settings.modulation;
-
-        let is_analog_tape = matches!(
-            self.settings.delay_type,
-            DelayType::Analog | DelayType::Tape
-        );
-        let is_pingpong = matches!(self.settings.delay_type, DelayType::Pingpong);
         let spread = self.settings.ping_pong_spread;
 
         for frame in samples.chunks_mut(2) {

@@ -1,6 +1,6 @@
 //! Exciter - harmonic enhancement for brightness and presence
 
-use super::dsp::{db_to_linear, soft_clip, Biquad, BiquadType};
+use super::dsp::{soft_clip, Biquad, BiquadType};
 use super::types::ExciterSettings;
 use super::AudioEffect;
 

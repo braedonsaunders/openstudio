@@ -1,6 +1,6 @@
 //! Wah effect - resonant bandpass filter with frequency sweep
 
-use super::dsp::{Biquad, BiquadType, EnvelopeFollower, Lfo, LfoWaveform, StereoBiquad};
+use super::dsp::{BiquadType, EnvelopeFollower, Lfo, LfoWaveform, StereoBiquad};
 use super::types::{WahMode, WahSettings};
 use super::AudioEffect;
 

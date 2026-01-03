@@ -15,6 +15,8 @@ pub struct RoomSimulator {
     // Early reflection delays
     early_delays: Vec<DelayLine>,
     early_gains: Vec<f32>,
+    // Cached early delay times in samples (avoids per-frame match lookup)
+    cached_early_delay_samples: Vec<f32>,
     // Late reverb (simplified Freeverb)
     late_delays: Vec<DelayLine>,
     late_feedback: Vec<f32>,
@@ -60,10 +62,17 @@ impl RoomSimulator {
             diffusion_allpass.push(Biquad::new());
         }
 
+        // Initialize cached delay samples with default (Small) room size
+        let cached_early_delay_samples: Vec<f32> = EARLY_DELAYS_SMALL
+            .iter()
+            .map(|d| d * 0.001 * sr)
+            .collect();
+
         Self {
             settings: RoomSimulatorSettings::default(),
             early_delays,
             early_gains,
+            cached_early_delay_samples,
             late_delays,
             late_feedback,
             lp_filter: Biquad::new(),
@@ -82,6 +91,12 @@ impl RoomSimulator {
             RoomSize::Large => &EARLY_DELAYS_LARGE,
             RoomSize::Hall => &EARLY_DELAYS_HALL,
         };
+
+        // Cache the delay times in samples for O(1) lookup during processing
+        self.cached_early_delay_samples = delays
+            .iter()
+            .map(|d| d * 0.001 * self.sample_rate)
+            .collect();
 
         for (i, gain) in self.early_gains.iter_mut().enumerate() {
             *gain = (1.0 - i as f32 * 0.12) * (1.0 - settings.damping / 100.0 * 0.5);
@@ -112,13 +127,8 @@ impl RoomSimulator {
     }
 
     fn get_early_delay_samples(&self, index: usize) -> f32 {
-        let delays = match self.settings.size {
-            RoomSize::Small => &EARLY_DELAYS_SMALL,
-            RoomSize::Medium => &EARLY_DELAYS_MEDIUM,
-            RoomSize::Large => &EARLY_DELAYS_LARGE,
-            RoomSize::Hall => &EARLY_DELAYS_HALL,
-        };
-        delays[index] * 0.001 * self.sample_rate
+        // O(1) lookup from cached values (updated in update_settings)
+        self.cached_early_delay_samples[index]
     }
 }
 
