@@ -358,6 +358,22 @@ impl AudioEngine {
         }
     }
 
+    /// Set room musical context for pitch/tempo-aware effects
+    pub fn set_room_context(
+        &self,
+        key: Option<String>,
+        scale: Option<String>,
+        bpm: Option<f32>,
+        time_sig_num: Option<u8>,
+        time_sig_denom: Option<u8>,
+    ) {
+        if let Ok(mut state) = self.processing_state.write() {
+            state
+                .effects_chain
+                .set_room_context(key, scale, bpm, time_sig_num, time_sig_denom);
+        }
+    }
+
     pub fn set_master_volume(&self, volume: f32) {
         if let Ok(mut state) = self.processing_state.write() {
             state.master_volume = volume;

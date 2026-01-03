@@ -478,6 +478,10 @@ export class AudioEngine {
       this.localEffectsProcessor.updateSettings(savedEffectsSettings);
     }
 
+    // IMPORTANT: Bypass JS effects when native bridge handles processing
+    // Native bridge already applies all effects - JS processor becomes passthrough
+    this.localEffectsProcessor.setBypassAll(true);
+
     this.localArmGain.connect(this.localEffectsProcessor.getInputNode());
     this.localEffectsProcessor.connect(this.localMuteGain);
     this.localMuteGain.connect(this.localMonitorGain);
@@ -512,6 +516,12 @@ export class AudioEngine {
       this.bridgeWorkletNode.port.postMessage({ type: 'reset' });
       this.bridgeWorkletNode.disconnect();
       this.bridgeWorkletNode = null;
+    }
+
+    // Restore JS effects processing if effects processor still exists
+    // (Will process audio locally when not using native bridge)
+    if (this.localEffectsProcessor) {
+      this.localEffectsProcessor.setBypassAll(false);
     }
   }
 

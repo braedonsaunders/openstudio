@@ -1,6 +1,6 @@
 //! Stereo Delay - independent left/right delay with cross-feedback
 
-use super::dsp::{Biquad, BiquadType, DelayLine};
+use super::dsp::{bpm_subdivision_to_secs, Biquad, BiquadType, DelayLine};
 use super::types::StereoDelaySettings;
 use super::AudioEffect;
 
@@ -14,6 +14,8 @@ pub struct StereoDelay {
     hp_filter_l: Biquad,
     hp_filter_r: Biquad,
     sample_rate: f32,
+    // BPM for tempo sync
+    bpm: f32,
 }
 
 impl StereoDelay {
@@ -30,7 +32,13 @@ impl StereoDelay {
             hp_filter_l: Biquad::new(),
             hp_filter_r: Biquad::new(),
             sample_rate: sr,
+            bpm: 120.0,
         }
+    }
+
+    /// Set BPM for tempo-synced delay
+    pub fn set_bpm(&mut self, bpm: f32) {
+        self.bpm = bpm.max(20.0);
     }
 
     pub fn update_settings(&mut self, settings: StereoDelaySettings) {
@@ -79,8 +87,20 @@ impl AudioEffect for StereoDelay {
             return;
         }
 
-        let left_delay_samples = self.settings.left_time * 0.001 * self.sample_rate;
-        let right_delay_samples = self.settings.right_time * 0.001 * self.sample_rate;
+        // Calculate delay times - use tempo sync if enabled
+        let (left_time_secs, right_time_secs) = if self.settings.tempo_sync {
+            (
+                bpm_subdivision_to_secs(self.bpm, &self.settings.left_subdivision),
+                bpm_subdivision_to_secs(self.bpm, &self.settings.right_subdivision),
+            )
+        } else {
+            (
+                self.settings.left_time * 0.001,
+                self.settings.right_time * 0.001,
+            )
+        };
+        let left_delay_samples = left_time_secs * self.sample_rate;
+        let right_delay_samples = right_time_secs * self.sample_rate;
         let left_feedback = self.settings.left_feedback / 100.0;
         let right_feedback = self.settings.right_feedback / 100.0;
         let cross_feedback = self.settings.cross_feedback / 100.0;

@@ -1,6 +1,6 @@
 //! Delay effect - various delay types with modulation
 
-use super::dsp::{Biquad, BiquadType, DelayLine, Lfo, LfoWaveform};
+use super::dsp::{bpm_subdivision_to_secs, Biquad, BiquadType, DelayLine, Lfo, LfoWaveform};
 use super::types::{DelaySettings, DelayType};
 use super::AudioEffect;
 
@@ -15,6 +15,8 @@ pub struct Delay {
     tone_filter_l: Biquad,
     tone_filter_r: Biquad,
     sample_rate: f32,
+    // BPM for tempo sync
+    bpm: f32,
 }
 
 impl Delay {
@@ -30,7 +32,13 @@ impl Delay {
             tone_filter_l: Biquad::new(),
             tone_filter_r: Biquad::new(),
             sample_rate: sr,
+            bpm: 120.0,
         }
+    }
+
+    /// Set BPM for tempo-synced delay
+    pub fn set_bpm(&mut self, bpm: f32) {
+        self.bpm = bpm.max(20.0); // Minimum 20 BPM
     }
 
     pub fn update_settings(&mut self, settings: DelaySettings) {
@@ -57,7 +65,13 @@ impl AudioEffect for Delay {
             return;
         }
 
-        let base_delay_samples = self.settings.time * self.sample_rate;
+        // Calculate delay time - use tempo sync if enabled
+        let delay_time_secs = if self.settings.tempo_sync {
+            bpm_subdivision_to_secs(self.bpm, &self.settings.subdivision)
+        } else {
+            self.settings.time
+        };
+        let base_delay_samples = delay_time_secs * self.sample_rate;
         let feedback = self.settings.feedback.clamp(0.0, 0.95);
         let mix = self.settings.mix;
         let modulation = self.settings.modulation;

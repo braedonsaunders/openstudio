@@ -9,7 +9,7 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
-use tracing::{error, info, warn};
+use tracing::{debug, error, info, warn};
 
 pub struct BridgeServer {
     state: Arc<Mutex<AppState>>,
@@ -669,6 +669,25 @@ impl BridgeServer {
                         message: "Network manager not initialized".to_string(),
                     })
                 }
+            }
+
+            BrowserMessage::SetRoomContext {
+                key,
+                scale,
+                bpm,
+                time_sig_num,
+                time_sig_denom,
+            } => {
+                debug!(
+                    "Setting room context: key={:?}, scale={:?}, bpm={:?}",
+                    key, scale, bpm
+                );
+
+                // Update effects chain with room context
+                let app = self.state.lock().await;
+                app.audio_engine
+                    .set_room_context(key, scale, bpm, time_sig_num, time_sig_denom);
+                None
             }
 
             other => {

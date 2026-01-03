@@ -1,6 +1,6 @@
 //! Auto Pan - LFO-controlled stereo panning
 
-use super::dsp::{Lfo, LfoWaveform};
+use super::dsp::{bpm_subdivision_to_hz, Lfo, LfoWaveform};
 use super::types::{AutoPanSettings, AutoPanWaveform};
 use super::AudioEffect;
 use std::f32::consts::PI;
@@ -9,6 +9,8 @@ pub struct AutoPan {
     settings: AutoPanSettings,
     sample_rate: f32,
     lfo: Lfo,
+    // BPM for tempo sync
+    bpm: f32,
 }
 
 impl AutoPan {
@@ -17,7 +19,13 @@ impl AutoPan {
             settings: AutoPanSettings::default(),
             sample_rate: sample_rate as f32,
             lfo: Lfo::new(LfoWaveform::Sine),
+            bpm: 120.0,
         }
+    }
+
+    /// Set BPM for tempo-synced panning
+    pub fn set_bpm(&mut self, bpm: f32) {
+        self.bpm = bpm.max(20.0);
     }
 
     pub fn update_settings(&mut self, settings: AutoPanSettings) {
@@ -46,7 +54,12 @@ impl AudioEffect for AutoPan {
             return;
         }
 
-        let rate = self.settings.rate;
+        // Calculate LFO rate - use tempo sync if enabled
+        let rate = if self.settings.tempo_sync {
+            bpm_subdivision_to_hz(self.bpm, &self.settings.subdivision)
+        } else {
+            self.settings.rate
+        };
         let depth = self.settings.depth / 100.0;
 
         for frame in samples.chunks_mut(2) {

@@ -585,6 +585,61 @@ pub fn cents_to_ratio(cents: f32) -> f32 {
     2.0_f32.powf(cents / 1200.0)
 }
 
+/// Convert a musical subdivision string to beats
+/// Returns the number of beats for the subdivision
+/// e.g., "1/4" = 1 beat, "1/8" = 0.5 beats, "1/4 dot" = 1.5 beats
+pub fn subdivision_to_beats(subdivision: &str) -> f32 {
+    let s = subdivision.to_lowercase();
+    let dotted = s.contains("dot");
+    let triplet = s.contains("triplet") || s.contains("trip");
+
+    // Base beat values (assuming 1/4 = 1 beat)
+    let base = if s.contains("1/1") || s.contains("whole") {
+        4.0
+    } else if s.contains("1/2") || s.contains("half") {
+        2.0
+    } else if s.contains("1/4") || s.contains("quarter") {
+        1.0
+    } else if s.contains("1/8") || s.contains("eighth") {
+        0.5
+    } else if s.contains("1/16") || s.contains("sixteenth") {
+        0.25
+    } else if s.contains("1/32") {
+        0.125
+    } else {
+        1.0 // Default to quarter note
+    };
+
+    // Apply dotted/triplet modifiers
+    if dotted {
+        base * 1.5
+    } else if triplet {
+        base * 2.0 / 3.0
+    } else {
+        base
+    }
+}
+
+/// Convert BPM and subdivision to time in seconds
+pub fn bpm_subdivision_to_secs(bpm: f32, subdivision: &str) -> f32 {
+    if bpm <= 0.0 {
+        return 0.5; // Default fallback
+    }
+    let beats = subdivision_to_beats(subdivision);
+    let secs_per_beat = 60.0 / bpm;
+    beats * secs_per_beat
+}
+
+/// Convert BPM and subdivision to rate in Hz (for LFOs)
+pub fn bpm_subdivision_to_hz(bpm: f32, subdivision: &str) -> f32 {
+    let secs = bpm_subdivision_to_secs(bpm, subdivision);
+    if secs <= 0.0 {
+        1.0
+    } else {
+        1.0 / secs
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

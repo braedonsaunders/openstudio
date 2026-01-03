@@ -348,6 +348,10 @@ export class ExtendedEffectsProcessor {
   private settings: ExtendedEffectsChain;
   private onSettingsChange?: (settings: ExtendedEffectsChain) => void;
 
+  // Bypass mode - when true, audio passes directly from input to output
+  // Used when native bridge handles effects processing
+  private bypassAll: boolean = false;
+
   // Console error interception for BiquadFilterNode instability detection
   private originalConsoleWarn: typeof console.warn | null = null;
   private isRecovering: boolean = false;
@@ -815,6 +819,36 @@ export class ExtendedEffectsProcessor {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Set bypass mode - when true, audio passes directly from input to output
+   * without any effects processing. Used when native bridge handles effects.
+   */
+  setBypassAll(bypass: boolean): void {
+    if (this.bypassAll === bypass) {
+      return; // No change needed
+    }
+
+    this.bypassAll = bypass;
+    this.inputGain.disconnect();
+
+    if (bypass) {
+      // Bypass mode: connect input directly to output
+      console.log('[ExtendedEffectsProcessor] Bypassing all effects (native bridge active)');
+      this.inputGain.connect(this.outputGain);
+    } else {
+      // Normal mode: wire through effects chain
+      console.log('[ExtendedEffectsProcessor] Restoring effects chain');
+      this.wireSignalChain();
+    }
+  }
+
+  /**
+   * Check if effects are bypassed
+   */
+  isBypassed(): boolean {
+    return this.bypassAll;
   }
 
   // Clean up
