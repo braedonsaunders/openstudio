@@ -478,6 +478,7 @@ function CanvasElementRenderer({
       }}
       onMouseDown={handleMouseDown}
       onDoubleClick={handleDoubleClick}
+      onClick={(e) => e.stopPropagation()}
     >
       {renderContent()}
 

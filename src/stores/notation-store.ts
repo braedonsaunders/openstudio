@@ -3,6 +3,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { SongNotation, SongLyrics, SongChord, SongSection, SongLyricLine } from '@/types/songs';
+import type { ParsedNotation, Track, Measure, TimeSignature, KeySignature } from '@/lib/notation/types';
 
 // =============================================================================
 // Types
@@ -31,6 +32,21 @@ export interface NotationState {
   instrument: 'guitar' | 'bass' | 'ukulele';
   tuning: string[];
   capo: number;
+
+  // Imported notation data (from MusicXML/GP files)
+  importedTracks: Track[];
+  importedMeasures: Measure[];
+  importedTimeSignature: TimeSignature | null;
+  importedKeySignature: KeySignature | null;
+  importedTempo: number | null;
+  importedMetadata: {
+    title?: string;
+    artist?: string;
+    sourceFormat?: string;
+    sourceFile?: { name: string; key?: string; uploadedAt?: string };
+  } | null;
+  isImporting: boolean;
+  importError: string | null;
 
   // Lyrics data (loaded from current song)
   lyrics: SongLyricLine[];
@@ -105,6 +121,12 @@ export interface NotationState {
   clear: () => void;
   markClean: () => void;
 
+  // Actions - Import
+  importNotation: (parsed: ParsedNotation, sourceFile?: { name: string; key?: string }) => void;
+  setImporting: (importing: boolean) => void;
+  setImportError: (error: string | null) => void;
+  clearImportedData: () => void;
+
   // Computed
   getCurrentChord: () => SongChord | null;
   getChordsForBeat: (beat: number) => SongChord[];
@@ -141,6 +163,16 @@ export const useNotationStore = create<NotationState>()(
     instrument: 'guitar',
     tuning: STANDARD_GUITAR_TUNING,
     capo: 0,
+
+    // Imported data
+    importedTracks: [],
+    importedMeasures: [],
+    importedTimeSignature: null,
+    importedKeySignature: null,
+    importedTempo: null,
+    importedMetadata: null,
+    isImporting: false,
+    importError: null,
 
     lyrics: [],
     showLyrics: true,
@@ -323,6 +355,96 @@ export const useNotationStore = create<NotationState>()(
     }),
 
     markClean: () => set({ isDirty: false }),
+
+    // Import actions
+    importNotation: (parsed, sourceFile) => {
+      // Convert parsed notation to store format
+      const chords: SongChord[] = parsed.chords.map((chord, idx) => ({
+        name: chord.name,
+        root: chord.root,
+        quality: chord.quality || '',
+        bass: chord.bass,
+        startBeat: chord.startBeat,
+        duration: chord.duration,
+        frets: chord.frets,
+        fingers: chord.fingers,
+      }));
+
+      const sections: SongSection[] = parsed.sections.map(section => ({
+        id: section.id,
+        name: section.name,
+        type: section.type,
+        startBeat: section.startBeat,
+        endBeat: section.endBeat,
+        chords: [], // Will be populated separately from parsed.chords
+      }));
+
+      const lyrics: SongLyricLine[] = parsed.lyrics.map((line, idx) => ({
+        id: `lyric-${idx}`,
+        text: line.text,
+        startTime: line.startBeat, // Use beat as time for now
+        endTime: line.endBeat,
+      }));
+
+      // Get tuning from first track if available
+      let tuning = STANDARD_GUITAR_TUNING;
+      let instrument: 'guitar' | 'bass' | 'ukulele' = 'guitar';
+      let capo = 0;
+
+      if (parsed.tracks.length > 0) {
+        const firstTrack = parsed.tracks[0];
+        if (firstTrack.tuning) {
+          tuning = firstTrack.tuning;
+          // Detect instrument from string count
+          if (tuning.length === 4) {
+            instrument = firstTrack.instrument?.toLowerCase().includes('bass') ? 'bass' : 'ukulele';
+          }
+        }
+        if (firstTrack.capo) {
+          capo = firstTrack.capo;
+        }
+      }
+
+      set({
+        chords,
+        sections,
+        lyrics,
+        tuning,
+        instrument,
+        capo,
+        importedTracks: parsed.tracks,
+        importedMeasures: parsed.measures,
+        importedTimeSignature: parsed.timeSignature,
+        importedKeySignature: parsed.keySignature,
+        importedTempo: parsed.tempo,
+        importedMetadata: {
+          title: parsed.title,
+          artist: parsed.artist,
+          sourceFormat: parsed.sourceFormat,
+          sourceFile: sourceFile ? {
+            ...sourceFile,
+            uploadedAt: new Date().toISOString(),
+          } : undefined,
+        },
+        isImporting: false,
+        importError: null,
+        isDirty: true,
+      });
+    },
+
+    setImporting: (importing) => set({ isImporting: importing }),
+    setImportError: (error) => set({ importError: error, isImporting: false }),
+
+    clearImportedData: () => set({
+      importedTracks: [],
+      importedMeasures: [],
+      importedTimeSignature: null,
+      importedKeySignature: null,
+      importedTempo: null,
+      importedMetadata: null,
+      isImporting: false,
+      importError: null,
+    }),
 
     // Computed
     getCurrentChord: () => {

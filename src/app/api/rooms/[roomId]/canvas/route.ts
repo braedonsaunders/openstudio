@@ -52,15 +52,19 @@ export async function PUT(
       .from('rooms')
       .update({ canvas })
       .eq('id', roomId)
-      .select('canvas')
-      .single();
+      .select('canvas');
 
     if (error) {
       console.error('Error updating canvas:', error);
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    return NextResponse.json({ canvas: data?.canvas || null });
+    // No rows updated - room may not exist or RLS blocked
+    if (!data || data.length === 0) {
+      return NextResponse.json({ error: 'Room not found or access denied' }, { status: 404 });
+    }
+
+    return NextResponse.json({ canvas: data[0]?.canvas || null });
   } catch (error) {
     console.error('Error in PUT /canvas:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
