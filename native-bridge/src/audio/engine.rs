@@ -350,6 +350,10 @@ impl AudioEngine {
             .store(volume.to_bits(), Ordering::SeqCst);
     }
 
+    pub fn is_monitoring(&self) -> bool {
+        self.is_monitoring.load(Ordering::Relaxed)
+    }
+
     // === Track State ===
 
     /// Update track state with partial update - only fields that are Some will be changed
