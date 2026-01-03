@@ -17,6 +17,7 @@ use network::{NetworkConfig, NetworkManager};
 use protocol::LaunchParams;
 use std::sync::Arc;
 use tokio::sync::{mpsc, Mutex};
+use tokio::task::LocalSet;
 use tracing::{info, Level};
 
 /// Application state shared across all components
@@ -114,9 +115,9 @@ async fn main() -> Result<()> {
     }));
 
     if enable_tui {
-        // Run TUI mode
-        // The WebSocket server runs in a native thread with its own runtime
-        // This avoids Send requirements and allows the TUI to use blocking I/O
+        // Run TUI mode with LocalSet for non-Send futures
+        // AppState contains cpal::Stream which is not Send, so we use spawn_local
+        // The TUI now uses async event handling, so it cooperates with the runtime
         info!("Starting TUI interface...");
 
         let tui_rx = tui_rx.unwrap();
@@ -139,33 +140,20 @@ async fn main() -> Result<()> {
             }).await;
         }
 
-        // Spawn WebSocket server in a native thread with its own tokio runtime
-        // This avoids Send requirements (AppState contains non-Send cpal::Stream)
-        // and allows the TUI's blocking I/O to not starve the server
+        // Use LocalSet to run non-Send futures on the current thread
+        let local = LocalSet::new();
+
+        // Spawn the WebSocket server as a local task (doesn't require Send)
         let server_state = state.clone();
-        std::thread::Builder::new()
-            .name("websocket-server".to_string())
-            .spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
-                    .enable_all()
-                    .build()
-                    .expect("Failed to create WebSocket server runtime");
+        local.spawn_local(async move {
+            if let Err(e) = protocol::run_server("127.0.0.1:9999", server_state).await {
+                tracing::error!("WebSocket server error: {}", e);
+            }
+        });
 
-                rt.block_on(async move {
-                    if let Err(e) = protocol::run_server("127.0.0.1:9999", server_state).await {
-                        tracing::error!("WebSocket server error: {}", e);
-                    }
-                });
-            })
-            .expect("Failed to spawn WebSocket server thread");
-
-        // Small delay to ensure server is listening before TUI takes over terminal
-        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
-
-        // Run TUI on main thread (uses blocking terminal I/O)
-        if let Err(e) = tui::run(app, tui_rx).await {
-            tracing::error!("TUI error: {}", e);
-        }
+        // Run the TUI and LocalSet together
+        // The TUI is now fully async, so it cooperates with spawn_local tasks
+        local.run_until(tui::run(app, tui_rx)).await?;
     } else {
         // Run headless mode
         info!("Bridge running on ws://localhost:9999 (headless mode)");

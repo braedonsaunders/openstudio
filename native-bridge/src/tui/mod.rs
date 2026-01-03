@@ -9,16 +9,20 @@ pub use app::{ActivePanel, App, AppEvent, LogLevel};
 pub use ui::draw;
 
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
+    event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
+use futures_util::StreamExt;
 use ratatui::{backend::CrosstermBackend, Terminal};
 use std::io;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::sync::mpsc;
 
 /// Run the TUI application
+///
+/// This function uses async event handling to cooperate with the tokio runtime,
+/// allowing other tasks (like the WebSocket server) to run without being starved.
 pub async fn run(
     mut app: App,
     mut event_rx: mpsc::Receiver<AppEvent>,
@@ -33,77 +37,91 @@ pub async fn run(
     // Clear terminal
     terminal.clear()?;
 
-    let tick_rate = Duration::from_millis(50); // 20 FPS
-    let mut last_tick = Instant::now();
+    // Create async event stream for terminal events
+    let mut event_stream = EventStream::new();
+
+    // Tick interval for UI updates (20 FPS)
+    let mut tick_interval = tokio::time::interval(Duration::from_millis(50));
 
     loop {
         // Draw UI
         terminal.draw(|f| draw(f, &app))?;
 
-        // Handle events with timeout
-        let timeout = tick_rate
-            .checked_sub(last_tick.elapsed())
-            .unwrap_or_else(|| Duration::from_secs(0));
+        // Use tokio::select! to handle multiple async event sources
+        // This allows proper async cooperation - no blocking!
+        tokio::select! {
+            // Terminal events (keyboard, mouse, resize)
+            maybe_event = event_stream.next() => {
+                match maybe_event {
+                    Some(Ok(Event::Key(key))) => {
+                        // Only handle key press events, not repeats or releases
+                        if key.kind != KeyEventKind::Press {
+                            continue;
+                        }
 
-        // Check for crossterm events (keyboard, etc.)
-        if crossterm::event::poll(timeout)? {
-            if let Event::Key(key) = event::read()? {
-                // Only handle key press events, not repeats or releases
-                // This prevents flickering when holding a key
-                if key.kind != KeyEventKind::Press {
-                    continue;
-                }
-
-                match (key.code, key.modifiers) {
-                    // Quit on Ctrl+C or Q
-                    (KeyCode::Char('c'), KeyModifiers::CONTROL) | (KeyCode::Char('q'), _) => {
+                        match (key.code, key.modifiers) {
+                            // Quit on Ctrl+C or Q
+                            (KeyCode::Char('c'), KeyModifiers::CONTROL) | (KeyCode::Char('q'), _) => {
+                                break;
+                            }
+                            // Direct panel switching (no toggling - prevents flicker)
+                            (KeyCode::Char('a'), _) => {
+                                app.set_panel(ActivePanel::Audio);
+                            }
+                            (KeyCode::Char('e'), _) => {
+                                app.set_panel(ActivePanel::Effects);
+                            }
+                            (KeyCode::Char('n'), _) => {
+                                app.set_panel(ActivePanel::Network);
+                            }
+                            (KeyCode::Char('l'), _) => {
+                                app.set_panel(ActivePanel::Logs);
+                            }
+                            // Toggle help
+                            (KeyCode::Char('?'), _) | (KeyCode::F(1), _) => {
+                                app.toggle_help();
+                            }
+                            // Scroll effects list
+                            (KeyCode::Up, _) | (KeyCode::Char('k'), _) => {
+                                app.scroll_effects_up();
+                            }
+                            (KeyCode::Down, _) | (KeyCode::Char('j'), _) => {
+                                app.scroll_effects_down();
+                            }
+                            // Tab between panels
+                            (KeyCode::Tab, _) => {
+                                app.next_panel();
+                            }
+                            (KeyCode::BackTab, _) => {
+                                app.prev_panel();
+                            }
+                            _ => {}
+                        }
+                    }
+                    Some(Ok(_)) => {
+                        // Other events (mouse, resize) - ignore for now
+                    }
+                    Some(Err(e)) => {
+                        // Event stream error
+                        tracing::error!("Terminal event error: {}", e);
                         break;
                     }
-                    // Direct panel switching (no toggling - prevents flicker)
-                    (KeyCode::Char('a'), _) => {
-                        app.set_panel(ActivePanel::Audio);
+                    None => {
+                        // Stream ended
+                        break;
                     }
-                    (KeyCode::Char('e'), _) => {
-                        app.set_panel(ActivePanel::Effects);
-                    }
-                    (KeyCode::Char('n'), _) => {
-                        app.set_panel(ActivePanel::Network);
-                    }
-                    (KeyCode::Char('l'), _) => {
-                        app.set_panel(ActivePanel::Logs);
-                    }
-                    // Toggle help
-                    (KeyCode::Char('?'), _) | (KeyCode::F(1), _) => {
-                        app.toggle_help();
-                    }
-                    // Scroll effects list
-                    (KeyCode::Up, _) | (KeyCode::Char('k'), _) => {
-                        app.scroll_effects_up();
-                    }
-                    (KeyCode::Down, _) | (KeyCode::Char('j'), _) => {
-                        app.scroll_effects_down();
-                    }
-                    // Tab between panels
-                    (KeyCode::Tab, _) => {
-                        app.next_panel();
-                    }
-                    (KeyCode::BackTab, _) => {
-                        app.prev_panel();
-                    }
-                    _ => {}
                 }
             }
-        }
 
-        // Process app events from audio/network threads
-        while let Ok(event) = event_rx.try_recv() {
-            app.handle_event(event);
-        }
+            // App events from audio/network threads
+            Some(event) = event_rx.recv() => {
+                app.handle_event(event);
+            }
 
-        // Tick
-        if last_tick.elapsed() >= tick_rate {
-            app.on_tick();
-            last_tick = Instant::now();
+            // Tick for UI updates and level decay
+            _ = tick_interval.tick() => {
+                app.on_tick();
+            }
         }
 
         // Check if we should quit

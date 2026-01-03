@@ -87,7 +87,7 @@ realfft = "3.4"
 
 # === TUI Interface ===
 ratatui = "0.29"
-crossterm = "0.28"
+crossterm = { version = "0.28", features = ["event-stream"] }
 
 # Protocol registration (Windows only)
 [target.'cfg(windows)'.dependencies]
