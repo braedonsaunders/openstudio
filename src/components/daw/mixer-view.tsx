@@ -31,7 +31,7 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
-import type { User, UserTrack } from '@/types';
+import type { User, UserTrack, EQBand } from '@/types';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 import type { MasterEffectsChain } from '@/lib/audio/effects-defaults';
@@ -1254,7 +1254,7 @@ function MasterEffectsPanel({
             />
             {expandedEffects.has('eq') && (
               <div className="pb-3 px-2 space-y-2">
-                {settings.eq.bands.map((band, index) => (
+                {settings.eq.bands.map((band: EQBand, index: number) => (
                   <div key={index} className="flex items-center gap-2">
                     <span className="text-[9px] text-zinc-500 w-10">
                       {band.type === 'lowshelf' ? 'Low' : band.type === 'highshelf' ? 'High' : `Mid${index}`}
