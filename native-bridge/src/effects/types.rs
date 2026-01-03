@@ -1509,7 +1509,7 @@ pub struct MultibandCompressorSettings {
 fn default_mb_low() -> f32 { 200.0 }
 fn default_mb_high() -> f32 { 2000.0 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompressorBand {
     #[serde(default = "default_true")]

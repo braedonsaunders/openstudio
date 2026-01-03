@@ -47,7 +47,7 @@ impl Eq {
 
             let filter_type = match band_settings.band_type {
                 EqBandType::Lowshelf => BiquadType::LowShelf,
-                EqBandType::Peak => BiquadType::Peak,
+                EqBandType::Peak | EqBandType::Peaking => BiquadType::Peak,
                 EqBandType::Highshelf => BiquadType::HighShelf,
             };
 
