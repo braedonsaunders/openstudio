@@ -795,6 +795,20 @@ export class AudioEngine {
     return false; // Effects handled by native bridge
   }
 
+  updateMasterEffects(_settings: Record<string, unknown>): void {
+    // Effects handled by native bridge
+  }
+
+  getMasterEffectsSettings(): null {
+    // Effects handled by native bridge
+    return null;
+  }
+
+  getMasterEffectsMetering(): null {
+    // Metering handled by native bridge
+    return null;
+  }
+
   async setOutputDevice(deviceId: string): Promise<void> {
     if (!this.audioContext) {
       console.warn('[AudioEngine] Cannot set output device: audio context not initialized');
