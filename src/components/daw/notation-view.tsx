@@ -1085,10 +1085,11 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
   // Load notation/lyrics when song changes
   const currentSongId = useSongsStore((s) => s.currentSongId);
   const getCurrentSong = useSongsStore((s) => s.getSongById);
+  const updateSong = useSongsStore((s) => s.updateSong);
   const songsLoading = useSongsStore((s) => s.isLoading);
   const getSongsByRoom = useSongsStore((s) => s.getSongsByRoom);
   const songs = getSongsByRoom(roomId);
-  const { setSongContext, loadFromSong } = useNotationStore();
+  const { setSongContext, loadFromSong, getNotationData, isDirty, markClean } = useNotationStore();
 
   useEffect(() => {
     if (currentSongId) {
@@ -1097,6 +1098,20 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
       loadFromSong(song?.notation, song?.lyrics);
     }
   }, [currentSongId, roomId, getCurrentSong, setSongContext, loadFromSong]);
+
+  // Auto-save notation when it changes
+  useEffect(() => {
+    if (!currentSongId || !isDirty) return;
+
+    const saveTimeout = setTimeout(() => {
+      const notationData = getNotationData();
+      updateSong(currentSongId, { notation: notationData });
+      markClean();
+      console.log('Notation auto-saved');
+    }, 1000); // Debounce 1 second
+
+    return () => clearTimeout(saveTimeout);
+  }, [currentSongId, isDirty, getNotationData, updateSong, markClean]);
 
   // Get active chords (manual or detected)
   const activeChords = useMemo(() => {

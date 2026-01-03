@@ -531,13 +531,24 @@ function parseNote(
   // Note type and fret
   let fret = 0;
   let isDeadNote = false;
+  let isTieNote = false;
+
   if (header & 0x20) {
+    // Note type is specified
     const noteType = reader.readByte();
-    if (noteType === 2) {
+    if (noteType === 1) {
+      // Tie note - linked to previous note
+      isTieNote = true;
+    } else if (noteType === 2) {
+      // Normal note - read fret
       fret = reader.readSignedByte();
     } else if (noteType === 3) {
+      // Dead/muted note
       isDeadNote = true;
     }
+  } else {
+    // Default: normal note, read fret directly
+    fret = reader.readSignedByte();
   }
 
   // Fingering (GP5)
@@ -612,8 +623,8 @@ function parseNote(
     }
   }
 
-  // Add note if valid
-  if (!isDeadNote && fret >= 0 && fret < 30) {
+  // Add note if valid (skip dead notes and tie notes without fret info)
+  if (!isDeadNote && !isTieNote && fret >= 0 && fret < 30) {
     track.notes.push({
       pitch: `${string}:${fret}`,
       duration,
