@@ -34,7 +34,11 @@ import {
   ScrollText,
   RefreshCw,
   Sparkles,
+  FileMusic,
+  Loader2,
+  AlertCircle,
 } from 'lucide-react';
+import { parseNotationFile, NOTATION_FILE_EXTENSIONS } from '@/lib/notation';
 
 // ============================================
 // Types
@@ -621,27 +625,165 @@ function ChordChartDisplay({
 }
 
 // ============================================
-// Tab Notation Display (Placeholder)
+// Tab Notation Display
 // ============================================
 
 function TabDisplay({
   isEditable,
+  tracks,
+  measures,
+  currentBeat,
+  onImport,
 }: {
   isEditable: boolean;
+  tracks: Array<{
+    id: string;
+    name: string;
+    notes: Array<{
+      pitch: string;
+      duration: number;
+      startBeat: number;
+      string?: number;
+      fret?: number;
+      hammer?: boolean;
+      pull?: boolean;
+      slide?: 'up' | 'down';
+      bend?: number;
+      harmonic?: 'natural' | 'artificial';
+      palmMute?: boolean;
+      letRing?: boolean;
+    }>;
+    tuning?: string[];
+  }>;
+  measures: Array<{
+    number: number;
+    startBeat: number;
+    duration: number;
+  }>;
+  currentBeat: number;
+  onImport: () => void;
 }) {
+  const STRINGS = 6;
+  const STRING_LABELS = ['e', 'B', 'G', 'D', 'A', 'E'];
+
+  // Get notes grouped by measure
+  const track = tracks[0];
+
+  if (!track || track.notes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
+        <Guitar className="w-12 h-12 mb-3 opacity-40" />
+        <p className="text-sm font-medium">Tablature View</p>
+        <p className="text-xs mt-1 opacity-60">
+          Import a Guitar Pro or MusicXML file to display tabs
+        </p>
+        {isEditable && (
+          <button
+            onClick={onImport}
+            className="mt-4 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
+          >
+            <Upload className="w-4 h-4" />
+            <span className="text-sm">Import Tab File</span>
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Group notes by measure
+  const measureNotes = measures.map(measure => ({
+    measure,
+    notes: track.notes.filter(
+      note => note.startBeat >= measure.startBeat &&
+        note.startBeat < measure.startBeat + measure.duration
+    ),
+  }));
+
   return (
-    <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
-      <Guitar className="w-12 h-12 mb-3 opacity-40" />
-      <p className="text-sm font-medium">Tablature View</p>
-      <p className="text-xs mt-1 opacity-60">
-        Import a Guitar Pro or MusicXML file to display tabs
-      </p>
-      {isEditable && (
-        <button className="mt-4 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors">
-          <Upload className="w-4 h-4" />
-          <span className="text-sm">Import Tab File</span>
-        </button>
-      )}
+    <div className="space-y-4 font-mono text-sm">
+      {/* Track info */}
+      <div className="flex items-center gap-2 text-zinc-400 text-xs">
+        <Guitar className="w-4 h-4" />
+        <span className="font-medium">{track.name}</span>
+        {track.tuning && (
+          <span className="text-zinc-600">
+            Tuning: {track.tuning.join(' ')}
+          </span>
+        )}
+      </div>
+
+      {/* Tab lines */}
+      <div className="overflow-x-auto">
+        {measureNotes.map(({ measure, notes }) => (
+          <div
+            key={measure.number}
+            className={cn(
+              'inline-block min-w-[200px] border-r border-zinc-700 pr-2 mr-2',
+              currentBeat >= measure.startBeat &&
+                currentBeat < measure.startBeat + measure.duration &&
+                'bg-indigo-500/10'
+            )}
+          >
+            {/* Measure number */}
+            <div className="text-[10px] text-zinc-600 mb-1">
+              {measure.number}
+            </div>
+
+            {/* Tab staff */}
+            <div className="relative">
+              {STRING_LABELS.map((label, stringIdx) => {
+                const stringNumber = stringIdx + 1;
+                const stringNotes = notes.filter(n => n.string === stringNumber);
+
+                return (
+                  <div key={stringIdx} className="flex items-center h-5">
+                    <span className="w-4 text-zinc-500 text-xs">{label}</span>
+                    <div className="flex-1 relative border-b border-zinc-700">
+                      {stringNotes.map((note, noteIdx) => {
+                        const position = ((note.startBeat - measure.startBeat) / measure.duration) * 100;
+                        const isActive = currentBeat >= note.startBeat &&
+                          currentBeat < note.startBeat + note.duration;
+
+                        let displayFret = String(note.fret ?? '-');
+                        if (note.hammer) displayFret = `h${note.fret}`;
+                        if (note.pull) displayFret = `p${note.fret}`;
+                        if (note.slide) displayFret = `/${note.fret}`;
+                        if (note.harmonic) displayFret = `<${note.fret}>`;
+
+                        return (
+                          <span
+                            key={noteIdx}
+                            className={cn(
+                              'absolute -translate-x-1/2 text-xs px-0.5',
+                              isActive ? 'text-indigo-400 font-bold' : 'text-white',
+                              note.palmMute && 'text-orange-400',
+                              note.letRing && 'text-green-400'
+                            )}
+                            style={{ left: `${position}%` }}
+                            title={note.palmMute ? 'Palm mute' : note.letRing ? 'Let ring' : undefined}
+                          >
+                            {displayFret}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Legend */}
+      <div className="flex flex-wrap gap-3 text-[10px] text-zinc-500 pt-2 border-t border-zinc-800">
+        <span><span className="text-white">h</span> = hammer-on</span>
+        <span><span className="text-white">p</span> = pull-off</span>
+        <span><span className="text-white">/</span> = slide</span>
+        <span><span className="text-white">&lt;&gt;</span> = harmonic</span>
+        <span><span className="text-orange-400">●</span> = palm mute</span>
+        <span><span className="text-green-400">●</span> = let ring</span>
+      </div>
     </div>
   );
 }
@@ -669,6 +811,11 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
     isFollowing,
     currentBeat,
     isEditable,
+    importedTracks,
+    importedMeasures,
+    importedMetadata,
+    isImporting,
+    importError,
     setFormat,
     addChord,
     selectChord,
@@ -678,7 +825,13 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
     toggleFollowing,
     setEditable,
     setCurrentBeat,
+    importNotation,
+    setImporting,
+    setImportError,
   } = useNotationStore();
+
+  // File input ref for import
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Audio state for playback sync
   const { currentTime, isPlaying } = useAudioStore();
@@ -825,31 +978,63 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
     const file = e.target.files?.[0];
     if (!file || !currentSongId) return;
 
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('songId', currentSongId);
-    formData.append('roomId', roomId);
+    setImporting(true);
+    setImportError(null);
 
     try {
-      // Upload to R2 via API
-      const response = await fetch('/api/notation/upload', {
+      // Parse the file locally
+      const parsed = await parseNotationFile(file);
+
+      // Upload to R2 for storage
+      const presignResponse = await fetch('/api/notation/upload', {
         method: 'POST',
-        body: formData,
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          fileName: file.name,
+          fileSize: file.size,
+          songId: currentSongId,
+          roomId,
+        }),
       });
 
-      if (!response.ok) {
-        throw new Error('Upload failed');
+      let storageKey: string | undefined;
+
+      if (presignResponse.ok) {
+        const { uploadUrl, key } = await presignResponse.json();
+        storageKey = key;
+
+        // Upload file to R2
+        await fetch(uploadUrl, {
+          method: 'PUT',
+          body: file,
+          headers: {
+            'Content-Type': file.type || 'application/octet-stream',
+          },
+        });
       }
 
-      const data = await response.json();
-      console.log('Tab uploaded:', data);
-      // TODO: Parse the file and load notation data
+      // Import the parsed notation into the store
+      importNotation(parsed, {
+        name: file.name,
+        key: storageKey,
+      });
+
+      // Switch to tab view if we imported tabs
+      if (parsed.tracks.some(t => t.notes.some(n => n.fret !== undefined))) {
+        setFormat('tab');
+      }
     } catch (error) {
-      console.error('Tab upload error:', error);
+      console.error('Tab import error:', error);
+      setImportError((error as Error).message || 'Failed to import notation file');
     }
 
     e.target.value = '';
-  }, [currentSongId, roomId]);
+  }, [currentSongId, roomId, importNotation, setImporting, setImportError, setFormat]);
+
+  // Trigger file import dialog
+  const handleImportClick = useCallback(() => {
+    fileInputRef.current?.click();
+  }, []);
 
   return (
     <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
@@ -1000,6 +1185,52 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
           </div>
         )}
 
+        {/* Hidden file input for imports */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={NOTATION_FILE_EXTENSIONS.join(',')}
+          onChange={handleTabUpload}
+          className="hidden"
+        />
+
+        {/* Import status */}
+        {isImporting && (
+          <div className="flex items-center justify-center gap-2 py-4 text-indigo-400">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Importing notation file...</span>
+          </div>
+        )}
+
+        {importError && (
+          <div className="flex items-center gap-2 p-3 mb-4 bg-red-500/10 border border-red-500/30 rounded-lg text-red-400 text-sm">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{importError}</span>
+            <button
+              onClick={() => setImportError(null)}
+              className="ml-auto p-1 hover:bg-red-500/20 rounded"
+            >
+              <X className="w-3 h-3" />
+            </button>
+          </div>
+        )}
+
+        {/* Imported file info */}
+        {importedMetadata?.sourceFile && (
+          <div className="flex items-center gap-2 p-2 mb-4 bg-emerald-500/10 border border-emerald-500/30 rounded-lg text-emerald-400 text-xs">
+            <FileMusic className="w-4 h-4 shrink-0" />
+            <span>
+              Imported from: <span className="font-medium">{importedMetadata.sourceFile.name}</span>
+            </span>
+            {importedMetadata.title && (
+              <span className="text-emerald-300">• {importedMetadata.title}</span>
+            )}
+            {importedMetadata.artist && (
+              <span className="text-emerald-300/70">by {importedMetadata.artist}</span>
+            )}
+          </div>
+        )}
+
         {format === 'chord-chart' || format === 'nashville' || format === 'lead-sheet' ? (
           <ChordChartDisplay
             chords={activeChords}
@@ -1014,7 +1245,13 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
             lyrics={lyrics}
           />
         ) : format === 'tab' ? (
-          <TabDisplay isEditable={isEditable} />
+          <TabDisplay
+            isEditable={isEditable}
+            tracks={importedTracks}
+            measures={importedMeasures}
+            currentBeat={currentBeat}
+            onImport={handleImportClick}
+          />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
             <FileText className="w-12 h-12 mb-3 opacity-40" />
@@ -1028,13 +1265,15 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
 
       {/* Add Chord Panel (for room owner) */}
       {isEditable && (
-        <div className="shrink-0 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-sm">
-          <AnimatePresence>
+        <div className="shrink-0 border-t border-zinc-800 bg-zinc-900/80 backdrop-blur-sm overflow-hidden">
+          <AnimatePresence mode="wait" initial={false}>
             {isAddingChord ? (
               <motion.div
-                initial={{ height: 0 }}
-                animate={{ height: 'auto' }}
-                exit={{ height: 0 }}
+                key="chord-panel-expanded"
+                initial={{ height: 0, opacity: 0 }}
+                animate={{ height: 'auto', opacity: 1 }}
+                exit={{ height: 0, opacity: 0 }}
+                transition={{ duration: 0.2 }}
                 className="overflow-hidden"
               >
                 <div className="p-3 space-y-3">
@@ -1155,8 +1394,11 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
               </motion.div>
             ) : (
               <motion.div
+                key="chord-panel-collapsed"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.15 }}
                 className="p-2 flex items-center justify-center gap-2"
               >
                 <button
@@ -1166,11 +1408,18 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
                   <Plus className="w-3.5 h-3.5" />
                   Add Chord
                 </button>
-                <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5 rounded transition-colors cursor-pointer">
-                  <Upload className="w-3.5 h-3.5" />
-                  Import Tab
-                  <input type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml" className="hidden" onChange={handleTabUpload} />
-                </label>
+                <button
+                  onClick={handleImportClick}
+                  disabled={isImporting}
+                  className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5 rounded transition-colors disabled:opacity-50"
+                >
+                  {isImporting ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <Upload className="w-3.5 h-3.5" />
+                  )}
+                  Import Tab/Sheet
+                </button>
               </motion.div>
             )}
           </AnimatePresence>
