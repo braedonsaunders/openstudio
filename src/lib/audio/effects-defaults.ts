@@ -44,7 +44,7 @@ export const DEFAULT_EXTENDED_EFFECTS: Omit<ExtendedEffectsChain, keyof typeof D
   transientShaper: { enabled: false, attack: 0, sustain: 0, attackTime: 10, releaseTime: 50, output: 0 },
   stereoImager: { enabled: false, width: 100, midLevel: 0, sideLevel: 0, bassMonoFreq: 100, bassMonoAmount: 0, balance: 0 },
   exciter: { enabled: false, frequency: 3000, amount: 50, harmonics: 'both', color: 50, mix: 50 },
-  multibandCompressor: { enabled: false, lowCrossover: 200, highCrossover: 4000, low: { threshold: -20, ratio: 3, attack: 10, release: 100, gain: 0 }, mid: { threshold: -20, ratio: 3, attack: 10, release: 100, gain: 0 }, high: { threshold: -20, ratio: 3, attack: 10, release: 100, gain: 0 }, outputGain: 0 },
+  multibandCompressor: { enabled: false, lowCrossover: 200, highCrossover: 4000, low: { threshold: -20, ratio: 3, attack: 10, release: 100, gain: 0, solo: false, bypass: false }, mid: { threshold: -20, ratio: 3, attack: 10, release: 100, gain: 0, solo: false, bypass: false }, high: { threshold: -20, ratio: 3, attack: 10, release: 100, gain: 0, solo: false, bypass: false }, outputGain: 0 },
   stereoDelay: { enabled: false, leftTime: 250, rightTime: 375, leftFeedback: 30, rightFeedback: 30, crossFeed: 0, tone: 80, tempoSync: false, leftSubdivision: '1/4', rightSubdivision: '1/4 dot', pingPong: false, mix: 30 },
   roomSimulator: { enabled: false, size: 'medium', damping: 50, earlyLevel: 70, lateLevel: 50, decay: 1.5, preDelay: 10, diffusion: 70, modulation: 20, mix: 30 },
   shimmerReverb: { enabled: false, decay: 4, shimmer: 50, pitch: 12, damping: 50, tone: 70, modulation: 30, preDelay: 30, diffusion: 80, mix: 40 },
