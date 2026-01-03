@@ -5,7 +5,7 @@ mod app;
 mod ui;
 mod widgets;
 
-pub use app::{ActivePanel, App, AppEvent, LogLevel};
+pub use app::{ActivePanel, App, AppEvent, ConnectionEventType, LogLevel, NetworkMode};
 pub use ui::draw;
 
 use crossterm::{
