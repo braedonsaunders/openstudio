@@ -43,6 +43,7 @@ import {
 interface NotationViewProps {
   isMaster: boolean;
   roomId: string;
+  onCreateSong?: () => void;
 }
 
 // ============================================
@@ -351,6 +352,110 @@ function FormatSelector({
 }
 
 // ============================================
+// Nashville Number Conversion
+// ============================================
+
+const NOTES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+const FLAT_NOTES = ['C', 'Db', 'D', 'Eb', 'E', 'F', 'Gb', 'G', 'Ab', 'A', 'Bb', 'B'];
+
+function chordToNashville(chordName: string, key: string | null): string {
+  if (!key) return chordName;
+
+  // Parse chord root
+  let root = chordName[0].toUpperCase();
+  let modifier = '';
+  let quality = '';
+
+  if (chordName.length > 1 && (chordName[1] === '#' || chordName[1] === 'b')) {
+    modifier = chordName[1];
+    quality = chordName.slice(2);
+  } else {
+    quality = chordName.slice(1);
+  }
+
+  const fullRoot = root + modifier;
+
+  // Get key root note
+  let keyRoot = key[0].toUpperCase();
+  if (key.length > 1 && (key[1] === '#' || key[1] === 'b')) {
+    keyRoot += key[1];
+  }
+
+  // Find interval
+  const keyIndex = NOTES.indexOf(keyRoot) !== -1 ? NOTES.indexOf(keyRoot) : FLAT_NOTES.indexOf(keyRoot);
+  const chordIndex = NOTES.indexOf(fullRoot) !== -1 ? NOTES.indexOf(fullRoot) : FLAT_NOTES.indexOf(fullRoot);
+
+  if (keyIndex === -1 || chordIndex === -1) return chordName;
+
+  const interval = (chordIndex - keyIndex + 12) % 12;
+
+  // Map interval to Nashville number
+  const nashvilleMap: Record<number, string> = {
+    0: '1', 1: '#1', 2: '2', 3: '#2', 4: '3', 5: '4',
+    6: '#4', 7: '5', 8: '#5', 9: '6', 10: '#6', 11: '7'
+  };
+
+  let number = nashvilleMap[interval] || '?';
+
+  // Add quality indicators
+  if (quality.startsWith('m') && !quality.startsWith('maj')) {
+    number = number.toLowerCase(); // Minor chords are lowercase
+  } else if (quality.includes('dim')) {
+    number += '°';
+  } else if (quality.includes('aug')) {
+    number += '+';
+  }
+
+  // Add 7th, etc.
+  if (quality.includes('7')) {
+    number += '7';
+  } else if (quality.includes('maj7')) {
+    number += 'maj7';
+  }
+
+  return number;
+}
+
+// ============================================
+// Nashville Number Display
+// ============================================
+
+function NashvilleSymbol({
+  chord,
+  keyContext,
+  isActive,
+  size = 'medium',
+  onClick,
+}: {
+  chord: Chord;
+  keyContext: string | null;
+  isActive?: boolean;
+  size?: 'small' | 'medium' | 'large';
+  onClick?: () => void;
+}) {
+  const fontSizes = { small: 'text-xl', medium: 'text-3xl', large: 'text-5xl' };
+  const nashvilleNumber = chordToNashville(chord.name, keyContext);
+
+  return (
+    <motion.button
+      className={cn(
+        'px-4 py-2 rounded-lg font-bold transition-all font-mono',
+        fontSizes[size],
+        isActive
+          ? 'bg-amber-500 text-black shadow-lg shadow-amber-500/30'
+          : 'bg-white/5 text-amber-200 hover:bg-white/10'
+      )}
+      onClick={onClick}
+      whileHover={{ scale: 1.05 }}
+      whileTap={{ scale: 0.95 }}
+      title={chord.name}
+    >
+      {nashvilleNumber}
+    </motion.button>
+  );
+}
+
+// ============================================
 // Chord Chart View
 // ============================================
 
@@ -362,6 +467,9 @@ function ChordChartDisplay({
   diagramSize,
   isEditable,
   onChordClick,
+  format = 'chord-chart',
+  keyContext,
+  lyrics,
 }: {
   chords: Chord[];
   sections: SongSection[];
@@ -370,6 +478,9 @@ function ChordChartDisplay({
   diagramSize: 'small' | 'medium' | 'large';
   isEditable: boolean;
   onChordClick?: (index: number) => void;
+  format?: 'chord-chart' | 'nashville' | 'lead-sheet';
+  keyContext?: string | null;
+  lyrics?: Array<{ text: string; startTime: number }>;
 }) {
   // Group chords by section
   const chordsBySection = useMemo(() => {
@@ -387,6 +498,24 @@ function ChordChartDisplay({
 
   return (
     <div className="space-y-6">
+      {/* Format indicator */}
+      {format === 'nashville' && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-amber-500/10 border border-amber-500/20 rounded-lg text-sm">
+          <Hash className="w-4 h-4 text-amber-400" />
+          <span className="text-amber-200">Nashville Numbers</span>
+          {keyContext && (
+            <span className="text-amber-400 font-medium ml-auto">Key: {keyContext}</span>
+          )}
+        </div>
+      )}
+
+      {format === 'lead-sheet' && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-blue-500/10 border border-blue-500/20 rounded-lg text-sm">
+          <BookOpen className="w-4 h-4 text-blue-400" />
+          <span className="text-blue-200">Lead Sheet - Chords with Lyrics</span>
+        </div>
+      )}
+
       {chordsBySection.map(({ section, chords: sectionChords }, sectionIdx) => (
         <div key={section?.id || 'no-section'} className="space-y-3">
           {section && (
@@ -397,38 +526,84 @@ function ChordChartDisplay({
             />
           )}
 
-          <div className={cn(
-            'flex flex-wrap gap-3',
-            showDiagrams ? 'gap-4' : 'gap-2'
-          )}>
-            {sectionChords.map((chord, idx) => {
-              const isActive = currentBeat >= chord.startBeat &&
-                currentBeat < chord.startBeat + chord.duration;
-              const globalIdx = chords.indexOf(chord);
+          {/* Lead Sheet: Show chords above lyrics */}
+          {format === 'lead-sheet' ? (
+            <div className="space-y-1">
+              {/* Chords row */}
+              <div className="flex flex-wrap gap-4 text-lg font-bold text-indigo-400">
+                {sectionChords.map((chord, idx) => {
+                  const isActive = currentBeat >= chord.startBeat &&
+                    currentBeat < chord.startBeat + chord.duration;
+                  return (
+                    <span
+                      key={`${chord.name}-${chord.startBeat}`}
+                      className={cn(
+                        'px-2 py-0.5 rounded transition-colors',
+                        isActive && 'bg-indigo-500/20'
+                      )}
+                    >
+                      {chord.name}
+                    </span>
+                  );
+                })}
+              </div>
+              {/* Lyrics row */}
+              {lyrics && lyrics.length > 0 ? (
+                <p className="text-zinc-300 text-lg leading-relaxed">
+                  {lyrics.map(l => l.text).join(' ')}
+                </p>
+              ) : sectionChords.length > 0 && (
+                <p className="text-zinc-600 text-sm italic">Add lyrics in Teleprompter view</p>
+              )}
+            </div>
+          ) : (
+            /* Standard chord display */
+            <div className={cn(
+              'flex flex-wrap gap-3',
+              showDiagrams ? 'gap-4' : 'gap-2'
+            )}>
+              {sectionChords.map((chord, idx) => {
+                const isActive = currentBeat >= chord.startBeat &&
+                  currentBeat < chord.startBeat + chord.duration;
+                const globalIdx = chords.indexOf(chord);
 
-              return showDiagrams ? (
-                <LargeChordDiagram
-                  key={`${chord.name}-${chord.startBeat}`}
-                  chord={chord}
-                  size={diagramSize}
-                  isActive={isActive}
-                  onClick={() => onChordClick?.(globalIdx)}
-                />
-              ) : (
-                <ChordSymbol
-                  key={`${chord.name}-${chord.startBeat}`}
-                  chord={chord}
-                  isActive={isActive}
-                  size={diagramSize}
-                  onClick={() => onChordClick?.(globalIdx)}
-                />
-              );
-            })}
+                if (format === 'nashville') {
+                  return (
+                    <NashvilleSymbol
+                      key={`${chord.name}-${chord.startBeat}`}
+                      chord={chord}
+                      keyContext={keyContext || null}
+                      isActive={isActive}
+                      size={diagramSize}
+                      onClick={() => onChordClick?.(globalIdx)}
+                    />
+                  );
+                }
 
-            {sectionChords.length === 0 && (
-              <div className="text-zinc-500 text-sm italic">No chords</div>
-            )}
-          </div>
+                return showDiagrams ? (
+                  <LargeChordDiagram
+                    key={`${chord.name}-${chord.startBeat}`}
+                    chord={chord}
+                    size={diagramSize}
+                    isActive={isActive}
+                    onClick={() => onChordClick?.(globalIdx)}
+                  />
+                ) : (
+                  <ChordSymbol
+                    key={`${chord.name}-${chord.startBeat}`}
+                    chord={chord}
+                    isActive={isActive}
+                    size={diagramSize}
+                    onClick={() => onChordClick?.(globalIdx)}
+                  />
+                );
+              })}
+
+              {sectionChords.length === 0 && (
+                <div className="text-zinc-500 text-sm italic">No chords</div>
+              )}
+            </div>
+          )}
         </div>
       ))}
 
@@ -475,7 +650,7 @@ function TabDisplay({
 // Main Component
 // ============================================
 
-export function NotationView({ isMaster, roomId }: NotationViewProps) {
+export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [showDiagrams, setShowDiagrams] = useState(true);
@@ -489,6 +664,7 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
     detectedChords,
     showDetectedChords,
     sections,
+    lyrics,
     chordDiagramSize,
     isFollowing,
     currentBeat,
@@ -526,6 +702,9 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
   // Load notation/lyrics when song changes
   const currentSongId = useSongsStore((s) => s.currentSongId);
   const getCurrentSong = useSongsStore((s) => s.getSongById);
+  const songsLoading = useSongsStore((s) => s.isLoading);
+  const getSongsByRoom = useSongsStore((s) => s.getSongsByRoom);
+  const songs = getSongsByRoom(roomId);
   const { setSongContext, loadFromSong } = useNotationStore();
 
   useEffect(() => {
@@ -544,17 +723,83 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
     return chords;
   }, [chords, detectedChords, showDetectedChords]);
 
-  // Common chord presets for quick add
-  const chordPresets: { name: string; frets: number[]; fingers: number[] }[] = [
-    { name: 'C', frets: [-1, 3, 2, 0, 1, 0], fingers: [0, 3, 2, 0, 1, 0] },
-    { name: 'D', frets: [-1, -1, 0, 2, 3, 2], fingers: [0, 0, 0, 1, 3, 2] },
-    { name: 'E', frets: [0, 2, 2, 1, 0, 0], fingers: [0, 2, 3, 1, 0, 0] },
-    { name: 'G', frets: [3, 2, 0, 0, 0, 3], fingers: [2, 1, 0, 0, 0, 3] },
-    { name: 'A', frets: [-1, 0, 2, 2, 2, 0], fingers: [0, 0, 1, 2, 3, 0] },
-    { name: 'Am', frets: [-1, 0, 2, 2, 1, 0], fingers: [0, 0, 2, 3, 1, 0] },
-    { name: 'Em', frets: [0, 2, 2, 0, 0, 0], fingers: [0, 2, 3, 0, 0, 0] },
-    { name: 'Dm', frets: [-1, -1, 0, 2, 3, 1], fingers: [0, 0, 0, 2, 3, 1] },
-  ];
+  // Comprehensive chord library organized by category
+  const chordLibrary: Record<string, { name: string; frets: number[]; fingers: number[] }[]> = {
+    'Major': [
+      { name: 'C', frets: [-1, 3, 2, 0, 1, 0], fingers: [0, 3, 2, 0, 1, 0] },
+      { name: 'D', frets: [-1, -1, 0, 2, 3, 2], fingers: [0, 0, 0, 1, 3, 2] },
+      { name: 'E', frets: [0, 2, 2, 1, 0, 0], fingers: [0, 2, 3, 1, 0, 0] },
+      { name: 'F', frets: [1, 3, 3, 2, 1, 1], fingers: [1, 3, 4, 2, 1, 1] },
+      { name: 'G', frets: [3, 2, 0, 0, 0, 3], fingers: [2, 1, 0, 0, 0, 3] },
+      { name: 'A', frets: [-1, 0, 2, 2, 2, 0], fingers: [0, 0, 1, 2, 3, 0] },
+      { name: 'B', frets: [-1, 2, 4, 4, 4, 2], fingers: [0, 1, 2, 3, 4, 1] },
+    ],
+    'Minor': [
+      { name: 'Am', frets: [-1, 0, 2, 2, 1, 0], fingers: [0, 0, 2, 3, 1, 0] },
+      { name: 'Bm', frets: [-1, 2, 4, 4, 3, 2], fingers: [0, 1, 3, 4, 2, 1] },
+      { name: 'Cm', frets: [-1, 3, 5, 5, 4, 3], fingers: [0, 1, 3, 4, 2, 1] },
+      { name: 'Dm', frets: [-1, -1, 0, 2, 3, 1], fingers: [0, 0, 0, 2, 3, 1] },
+      { name: 'Em', frets: [0, 2, 2, 0, 0, 0], fingers: [0, 2, 3, 0, 0, 0] },
+      { name: 'Fm', frets: [1, 3, 3, 1, 1, 1], fingers: [1, 3, 4, 1, 1, 1] },
+      { name: 'Gm', frets: [3, 5, 5, 3, 3, 3], fingers: [1, 3, 4, 1, 1, 1] },
+    ],
+    '7th': [
+      { name: 'C7', frets: [-1, 3, 2, 3, 1, 0], fingers: [0, 3, 2, 4, 1, 0] },
+      { name: 'D7', frets: [-1, -1, 0, 2, 1, 2], fingers: [0, 0, 0, 2, 1, 3] },
+      { name: 'E7', frets: [0, 2, 0, 1, 0, 0], fingers: [0, 2, 0, 1, 0, 0] },
+      { name: 'G7', frets: [3, 2, 0, 0, 0, 1], fingers: [3, 2, 0, 0, 0, 1] },
+      { name: 'A7', frets: [-1, 0, 2, 0, 2, 0], fingers: [0, 0, 2, 0, 3, 0] },
+      { name: 'B7', frets: [-1, 2, 1, 2, 0, 2], fingers: [0, 2, 1, 3, 0, 4] },
+    ],
+    'Minor 7th': [
+      { name: 'Am7', frets: [-1, 0, 2, 0, 1, 0], fingers: [0, 0, 2, 0, 1, 0] },
+      { name: 'Bm7', frets: [-1, 2, 4, 2, 3, 2], fingers: [0, 1, 3, 1, 2, 1] },
+      { name: 'Dm7', frets: [-1, -1, 0, 2, 1, 1], fingers: [0, 0, 0, 2, 1, 1] },
+      { name: 'Em7', frets: [0, 2, 0, 0, 0, 0], fingers: [0, 2, 0, 0, 0, 0] },
+      { name: 'Gm7', frets: [3, 5, 3, 3, 3, 3], fingers: [1, 3, 1, 1, 1, 1] },
+    ],
+    'Major 7th': [
+      { name: 'Cmaj7', frets: [-1, 3, 2, 0, 0, 0], fingers: [0, 3, 2, 0, 0, 0] },
+      { name: 'Dmaj7', frets: [-1, -1, 0, 2, 2, 2], fingers: [0, 0, 0, 1, 1, 1] },
+      { name: 'Fmaj7', frets: [1, -1, 2, 2, 1, 0], fingers: [1, 0, 3, 4, 2, 0] },
+      { name: 'Gmaj7', frets: [3, 2, 0, 0, 0, 2], fingers: [3, 2, 0, 0, 0, 1] },
+      { name: 'Amaj7', frets: [-1, 0, 2, 1, 2, 0], fingers: [0, 0, 2, 1, 3, 0] },
+    ],
+    'Sus/Add': [
+      { name: 'Csus2', frets: [-1, 3, 0, 0, 1, 0], fingers: [0, 3, 0, 0, 1, 0] },
+      { name: 'Dsus2', frets: [-1, -1, 0, 2, 3, 0], fingers: [0, 0, 0, 1, 2, 0] },
+      { name: 'Dsus4', frets: [-1, -1, 0, 2, 3, 3], fingers: [0, 0, 0, 1, 2, 3] },
+      { name: 'Esus4', frets: [0, 2, 2, 2, 0, 0], fingers: [0, 2, 3, 4, 0, 0] },
+      { name: 'Asus2', frets: [-1, 0, 2, 2, 0, 0], fingers: [0, 0, 1, 2, 0, 0] },
+      { name: 'Asus4', frets: [-1, 0, 2, 2, 3, 0], fingers: [0, 0, 1, 2, 3, 0] },
+      { name: 'Cadd9', frets: [-1, 3, 2, 0, 3, 0], fingers: [0, 2, 1, 0, 3, 0] },
+      { name: 'Gadd9', frets: [3, 0, 0, 0, 0, 3], fingers: [2, 0, 0, 0, 0, 3] },
+    ],
+    'Diminished/Aug': [
+      { name: 'Cdim', frets: [-1, 3, 4, 2, 4, -1], fingers: [0, 1, 3, 2, 4, 0] },
+      { name: 'Ddim', frets: [-1, -1, 0, 1, 0, 1], fingers: [0, 0, 0, 1, 0, 2] },
+      { name: 'Edim', frets: [0, 1, 2, 0, 2, 0], fingers: [0, 1, 2, 0, 3, 0] },
+      { name: 'Caug', frets: [-1, 3, 2, 1, 1, 0], fingers: [0, 4, 3, 1, 2, 0] },
+      { name: 'Eaug', frets: [0, 3, 2, 1, 1, 0], fingers: [0, 4, 3, 1, 2, 0] },
+    ],
+    'Power': [
+      { name: 'C5', frets: [-1, 3, 5, 5, -1, -1], fingers: [0, 1, 3, 4, 0, 0] },
+      { name: 'D5', frets: [-1, -1, 0, 2, 3, -1], fingers: [0, 0, 0, 1, 2, 0] },
+      { name: 'E5', frets: [0, 2, 2, -1, -1, -1], fingers: [0, 1, 2, 0, 0, 0] },
+      { name: 'F5', frets: [1, 3, 3, -1, -1, -1], fingers: [1, 3, 4, 0, 0, 0] },
+      { name: 'G5', frets: [3, 5, 5, -1, -1, -1], fingers: [1, 3, 4, 0, 0, 0] },
+      { name: 'A5', frets: [-1, 0, 2, 2, -1, -1], fingers: [0, 0, 1, 2, 0, 0] },
+    ],
+  };
+
+  // Flat list for quick access
+  const chordPresets = Object.values(chordLibrary).flat();
+
+  // Chord builder state
+  const [showChordBuilder, setShowChordBuilder] = useState(false);
+  const [customChordName, setCustomChordName] = useState('');
+  const [customFrets, setCustomFrets] = useState<number[]>([0, 0, 0, 0, 0, 0]);
+  const [selectedCategory, setSelectedCategory] = useState<string>('Major');
 
   const handleAddChord = (preset: typeof chordPresets[0]) => {
     addChord({
@@ -575,6 +820,37 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
     console.log('Detecting chords from audio...');
   };
 
+  // Handle tab/sheet music file upload
+  const handleTabUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentSongId) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('songId', currentSongId);
+    formData.append('roomId', roomId);
+
+    try {
+      // Upload to R2 via API
+      const response = await fetch('/api/notation/upload', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        throw new Error('Upload failed');
+      }
+
+      const data = await response.json();
+      console.log('Tab uploaded:', data);
+      // TODO: Parse the file and load notation data
+    } catch (error) {
+      console.error('Tab upload error:', error);
+    }
+
+    e.target.value = '';
+  }, [currentSongId, roomId]);
+
   return (
     <div className="h-full flex flex-col bg-zinc-950 overflow-hidden">
       {/* Header */}
@@ -585,18 +861,12 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
 
             <div className="w-px h-5 bg-zinc-700" />
 
-            {/* Key & Tempo display */}
-            <div className="flex items-center gap-2 text-sm">
-              {sessionKey && (
-                <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-500/20 rounded text-indigo-300">
-                  <span className="font-bold">{sessionKey}</span>
-                </div>
-              )}
-              <div className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded text-zinc-400">
-                <span className="font-mono">{sessionTempo || 120}</span>
-                <span className="text-xs opacity-60">BPM</span>
+            {/* Key display */}
+            {sessionKey && (
+              <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-500/20 rounded text-indigo-300 text-sm">
+                <span className="font-bold">{sessionKey}</span>
               </div>
-            </div>
+            )}
           </div>
 
           <div className="flex items-center gap-2">
@@ -705,7 +975,31 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
       </div>
 
       {/* Content */}
-      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4">
+      <div ref={scrollRef} className="flex-1 overflow-y-auto p-4 relative">
+        {/* No Song Overlay */}
+        {songs.length === 0 && !songsLoading && (
+          <div className="absolute inset-0 z-10 bg-zinc-950/95 backdrop-blur-[1px] flex flex-col items-center justify-center">
+            <div className="flex flex-col items-center gap-3">
+              <div className="w-12 h-12 rounded-full bg-white/5 flex items-center justify-center">
+                <Music className="w-6 h-6 text-zinc-600" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium text-zinc-400">No songs yet</p>
+                <p className="text-xs text-zinc-600 mt-0.5">Create a song to add notation</p>
+              </div>
+              {onCreateSong && (
+                <button
+                  onClick={onCreateSong}
+                  className="mt-1 px-3 py-1.5 text-xs font-medium text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Create Song
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {format === 'chord-chart' || format === 'nashville' || format === 'lead-sheet' ? (
           <ChordChartDisplay
             chords={activeChords}
@@ -715,6 +1009,9 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
             diagramSize={chordDiagramSize}
             isEditable={isEditable}
             onChordClick={selectChord}
+            format={format}
+            keyContext={sessionKey}
+            lyrics={lyrics}
           />
         ) : format === 'tab' ? (
           <TabDisplay isEditable={isEditable} />
@@ -740,9 +1037,22 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
                 exit={{ height: 0 }}
                 className="overflow-hidden"
               >
-                <div className="p-3 space-y-2">
+                <div className="p-3 space-y-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-medium text-zinc-400">Quick Add Chord</span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-zinc-400">Add Chord</span>
+                      <button
+                        onClick={() => setShowChordBuilder(!showChordBuilder)}
+                        className={cn(
+                          'px-2 py-0.5 text-[10px] rounded transition-colors',
+                          showChordBuilder
+                            ? 'bg-indigo-500/20 text-indigo-400'
+                            : 'bg-white/5 text-zinc-500 hover:text-white'
+                        )}
+                      >
+                        {showChordBuilder ? 'Library' : 'Custom'}
+                      </button>
+                    </div>
                     <button
                       onClick={() => setIsAddingChord(false)}
                       className="p-1 text-zinc-500 hover:text-white"
@@ -750,24 +1060,104 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
                       <X className="w-4 h-4" />
                     </button>
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {chordPresets.map((preset) => (
-                      <button
-                        key={preset.name}
-                        onClick={() => handleAddChord(preset)}
-                        className="px-3 py-1.5 bg-white/5 hover:bg-white/10 rounded text-sm font-medium text-white transition-colors"
-                      >
-                        {preset.name}
-                      </button>
-                    ))}
-                  </div>
+
+                  {showChordBuilder ? (
+                    /* Custom Chord Builder */
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2">
+                        <input
+                          type="text"
+                          value={customChordName}
+                          onChange={(e) => setCustomChordName(e.target.value)}
+                          placeholder="Chord name (e.g. Cmaj7)"
+                          className="flex-1 px-2 py-1.5 text-sm bg-white/5 border border-zinc-700 rounded focus:outline-none focus:ring-1 focus:ring-indigo-500 text-white placeholder-zinc-600"
+                        />
+                        <button
+                          onClick={() => {
+                            if (customChordName.trim()) {
+                              addChord({
+                                name: customChordName.trim(),
+                                root: customChordName.charAt(0),
+                                quality: customChordName.slice(1),
+                                startBeat: currentBeat,
+                                duration: 4,
+                                frets: customFrets,
+                                fingers: [0, 0, 0, 0, 0, 0],
+                              });
+                              setCustomChordName('');
+                              setCustomFrets([0, 0, 0, 0, 0, 0]);
+                              setIsAddingChord(false);
+                            }
+                          }}
+                          disabled={!customChordName.trim()}
+                          className="px-3 py-1.5 bg-indigo-500 text-white text-sm rounded hover:bg-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed"
+                        >
+                          Add
+                        </button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-zinc-500 w-12">Frets:</span>
+                        {customFrets.map((fret, idx) => (
+                          <div key={idx} className="flex flex-col items-center">
+                            <span className="text-[8px] text-zinc-600 mb-0.5">{['E', 'A', 'D', 'G', 'B', 'e'][idx]}</span>
+                            <input
+                              type="number"
+                              min={-1}
+                              max={12}
+                              value={fret}
+                              onChange={(e) => {
+                                const newFrets = [...customFrets];
+                                newFrets[idx] = parseInt(e.target.value) || 0;
+                                setCustomFrets(newFrets);
+                              }}
+                              className="w-8 px-1 py-0.5 text-xs text-center bg-white/5 border border-zinc-700 rounded text-white"
+                            />
+                          </div>
+                        ))}
+                      </div>
+                      <p className="text-[10px] text-zinc-600">Use -1 for muted strings, 0 for open strings</p>
+                    </div>
+                  ) : (
+                    /* Chord Library with Categories */
+                    <div className="space-y-2">
+                      {/* Category tabs */}
+                      <div className="flex flex-wrap gap-1">
+                        {Object.keys(chordLibrary).map((category) => (
+                          <button
+                            key={category}
+                            onClick={() => setSelectedCategory(category)}
+                            className={cn(
+                              'px-2 py-0.5 text-[10px] rounded transition-colors',
+                              selectedCategory === category
+                                ? 'bg-indigo-500/20 text-indigo-400'
+                                : 'bg-white/5 text-zinc-500 hover:text-white'
+                            )}
+                          >
+                            {category}
+                          </button>
+                        ))}
+                      </div>
+                      {/* Chord buttons for selected category */}
+                      <div className="flex flex-wrap gap-1.5">
+                        {chordLibrary[selectedCategory]?.map((preset) => (
+                          <button
+                            key={preset.name}
+                            onClick={() => handleAddChord(preset)}
+                            className="px-2.5 py-1 bg-white/5 hover:bg-white/10 rounded text-xs font-medium text-white transition-colors"
+                          >
+                            {preset.name}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </motion.div>
             ) : (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
-                className="p-2 flex items-center justify-center"
+                className="p-2 flex items-center justify-center gap-2"
               >
                 <button
                   onClick={() => setIsAddingChord(true)}
@@ -776,6 +1166,11 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
                   <Plus className="w-3.5 h-3.5" />
                   Add Chord
                 </button>
+                <label className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-zinc-400 hover:text-white hover:bg-white/5 rounded transition-colors cursor-pointer">
+                  <Upload className="w-3.5 h-3.5" />
+                  Import Tab
+                  <input type="file" accept=".gp,.gp3,.gp4,.gp5,.gpx,.xml,.musicxml" className="hidden" onChange={handleTabUpload} />
+                </label>
               </motion.div>
             )}
           </AnimatePresence>

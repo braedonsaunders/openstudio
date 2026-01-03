@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useState, useCallback, useEffect, useMemo } from 'react';
+import { useRef, useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useCanvasStore, type CanvasElement, type CanvasElementType } from '@/stores/canvas-store';
@@ -205,6 +205,7 @@ function CanvasElementRenderer({
   onSelect,
   onMove,
   onResize,
+  onUpdate,
   isEditable,
   zoom,
 }: {
@@ -213,21 +214,64 @@ function CanvasElementRenderer({
   onSelect: () => void;
   onMove: (x: number, y: number) => void;
   onResize: (w: number, h: number) => void;
+  onUpdate: (updates: Partial<CanvasElement>) => void;
   isEditable: boolean;
   zoom: number;
 }) {
   const [isDragging, setIsDragging] = useState(false);
   const [isResizing, setIsResizing] = useState(false);
+  const [isEditingText, setIsEditingText] = useState(false);
+  const [editText, setEditText] = useState(element.data.content || '');
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [elementStart, setElementStart] = useState({ x: 0, y: 0, w: 0, h: 0 });
+  const textInputRef = useRef<HTMLTextAreaElement>(null);
+
+  // Update local text when element changes
+  useEffect(() => {
+    setEditText(element.data.content || '');
+  }, [element.data.content]);
+
+  // Focus text input when editing
+  useEffect(() => {
+    if (isEditingText && textInputRef.current) {
+      textInputRef.current.focus();
+      textInputRef.current.select();
+    }
+  }, [isEditingText]);
 
   const handleMouseDown = (e: React.MouseEvent) => {
-    if (!isEditable || element.locked) return;
+    if (!isEditable || element.locked || isEditingText) return;
     e.stopPropagation();
     onSelect();
     setIsDragging(true);
     setDragStart({ x: e.clientX, y: e.clientY });
     setElementStart({ x: element.x, y: element.y, w: element.width, h: element.height });
+  };
+
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (!isEditable || element.locked) return;
+    e.stopPropagation();
+    if (element.type === 'text') {
+      setIsEditingText(true);
+    }
+  };
+
+  const handleTextBlur = () => {
+    if (isEditingText) {
+      onUpdate({ data: { ...element.data, content: editText } });
+      setIsEditingText(false);
+    }
+  };
+
+  const handleTextKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      setEditText(element.data.content || '');
+      setIsEditingText(false);
+    } else if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      onUpdate({ data: { ...element.data, content: editText } });
+      setIsEditingText(false);
+    }
   };
 
   const handleResizeMouseDown = (e: React.MouseEvent) => {
@@ -278,9 +322,28 @@ function CanvasElementRenderer({
         );
 
       case 'text':
+        if (isEditingText) {
+          return (
+            <textarea
+              ref={textInputRef}
+              value={editText}
+              onChange={(e) => setEditText(e.target.value)}
+              onBlur={handleTextBlur}
+              onKeyDown={handleTextKeyDown}
+              className="w-full h-full p-2 bg-transparent border-none outline-none resize-none"
+              style={{
+                fontSize: element.data.fontSize || 16,
+                fontFamily: element.data.fontFamily || 'inherit',
+                color: element.data.color || '#ffffff',
+                fontWeight: element.data.bold ? 'bold' : 'normal',
+                fontStyle: element.data.italic ? 'italic' : 'normal',
+              }}
+            />
+          );
+        }
         return (
           <div
-            className="w-full h-full flex items-center justify-center p-2 overflow-hidden"
+            className="w-full h-full flex items-center justify-center p-2 overflow-hidden cursor-text"
             style={{
               fontSize: element.data.fontSize || 16,
               fontFamily: element.data.fontFamily || 'inherit',
@@ -289,7 +352,7 @@ function CanvasElementRenderer({
               fontStyle: element.data.italic ? 'italic' : 'normal',
             }}
           >
-            {element.data.content || 'Text'}
+            {element.data.content || 'Double-click to edit'}
           </div>
         );
 
@@ -400,7 +463,8 @@ function CanvasElementRenderer({
   return (
     <div
       className={cn(
-        'absolute cursor-move transition-shadow',
+        'absolute transition-shadow',
+        isEditingText ? 'cursor-text' : 'cursor-move',
         isSelected && 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-transparent',
         element.locked && 'cursor-not-allowed opacity-70'
       )}
@@ -413,11 +477,12 @@ function CanvasElementRenderer({
         zIndex: element.zIndex,
       }}
       onMouseDown={handleMouseDown}
+      onDoubleClick={handleDoubleClick}
     >
       {renderContent()}
 
       {/* Resize handle */}
-      {isSelected && isEditable && !element.locked && (
+      {isSelected && isEditable && !element.locked && !isEditingText && (
         <div
           className="absolute -right-1.5 -bottom-1.5 w-3 h-3 bg-indigo-500 rounded-sm cursor-se-resize"
           onMouseDown={handleResizeMouseDown}
@@ -912,6 +977,7 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
               onSelect={() => selectElement(element.id)}
               onMove={(x, y) => moveElement(element.id, x, y)}
               onResize={(w, h) => resizeElement(element.id, w, h)}
+              onUpdate={(updates) => updateElement(element.id, updates)}
               isEditable={isEditable}
               zoom={zoom}
             />

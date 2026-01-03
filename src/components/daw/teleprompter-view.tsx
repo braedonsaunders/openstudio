@@ -42,6 +42,7 @@ import {
 interface TeleprompterViewProps {
   isMaster: boolean;
   roomId: string;
+  onCreateSong?: () => void;
 }
 
 type ScrollMode = 'auto' | 'manual' | 'karaoke';
@@ -263,7 +264,7 @@ function CountdownTimer({
 // Main Component
 // ============================================
 
-export function TeleprompterView({ isMaster, roomId }: TeleprompterViewProps) {
+export function TeleprompterView({ isMaster, roomId, onCreateSong }: TeleprompterViewProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showSettings, setShowSettings] = useState(false);
   const [scrollMode, setScrollMode] = useState<ScrollMode>('auto');
@@ -298,6 +299,9 @@ export function TeleprompterView({ isMaster, roomId }: TeleprompterViewProps) {
   // Load lyrics when song changes
   const currentSongId = useSongsStore((s) => s.currentSongId);
   const getCurrentSong = useSongsStore((s) => s.getSongById);
+  const songsLoading = useSongsStore((s) => s.isLoading);
+  const getSongsByRoom = useSongsStore((s) => s.getSongsByRoom);
+  const songs = getSongsByRoom(roomId);
   const { setSongContext, loadFromSong } = useNotationStore();
 
   useEffect(() => {
@@ -530,10 +534,49 @@ export function TeleprompterView({ isMaster, roomId }: TeleprompterViewProps) {
       <div
         ref={scrollContainerRef}
         className={cn(
-          'flex-1 overflow-y-auto py-8 scroll-smooth',
+          'flex-1 overflow-y-auto py-8 scroll-smooth relative',
           scrollMode === 'manual' && 'cursor-grab active:cursor-grabbing'
         )}
       >
+        {/* No Song Overlay */}
+        {songs.length === 0 && !songsLoading && (
+          <div className={cn(
+            'absolute inset-0 z-10 backdrop-blur-[1px] flex flex-col items-center justify-center',
+            themeMode === 'light' ? 'bg-gray-100/95' : 'bg-zinc-950/95'
+          )}>
+            <div className="flex flex-col items-center gap-3">
+              <div className={cn(
+                'w-12 h-12 rounded-full flex items-center justify-center',
+                themeMode === 'light' ? 'bg-gray-200/50' : 'bg-white/5'
+              )}>
+                <ScrollText className={cn(
+                  'w-6 h-6',
+                  themeMode === 'light' ? 'text-gray-400' : 'text-zinc-600'
+                )} />
+              </div>
+              <div className="text-center">
+                <p className={cn(
+                  'text-sm font-medium',
+                  themeMode === 'light' ? 'text-gray-500' : 'text-zinc-400'
+                )}>No songs yet</p>
+                <p className={cn(
+                  'text-xs mt-0.5',
+                  themeMode === 'light' ? 'text-gray-400' : 'text-zinc-600'
+                )}>Create a song to add lyrics</p>
+              </div>
+              {onCreateSong && (
+                <button
+                  onClick={onCreateSong}
+                  className="mt-1 px-3 py-1.5 text-xs font-medium text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 rounded-lg transition-colors flex items-center gap-1.5"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  Create Song
+                </button>
+              )}
+            </div>
+          </div>
+        )}
+
         {lyrics.length > 0 ? (
           <div className="max-w-4xl mx-auto px-4">
             {/* Past lines */}

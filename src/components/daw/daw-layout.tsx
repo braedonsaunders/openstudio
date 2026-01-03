@@ -1183,6 +1183,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
               <NotationView
                 isMaster={isMaster}
                 roomId={roomId}
+                onCreateSong={handleCreateSong}
               />
             )}
 
@@ -1190,6 +1191,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
               <TeleprompterView
                 isMaster={isMaster}
                 roomId={roomId}
+                onCreateSong={handleCreateSong}
               />
             )}
           </div>
