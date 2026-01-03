@@ -2,6 +2,7 @@ import { supabase, getRealtimeChannel, RealtimeChannel } from './client';
 import type { User, BackingTrack, RoomMessage, TrackQueue, TrackAudioSettings, TrackEffectsChain, UserTrack } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
+import type { SongTrackReference } from '@/types/songs';
 
 export interface RoomState {
   users: Record<string, User>;
@@ -213,6 +214,23 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'permissions:sync' }, ({ payload }) => {
       this.emit('permissions:sync', payload);
+    });
+
+    // Song playback events (multi-track timeline sync)
+    this.channel.on('broadcast', { event: 'song:play' }, ({ payload }) => {
+      this.emit('song:play', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'song:pause' }, ({ payload }) => {
+      this.emit('song:pause', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'song:seek' }, ({ payload }) => {
+      this.emit('song:seek', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'song:select' }, ({ payload }) => {
+      this.emit('song:select', payload);
     });
   }
 
@@ -616,6 +634,44 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'world:scene',
       payload: { scene, userId: this.userId },
+    });
+  }
+
+  // Song playback broadcasts (multi-track timeline sync)
+  async broadcastSongPlay(
+    songId: string,
+    currentTime: number,
+    syncTime: number,
+    trackStates: Array<{ trackRefId: string; muted: boolean; solo: boolean; volume: number }>
+  ): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'song:play',
+      payload: { songId, currentTime, syncTime, trackStates, userId: this.userId },
+    });
+  }
+
+  async broadcastSongPause(songId: string, currentTime: number): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'song:pause',
+      payload: { songId, currentTime, userId: this.userId },
+    });
+  }
+
+  async broadcastSongSeek(songId: string, seekTime: number, syncTime: number): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'song:seek',
+      payload: { songId, seekTime, syncTime, userId: this.userId },
+    });
+  }
+
+  async broadcastSongSelect(songId: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'song:select',
+      payload: { songId, userId: this.userId },
     });
   }
 
