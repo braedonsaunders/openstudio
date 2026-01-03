@@ -297,6 +297,7 @@ function parseGP(reader: SafeBinaryReader, version: number, minor: number): Pars
   }
 
   result.totalMeasures = measureCount;
+  console.log('GP: Starting parse with', measureCount, 'measures,', trackCount, 'tracks at offset', reader.position);
 
   // Parse measure headers
   let totalBeats = 0;
@@ -409,7 +410,10 @@ function parseGP(reader: SafeBinaryReader, version: number, minor: number): Pars
     reader.skip(4);
   }
 
+  console.log('GP: Parsed', result.tracks.length, 'tracks,', result.measures.length, 'measures, starting beats at offset', reader.position);
+
   // Parse measure data (beats and notes)
+  let totalNotesAdded = 0;
   for (let m = 0; m < measureCount && reader.remaining > 0; m++) {
     const measure = result.measures[m];
 
@@ -424,7 +428,9 @@ function parseGP(reader: SafeBinaryReader, version: number, minor: number): Pars
         let beatPosition = measure.startBeat;
 
         for (let b = 0; b < beatCount && reader.remaining > 0; b++) {
+          const notesBefore = track.notes.length;
           const beatData = parseBeat(reader, version, track, beatPosition);
+          totalNotesAdded += track.notes.length - notesBefore;
           beatPosition += beatData.duration;
         }
       }
@@ -435,6 +441,8 @@ function parseGP(reader: SafeBinaryReader, version: number, minor: number): Pars
       reader.readByte();
     }
   }
+
+  console.log('GP: Parsed', totalNotesAdded, 'total notes across', trackCount, 'tracks');
 
   return result;
 }
