@@ -170,6 +170,7 @@ export function UserTrackHeader({
     setTrackMuted,
     setTrackSolo,
     setTrackVolume,
+    setTrackPan,
     setTrackArmed,
     updateTrack,
   } = useUserTracksStore();
@@ -486,9 +487,10 @@ export function UserTrackHeader({
         </div>
       </div>
 
-      {/* Expanded Controls - Volume */}
+      {/* Expanded Controls - Volume & Pan */}
       {isExpanded && (
-        <div className="px-3 pb-2 pt-1 border-t border-gray-200 dark:border-white/5">
+        <div className="px-3 pb-2 pt-1 border-t border-gray-200 dark:border-white/5 space-y-1.5">
+          {/* Volume */}
           <div className="flex items-center gap-2">
             <Volume2 className="w-3 h-3 text-gray-500 dark:text-zinc-500 shrink-0" />
             <Fader
@@ -498,6 +500,19 @@ export function UserTrackHeader({
             />
             <span className="text-[9px] text-gray-500 dark:text-zinc-500 w-6 text-right">
               {Math.round(track.volume * 100)}%
+            </span>
+          </div>
+          {/* Pan */}
+          <div className="flex items-center gap-2">
+            <span className="text-[9px] text-gray-500 dark:text-zinc-500 w-3 text-center shrink-0">L</span>
+            <Fader
+              value={(track.pan + 1) / 2}
+              onChange={(v) => setTrackPan(track.id, v * 2 - 1)}
+              className="flex-1"
+            />
+            <span className="text-[9px] text-gray-500 dark:text-zinc-500 w-3 text-center shrink-0">R</span>
+            <span className="text-[9px] text-gray-500 dark:text-zinc-500 w-6 text-right">
+              {track.pan === 0 ? 'C' : track.pan < 0 ? `L${Math.round(Math.abs(track.pan) * 100)}` : `R${Math.round(track.pan * 100)}`}
             </span>
           </div>
         </div>

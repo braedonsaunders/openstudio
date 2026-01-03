@@ -4,6 +4,7 @@ import type { UserTrack, TrackAudioSettings, ExtendedEffectsChain, InputChannelC
 import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects-defaults';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
+import { nativeBridge } from '@/lib/audio/native-bridge';
 
 // Track color palette - exported for use in color picker
 export const TRACK_COLORS = [
@@ -94,6 +95,7 @@ interface UserTracksState {
   setTrackMuted: (trackId: string, muted: boolean) => void;
   setTrackSolo: (trackId: string, solo: boolean) => void;
   setTrackVolume: (trackId: string, volume: number) => void;
+  setTrackPan: (trackId: string, pan: number) => void;
   setTrackArmed: (trackId: string, armed: boolean) => void;
   setTrackRecording: (trackId: string, recording: boolean) => void;
   setTrackStream: (trackId: string, stream: MediaStream | undefined) => void;
@@ -162,6 +164,7 @@ export const useUserTracksStore = create<UserTracksState>()(
         isMuted: false,
         isSolo: false,
         volume: 1,
+        pan: 0, // Center
         isArmed: false, // New tracks are not armed by default
         isRecording: false,
         createdAt: Date.now(),
@@ -203,6 +206,7 @@ export const useUserTracksStore = create<UserTracksState>()(
         isMuted: false,
         isSolo: false,
         volume: 1,
+        pan: 0, // Center
         isArmed: false,
         isRecording: false,
         createdAt: Date.now(),
@@ -332,6 +336,10 @@ export const useUserTracksStore = create<UserTracksState>()(
             activePreset: undefined, // Clear preset when manually editing
           },
         });
+
+        // Send effects to native bridge for real-time processing
+        nativeBridge.updateEffects(trackId, newEffects);
+
         return { tracks };
       }),
 
@@ -393,14 +401,19 @@ export const useUserTracksStore = create<UserTracksState>()(
         if (!preset) return state;
 
         const tracks = new Map(state.tracks);
+        const newEffects = JSON.parse(JSON.stringify(preset.effects)); // Deep clone
         tracks.set(trackId, {
           ...track,
           audioSettings: {
             ...track.audioSettings,
-            effects: JSON.parse(JSON.stringify(preset.effects)), // Deep clone
+            effects: newEffects,
             activePreset: presetId,
           },
         });
+
+        // Send effects to native bridge
+        nativeBridge.updateEffects(trackId, newEffects);
+
         return { tracks };
       }),
 
@@ -438,12 +451,17 @@ export const useUserTracksStore = create<UserTracksState>()(
             activePreset: presetId,
           },
         });
+
+        // Send effects to native bridge
+        nativeBridge.updateEffects(trackId, newEffects);
+
         return { tracks };
       }),
 
     setTrackMuted: (trackId, muted) => get().updateTrack(trackId, { isMuted: muted }),
     setTrackSolo: (trackId, solo) => get().updateTrack(trackId, { isSolo: solo }),
     setTrackVolume: (trackId, volume) => get().updateTrack(trackId, { volume }),
+    setTrackPan: (trackId, pan) => get().updateTrack(trackId, { pan: Math.max(-1, Math.min(1, pan)) }),
     setTrackArmed: (trackId, armed) => get().updateTrack(trackId, { isArmed: armed }),
     setTrackRecording: (trackId, recording) => get().updateTrack(trackId, { isRecording: recording }),
     setTrackStream: (trackId, stream) => get().updateTrack(trackId, { stream }),
