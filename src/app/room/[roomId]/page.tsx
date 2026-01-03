@@ -73,6 +73,9 @@ export default function RoomPage() {
   const [showSavedTracks, setShowSavedTracks] = useState(false);
   const [joinMode, setJoinMode] = useState<JoinMode>('undecided');
 
+  // Check if user is in listener mode (no native bridge)
+  const isListenerMode = joinMode === 'listener';
+
   // Auth initialization is handled by onAuthStateChange in auth-store
 
   // Load saved track presets when user is logged in
@@ -135,7 +138,7 @@ export default function RoomPage() {
 
   const handleJoin = useCallback(async () => {
     if (!userName.trim()) return;
-    const success = await join(userName.trim(), instrument || undefined);
+    const success = await join(userName.trim(), instrument || undefined, isListenerMode);
     if (success) {
       // Create tracks from selected presets
       const selected = getSelectedPresets();
@@ -161,10 +164,7 @@ export default function RoomPage() {
       }
       setHasJoined(true);
     }
-  }, [userName, instrument, join, getSelectedPresets, addTrack, addMidiTrack, user?.id, incrementUseCount]);
-
-  // Check if user is in listener mode (no native bridge)
-  const isListenerMode = joinMode === 'listener';
+  }, [userName, instrument, join, getSelectedPresets, addTrack, addMidiTrack, user?.id, incrementUseCount, isListenerMode]);
 
   // Show DAW layout once joined, with exit animation wrapper
   if (hasJoined && (isConnected || isExiting)) {

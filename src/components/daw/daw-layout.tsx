@@ -47,7 +47,6 @@ import type { BackingTrack, StemType, QualityPresetName, OpusEncodingSettings } 
 import type { SongTrackReference } from '@/types/songs';
 import type { LoopTrackState } from '@/types/loops';
 import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
-import { useListenOnly } from '@/hooks/useListenOnly';
 import { useAuthStore } from '@/stores/auth-store';
 
 interface DAWLayoutProps {
@@ -68,20 +67,8 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
   const { user } = useAuthStore();
   const userId = user?.id || 'anonymous';
 
-  // Listen-only mode for browsers without native bridge
-  const {
-    state: listenState,
-    isConnected: isListenConnected,
-    isSupported: isListenSupported,
-    stats: listenStats,
-    volume: listenVolume,
-    connect: listenConnect,
-    disconnect: listenDisconnect,
-    setVolume: setListenVolume,
-    error: listenError,
-  } = useListenOnly(roomId, userId, {
-    autoConnect: listenerMode,
-  });
+  // Listener mode uses Cloudflare Calls in receive-only mode (handled by useRoom)
+  // No special hook needed - listeners just don't publish audio tracks
 
   // iOS Safari viewport fix - prevent scroll bounce and ensure full height
   useEffect(() => {

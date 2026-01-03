@@ -184,6 +184,21 @@ Active jam rooms.
 | `default_permissions` | jsonb | YES | - | Default permissions |
 | `require_approval` | bool | YES | `false` | Require join approval |
 
+**`settings` JSONB structure:**
+```json
+{
+  "sampleRate": 48000,       // 48000 or 44100
+  "bitDepth": 16,            // 16 or 24
+  "bufferSize": 256,         // 32, 64, 128, 256, 512, or 1024
+  "autoJitterBuffer": true,  // Auto-adjust jitter buffer
+  "backingTrackVolume": 1.0, // 0.0 to 1.0
+  "masterVolume": 1.0,       // 0.0 to 1.0
+  "networkMode": "auto",     // "auto" (P2P mesh) or "sfu" (force Cloudflare SFU)
+  "maxPerformers": 8,        // Max performers allowed (default: 8)
+  "allowListeners": true     // Whether to allow listen-only users
+}
+```
+
 ---
 
 ### `saved_rooms`
@@ -208,7 +223,7 @@ Persistent room configurations.
 | `welcome_message` | text | YES | - | Welcome message |
 | `rules` | text | YES | - | Room rules |
 | `tags` | text[] | YES | `'{}'` | Tags array |
-| `settings` | jsonb | YES | (audio defaults) | Audio settings |
+| `settings` | jsonb | YES | (see rooms.settings) | Room settings (same structure as rooms.settings) |
 | `total_sessions` | int4 | YES | `0` | Total sessions |
 | `total_unique_visitors` | int4 | YES | `0` | Unique visitors |
 | `total_jam_seconds` | int8 | YES | `0` | Total jam time |

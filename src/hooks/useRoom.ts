@@ -80,7 +80,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   } = useStatsTracker();
 
   // Join room - returns true on success, false on failure
-  const join = useCallback(async (userName: string, instrument?: string): Promise<boolean> => {
+  // listenerMode: if true, joins as receive-only (no audio capture/publishing)
+  const join = useCallback(async (userName: string, instrument?: string, listenerMode: boolean = false): Promise<boolean> => {
     // Get fresh state to check if already joining/connected
     const { isJoining: joining, isConnected: connected } = useRoomStore.getState();
     if (joining || connected) return false;
@@ -286,37 +287,43 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       const trackSettings = firstTrack?.audioSettings;
 
       // Start audio capture with track settings (device, channel config, etc.)
-      const stream = await startCapture(trackSettings);
+      // Skip audio capture in listener mode - listeners only receive, not send
+      let stream: MediaStream | undefined;
+      if (!listenerMode) {
+        stream = await startCapture(trackSettings);
 
-      // Connect MediaStream to TrackAudioProcessor for each track (web audio monitoring)
-      // This allows users to hear themselves through the effects chain when monitoring is enabled
-      // NOTE: Only do this when NOT using native bridge (bridge handles its own audio routing)
-      const bridgeState = useBridgeAudioStore.getState();
-      const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge;
+        // Connect MediaStream to TrackAudioProcessor for each track (web audio monitoring)
+        // This allows users to hear themselves through the effects chain when monitoring is enabled
+        // NOTE: Only do this when NOT using native bridge (bridge handles its own audio routing)
+        const bridgeState = useBridgeAudioStore.getState();
+        const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge;
 
-      if (!useBridge && stream) {
-        for (const track of userTracks) {
-          // Create/get the track processor
-          getOrCreateTrackProcessor(track.id, track.audioSettings);
+        if (!useBridge && stream) {
+          for (const track of userTracks) {
+            // Create/get the track processor
+            getOrCreateTrackProcessor(track.id, track.audioSettings);
 
-          // Connect the MediaStream to the processor
-          await setTrackMediaStreamInput(track.id, stream, {
-            channelConfig: track.audioSettings.channelConfig,
-          });
+            // Connect the MediaStream to the processor
+            await setTrackMediaStreamInput(track.id, stream, {
+              channelConfig: track.audioSettings.channelConfig,
+            });
 
-          // Set the track state - send raw monitoringEnabled, TrackAudioProcessor handles its own calculation
-          const monitoringEnabled = track.audioSettings.directMonitoring ?? true;
-          updateTrackState(track.id, {
-            isArmed: track.isArmed,
-            isMuted: track.isMuted,
-            isSolo: track.isSolo,
-            volume: track.volume,
-            inputGain: track.audioSettings.inputGain || 0,
-            monitoringEnabled: monitoringEnabled,
-          });
+            // Set the track state - send raw monitoringEnabled, TrackAudioProcessor handles its own calculation
+            const monitoringEnabled = track.audioSettings.directMonitoring ?? true;
+            updateTrackState(track.id, {
+              isArmed: track.isArmed,
+              isMuted: track.isMuted,
+              isSolo: track.isSolo,
+              volume: track.volume,
+              inputGain: track.audioSettings.inputGain || 0,
+              monitoringEnabled: monitoringEnabled,
+            });
 
-          console.log(`[useRoom] Connected MediaStream to track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${monitoringEnabled}`);
+            console.log(`[useRoom] Connected MediaStream to track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${monitoringEnabled}`);
+          }
         }
+      } else {
+        console.log('[useRoom] Listener mode - skipping audio capture');
       }
 
       // Initialize Cloudflare Calls
