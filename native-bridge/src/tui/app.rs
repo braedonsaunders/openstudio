@@ -57,6 +57,27 @@ pub enum AppEvent {
         event_type: ConnectionEventType,
         peer_id: Option<String>,
     },
+    /// Remote user audio levels
+    RemoteLevels {
+        levels: Vec<(String, f32)>, // (user_id, level_db)
+    },
+    /// Backing track audio level
+    BackingLevel {
+        level: f32,
+    },
+    /// Browser stream health metrics
+    StreamHealth {
+        buffer_occupancy: f32,  // 0.0-1.0
+        overflow_count: u64,
+        is_healthy: bool,
+    },
+    /// Extended network stats (jitter, clock sync)
+    NetworkStats {
+        jitter_ms: f32,
+        clock_offset_ms: f32,
+        bytes_sent_per_sec: u64,
+        bytes_recv_per_sec: u64,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -184,6 +205,10 @@ pub struct App {
     pub latency_ms: f32,
     pub packet_loss: f32,
     pub latency_history: VecDeque<f32>,
+    pub jitter_ms: f32,
+    pub clock_offset_ms: f32,
+    pub bytes_sent_per_sec: u64,
+    pub bytes_recv_per_sec: u64,
 
     // Room context
     pub room_id: Option<String>,
@@ -197,6 +222,17 @@ pub struct App {
     pub output_device: String,
     pub sample_rate: u32,
     pub buffer_size: u32,
+
+    // Remote users
+    pub remote_levels: Vec<(String, f32)>,
+
+    // Backing track
+    pub backing_level: f32,
+
+    // Browser stream health
+    pub stream_buffer_occupancy: f32,
+    pub stream_overflow_count: u64,
+    pub stream_healthy: bool,
 
     // Logs
     pub logs: VecDeque<LogEntry>,
@@ -240,6 +276,10 @@ impl App {
             latency_ms: 0.0,
             packet_loss: 0.0,
             latency_history: VecDeque::with_capacity(60),
+            jitter_ms: 0.0,
+            clock_offset_ms: 0.0,
+            bytes_sent_per_sec: 0,
+            bytes_recv_per_sec: 0,
 
             room_id: None,
             user_count: 0,
@@ -251,6 +291,13 @@ impl App {
             output_device: "None".to_string(),
             sample_rate: 48000,
             buffer_size: 256,
+
+            remote_levels: Vec::new(),
+            backing_level: -60.0,
+
+            stream_buffer_occupancy: 0.0,
+            stream_overflow_count: 0,
+            stream_healthy: true,
 
             logs: VecDeque::with_capacity(100),
             max_logs: 100,
@@ -399,6 +446,23 @@ impl App {
                     level: LogLevel::Info,
                     message: msg,
                 });
+            }
+            AppEvent::RemoteLevels { levels } => {
+                self.remote_levels = levels;
+            }
+            AppEvent::BackingLevel { level } => {
+                self.backing_level = level;
+            }
+            AppEvent::StreamHealth { buffer_occupancy, overflow_count, is_healthy } => {
+                self.stream_buffer_occupancy = buffer_occupancy;
+                self.stream_overflow_count = overflow_count;
+                self.stream_healthy = is_healthy;
+            }
+            AppEvent::NetworkStats { jitter_ms, clock_offset_ms, bytes_sent_per_sec, bytes_recv_per_sec } => {
+                self.jitter_ms = jitter_ms;
+                self.clock_offset_ms = clock_offset_ms;
+                self.bytes_sent_per_sec = bytes_sent_per_sec;
+                self.bytes_recv_per_sec = bytes_recv_per_sec;
             }
         }
     }
