@@ -9,7 +9,7 @@ import type {
 
 // Default settings for the 15 unified effects (guitar + track effects)
 export const DEFAULT_UNIFIED_EFFECTS: UnifiedEffectsChain = {
-  wah: { enabled: false, mode: 'manual', position: 50, frequency: 800, resonance: 2, sensitivity: 70, attackTime: 1, releaseTime: 50, minFreq: 400, maxFreq: 2000, lfoRate: 1 },
+  wah: { enabled: false, mode: 'manual', frequency: 0.5, rate: 1, depth: 0.7, baseFrequency: 400, maxFrequency: 2000, q: 2, sensitivity: 0.7, attack: 0.01, release: 0.05, mix: 1 },
   overdrive: { enabled: false, drive: 30, tone: 50, level: 70, asymmetry: 0.2 },
   distortion: { enabled: false, type: 'classic', gain: 50, tone: 50, level: 70, presence: 50 },
   ampSimulator: { enabled: false, type: 'clean', gain: 50, bass: 50, mid: 50, treble: 50, presence: 50, master: 70 },
