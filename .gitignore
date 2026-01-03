@@ -43,3 +43,8 @@ next-env.d.ts
 
 # rust
 native-bridge/target/
+
+# essentia.js files copied from node_modules (via postinstall)
+/public/audio/essentia-wasm.es.js
+/public/audio/essentia.js-core.es.js
+/public/audio/essentia-wasm.web.wasm
