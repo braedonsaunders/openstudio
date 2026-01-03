@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "postinstall": "cp node_modules/essentia.js/dist/essentia-wasm.es.js public/audio/ && cp node_modules/essentia.js/dist/essentia.js-core.es.js public/audio/ && cp node_modules/essentia.js/dist/essentia-wasm.web.wasm public/audio/"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.958.0",

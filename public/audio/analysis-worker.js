@@ -280,9 +280,9 @@ async function initialize(rate) {
   sampleRate = rate || 44100;
 
   try {
-    // Import essentia.js ES modules
-    const wasmModule = await import('https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.es.js');
-    const coreModule = await import('https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.es.js');
+    // Import essentia.js ES modules from local files (bundled with the app)
+    const wasmModule = await import('./essentia-wasm.es.js');
+    const coreModule = await import('./essentia.js-core.es.js');
 
     const EssentiaWASM = wasmModule.default || wasmModule.EssentiaWASM || wasmModule;
     const Essentia = coreModule.default || coreModule.Essentia || coreModule;
