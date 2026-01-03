@@ -3,17 +3,17 @@
 
 import type { GuitarEffectPreset, GuitarEffectsChain, GuitarPresetCategory } from '@/types';
 
-// Default guitar effects settings
-const DEFAULT_WAH = { enabled: false, mode: 'manual' as const, position: 50, frequency: 800, resonance: 2, sensitivity: 70, attackTime: 1, releaseTime: 50, minFreq: 400, maxFreq: 2000, lfoRate: 1 };
-const DEFAULT_OVERDRIVE = { enabled: false, drive: 30, tone: 50, level: 70, asymmetry: 0.2 };
-const DEFAULT_DISTORTION = { enabled: false, type: 'classic' as const, gain: 50, tone: 50, level: 70, presence: 50 };
-const DEFAULT_AMP = { enabled: false, type: 'clean' as const, gain: 50, bass: 50, mid: 50, treble: 50, presence: 50, master: 70 };
-const DEFAULT_CABINET = { enabled: false, type: 'combo' as const, size: 'medium' as const, character: 'balanced' as const, highCut: 8000, lowCut: 80 };
-const DEFAULT_CHORUS = { enabled: false, rate: 0.5, depth: 30, delay: 10, feedback: 20, mix: 50, stereoWidth: 100 };
-const DEFAULT_FLANGER = { enabled: false, rate: 0.3, depth: 50, delay: 2, feedback: 60, mix: 50, stereoPhase: 90 };
-const DEFAULT_PHASER = { enabled: false, rate: 0.5, depth: 50, stages: 4, feedback: 50, mix: 50, stereoPhase: 90 };
-const DEFAULT_DELAY = { enabled: false, delayType: 'digital' as const, time: 0.375, feedback: 30, mix: 30, tone: 80, modulation: 10, pingPong: false, tempoSync: false, subdivision: '1/4' as const };
-const DEFAULT_TREMOLO = { enabled: false, rate: 4, depth: 50, waveform: 'sine' as const, spread: 0 };
+// Default guitar effects settings (must match type definitions)
+const DEFAULT_WAH = { enabled: false, mode: 'manual' as const, frequency: 0.5, rate: 1, depth: 0.7, baseFrequency: 400, maxFrequency: 2000, q: 2, sensitivity: 0.7, attack: 0.01, release: 0.05, mix: 1 };
+const DEFAULT_OVERDRIVE = { enabled: false, drive: 0.3, tone: 0.5, level: 0.7 };
+const DEFAULT_DISTORTION = { enabled: false, type: 'classic' as const, amount: 0.5, tone: 0.5, level: 0.7 };
+const DEFAULT_AMP = { enabled: false, type: 'clean' as const, gain: 0.5, bass: 0.5, mid: 0.5, treble: 0.5, presence: 0.5, master: 0.7 };
+const DEFAULT_CABINET = { enabled: false, type: '2x12' as const, micPosition: 'center' as const, mix: 1, roomLevel: 0.2 };
+const DEFAULT_CHORUS = { enabled: false, rate: 0.5, depth: 0.3, delay: 10, feedback: 0.2, spread: 90, mix: 0.5 };
+const DEFAULT_FLANGER = { enabled: false, rate: 0.3, depth: 0.5, delay: 2, feedback: 0.6, mix: 0.5, negative: false };
+const DEFAULT_PHASER = { enabled: false, rate: 0.5, depth: 0.5, baseFrequency: 1000, octaves: 2, stages: 4, feedback: 0.5, q: 1, mix: 0.5 };
+const DEFAULT_DELAY = { enabled: false, type: 'digital' as const, time: 0.375, feedback: 0.3, mix: 0.3, tone: 0.8, modulation: 0.1, pingPongSpread: 0.5, tempo: 120, tempoSync: false, subdivision: '1/4' as const };
+const DEFAULT_TREMOLO = { enabled: false, rate: 4, depth: 0.5, spread: 0, waveform: 'sine' as const };
 
 // Base guitar effects chain
 const BASE_GUITAR_EFFECTS: GuitarEffectsChain = {
@@ -29,7 +29,7 @@ const BASE_GUITAR_EFFECTS: GuitarEffectsChain = {
   tremolo: DEFAULT_TREMOLO,
 };
 
-// Guitar presets
+// Guitar presets (values normalized to 0-1 range)
 export const GUITAR_PRESETS: GuitarEffectPreset[] = [
   // Clean tones
   {
@@ -39,8 +39,8 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Warm, jazzy clean tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 35, bass: 55, mid: 50, treble: 45, master: 65 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'warm' },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.35, bass: 0.55, mid: 0.5, treble: 0.45, master: 0.65 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
     },
   },
   {
@@ -50,9 +50,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Bright, sparkly clean tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 40, bass: 45, mid: 50, treble: 60, presence: 55, master: 65 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'bright' },
-      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.4, depth: 25, mix: 30 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.4, bass: 0.45, mid: 0.5, treble: 0.6, presence: 0.55, master: 0.65 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
+      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.4, depth: 0.25, mix: 0.3 },
     },
   },
   {
@@ -62,10 +62,10 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Bell-like clean with chorus',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 30, bass: 40, mid: 55, treble: 65, presence: 60, master: 60 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'bright' },
-      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.6, depth: 35, mix: 40 },
-      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.3, feedback: 20, mix: 15 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.3, bass: 0.4, mid: 0.55, treble: 0.65, presence: 0.6, master: 0.6 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
+      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.6, depth: 0.35, mix: 0.4 },
+      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.3, feedback: 0.2, mix: 0.15 },
     },
   },
 
@@ -77,8 +77,8 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Edge-of-breakup classic rock tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 55, bass: 50, mid: 55, treble: 55, master: 70 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'balanced' },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 0.55, bass: 0.5, mid: 0.55, treble: 0.55, master: 0.7 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
     },
   },
   {
@@ -88,9 +88,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Tight, modern crunch tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 40, tone: 55, level: 75 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 50, bass: 45, mid: 60, treble: 55, presence: 55, master: 65 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'tight' },
+      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 0.4, tone: 0.55, level: 0.75 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 0.5, bass: 0.45, mid: 0.6, treble: 0.55, presence: 0.55, master: 0.65 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
     },
   },
 
@@ -102,9 +102,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Tight, modern high gain',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 50, tone: 60, level: 80 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 70, bass: 45, mid: 55, treble: 55, presence: 60, master: 70 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'tight' },
+      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 0.5, tone: 0.6, level: 0.8 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 0.7, bass: 0.45, mid: 0.55, treble: 0.55, presence: 0.6, master: 0.7 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
     },
   },
   {
@@ -114,10 +114,10 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Smooth lead tone with sustain',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 55, tone: 50, level: 75 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 65, bass: 50, mid: 60, treble: 50, presence: 55, master: 70 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'warm' },
-      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.35, feedback: 25, mix: 20 },
+      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 0.55, tone: 0.5, level: 0.75 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 0.65, bass: 0.5, mid: 0.6, treble: 0.5, presence: 0.55, master: 0.7 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
+      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.35, feedback: 0.25, mix: 0.2 },
     },
   },
 
@@ -129,9 +129,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Tight, aggressive rhythm tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 60, tone: 65, level: 85 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 80, bass: 50, mid: 45, treble: 60, presence: 65, master: 75 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'tight' },
+      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 0.6, tone: 0.65, level: 0.85 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 0.8, bass: 0.5, mid: 0.45, treble: 0.6, presence: 0.65, master: 0.75 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
     },
   },
   {
@@ -141,10 +141,10 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Screaming metal lead tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 70, tone: 55, level: 80 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 85, bass: 45, mid: 60, treble: 55, presence: 60, master: 70 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'balanced' },
-      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.4, feedback: 30, mix: 25 },
+      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 0.7, tone: 0.55, level: 0.8 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 0.85, bass: 0.45, mid: 0.6, treble: 0.55, presence: 0.6, master: 0.7 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
+      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.4, feedback: 0.3, mix: 0.25 },
     },
   },
 
@@ -156,9 +156,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Warm, bluesy clean tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 45, bass: 55, mid: 55, treble: 50, master: 65 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'warm' },
-      tremolo: { ...DEFAULT_TREMOLO, enabled: true, rate: 3, depth: 30 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.45, bass: 0.55, mid: 0.55, treble: 0.5, master: 0.65 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
+      tremolo: { ...DEFAULT_TREMOLO, enabled: true, rate: 3, depth: 0.3 },
     },
   },
   {
@@ -168,9 +168,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Classic blues breakup',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 45, tone: 45, level: 70 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 50, bass: 50, mid: 55, treble: 50, master: 70 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'warm' },
+      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 0.45, tone: 0.45, level: 0.7 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 0.5, bass: 0.5, mid: 0.55, treble: 0.5, master: 0.7 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
     },
   },
 
@@ -182,8 +182,8 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: '70s rock rhythm tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 60, bass: 55, mid: 55, treble: 55, master: 70 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'vintage' },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 0.6, bass: 0.55, mid: 0.55, treble: 0.55, master: 0.7 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
     },
   },
   {
@@ -193,10 +193,10 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: '70s rock lead with sustain',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 50, tone: 50, level: 75 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 65, bass: 50, mid: 60, treble: 55, master: 70 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'vintage' },
-      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.35, feedback: 25, mix: 20 },
+      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 0.5, tone: 0.5, level: 0.75 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'crunch', gain: 0.65, bass: 0.5, mid: 0.6, treble: 0.55, master: 0.7 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
+      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.35, feedback: 0.25, mix: 0.2 },
     },
   },
 
@@ -208,10 +208,10 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Modern alternative clean',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 40, bass: 45, mid: 55, treble: 55, master: 65 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'balanced' },
-      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.5, depth: 30, mix: 35 },
-      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.4, feedback: 30, mix: 25 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.4, bass: 0.45, mid: 0.55, treble: 0.55, master: 0.65 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '2x12' },
+      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.5, depth: 0.3, mix: 0.35 },
+      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.4, feedback: 0.3, mix: 0.25 },
     },
   },
   {
@@ -221,9 +221,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Modern alternative driven tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 55, tone: 55, level: 75 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 60, bass: 50, mid: 55, treble: 55, presence: 55, master: 70 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'stack4x12', character: 'balanced' },
+      overdrive: { ...DEFAULT_OVERDRIVE, enabled: true, drive: 0.55, tone: 0.55, level: 0.75 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'highgain', gain: 0.6, bass: 0.5, mid: 0.55, treble: 0.55, presence: 0.55, master: 0.7 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '4x12' },
     },
   },
 
@@ -235,8 +235,8 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Snappy funk clean tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 35, bass: 40, mid: 55, treble: 60, presence: 55, master: 65 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'bright' },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.35, bass: 0.4, mid: 0.55, treble: 0.6, presence: 0.55, master: 0.65 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
     },
   },
   {
@@ -246,9 +246,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Auto-wah funk tone',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      wah: { ...DEFAULT_WAH, enabled: true, mode: 'auto', sensitivity: 75, minFreq: 350, maxFreq: 2500 },
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 40, bass: 45, mid: 55, treble: 55, master: 65 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'balanced' },
+      wah: { ...DEFAULT_WAH, enabled: true, mode: 'auto', sensitivity: 0.75, baseFrequency: 350, maxFrequency: 2500 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.4, bass: 0.45, mid: 0.55, treble: 0.55, master: 0.65 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
     },
   },
 
@@ -260,10 +260,10 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Ethereal shimmer textures',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 30, bass: 40, mid: 50, treble: 55, master: 60 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'warm' },
-      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.3, depth: 45, mix: 40 },
-      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.5, feedback: 50, mix: 40 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.3, bass: 0.4, mid: 0.5, treble: 0.55, master: 0.6 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
+      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.3, depth: 0.45, mix: 0.4 },
+      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.5, feedback: 0.5, mix: 0.4 },
     },
   },
   {
@@ -273,10 +273,10 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Ambient pad-like swells',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 35, bass: 45, mid: 50, treble: 50, master: 60 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'warm' },
-      tremolo: { ...DEFAULT_TREMOLO, enabled: true, rate: 0.5, depth: 80 },
-      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.6, feedback: 55, mix: 45 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.35, bass: 0.45, mid: 0.5, treble: 0.5, master: 0.6 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
+      tremolo: { ...DEFAULT_TREMOLO, enabled: true, rate: 0.5, depth: 0.8 },
+      delay: { ...DEFAULT_DELAY, enabled: true, time: 0.6, feedback: 0.55, mix: 0.45 },
     },
   },
 
@@ -288,8 +288,8 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Bright acoustic simulation',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'acoustic', gain: 30, bass: 40, mid: 55, treble: 65, presence: 55, master: 60 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'bright', highCut: 12000 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.3, bass: 0.4, mid: 0.55, treble: 0.65, presence: 0.55, master: 0.6 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
     },
   },
   {
@@ -299,9 +299,9 @@ export const GUITAR_PRESETS: GuitarEffectPreset[] = [
     description: 'Warm acoustic simulation',
     effects: {
       ...BASE_GUITAR_EFFECTS,
-      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'acoustic', gain: 35, bass: 50, mid: 55, treble: 50, master: 60 },
-      cabinet: { ...DEFAULT_CABINET, enabled: true, type: 'combo', character: 'warm', highCut: 8000 },
-      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.4, depth: 20, mix: 20 },
+      ampSimulator: { ...DEFAULT_AMP, enabled: true, type: 'clean', gain: 0.35, bass: 0.5, mid: 0.55, treble: 0.5, master: 0.6 },
+      cabinet: { ...DEFAULT_CABINET, enabled: true, type: '1x12' },
+      chorus: { ...DEFAULT_CHORUS, enabled: true, rate: 0.4, depth: 0.2, mix: 0.2 },
     },
   },
 ];
