@@ -406,17 +406,24 @@ export function useNativeBridge() {
     nativeBridge.setSampleRate(state.sampleRate);
     nativeBridge.setChannelConfig(channelConfigToUse);
 
-    // Send track state to native bridge for direct monitoring
+    // Send track state AND effects to native bridge for direct monitoring
     if (currentUserId && primaryTrack) {
       nativeBridge.updateTrackState(primaryTrack.id, {
         isArmed: primaryTrack.isArmed,
         isMuted: primaryTrack.isMuted,
         isSolo: primaryTrack.isSolo,
         volume: primaryTrack.volume,
+        pan: primaryTrack.pan ?? 0,
         inputGainDb: primaryTrack.audioSettings.inputGain || 0,
         monitoringEnabled: primaryTrack.audioSettings.directMonitoring ?? true,
         monitoringVolume: primaryTrack.audioSettings.monitoringVolume ?? 1,
       });
+
+      // Send effects to native bridge on startup
+      if (primaryTrack.audioSettings.effects) {
+        console.log('[useNativeBridge] Sending initial effects to native bridge');
+        nativeBridge.updateEffects(primaryTrack.id, primaryTrack.audioSettings.effects);
+      }
     }
 
     // Start audio - processors are already ready to receive it

@@ -72,16 +72,8 @@ export function NativeBridgeGate({
     }
   };
 
-  // If already connected and running, auto-proceed
-  useEffect(() => {
-    if (isConnected && isRunning) {
-      // Small delay to show the success state
-      const timer = setTimeout(() => {
-        onJoinAsPerformer();
-      }, 500);
-      return () => clearTimeout(timer);
-    }
-  }, [isConnected, isRunning, onJoinAsPerformer]);
+  // Note: We don't auto-proceed anymore - user should explicitly click "Join as Performer"
+  // Audio starts AFTER joining, so isRunning will be false on this screen
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 flex items-center justify-center p-4">
@@ -229,21 +221,21 @@ export function NativeBridgeGate({
 
           {/* Join Options */}
           <div className="space-y-3 pt-2">
-            {/* Performer option */}
+            {/* Performer option - only requires connection, audio starts after joining */}
             <Button
               size="lg"
-              disabled={!isConnected || !isRunning}
+              disabled={!isConnected}
               onClick={onJoinAsPerformer}
               className={cn(
                 "w-full h-14 text-base",
-                isConnected && isRunning
+                isConnected
                   ? "bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500"
                   : "bg-slate-700 text-slate-400"
               )}
             >
               <Mic className="w-5 h-5 mr-2" />
               Join as Performer
-              {isConnected && isRunning && (
+              {isConnected && latency.total > 0 && (
                 <span className="ml-2 text-xs bg-white/20 px-2 py-0.5 rounded-full">
                   {latency.total.toFixed(0)}ms
                 </span>

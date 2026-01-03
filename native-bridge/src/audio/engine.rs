@@ -987,18 +987,26 @@ impl AudioEngine {
             false // Default to not muted - let audio through
         };
 
-        // DRY monitoring: hardware bypass for zero-latency monitoring
+        // WET monitoring: apply effects chain for local monitoring
         let should_monitor = monitoring_enabled && !is_muted;
 
         if should_monitor {
-            if let Ok(state) = processing_state.try_read() {
+            if let Ok(mut state) = processing_state.try_write() {
                 let gain = state.track_state.input_gain_linear();
                 let volume = state.track_state.volume;
                 let (pan_left, pan_right) = state.track_state.pan_gains();
 
-                // Apply gain, volume, and pan to stereo pairs
+                // Apply input gain first
+                for sample in stereo_buffer.iter_mut() {
+                    *sample *= gain;
+                }
+
+                // Process through effects chain (if any effects are enabled)
+                state.effects_chain.process(stereo_buffer);
+
+                // Apply volume, pan, and monitoring volume to stereo pairs
                 for chunk in stereo_buffer.chunks_exact_mut(2) {
-                    let base_gain = gain * volume * mon_vol;
+                    let base_gain = volume * mon_vol;
                     chunk[0] *= base_gain * pan_left;
                     chunk[1] *= base_gain * pan_right;
                 }
