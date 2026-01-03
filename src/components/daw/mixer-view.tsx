@@ -31,9 +31,9 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
-import type { User, UserTrack, EQBand } from '@/types';
+import type { User, UserTrack, EQBand, MasterEffectsChain } from '@/types';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
-import { DEFAULT_MASTER_EFFECTS, type MasterEffectsChain } from '@/lib/audio/effects-defaults';
+import { DEFAULT_MASTER_EFFECTS } from '@/lib/audio/effects-defaults';
 import { nativeBridge } from '@/lib/audio/native-bridge';
 
 interface MixerViewProps {
