@@ -928,13 +928,17 @@ impl AudioEngine {
         // NO LOGGING IN THIS FUNCTION - logging allocates memory which kills ASIO
 
         // Get channel config
+        // CRITICAL: Default to mono (is_stereo=false) if config cannot be read
+        // This ensures mono input sounds centered rather than panned left/right
         let (left_ch, right_ch, is_stereo) = if let Ok(state) = processing_state.try_read() {
             let left = state.channel_config.left_channel as usize;
             let right = state.channel_config.right_channel.unwrap_or(1) as usize;
             let stereo = state.channel_config.channel_count == 2;
             (left, right, stereo)
         } else {
-            (0, 1, true)
+            // Default to mono mode (channel 0 duplicated to both L/R = centered)
+            // This is safer than stereo which could cause panning issues
+            (0, 0, false)
         };
 
         // Clear and reuse the pre-allocated stereo buffer (no allocation!)

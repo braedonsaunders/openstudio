@@ -98,6 +98,9 @@ export function useNativeBridge() {
   // Use refs to track initialization
   const initialized = useRef(false);
 
+  // Ref to hold startAudio function for auto-start
+  const startAudioRef = useRef<(() => Promise<void>) | null>(null);
+
   // Single useEffect for setup - runs once on mount
   useEffect(() => {
     if (initialized.current) return;
@@ -246,6 +249,49 @@ export function useNativeBridge() {
       initialized.current = false;
     };
   }, []); // Empty dependency array - run once
+
+  // Auto-start native bridge when room is connected and bridge is preferred
+  // This ensures users don't have to manually start audio after joining a room
+  useEffect(() => {
+    // Subscribe to room store for connection changes
+    const unsubscribeRoom = useRoomStore.subscribe((roomState) => {
+      const bridgeState = useBridgeAudioStore.getState();
+
+      // Check if we should auto-start: room connected + bridge connected + bridge preferred + not already running
+      if (
+        roomState.isConnected &&
+        bridgeState.isConnected &&
+        bridgeState.preferNativeBridge &&
+        !bridgeState.isRunning
+      ) {
+        console.log('[useNativeBridge] Room connected with bridge preferred, auto-starting audio...');
+        // Use a small delay to ensure all other initialization has completed
+        setTimeout(async () => {
+          // Re-check conditions in case they changed
+          const latestBridge = useBridgeAudioStore.getState();
+          const latestRoom = useRoomStore.getState();
+          if (
+            latestRoom.isConnected &&
+            latestBridge.isConnected &&
+            latestBridge.preferNativeBridge &&
+            !latestBridge.isRunning &&
+            startAudioRef.current
+          ) {
+            console.log('[useNativeBridge] Executing auto-start via ref...');
+            try {
+              await startAudioRef.current();
+            } catch (err) {
+              console.error('[useNativeBridge] Auto-start failed:', err);
+            }
+          }
+        }, 500);
+      }
+    });
+
+    return () => {
+      unsubscribeRoom();
+    };
+  }, []);
 
   // Connect to bridge
   const connect = useCallback(async () => {
@@ -460,6 +506,7 @@ export function useNativeBridge() {
             isMuted: track.isMuted,
             isSolo: track.isSolo,
             volume: track.volume,
+            pan: track.pan ?? 0,
             inputGainDb: track.audioSettings.inputGain || 0,
             monitoringEnabled: directMonitoring,
             monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
@@ -469,6 +516,11 @@ export function useNativeBridge() {
       }
     }
   }, []);
+
+  // Update ref whenever startAudio changes (for auto-start feature)
+  useEffect(() => {
+    startAudioRef.current = startAudio;
+  }, [startAudio]);
 
   // Stop audio
   const stopAudio = useCallback(() => {
@@ -591,6 +643,7 @@ export function useNativeBridge() {
               isMuted: track.isMuted,
               isSolo: track.isSolo,
               volume: track.volume,
+              pan: track.pan ?? 0,
               inputGainDb: track.audioSettings.inputGain || 0,
               monitoringEnabled: track.audioSettings.directMonitoring ?? true,
               monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
