@@ -61,34 +61,94 @@ function parseDuration(noteEl: Element, divisions: number): number {
   return duration / divisions;
 }
 
-// Parse technical elements (for guitar tablature)
-function parseTechnical(noteEl: Element): Partial<Note> {
-  const technical = noteEl.querySelector('technical');
-  if (!technical) return {};
+// Standard guitar tuning (string 1 = high E, string 6 = low E)
+const STANDARD_TUNING_MIDI = [64, 59, 55, 50, 45, 40]; // E4, B3, G3, D3, A2, E2
 
-  const result: Partial<Note> = {};
+// Convert pitch string to MIDI note number
+function pitchToMidi(pitch: string): number {
+  const noteMap: Record<string, number> = {
+    'C': 0, 'D': 2, 'E': 4, 'F': 5, 'G': 7, 'A': 9, 'B': 11,
+  };
 
-  const stringEl = technical.querySelector('string');
-  if (stringEl) result.string = parseInt(stringEl.textContent || '1');
+  const match = pitch.match(/^([A-G])(#|b|##|bb)?(\d+)$/);
+  if (!match) return 60; // Default to middle C
 
-  const fretEl = technical.querySelector('fret');
-  if (fretEl) result.fret = parseInt(fretEl.textContent || '0');
+  const [, note, accidental, octaveStr] = match;
+  const octave = parseInt(octaveStr);
+  let midi = noteMap[note] + (octave + 1) * 12;
 
-  const hammerOn = technical.querySelector('hammer-on');
-  if (hammerOn) result.hammer = true;
+  if (accidental === '#') midi += 1;
+  else if (accidental === 'b') midi -= 1;
+  else if (accidental === '##') midi += 2;
+  else if (accidental === 'bb') midi -= 2;
 
-  const pullOff = technical.querySelector('pull-off');
-  if (pullOff) result.pull = true;
+  return midi;
+}
 
-  const bend = technical.querySelector('bend');
-  if (bend) {
-    const bendAlter = bend.querySelector('bend-alter');
-    if (bendAlter) result.bend = parseFloat(bendAlter.textContent || '0');
+// Find the best string and fret for a given MIDI note
+function midiToFret(midi: number, tuning: number[] = STANDARD_TUNING_MIDI): { string: number; fret: number } | null {
+  // Try each string, prefer lower frets and middle strings
+  let bestString = -1;
+  let bestFret = -1;
+  let bestScore = Infinity;
+
+  for (let s = 0; s < tuning.length; s++) {
+    const fret = midi - tuning[s];
+    if (fret >= 0 && fret <= 24) {
+      // Score: prefer lower frets, prefer middle strings (2-4)
+      const fretPenalty = fret;
+      const stringPenalty = Math.abs(s - 2.5) * 2; // Prefer strings 2-4
+      const score = fretPenalty + stringPenalty;
+
+      if (score < bestScore) {
+        bestScore = score;
+        bestString = s + 1; // 1-indexed
+        bestFret = fret;
+      }
+    }
   }
 
-  const harmonic = technical.querySelector('harmonic');
-  if (harmonic) {
-    result.harmonic = harmonic.querySelector('natural') ? 'natural' : 'artificial';
+  return bestString >= 0 ? { string: bestString, fret: bestFret } : null;
+}
+
+// Parse technical elements (for guitar tablature)
+function parseTechnical(noteEl: Element, pitch: string): Partial<Note> {
+  const technical = noteEl.querySelector('technical');
+  const result: Partial<Note> = {};
+
+  if (technical) {
+    const stringEl = technical.querySelector('string');
+    if (stringEl) result.string = parseInt(stringEl.textContent || '1');
+
+    const fretEl = technical.querySelector('fret');
+    if (fretEl) result.fret = parseInt(fretEl.textContent || '0');
+
+    const hammerOn = technical.querySelector('hammer-on');
+    if (hammerOn) result.hammer = true;
+
+    const pullOff = technical.querySelector('pull-off');
+    if (pullOff) result.pull = true;
+
+    const bend = technical.querySelector('bend');
+    if (bend) {
+      const bendAlter = bend.querySelector('bend-alter');
+      if (bendAlter) result.bend = parseFloat(bendAlter.textContent || '0');
+    }
+
+    const harmonic = technical.querySelector('harmonic');
+    if (harmonic) {
+      result.harmonic = harmonic.querySelector('natural') ? 'natural' : 'artificial';
+    }
+  }
+
+  // If no fret/string info, infer from pitch (for standard notation files)
+  if (result.fret === undefined || result.string === undefined) {
+    const midi = pitchToMidi(pitch);
+    const fretInfo = midiToFret(midi);
+    if (fretInfo) {
+      if (result.string === undefined) result.string = fretInfo.string;
+      if (result.fret === undefined) result.fret = fretInfo.fret;
+    }
   }
 
   return result;
@@ -301,7 +361,7 @@ export function parseMusicXML(xmlString: string): ParsedNotation {
           pitch,
           duration,
           startBeat: noteStartBeat,
-          ...parseTechnical(noteEl),
+          ...parseTechnical(noteEl, pitch),
         };
 
         // Parse tie
