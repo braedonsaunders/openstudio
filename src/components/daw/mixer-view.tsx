@@ -1190,7 +1190,7 @@ function MasterEffectsPanel({
   const handleUpdate = useCallback((updates: Partial<MasterEffectsChain>) => {
     updateMasterEffects(updates);
     // Immediately reflect in local state for responsiveness
-    setSettings((prev) => prev ? { ...prev, ...updates } : null);
+    setSettings((prev: MasterEffectsChain | null) => prev ? { ...prev, ...updates } : null);
   }, [updateMasterEffects]);
 
   if (!settings) {
