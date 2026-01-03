@@ -551,6 +551,16 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
     setEditable(isMaster);
   }, [isMaster, setEditable]);
 
+  // Load canvas data from room on mount
+  const { loadFromRoom, setRoomContext } = useCanvasStore();
+
+  useEffect(() => {
+    if (roomId) {
+      setRoomContext(roomId);
+      loadFromRoom(roomId);
+    }
+  }, [roomId, setRoomContext, loadFromRoom]);
+
   // Handle canvas click (deselect)
   const handleCanvasClick = () => {
     if (activeTool === 'select') {

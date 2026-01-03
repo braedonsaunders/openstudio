@@ -2,89 +2,41 @@
 
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
+import type { SongNotation, SongLyrics, SongChord, SongSection, SongLyricLine } from '@/types/songs';
 
-// Notation display formats
-export type NotationFormat = 'tab' | 'sheet' | 'chord-chart' | 'nashville' | 'lead-sheet';
+// =============================================================================
+// Types
+// =============================================================================
 
-// Chord representation
-export interface Chord {
-  name: string;           // e.g., "Am", "G7", "Cmaj7"
-  root: string;           // e.g., "A", "G", "C"
-  quality: string;        // e.g., "m", "7", "maj7"
-  bass?: string;          // For slash chords, e.g., "C/G"
-  startBeat: number;      // Position in beats from start
-  duration: number;       // Duration in beats
-  frets?: number[];       // Guitar fret positions (6 strings, -1 for muted, 0 for open)
-  fingers?: number[];     // Finger positions (0 = no finger)
-  confidence?: number;    // AI detection confidence (0-1)
-}
+export type NotationFormat = 'chord-chart' | 'tab' | 'sheet' | 'nashville' | 'lead-sheet';
 
-// Section of the song
-export interface SongSection {
-  id: string;
-  name: string;           // e.g., "Verse 1", "Chorus", "Bridge"
-  type: 'intro' | 'verse' | 'chorus' | 'bridge' | 'solo' | 'outro' | 'breakdown' | 'custom';
-  startBeat: number;
-  endBeat: number;
-  chords: Chord[];
-  color?: string;
-}
+// Re-export types for convenience
+export type { SongChord as Chord, SongSection, SongLyricLine as LyricLine } from '@/types/songs';
 
-// Tab notation (for guitar/bass)
-export interface TabMeasure {
-  measureNumber: number;
-  timeSignature: [number, number]; // e.g., [4, 4]
-  notes: TabNote[];
-}
-
-export interface TabNote {
-  string: number;         // 1-6 for guitar, 1-4 for bass
-  fret: number;           // 0-24
-  beat: number;           // Position within measure
-  duration: number;       // In beats (1 = quarter note, 0.5 = eighth, etc.)
-  technique?: 'hammer-on' | 'pull-off' | 'slide' | 'bend' | 'vibrato' | 'palm-mute' | 'harmonic';
-}
-
-// Lyric line with timing
-export interface LyricLine {
-  id: string;
-  text: string;
-  startTime: number;      // In seconds
-  endTime: number;
-  syllables?: {           // For karaoke-style highlighting
-    text: string;
-    startTime: number;
-    endTime: number;
-  }[];
-}
+// =============================================================================
+// Store State
+// =============================================================================
 
 export interface NotationState {
-  // Current notation data
+  // Current song context
+  currentSongId: string | null;
+  roomId: string | null;
+
+  // Notation data (loaded from current song)
   format: NotationFormat;
-  key: string | null;
-  timeSignature: [number, number];
-  tempo: number;
-
-  // Song structure
   sections: SongSection[];
-  currentSectionId: string | null;
-
-  // Chords (flat list for simple chord charts)
-  chords: Chord[];
-  detectedChords: Chord[];      // AI-detected chords
+  chords: SongChord[];
+  detectedChords: SongChord[];
   showDetectedChords: boolean;
-
-  // Tab notation
-  tabMeasures: TabMeasure[];
   instrument: 'guitar' | 'bass' | 'ukulele';
-  tuning: string[];             // e.g., ['E', 'A', 'D', 'G', 'B', 'E']
+  tuning: string[];
   capo: number;
 
-  // Lyrics
-  lyrics: LyricLine[];
+  // Lyrics data (loaded from current song)
+  lyrics: SongLyricLine[];
   showLyrics: boolean;
 
-  // Display settings
+  // Display settings (local, not persisted per-song)
   displayMode: 'scroll' | 'page' | 'follow';
   fontSize: number;
   showFretNumbers: boolean;
@@ -92,7 +44,7 @@ export interface NotationState {
   chordDiagramSize: 'small' | 'medium' | 'large';
   highlightCurrentChord: boolean;
   autoScroll: boolean;
-  scrollOffset: number;         // Current scroll position in beats
+  scrollOffset: number;
 
   // Playback sync
   currentBeat: number;
@@ -102,97 +54,90 @@ export interface NotationState {
   isEditable: boolean;
   selectedChordIndex: number | null;
 
-  // Import/export
-  sourceFile: string | null;    // Original file (GP, MusicXML, etc.)
-  sourceFormat: string | null;
+  // Dirty flag for save
+  isDirty: boolean;
 
-  // Actions
+  // Actions - Song context
+  setSongContext: (songId: string | null, roomId: string | null) => void;
+  loadFromSong: (notation: SongNotation | null | undefined, lyrics: SongLyrics | null | undefined) => void;
+  getNotationData: () => SongNotation;
+  getLyricsData: () => SongLyrics;
+
+  // Actions - Notation
   setFormat: (format: NotationFormat) => void;
-  setKey: (key: string | null) => void;
-  setTimeSignature: (ts: [number, number]) => void;
-  setTempo: (tempo: number) => void;
-
-  // Section actions
   addSection: (section: Omit<SongSection, 'id'>) => string;
   updateSection: (id: string, updates: Partial<SongSection>) => void;
   removeSection: (id: string) => void;
-  setCurrentSection: (id: string | null) => void;
-
-  // Chord actions
-  addChord: (chord: Chord) => void;
-  updateChord: (index: number, updates: Partial<Chord>) => void;
+  addChord: (chord: SongChord) => void;
+  updateChord: (index: number, updates: Partial<SongChord>) => void;
   removeChord: (index: number) => void;
-  setChords: (chords: Chord[]) => void;
-  setDetectedChords: (chords: Chord[]) => void;
+  setChords: (chords: SongChord[]) => void;
+  setDetectedChords: (chords: SongChord[]) => void;
   toggleDetectedChords: () => void;
   selectChord: (index: number | null) => void;
-
-  // Tab actions
-  setTabMeasures: (measures: TabMeasure[]) => void;
-  setInstrument: (instrument: NotationState['instrument']) => void;
+  setInstrument: (instrument: 'guitar' | 'bass' | 'ukulele') => void;
   setTuning: (tuning: string[]) => void;
   setCapo: (capo: number) => void;
 
-  // Lyric actions
-  setLyrics: (lyrics: LyricLine[]) => void;
-  addLyricLine: (line: Omit<LyricLine, 'id'>) => string;
-  updateLyricLine: (id: string, updates: Partial<LyricLine>) => void;
+  // Actions - Lyrics
+  setLyrics: (lyrics: SongLyricLine[]) => void;
+  addLyricLine: (line: Omit<SongLyricLine, 'id'>) => string;
+  updateLyricLine: (id: string, updates: Partial<SongLyricLine>) => void;
   removeLyricLine: (id: string) => void;
   toggleLyrics: () => void;
 
-  // Display actions
-  setDisplayMode: (mode: NotationState['displayMode']) => void;
+  // Actions - Display settings
+  setDisplayMode: (mode: 'scroll' | 'page' | 'follow') => void;
   setFontSize: (size: number) => void;
-  setChordDiagramSize: (size: NotationState['chordDiagramSize']) => void;
+  setChordDiagramSize: (size: 'small' | 'medium' | 'large') => void;
   toggleFretNumbers: () => void;
   toggleFingerNumbers: () => void;
   toggleHighlightChord: () => void;
   toggleAutoScroll: () => void;
   setScrollOffset: (offset: number) => void;
 
-  // Playback sync
+  // Actions - Playback
   setCurrentBeat: (beat: number) => void;
   toggleFollowing: () => void;
 
-  // Import/export
-  importFromFile: (content: string, format: string) => Promise<void>;
-  exportToFormat: (format: string) => string;
-  clear: () => void;
-
-  // Permission
+  // Actions - Editing
   setEditable: (editable: boolean) => void;
+  clear: () => void;
+  markClean: () => void;
 
-  // Computed getters
-  getCurrentChord: () => Chord | null;
-  getChordsForBeat: (beat: number) => Chord[];
+  // Computed
+  getCurrentChord: () => SongChord | null;
+  getChordsForBeat: (beat: number) => SongChord[];
   getSectionForBeat: (beat: number) => SongSection | null;
 }
+
+// =============================================================================
+// Constants
+// =============================================================================
+
+const STANDARD_GUITAR_TUNING = ['E', 'A', 'D', 'G', 'B', 'E'];
+const STANDARD_BASS_TUNING = ['E', 'A', 'D', 'G'];
+const STANDARD_UKULELE_TUNING = ['G', 'C', 'E', 'A'];
 
 function generateId(): string {
   return `notation-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 }
 
-// Standard guitar tuning
-const STANDARD_GUITAR_TUNING = ['E', 'A', 'D', 'G', 'B', 'E'];
-const STANDARD_BASS_TUNING = ['E', 'A', 'D', 'G'];
-const STANDARD_UKULELE_TUNING = ['G', 'C', 'E', 'A'];
+// =============================================================================
+// Store Implementation
+// =============================================================================
 
 export const useNotationStore = create<NotationState>()(
   subscribeWithSelector((set, get) => ({
     // Initial state
+    currentSongId: null,
+    roomId: null,
+
     format: 'chord-chart',
-    key: null,
-    timeSignature: [4, 4],
-    tempo: 120,
-
     sections: [],
-    currentSectionId: null,
-
     chords: [],
     detectedChords: [],
     showDetectedChords: true,
-
-    tabMeasures: [],
     instrument: 'guitar',
     tuning: STANDARD_GUITAR_TUNING,
     capo: 0,
@@ -215,20 +160,58 @@ export const useNotationStore = create<NotationState>()(
     isEditable: true,
     selectedChordIndex: null,
 
-    sourceFile: null,
-    sourceFormat: null,
+    isDirty: false,
 
-    // Actions
-    setFormat: (format) => set({ format }),
-    setKey: (key) => set({ key }),
-    setTimeSignature: (ts) => set({ timeSignature: ts }),
-    setTempo: (tempo) => set({ tempo: Math.max(20, Math.min(300, tempo)) }),
+    // Song context actions
+    setSongContext: (songId, roomId) => {
+      set({ currentSongId: songId, roomId, isDirty: false });
+    },
 
-    // Section actions
+    loadFromSong: (notation, lyrics) => {
+      set({
+        format: notation?.format || 'chord-chart',
+        sections: notation?.sections || [],
+        chords: notation?.chords || [],
+        detectedChords: notation?.detectedChords || [],
+        instrument: notation?.instrument || 'guitar',
+        tuning: notation?.tuning || STANDARD_GUITAR_TUNING,
+        capo: notation?.capo || 0,
+        lyrics: lyrics?.lines || [],
+        isDirty: false,
+        currentBeat: 0,
+        scrollOffset: 0,
+      });
+    },
+
+    getNotationData: () => {
+      const state = get();
+      return {
+        format: state.format,
+        sections: state.sections,
+        chords: state.chords,
+        detectedChords: state.detectedChords.length > 0 ? state.detectedChords : undefined,
+        instrument: state.instrument,
+        tuning: state.tuning,
+        capo: state.capo,
+      };
+    },
+
+    getLyricsData: () => {
+      const state = get();
+      return {
+        lines: state.lyrics,
+        source: 'manual',
+      };
+    },
+
+    // Notation actions
+    setFormat: (format) => set({ format, isDirty: true }),
+
     addSection: (section) => {
       const id = generateId();
       set((state) => ({
         sections: [...state.sections, { ...section, id }].sort((a, b) => a.startBeat - b.startBeat),
+        isDirty: true,
       }));
       return id;
     },
@@ -236,28 +219,28 @@ export const useNotationStore = create<NotationState>()(
     updateSection: (id, updates) => {
       set((state) => ({
         sections: state.sections.map(s => s.id === id ? { ...s, ...updates } : s),
+        isDirty: true,
       }));
     },
 
     removeSection: (id) => {
       set((state) => ({
         sections: state.sections.filter(s => s.id !== id),
-        currentSectionId: state.currentSectionId === id ? null : state.currentSectionId,
+        isDirty: true,
       }));
     },
 
-    setCurrentSection: (id) => set({ currentSectionId: id }),
-
-    // Chord actions
     addChord: (chord) => {
       set((state) => ({
         chords: [...state.chords, chord].sort((a, b) => a.startBeat - b.startBeat),
+        isDirty: true,
       }));
     },
 
     updateChord: (index, updates) => {
       set((state) => ({
         chords: state.chords.map((c, i) => i === index ? { ...c, ...updates } : c),
+        isDirty: true,
       }));
     },
 
@@ -265,47 +248,54 @@ export const useNotationStore = create<NotationState>()(
       set((state) => ({
         chords: state.chords.filter((_, i) => i !== index),
         selectedChordIndex: state.selectedChordIndex === index ? null : state.selectedChordIndex,
+        isDirty: true,
       }));
     },
 
-    setChords: (chords) => set({ chords }),
-    setDetectedChords: (chords) => set({ detectedChords: chords }),
+    setChords: (chords) => set({ chords, isDirty: true }),
+    setDetectedChords: (chords) => set({ detectedChords: chords, isDirty: true }),
     toggleDetectedChords: () => set((state) => ({ showDetectedChords: !state.showDetectedChords })),
     selectChord: (index) => set({ selectedChordIndex: index }),
 
-    // Tab actions
-    setTabMeasures: (measures) => set({ tabMeasures: measures }),
     setInstrument: (instrument) => {
       const tuning = instrument === 'guitar' ? STANDARD_GUITAR_TUNING
         : instrument === 'bass' ? STANDARD_BASS_TUNING
         : STANDARD_UKULELE_TUNING;
-      set({ instrument, tuning });
+      set({ instrument, tuning, isDirty: true });
     },
-    setTuning: (tuning) => set({ tuning }),
-    setCapo: (capo) => set({ capo: Math.max(0, Math.min(12, capo)) }),
 
-    // Lyric actions
-    setLyrics: (lyrics) => set({ lyrics }),
+    setTuning: (tuning) => set({ tuning, isDirty: true }),
+    setCapo: (capo) => set({ capo: Math.max(0, Math.min(12, capo)), isDirty: true }),
+
+    // Lyrics actions
+    setLyrics: (lyrics) => set({ lyrics, isDirty: true }),
+
     addLyricLine: (line) => {
       const id = generateId();
       set((state) => ({
         lyrics: [...state.lyrics, { ...line, id }].sort((a, b) => a.startTime - b.startTime),
+        isDirty: true,
       }));
       return id;
     },
+
     updateLyricLine: (id, updates) => {
       set((state) => ({
         lyrics: state.lyrics.map(l => l.id === id ? { ...l, ...updates } : l),
+        isDirty: true,
       }));
     },
+
     removeLyricLine: (id) => {
       set((state) => ({
         lyrics: state.lyrics.filter(l => l.id !== id),
+        isDirty: true,
       }));
     },
+
     toggleLyrics: () => set((state) => ({ showLyrics: !state.showLyrics })),
 
-    // Display actions
+    // Display settings (not persisted)
     setDisplayMode: (mode) => set({ displayMode: mode }),
     setFontSize: (size) => set({ fontSize: Math.max(10, Math.min(32, size)) }),
     setChordDiagramSize: (size) => set({ chordDiagramSize: size }),
@@ -319,53 +309,25 @@ export const useNotationStore = create<NotationState>()(
     setCurrentBeat: (beat) => set({ currentBeat: Math.max(0, beat) }),
     toggleFollowing: () => set((state) => ({ isFollowing: !state.isFollowing })),
 
-    // Import/export
-    importFromFile: async (content, format) => {
-      // TODO: Implement parsers for different formats
-      // - Guitar Pro (.gp5, .gpx)
-      // - MusicXML (.xml, .musicxml)
-      // - ChordPro (.chopro, .cho)
-      // - Plain text chord charts
-      set({ sourceFile: content, sourceFormat: format });
-    },
-
-    exportToFormat: (format) => {
-      const state = get();
-      // TODO: Implement export to different formats
-      if (format === 'json') {
-        return JSON.stringify({
-          key: state.key,
-          tempo: state.tempo,
-          timeSignature: state.timeSignature,
-          sections: state.sections,
-          chords: state.chords,
-          lyrics: state.lyrics,
-        }, null, 2);
-      }
-      return '';
-    },
+    // Editing
+    setEditable: (editable) => set({ isEditable: editable }),
 
     clear: () => set({
       sections: [],
-      currentSectionId: null,
       chords: [],
       detectedChords: [],
-      tabMeasures: [],
       lyrics: [],
-      sourceFile: null,
-      sourceFormat: null,
       currentBeat: 0,
       scrollOffset: 0,
+      isDirty: true,
     }),
 
-    // Permission
-    setEditable: (editable) => set({ isEditable: editable }),
+    markClean: () => set({ isDirty: false }),
 
-    // Computed getters
+    // Computed
     getCurrentChord: () => {
       const { chords, currentBeat, showDetectedChords, detectedChords } = get();
       const activeChords = showDetectedChords && detectedChords.length > 0 ? detectedChords : chords;
-
       return activeChords.find(c =>
         currentBeat >= c.startBeat && currentBeat < c.startBeat + c.duration
       ) || null;
@@ -374,7 +336,6 @@ export const useNotationStore = create<NotationState>()(
     getChordsForBeat: (beat) => {
       const { chords, showDetectedChords, detectedChords } = get();
       const activeChords = showDetectedChords && detectedChords.length > 0 ? detectedChords : chords;
-
       return activeChords.filter(c =>
         beat >= c.startBeat && beat < c.startBeat + c.duration
       );
@@ -387,4 +348,41 @@ export const useNotationStore = create<NotationState>()(
       ) || null;
     },
   }))
+);
+
+// =============================================================================
+// Auto-save subscription - saves notation/lyrics back to song when dirty
+// =============================================================================
+
+let saveTimeout: NodeJS.Timeout | null = null;
+const SAVE_DEBOUNCE_MS = 500;
+
+useNotationStore.subscribe(
+  (state) => ({ isDirty: state.isDirty, currentSongId: state.currentSongId }),
+  async ({ isDirty, currentSongId }) => {
+    if (!isDirty || !currentSongId) return;
+
+    // Clear existing timeout
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+
+    // Debounced save
+    saveTimeout = setTimeout(async () => {
+      const { useSongsStore } = await import('./songs-store');
+      const { getNotationData, getLyricsData, markClean } = useNotationStore.getState();
+
+      const notation = getNotationData();
+      const lyrics = getLyricsData();
+
+      // Update song via songs-store (which handles persistence)
+      useSongsStore.getState().updateSong(currentSongId, {
+        notation,
+        lyrics,
+      });
+
+      markClean();
+    }, SAVE_DEBOUNCE_MS);
+  },
+  { equalityFn: (a, b) => a.isDirty === b.isDirty && a.currentSongId === b.currentSongId }
 );

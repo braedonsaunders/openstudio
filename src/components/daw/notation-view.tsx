@@ -6,6 +6,7 @@ import { cn } from '@/lib/utils';
 import { useNotationStore, type NotationFormat, type Chord, type SongSection } from '@/stores/notation-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useSessionTempoStore } from '@/stores/session-tempo-store';
+import { useSongsStore } from '@/stores/songs-store';
 import {
   Music,
   Guitar,
@@ -484,31 +485,23 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
   // Notation store
   const {
     format,
-    key,
-    tempo,
     chords,
     detectedChords,
     showDetectedChords,
     sections,
-    currentSectionId,
     chordDiagramSize,
-    highlightCurrentChord,
-    autoScroll,
     isFollowing,
     currentBeat,
     isEditable,
     setFormat,
     addChord,
-    removeChord,
     selectChord,
     selectedChordIndex,
     setChordDiagramSize,
     toggleDetectedChords,
-    toggleAutoScroll,
     toggleFollowing,
     setEditable,
     setCurrentBeat,
-    clear,
   } = useNotationStore();
 
   // Audio state for playback sync
@@ -520,15 +513,28 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
   useEffect(() => {
     if (!isFollowing) return;
     // Convert time to beats (assuming 4/4 time)
-    const beatsPerSecond = (sessionTempo || tempo) / 60;
+    const beatsPerSecond = (sessionTempo || 120) / 60;
     const beat = currentTime * beatsPerSecond;
     setCurrentBeat(beat);
-  }, [currentTime, sessionTempo, tempo, isFollowing, setCurrentBeat]);
+  }, [currentTime, sessionTempo, isFollowing, setCurrentBeat]);
 
   // Set editability based on master status
   useEffect(() => {
     setEditable(isMaster);
   }, [isMaster, setEditable]);
+
+  // Load notation/lyrics when song changes
+  const currentSongId = useSongsStore((s) => s.currentSongId);
+  const getCurrentSong = useSongsStore((s) => s.getSongById);
+  const { setSongContext, loadFromSong } = useNotationStore();
+
+  useEffect(() => {
+    if (currentSongId) {
+      const song = getCurrentSong(currentSongId);
+      setSongContext(currentSongId, roomId);
+      loadFromSong(song?.notation, song?.lyrics);
+    }
+  }, [currentSongId, roomId, getCurrentSong, setSongContext, loadFromSong]);
 
   // Get active chords (manual or detected)
   const activeChords = useMemo(() => {
@@ -581,13 +587,13 @@ export function NotationView({ isMaster, roomId }: NotationViewProps) {
 
             {/* Key & Tempo display */}
             <div className="flex items-center gap-2 text-sm">
-              {(sessionKey || key) && (
+              {sessionKey && (
                 <div className="flex items-center gap-1 px-2 py-0.5 bg-indigo-500/20 rounded text-indigo-300">
-                  <span className="font-bold">{sessionKey || key}</span>
+                  <span className="font-bold">{sessionKey}</span>
                 </div>
               )}
               <div className="flex items-center gap-1 px-2 py-0.5 bg-white/5 rounded text-zinc-400">
-                <span className="font-mono">{sessionTempo || tempo}</span>
+                <span className="font-mono">{sessionTempo || 120}</span>
                 <span className="text-xs opacity-60">BPM</span>
               </div>
             </div>
