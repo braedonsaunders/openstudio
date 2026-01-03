@@ -5,11 +5,11 @@ mod app;
 mod ui;
 mod widgets;
 
-pub use app::{App, AppEvent, LogLevel};
+pub use app::{ActivePanel, App, AppEvent, LogLevel};
 pub use ui::draw;
 
 use crossterm::{
-    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyModifiers},
+    event::{self, DisableMouseCapture, EnableMouseCapture, Event, KeyCode, KeyEventKind, KeyModifiers},
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -48,18 +48,29 @@ pub async fn run(
         // Check for crossterm events (keyboard, etc.)
         if crossterm::event::poll(timeout)? {
             if let Event::Key(key) = event::read()? {
+                // Only handle key press events, not repeats or releases
+                // This prevents flickering when holding a key
+                if key.kind != KeyEventKind::Press {
+                    continue;
+                }
+
                 match (key.code, key.modifiers) {
                     // Quit on Ctrl+C or Q
                     (KeyCode::Char('c'), KeyModifiers::CONTROL) | (KeyCode::Char('q'), _) => {
                         break;
                     }
-                    // Toggle effects panel
-                    (KeyCode::Char('e'), _) => {
-                        app.toggle_effects_panel();
+                    // Direct panel switching (no toggling - prevents flicker)
+                    (KeyCode::Char('a'), _) => {
+                        app.set_panel(ActivePanel::Audio);
                     }
-                    // Toggle network panel
+                    (KeyCode::Char('e'), _) => {
+                        app.set_panel(ActivePanel::Effects);
+                    }
                     (KeyCode::Char('n'), _) => {
-                        app.toggle_network_panel();
+                        app.set_panel(ActivePanel::Network);
+                    }
+                    (KeyCode::Char('l'), _) => {
+                        app.set_panel(ActivePanel::Logs);
                     }
                     // Toggle help
                     (KeyCode::Char('?'), _) | (KeyCode::F(1), _) => {

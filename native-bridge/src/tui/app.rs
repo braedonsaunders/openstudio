@@ -419,20 +419,8 @@ impl App {
         self.should_quit = true;
     }
 
-    pub fn toggle_effects_panel(&mut self) {
-        self.active_panel = if self.active_panel == ActivePanel::Effects {
-            ActivePanel::Audio
-        } else {
-            ActivePanel::Effects
-        };
-    }
-
-    pub fn toggle_network_panel(&mut self) {
-        self.active_panel = if self.active_panel == ActivePanel::Network {
-            ActivePanel::Audio
-        } else {
-            ActivePanel::Network
-        };
+    pub fn set_panel(&mut self, panel: ActivePanel) {
+        self.active_panel = panel;
     }
 
     pub fn toggle_help(&mut self) {
