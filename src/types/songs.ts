@@ -5,6 +5,65 @@ import type { LoopTrackState } from './loops';
 import type { LyriaStyleId, LyriaMoodId } from '@/lib/ai/lyria';
 
 // =============================================================================
+// Notation Types - Chords, sections, and tab data per song
+// =============================================================================
+
+export interface SongChord {
+  name: string;           // e.g., "Am", "G7", "Cmaj7"
+  root: string;           // e.g., "A", "G", "C"
+  quality: string;        // e.g., "m", "7", "maj7"
+  bass?: string;          // For slash chords, e.g., "C/G"
+  startBeat: number;      // Position in beats from start
+  duration: number;       // Duration in beats
+  frets?: number[];       // Guitar fret positions (6 strings, -1 for muted, 0 for open)
+  fingers?: number[];     // Finger positions (0 = no finger)
+  confidence?: number;    // AI detection confidence (0-1)
+}
+
+export interface SongSection {
+  id: string;
+  name: string;           // e.g., "Verse 1", "Chorus", "Bridge"
+  type: 'intro' | 'verse' | 'chorus' | 'bridge' | 'solo' | 'outro' | 'breakdown' | 'custom';
+  startBeat: number;
+  endBeat: number;
+  chords: SongChord[];
+  color?: string;
+}
+
+export interface SongNotation {
+  format: 'chord-chart' | 'tab' | 'sheet' | 'nashville' | 'lead-sheet';
+  sections: SongSection[];
+  chords: SongChord[];        // Flat list for simple chord charts
+  detectedChords?: SongChord[]; // AI-detected chords
+  instrument?: 'guitar' | 'bass' | 'ukulele';
+  tuning?: string[];          // e.g., ['E', 'A', 'D', 'G', 'B', 'E']
+  capo?: number;
+}
+
+// =============================================================================
+// Lyrics Types - Timed lyrics for teleprompter
+// =============================================================================
+
+export interface LyricSyllable {
+  text: string;
+  startTime: number;
+  endTime: number;
+}
+
+export interface SongLyricLine {
+  id: string;
+  text: string;
+  startTime: number;      // In seconds
+  endTime: number;
+  syllables?: LyricSyllable[]; // For karaoke-style highlighting
+}
+
+export interface SongLyrics {
+  lines: SongLyricLine[];
+  source?: string;        // e.g., 'manual', 'lrc-import', 'ai-detected'
+}
+
+// =============================================================================
 // Lyria Track Configuration - for AI-generated music tracks
 // =============================================================================
 
@@ -72,6 +131,12 @@ export interface Song {
 
   // Duration (calculated from longest track + offset)
   duration: number;
+
+  // Notation data (chords, sections, tabs)
+  notation?: SongNotation;
+
+  // Lyrics data (timed lines for teleprompter)
+  lyrics?: SongLyrics;
 
   // Metadata
   color: string;

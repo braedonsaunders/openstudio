@@ -165,6 +165,8 @@ function transformFromDb(record: Record<string, unknown>): Record<string, unknow
     key: record.key,
     timeSignature: record.time_signature,
     duration: record.duration,
+    notation: record.notation || null,
+    lyrics: record.lyrics || null,
     color: record.color,
     position: record.position,
     createdBy: record.created_by,
@@ -187,6 +189,8 @@ function transformToDb(data: Record<string, unknown>, roomId: string): Record<st
   if (data.key !== undefined) record.key = data.key;
   if (data.timeSignature !== undefined) record.time_signature = data.timeSignature;
   if (data.duration !== undefined) record.duration = data.duration;
+  if (data.notation !== undefined) record.notation = data.notation;
+  if (data.lyrics !== undefined) record.lyrics = data.lyrics;
   if (data.color !== undefined) record.color = data.color;
   if (data.position !== undefined) record.position = data.position;
   if (data.createdBy !== undefined) record.created_by = data.createdBy;

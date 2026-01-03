@@ -37,6 +37,8 @@ async function persistSong(song: Song): Promise<void> {
             key: song.key,
             timeSignature: song.timeSignature,
             duration: song.duration,
+            notation: song.notation,
+            lyrics: song.lyrics,
             color: song.color,
             position: song.position,
           }),

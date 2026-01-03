@@ -5,7 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
 import { useNotationStore, type LyricLine } from '@/stores/notation-store';
 import { useAudioStore } from '@/stores/audio-store';
-import { useSessionTempoStore } from '@/stores/session-tempo-store';
+import { useSongsStore } from '@/stores/songs-store';
 import {
   ScrollText,
   Settings2,
@@ -294,6 +294,19 @@ export function TeleprompterView({ isMaster, roomId }: TeleprompterViewProps) {
   useEffect(() => {
     setEditable(isMaster);
   }, [isMaster, setEditable]);
+
+  // Load lyrics when song changes
+  const currentSongId = useSongsStore((s) => s.currentSongId);
+  const getCurrentSong = useSongsStore((s) => s.getSongById);
+  const { setSongContext, loadFromSong } = useNotationStore();
+
+  useEffect(() => {
+    if (currentSongId) {
+      const song = getCurrentSong(currentSongId);
+      setSongContext(currentSongId, roomId);
+      loadFromSong(song?.notation, song?.lyrics);
+    }
+  }, [currentSongId, roomId, getCurrentSong, setSongContext, loadFromSong]);
 
   // Find current, past, and upcoming lines
   const { currentLine, pastLines, upcomingLines } = useMemo(() => {

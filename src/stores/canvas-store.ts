@@ -45,7 +45,16 @@ export interface CanvasElement {
   };
 }
 
+// Canvas data structure for persistence
+export interface CanvasData {
+  elements: CanvasElement[];
+  version: number;
+}
+
 export interface CanvasState {
+  // Room context
+  roomId: string | null;
+
   // Canvas elements
   elements: Map<string, CanvasElement>;
   selectedElementId: string | null;
@@ -66,11 +75,18 @@ export interface CanvasState {
   // Permission state
   isEditable: boolean; // Only room owner can edit by default
 
-  // Sync state
+  // Sync/persistence state
+  isDirty: boolean;
+  isLoading: boolean;
   lastSyncedAt: number | null;
   isSyncing: boolean;
 
-  // Actions
+  // Room context actions
+  setRoomContext: (roomId: string | null) => void;
+  loadFromRoom: (roomId: string) => Promise<void>;
+  saveToRoom: () => Promise<void>;
+
+  // Element actions
   addElement: (element: Omit<CanvasElement, 'id' | 'createdAt' | 'zIndex'>) => string;
   updateElement: (id: string, updates: Partial<CanvasElement>) => void;
   removeElement: (id: string) => void;
@@ -100,11 +116,13 @@ export interface CanvasState {
   // Sync actions
   syncFromRemote: (elements: CanvasElement[]) => void;
   markSynced: () => void;
+  markClean: () => void;
 
   // Bulk actions
   clearCanvas: () => void;
   duplicateElement: (id: string) => string | null;
   getElementsArray: () => CanvasElement[];
+  getCanvasData: () => CanvasData;
 }
 
 function generateId(): string {
@@ -114,6 +132,7 @@ function generateId(): string {
 export const useCanvasStore = create<CanvasState>()(
   subscribeWithSelector((set, get) => ({
     // Initial state
+    roomId: null,
     elements: new Map(),
     selectedElementId: null,
     zoom: 1,
@@ -126,8 +145,60 @@ export const useCanvasStore = create<CanvasState>()(
     drawingColor: '#ffffff',
     drawingWidth: 2,
     isEditable: true,
+    isDirty: false,
+    isLoading: false,
     lastSyncedAt: null,
     isSyncing: false,
+
+    // Room context actions
+    setRoomContext: (roomId) => {
+      set({ roomId, isDirty: false });
+    },
+
+    loadFromRoom: async (roomId) => {
+      set({ isLoading: true, roomId });
+      try {
+        const res = await fetch(`/api/rooms/${roomId}/canvas`);
+        if (!res.ok) {
+          throw new Error('Failed to load canvas');
+        }
+        const data = await res.json();
+        if (data.canvas && data.canvas.elements) {
+          const elements = new Map<string, CanvasElement>();
+          data.canvas.elements.forEach((e: CanvasElement) => elements.set(e.id, e));
+          set({ elements, isDirty: false, lastSyncedAt: Date.now() });
+        } else {
+          set({ elements: new Map(), isDirty: false });
+        }
+      } catch (err) {
+        console.error('[CanvasStore] Failed to load canvas:', err);
+      } finally {
+        set({ isLoading: false });
+      }
+    },
+
+    saveToRoom: async () => {
+      const { roomId, getCanvasData } = get();
+      if (!roomId) return;
+
+      set({ isSyncing: true });
+      try {
+        const canvasData = getCanvasData();
+        const res = await fetch(`/api/rooms/${roomId}/canvas`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ canvas: canvasData }),
+        });
+        if (!res.ok) {
+          throw new Error('Failed to save canvas');
+        }
+        set({ isDirty: false, lastSyncedAt: Date.now() });
+      } catch (err) {
+        console.error('[CanvasStore] Failed to save canvas:', err);
+      } finally {
+        set({ isSyncing: false });
+      }
+    },
 
     // Element actions
     addElement: (element) => {
@@ -145,7 +216,7 @@ export const useCanvasStore = create<CanvasState>()(
       set((state) => {
         const newElements = new Map(state.elements);
         newElements.set(id, newElement);
-        return { elements: newElements };
+        return { elements: newElements, isDirty: true };
       });
 
       return id;
@@ -158,7 +229,7 @@ export const useCanvasStore = create<CanvasState>()(
 
         const newElements = new Map(state.elements);
         newElements.set(id, { ...element, ...updates });
-        return { elements: newElements };
+        return { elements: newElements, isDirty: true };
       });
     },
 
@@ -169,6 +240,7 @@ export const useCanvasStore = create<CanvasState>()(
         return {
           elements: newElements,
           selectedElementId: state.selectedElementId === id ? null : state.selectedElementId,
+          isDirty: true,
         };
       });
     },
@@ -265,7 +337,7 @@ export const useCanvasStore = create<CanvasState>()(
       set((state) => {
         const newElements = new Map<string, CanvasElement>();
         elements.forEach(e => newElements.set(e.id, e));
-        return { elements: newElements, lastSyncedAt: Date.now() };
+        return { elements: newElements, lastSyncedAt: Date.now(), isDirty: false };
       });
     },
 
@@ -273,9 +345,13 @@ export const useCanvasStore = create<CanvasState>()(
       set({ lastSyncedAt: Date.now(), isSyncing: false });
     },
 
+    markClean: () => {
+      set({ isDirty: false });
+    },
+
     // Bulk actions
     clearCanvas: () => {
-      set({ elements: new Map(), selectedElementId: null });
+      set({ elements: new Map(), selectedElementId: null, isDirty: true });
     },
 
     duplicateElement: (id) => {
@@ -293,5 +369,37 @@ export const useCanvasStore = create<CanvasState>()(
     getElementsArray: () => {
       return Array.from(get().elements.values()).sort((a, b) => a.zIndex - b.zIndex);
     },
+
+    getCanvasData: () => {
+      return {
+        elements: get().getElementsArray(),
+        version: 1,
+      };
+    },
   }))
+);
+
+// =============================================================================
+// Auto-save subscription - saves canvas to room when dirty
+// =============================================================================
+
+let saveTimeout: NodeJS.Timeout | null = null;
+const SAVE_DEBOUNCE_MS = 1000; // Slightly longer debounce for canvas (more data)
+
+useCanvasStore.subscribe(
+  (state) => ({ isDirty: state.isDirty, roomId: state.roomId }),
+  async ({ isDirty, roomId }) => {
+    if (!isDirty || !roomId) return;
+
+    // Clear existing timeout
+    if (saveTimeout) {
+      clearTimeout(saveTimeout);
+    }
+
+    // Debounced save
+    saveTimeout = setTimeout(() => {
+      useCanvasStore.getState().saveToRoom();
+    }, SAVE_DEBOUNCE_MS);
+  },
+  { equalityFn: (a, b) => a.isDirty === b.isDirty && a.roomId === b.roomId }
 );
