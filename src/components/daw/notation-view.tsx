@@ -784,6 +784,186 @@ function TabDisplay({
 }
 
 // ============================================
+// Sheet Music Display (Basic)
+// ============================================
+
+const NOTE_POSITIONS: Record<string, number> = {
+  'C': 0, 'D': 1, 'E': 2, 'F': 3, 'G': 4, 'A': 5, 'B': 6,
+};
+
+function SheetMusicDisplay({
+  tracks,
+  measures,
+  currentBeat,
+  onImport,
+}: {
+  tracks: Array<{
+    id: string;
+    name: string;
+    notes: Array<{
+      pitch: string;
+      duration: number;
+      startBeat: number;
+      string?: number;
+      fret?: number;
+    }>;
+  }>;
+  measures: Array<{
+    number: number;
+    startBeat: number;
+    duration: number;
+  }>;
+  currentBeat: number;
+  onImport: () => void;
+}) {
+  const track = tracks[0];
+
+  if (!track || track.notes.length === 0) {
+    return (
+      <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
+        <Music className="w-12 h-12 mb-3 opacity-40" />
+        <p className="text-sm font-medium">Sheet Music View</p>
+        <p className="text-xs mt-1 opacity-60">
+          Import a MusicXML or Guitar Pro file to display notation
+        </p>
+        <p className="text-xs mt-2 text-zinc-600">
+          Use the "Import Tab/Sheet" button below
+        </p>
+      </div>
+    );
+  }
+
+  // Get notes grouped by measure
+  const measureNotes = measures.map(measure => ({
+    measure,
+    notes: track.notes.filter(
+      note => note.startBeat >= measure.startBeat &&
+        note.startBeat < measure.startBeat + measure.duration
+    ),
+  }));
+
+  // Parse pitch to get note position on staff
+  const getNotePosition = (pitch: string): number => {
+    // Handle tab format (string:fret) - convert to approximate position
+    if (pitch.includes(':')) {
+      const [string, fret] = pitch.split(':').map(Number);
+      // Standard tuning MIDI: E4(64), B3(59), G3(55), D3(50), A2(45), E2(40)
+      const stringMidi = [64, 59, 55, 50, 45, 40][string - 1] || 60;
+      const midi = stringMidi + fret;
+      // Convert MIDI to staff position (middle C = 60 = position 0)
+      return Math.round((midi - 60) / 2);
+    }
+
+    // Handle standard pitch format (e.g., "E4", "C#5")
+    const match = pitch.match(/^([A-G])(#|b)?(\d+)$/);
+    if (!match) return 0;
+
+    const [, note, accidental, octaveStr] = match;
+    const octave = parseInt(octaveStr);
+    const basePosition = NOTE_POSITIONS[note] || 0;
+    // Each octave is 7 positions, middle C (C4) is position 0
+    return basePosition + (octave - 4) * 7;
+  };
+
+  // Staff lines represent E4, G4, B4, D5, F5 (treble clef)
+  const STAFF_LINES = [0, 2, 4, 6, 8]; // positions for lines
+  const LEDGER_BELOW = [-2, -4]; // C4, A3
+  const LEDGER_ABOVE = [10, 12]; // A5, C6
+
+  return (
+    <div className="space-y-4">
+      {/* Track info */}
+      <div className="flex items-center gap-2 text-zinc-400 text-xs">
+        <Music className="w-4 h-4" />
+        <span className="font-medium">{track.name}</span>
+        <span className="text-zinc-600">({track.notes.length} notes)</span>
+      </div>
+
+      {/* Staff display */}
+      <div className="overflow-x-auto">
+        <div className="flex">
+          {measureNotes.map(({ measure, notes }) => (
+            <div
+              key={measure.number}
+              className={cn(
+                'relative min-w-[180px] h-[100px] border-r border-zinc-600 mr-1',
+                currentBeat >= measure.startBeat &&
+                  currentBeat < measure.startBeat + measure.duration &&
+                  'bg-indigo-500/10'
+              )}
+            >
+              {/* Measure number */}
+              <div className="absolute -top-4 left-1 text-[10px] text-zinc-600">
+                {measure.number}
+              </div>
+
+              {/* Staff lines */}
+              {STAFF_LINES.map((pos, idx) => (
+                <div
+                  key={idx}
+                  className="absolute w-full h-px bg-zinc-600"
+                  style={{ top: `${50 - pos * 5}%` }}
+                />
+              ))}
+
+              {/* Notes */}
+              {notes.map((note, noteIdx) => {
+                const position = ((note.startBeat - measure.startBeat) / measure.duration) * 100;
+                const staffPos = getNotePosition(note.pitch);
+                const topPercent = 50 - staffPos * 5;
+                const isActive = currentBeat >= note.startBeat &&
+                  currentBeat < note.startBeat + note.duration;
+
+                // Determine if we need ledger lines
+                const needsLedgerBelow = staffPos < 0;
+                const needsLedgerAbove = staffPos > 8;
+
+                return (
+                  <div key={noteIdx}>
+                    {/* Ledger lines */}
+                    {needsLedgerBelow && staffPos <= -2 && (
+                      <div
+                        className="absolute w-4 h-px bg-zinc-500"
+                        style={{ left: `calc(${position}% - 8px)`, top: `${50 + 10}%` }}
+                      />
+                    )}
+                    {needsLedgerAbove && staffPos >= 10 && (
+                      <div
+                        className="absolute w-4 h-px bg-zinc-500"
+                        style={{ left: `calc(${position}% - 8px)`, top: `${50 - 50}%` }}
+                      />
+                    )}
+                    {/* Note head */}
+                    <div
+                      className={cn(
+                        'absolute w-3 h-2.5 rounded-full border transform -translate-x-1/2',
+                        isActive
+                          ? 'bg-indigo-500 border-indigo-400'
+                          : 'bg-white border-white'
+                      )}
+                      style={{
+                        left: `${Math.max(5, Math.min(95, position))}%`,
+                        top: `${Math.max(5, Math.min(95, topPercent))}%`,
+                      }}
+                      title={note.pitch}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Note about limitations */}
+      <div className="text-[10px] text-zinc-600 pt-2 border-t border-zinc-800">
+        Basic staff view • Note positions approximated from pitch data
+      </div>
+    </div>
+  );
+}
+
+// ============================================
 // Main Component
 // ============================================
 
@@ -1243,13 +1423,17 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
             currentBeat={currentBeat}
             onImport={handleImportClick}
           />
+        ) : format === 'sheet' ? (
+          <SheetMusicDisplay
+            tracks={importedTracks}
+            measures={importedMeasures}
+            currentBeat={currentBeat}
+            onImport={handleImportClick}
+          />
         ) : (
           <div className="flex flex-col items-center justify-center py-12 text-zinc-500">
             <FileText className="w-12 h-12 mb-3 opacity-40" />
-            <p className="text-sm font-medium">Sheet Music View</p>
-            <p className="text-xs mt-1 opacity-60">
-              Coming soon - Import MusicXML files
-            </p>
+            <p className="text-sm font-medium">Unknown Format</p>
           </div>
         )}
       </div>
