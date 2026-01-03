@@ -677,15 +677,9 @@ function TabDisplay({
         <p className="text-xs mt-1 opacity-60">
           Import a Guitar Pro or MusicXML file to display tabs
         </p>
-        {isEditable && (
-          <button
-            onClick={onImport}
-            className="mt-4 flex items-center gap-2 px-4 py-2 bg-white/5 hover:bg-white/10 rounded-lg transition-colors"
-          >
-            <Upload className="w-4 h-4" />
-            <span className="text-sm">Import Tab File</span>
-          </button>
-        )}
+        <p className="text-xs mt-2 text-zinc-600">
+          Use the "Import Tab/Sheet" button below
+        </p>
       </div>
     );
   }
