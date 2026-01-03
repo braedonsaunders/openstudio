@@ -30,11 +30,48 @@ impl BridgeServer {
         while let Ok((stream, peer)) = listener.accept().await {
             info!("Browser connected from {}", peer);
 
+            // Notify TUI of browser connection
+            {
+                let app = self.state.lock().await;
+                if let Some(ref tx) = app.tui_tx {
+                    let _ = tx.try_send(AppEvent::ConnectionEvent {
+                        event_type: crate::tui::ConnectionEventType::BrowserConnected,
+                        peer_id: Some(peer.to_string()),
+                    });
+                    // Mark as connected (browser connection = basic connectivity)
+                    let _ = tx.try_send(AppEvent::NetworkState {
+                        connected: true,
+                        mode: crate::tui::NetworkMode::Disconnected, // No P2P room yet
+                        peer_count: 0,
+                        latency_ms: 0.0,
+                        packet_loss: 0.0,
+                    });
+                }
+            }
+
             if let Err(e) = self.handle_connection(stream).await {
                 error!("Connection error: {}", e);
             }
 
             info!("Browser disconnected");
+
+            // Notify TUI of browser disconnection
+            {
+                let app = self.state.lock().await;
+                if let Some(ref tx) = app.tui_tx {
+                    let _ = tx.try_send(AppEvent::ConnectionEvent {
+                        event_type: crate::tui::ConnectionEventType::BrowserDisconnected,
+                        peer_id: None,
+                    });
+                    let _ = tx.try_send(AppEvent::NetworkState {
+                        connected: false,
+                        mode: crate::tui::NetworkMode::Disconnected,
+                        peer_count: 0,
+                        latency_ms: 0.0,
+                        packet_loss: 0.0,
+                    });
+                }
+            }
         }
 
         Ok(())
@@ -628,6 +665,34 @@ impl BridgeServer {
                         let mode = network.mode();
                         let is_master = network.is_master();
                         info!("Audio-network bridge started for room {}", room_id);
+
+                        // Notify TUI of room join
+                        if let Some(ref tx) = app.tui_tx {
+                            let tui_mode = match mode {
+                                crate::network::NetworkMode::P2P => crate::tui::NetworkMode::P2P,
+                                crate::network::NetworkMode::Relay => crate::tui::NetworkMode::Relay,
+                                crate::network::NetworkMode::Hybrid => crate::tui::NetworkMode::Hybrid,
+                            };
+                            let _ = tx.try_send(AppEvent::ConnectionEvent {
+                                event_type: crate::tui::ConnectionEventType::RoomJoined,
+                                peer_id: None,
+                            });
+                            let _ = tx.try_send(AppEvent::NetworkState {
+                                connected: true,
+                                mode: tui_mode,
+                                peer_count: 1, // Just us initially
+                                latency_ms: 0.0,
+                                packet_loss: 0.0,
+                            });
+                            let _ = tx.try_send(AppEvent::RoomContext {
+                                room_id: Some(room_id.clone()),
+                                user_count: 1,
+                                key: None,
+                                scale: None,
+                                bpm: None,
+                            });
+                        }
+
                         Some(NativeMessage::RoomJoined {
                             room_id,
                             network_mode: format!("{:?}", mode),
@@ -654,6 +719,29 @@ impl BridgeServer {
                 // Then disconnect from the network
                 if let Some(ref network) = app.network {
                     network.disconnect().await;
+                }
+
+                // Notify TUI of room leave
+                if let Some(ref tx) = app.tui_tx {
+                    let _ = tx.try_send(AppEvent::ConnectionEvent {
+                        event_type: crate::tui::ConnectionEventType::RoomLeft,
+                        peer_id: None,
+                    });
+                    // Keep browser connected, just not in a room
+                    let _ = tx.try_send(AppEvent::NetworkState {
+                        connected: true,
+                        mode: crate::tui::NetworkMode::Disconnected,
+                        peer_count: 0,
+                        latency_ms: 0.0,
+                        packet_loss: 0.0,
+                    });
+                    let _ = tx.try_send(AppEvent::RoomContext {
+                        room_id: None,
+                        user_count: 0,
+                        key: None,
+                        scale: None,
+                        bpm: None,
+                    });
                 }
 
                 Some(NativeMessage::RoomLeft)
