@@ -39,7 +39,7 @@ export const DEFAULT_EXTENDED_EFFECTS: Omit<ExtendedEffectsChain, keyof typeof D
   granularDelay: { enabled: false, grainSize: 100, density: 50, pitch: 0, pitchRandom: 0, position: 250, positionRandom: 0, feedback: 30, spread: 50, reverse: 0, mix: 50, freeze: false },
   rotarySpeaker: { enabled: false, speed: 'slow', hornLevel: 100, drumLevel: 100, distance: 50, drive: 0, mix: 100 },
   autoPan: { enabled: false, rate: 1, depth: 50, waveform: 'sine', phase: 0, tempoSync: false, subdivision: '1/4', width: 100 },
-  multiFilter: { enabled: false, type: 'lowpass', frequency: 1000, resonance: 1, drive: 0, lfoRate: 0, lfoDepth: 0, lfoWaveform: 'sine', envelopeAmount: 0, envelopeSensitivity: 50, envelopeAttack: 10, envelopeRelease: 100, keyTrack: 0, tempoSync: false, subdivision: '1/4' },
+  multiFilter: { enabled: false, type: 'lowpass', frequency: 1000, resonance: 1, drive: 0, lfoRate: 0, lfoDepth: 0, lfoWaveform: 'sine', envelopeAmount: 0, envelopeSensitivity: 50, envelopeAttack: 10, envelopeRelease: 100, keyTrack: 0, tempoSync: false, subdivision: '1/4', mix: 100 },
   vibrato: { enabled: false, rate: 5, depth: 30, waveform: 'sine', stereo: 0, tempoSync: false, subdivision: '1/4' },
   transientShaper: { enabled: false, attack: 0, sustain: 0, attackTime: 10, releaseTime: 50, output: 0 },
   stereoImager: { enabled: false, width: 100, midLevel: 0, sideLevel: 0, bassMonoFreq: 100, bassMonoAmount: 0, balance: 0 },
