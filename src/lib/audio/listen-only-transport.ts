@@ -607,9 +607,9 @@ export function createListenOnlyTransport(
   options?: Partial<ListenOnlyConfig>
 ): ListenOnlyTransport {
   return new ListenOnlyTransport({
+    ...options,
     relayUrl: options?.relayUrl || 'https://relay.openstudio.io',
     roomId,
     userId,
-    ...options,
   });
 }
