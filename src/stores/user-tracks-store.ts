@@ -356,6 +356,10 @@ export const useUserTracksStore = create<UserTracksState>()(
             channelConfig,
           },
         });
+
+        // Send channel config to native bridge
+        nativeBridge.setChannelConfig(channelConfig);
+
         return { tracks };
       }),
 
