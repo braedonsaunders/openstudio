@@ -815,6 +815,7 @@ impl BridgeServer {
                                 crate::network::NetworkMode::P2P => crate::tui::NetworkMode::P2P,
                                 crate::network::NetworkMode::Relay => crate::tui::NetworkMode::Relay,
                                 crate::network::NetworkMode::Hybrid => crate::tui::NetworkMode::Hybrid,
+                                crate::network::NetworkMode::Disconnected => crate::tui::NetworkMode::Disconnected,
                             };
                             let _ = tx.try_send(AppEvent::ConnectionEvent {
                                 event_type: crate::tui::ConnectionEventType::RoomJoined,
