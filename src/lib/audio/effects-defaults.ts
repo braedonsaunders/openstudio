@@ -106,6 +106,3 @@ export const DEFAULT_MASTER_EFFECTS: MasterEffectsChain = {
     linkChannels: true,
   },
 };
-
-// Type for master effects chain (for compatibility)
-export type { MasterEffectsChain } from '@/types';
