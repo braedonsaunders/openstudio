@@ -137,19 +137,20 @@ async fn main() -> Result<()> {
             }).await;
         }
 
-        // Run TUI and WebSocket server concurrently using select!
-        // This avoids the Send requirement of tokio::spawn
-        tokio::select! {
-            result = tui::run(app, tui_rx) => {
-                if let Err(e) = result {
-                    tracing::error!("TUI error: {}", e);
-                }
+        // Spawn WebSocket server in background task
+        let server_state = state.clone();
+        tokio::spawn(async move {
+            if let Err(e) = protocol::run_server("127.0.0.1:9999", server_state).await {
+                tracing::error!("WebSocket server error: {}", e);
             }
-            result = protocol::run_server("127.0.0.1:9999", state.clone()) => {
-                if let Err(e) = result {
-                    tracing::error!("WebSocket server error: {}", e);
-                }
-            }
+        });
+
+        // Run TUI on main thread (uses blocking I/O for terminal events)
+        // Small delay to ensure server is listening before TUI takes over terminal
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        if let Err(e) = tui::run(app, tui_rx).await {
+            tracing::error!("TUI error: {}", e);
         }
     } else {
         // Run headless mode
