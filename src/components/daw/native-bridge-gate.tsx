@@ -250,7 +250,7 @@ export function NativeBridgeGate({
               )}
             </Button>
 
-            {/* Listener option */}
+            {/* Listener option - uses Cloudflare Calls receive-only */}
             {!roomRequiresBridge && (
               <Button
                 variant="ghost"
@@ -260,7 +260,7 @@ export function NativeBridgeGate({
               >
                 <Headphones className="w-4 h-4 mr-2" />
                 Join as Listener Only
-                <span className="ml-2 text-xs text-slate-500">(no audio input)</span>
+                <span className="ml-2 text-xs text-slate-500">(receive audio only)</span>
               </Button>
             )}
 

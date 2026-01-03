@@ -24,6 +24,8 @@ import {
 } from '@/lib/audio/quality-presets';
 import { Tooltip } from '../ui/tooltip';
 
+export type NetworkMode = 'auto' | 'sfu';
+
 interface QualitySettingsPanelProps {
   activePreset: QualityPresetName;
   onPresetChange: (preset: QualityPresetName) => void;
@@ -33,6 +35,8 @@ interface QualitySettingsPanelProps {
   onJitterModeChange: (mode: 'live-jamming' | 'balanced' | 'stable') => void;
   lowLatencyMode: boolean;
   onLowLatencyModeChange: (enabled: boolean) => void;
+  networkMode?: NetworkMode;
+  onNetworkModeChange?: (mode: NetworkMode) => void;
   className?: string;
 }
 
@@ -57,6 +61,8 @@ export function QualitySettingsPanel({
   onJitterModeChange,
   lowLatencyMode,
   onLowLatencyModeChange,
+  networkMode = 'auto',
+  onNetworkModeChange,
   className,
 }: QualitySettingsPanelProps) {
   const [showAdvanced, setShowAdvanced] = useState(false);
@@ -183,6 +189,46 @@ export function QualitySettingsPanel({
             />
           </button>
         </div>
+
+        {/* Network Mode */}
+        {onNetworkModeChange && (
+          <div>
+            <div className="flex items-center gap-1 mb-1.5">
+              <span className="text-[10px] font-medium text-gray-500 dark:text-zinc-500">Network</span>
+              <Tooltip content="Auto: P2P mesh for lowest latency. SFU: Force cloud relay for reliability.">
+                <Info className="w-2.5 h-2.5 text-gray-400" />
+              </Tooltip>
+            </div>
+
+            <div className="flex gap-1">
+              {(['auto', 'sfu'] as const).map((mode) => (
+                <button
+                  key={mode}
+                  onClick={() => onNetworkModeChange(mode)}
+                  className={cn(
+                    'flex-1 px-2 py-1.5 text-[10px] font-medium rounded-md transition-all',
+                    networkMode === mode
+                      ? 'bg-indigo-500 text-white'
+                      : 'bg-gray-100 dark:bg-white/10 text-gray-600 dark:text-zinc-400 hover:bg-gray-200 dark:hover:bg-white/20'
+                  )}
+                >
+                  {mode === 'auto' && (
+                    <>
+                      <Wifi className="w-3 h-3 inline mr-1" />
+                      Auto (P2P)
+                    </>
+                  )}
+                  {mode === 'sfu' && (
+                    <>
+                      <WifiOff className="w-3 h-3 inline mr-1" />
+                      Cloud (SFU)
+                    </>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Advanced settings toggle */}

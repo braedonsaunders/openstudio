@@ -32,6 +32,10 @@ export interface RoomSettings {
   autoJitterBuffer: boolean;
   backingTrackVolume: number;
   masterVolume: number;
+  // Network settings
+  networkMode?: 'auto' | 'sfu';  // 'auto' = P2P mesh for performers, 'sfu' = force Cloudflare SFU for reliability
+  maxPerformers?: number;        // Max performers allowed (default: 8)
+  allowListeners?: boolean;      // Whether to allow listen-only users (default: true)
 }
 
 export interface BackingTrack {
