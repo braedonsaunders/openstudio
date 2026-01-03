@@ -340,9 +340,9 @@ export class NativeBridge {
           break;
 
         case 'streamHealth':
-          // Only log if there's an issue (overflow or unhealthy)
-          if (msg.overflowCount > 0 || !msg.isHealthy) {
-            console.warn('[NativeBridge] Stream health issue:', msg);
+          // Only log overflow issues - empty buffer on reconnect is normal
+          if (msg.overflowCount > 0) {
+            console.warn('[NativeBridge] Buffer overflow:', msg.overflowCount, 'batches,', msg.overflowSamples, 'samples dropped');
           }
           this.emit('streamHealth', {
             bufferOccupancy: msg.bufferOccupancy,
