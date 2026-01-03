@@ -31,7 +31,7 @@
 | Clock Sync | ✅ Done | NTP-style sub-ms sync |
 | QUIC/MoQ Relay Client | ✅ Done | Connects to relay servers |
 | P2P Network | ✅ Done | UDP receive/heartbeat loops implemented |
-| Effects Chain | ✅ Done | 29 effects fully implemented (Phase 1) |
+| Effects Chain | ✅ Done | 35 effects fully implemented (Phase 1 + 2) |
 | Audio-Network Bridge | ✅ Done | Started from server on room join |
 | Transport Forwarding | ✅ Done | Clock sync, tempo, transport events forwarded |
 | Network Reconnection | ✅ Done | Automatic reconnection with exponential backoff |
@@ -76,13 +76,13 @@ All 29 effects implemented with custom DSP primitives:
 - ✅ Room Simulator (early reflections + reverb)
 - ✅ Shimmer Reverb (pitch-shifted feedback)
 
-### Deferred to Phase 2
-- ⏳ Pitch Correction (requires pitch detection)
-- ⏳ Harmonizer (requires pitch shifting)
-- ⏳ Formant Shifter (vocal character change)
-- ⏳ Frequency Shifter (Bode-style)
-- ⏳ Granular Delay (grain-based processing)
-- ⏳ Rotary Speaker (Leslie simulation)
+### Pitch-Based Effects (Phase 2 - Complete)
+- ✅ Pitch Correction (autocorrelation + granular shifting)
+- ✅ Harmonizer (3-voice musical interval shifting)
+- ✅ Formant Shifter (16-band vocoder-style filterbank)
+- ✅ Frequency Shifter (Bode-style Hilbert transform)
+- ✅ Granular Delay (8-grain texture/cloud generator)
+- ✅ Rotary Speaker (Leslie horn/drum simulation)
 
 ---
 
@@ -251,13 +251,62 @@ StereoImager → Limiter
 |----------|-------|--------|
 | Critical blockers | 5 | ✅ Complete |
 | High priority | 4 | ✅ Complete |
-| Effects implementation | 29 effects | ✅ Complete (Phase 1) |
+| Effects (Phase 1) | 29 effects | ✅ Complete |
+| Effects (Phase 2) | 6 pitch effects | ✅ Complete |
+| Room context integration | 3 tasks | ✅ Complete |
 | Medium priority | 5 | In progress |
 | Testing & polish | 6 | Not started |
 
-**Phase 1 Complete**: Core audio processing and effects chain fully functional.
+**Phase 1 + 2 Complete**: All 35 effects fully functional, including pitch-based effects.
 
-**Next Steps (Phase 2)**:
-- Pitch-based effects (requires FFT/autocorrelation)
+**Next Steps**:
 - Production testing
 - Platform-specific optimizations
+- Effect parameter sync to remote users
+
+---
+
+## Room State Synchronization
+
+### Architecture Overview
+
+Room state is synchronized using **Supabase Realtime** (PostgreSQL NOTIFY/LISTEN), NOT the native OSP protocol. OSP handles P2P/relay audio streaming only.
+
+### What Gets Synced via Supabase Realtime
+
+| State | Table/Channel | Notes |
+|-------|---------------|-------|
+| Room members | `rooms` | Presence, join/leave |
+| Musical key/scale | `syncedAnalysis` | Master broadcasts detected key |
+| BPM | `syncedAnalysis` | Master broadcasts tempo |
+| User tracks | `user_tracks` | Track settings, stems |
+| Effect presets | `saved_tracks` | Saved presets (not live state) |
+| Chat messages | `room_chat` | Text chat |
+| World positions | `room_store` | 3D positioning |
+
+### How Effects Get Room Context
+
+1. **Frontend** detects key/BPM changes (via audio analysis or user input)
+2. **Master user** broadcasts via `broadcastAnalysis()` → Supabase Realtime
+3. **All clients** receive update in `room-store.ts` → `setSyncedAnalysis()`
+4. **Frontend** sends `SetRoomContext` message to native bridge WebSocket
+5. **Native bridge** updates `EffectsChain.set_room_context()`:
+   - Pitch Correction uses key/scale for note snapping
+   - Harmonizer uses key/scale for harmony intervals
+   - Delay/AutoPan/StereoDelay use BPM for tempo sync
+
+### Why Separate from OSP?
+
+- **Latency tolerance**: Room state can handle 100-500ms latency
+- **Reliability**: Supabase provides persistence and retries
+- **Scalability**: Works for 100+ observers (not just 8 performers)
+- **OSP focus**: OSP stays lean for <15ms audio latency
+
+### OSP Protocol Messages (Audio/Timing Only)
+
+| Message | Purpose |
+|---------|---------|
+| AudioFrame | Opus-encoded audio data |
+| ClockSync | Sub-ms beat synchronization |
+| Ping/Pong | RTT measurement |
+| Handshake | P2P peer discovery |
