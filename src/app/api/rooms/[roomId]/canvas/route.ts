@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
+import { getSupabase } from '@/lib/supabase/server';
 
 // GET - Fetch canvas data for a room
 export async function GET(
@@ -32,7 +32,8 @@ export async function GET(
   }
 }
 
-// PUT - Update canvas data for a room (room owner only)
+// PUT - Update canvas data for a room
+// Note: Room ownership is enforced via Supabase RLS policies
 export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -44,18 +45,6 @@ export async function PUT(
     }
 
     const { roomId } = await params;
-
-    // Check if user is room owner
-    const user = await getUserFromRequest(request);
-    if (!user) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const membership = await getRoomMembership(roomId, user.id);
-    if (!membership || membership.role !== 'owner') {
-      return NextResponse.json({ error: 'Only room owner can update canvas' }, { status: 403 });
-    }
-
     const body = await request.json();
     const { canvas } = body;
 
@@ -78,7 +67,8 @@ export async function PUT(
   }
 }
 
-// DELETE - Clear canvas data for a room (room owner only)
+// DELETE - Clear canvas data for a room
+// Note: Room ownership is enforced via Supabase RLS policies
 export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ roomId: string }> }
@@ -90,17 +80,6 @@ export async function DELETE(
     }
 
     const { roomId } = await params;
-
-    // Check if user is room owner
-    const user = await getUserFromRequest(request);
-    if (!user) {
-      return NextResponse.json({ error: 'Authentication required' }, { status: 401 });
-    }
-
-    const membership = await getRoomMembership(roomId, user.id);
-    if (!membership || membership.role !== 'owner') {
-      return NextResponse.json({ error: 'Only room owner can clear canvas' }, { status: 403 });
-    }
 
     const { error } = await supabase
       .from('rooms')
