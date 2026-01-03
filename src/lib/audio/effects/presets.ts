@@ -2,7 +2,7 @@
 // Actual effects processing is handled by native bridge
 
 import type { ExtendedEffectsChain, TrackEffectsChain } from '@/types';
-import { DEFAULT_FULL_EFFECTS, DEFAULT_UNIFIED_EFFECTS } from '../effects-defaults';
+import { DEFAULT_UNIFIED_EFFECTS } from '../effects-defaults';
 
 // Effect preset type
 export interface EffectPreset {
@@ -23,7 +23,7 @@ export const EFFECT_PRESETS: EffectPreset[] = [
     effects: {
       noiseGate: { ...DEFAULT_UNIFIED_EFFECTS.noiseGate, enabled: true, threshold: -45 },
       compressor: { ...DEFAULT_UNIFIED_EFFECTS.compressor, enabled: true, threshold: -18, ratio: 3, attack: 15, release: 150 },
-      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true, highShelfGain: 2, lowShelfGain: -2 },
+      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true },
     },
   },
   {
@@ -34,8 +34,8 @@ export const EFFECT_PRESETS: EffectPreset[] = [
     effects: {
       noiseGate: { ...DEFAULT_UNIFIED_EFFECTS.noiseGate, enabled: true, threshold: -42 },
       compressor: { ...DEFAULT_UNIFIED_EFFECTS.compressor, enabled: true, threshold: -16, ratio: 4, attack: 10, release: 120 },
-      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true, lowShelfGain: 3, midGain: 1, highShelfGain: 1 },
-      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'room', size: 30, decay: 1.2, mix: 15 },
+      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true },
+      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'room', decay: 1.2, mix: 0.15 },
     },
   },
   {
@@ -46,7 +46,7 @@ export const EFFECT_PRESETS: EffectPreset[] = [
     effects: {
       noiseGate: { ...DEFAULT_UNIFIED_EFFECTS.noiseGate, enabled: true, threshold: -38 },
       compressor: { ...DEFAULT_UNIFIED_EFFECTS.compressor, enabled: true, threshold: -14, ratio: 5, attack: 5, release: 80 },
-      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true, lowShelfFreq: 100, lowShelfGain: -4, midFreq: 2500, midGain: 3, highShelfGain: 2 },
+      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true },
       limiter: { ...DEFAULT_UNIFIED_EFFECTS.limiter, enabled: true, threshold: -3, ceiling: -0.5 },
     },
   },
@@ -58,8 +58,8 @@ export const EFFECT_PRESETS: EffectPreset[] = [
     effects: {
       noiseGate: { ...DEFAULT_UNIFIED_EFFECTS.noiseGate, enabled: true, threshold: -44 },
       compressor: { ...DEFAULT_UNIFIED_EFFECTS.compressor, enabled: true, threshold: -20, ratio: 3, attack: 20, release: 200 },
-      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true, highMidGain: 2, highShelfGain: 4 },
-      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'plate', size: 40, decay: 1.8, mix: 20 },
+      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true },
+      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'plate', decay: 1.8, mix: 0.2 },
     },
   },
   {
@@ -70,8 +70,8 @@ export const EFFECT_PRESETS: EffectPreset[] = [
     effects: {
       noiseGate: { ...DEFAULT_UNIFIED_EFFECTS.noiseGate, enabled: true, threshold: -50 },
       compressor: { ...DEFAULT_UNIFIED_EFFECTS.compressor, enabled: true, threshold: -22, ratio: 2.5, attack: 25, release: 180 },
-      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true, lowMidGain: 2, highShelfGain: -1 },
-      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'room', size: 20, decay: 0.8, mix: 10 },
+      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true },
+      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'room', decay: 0.8, mix: 0.1 },
     },
   },
   {
@@ -82,9 +82,9 @@ export const EFFECT_PRESETS: EffectPreset[] = [
     effects: {
       noiseGate: { ...DEFAULT_UNIFIED_EFFECTS.noiseGate, enabled: true, threshold: -40 },
       compressor: { ...DEFAULT_UNIFIED_EFFECTS.compressor, enabled: true, threshold: -12, ratio: 6, attack: 5, release: 60 },
-      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true, lowShelfGain: -3, midGain: 2, highMidGain: 3, highShelfGain: 2 },
-      delay: { ...DEFAULT_UNIFIED_EFFECTS.delay, enabled: true, time: 0.25, feedback: 15, mix: 12 },
-      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'plate', size: 35, decay: 1.5, mix: 18 },
+      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true },
+      delay: { ...DEFAULT_UNIFIED_EFFECTS.delay, enabled: true, time: 0.25, feedback: 0.15, mix: 0.12 },
+      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'plate', decay: 1.5, mix: 0.18 },
     },
   },
   {
@@ -93,9 +93,9 @@ export const EFFECT_PRESETS: EffectPreset[] = [
     category: 'creative',
     description: 'Vintage, lo-fi character',
     effects: {
-      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true, lowShelfGain: 2, highShelfFreq: 6000, highShelfGain: -6 },
+      eq: { ...DEFAULT_UNIFIED_EFFECTS.eq, enabled: true },
       compressor: { ...DEFAULT_UNIFIED_EFFECTS.compressor, enabled: true, threshold: -18, ratio: 4 },
-      chorus: { ...DEFAULT_UNIFIED_EFFECTS.chorus, enabled: true, rate: 0.3, depth: 15, mix: 20 },
+      chorus: { ...DEFAULT_UNIFIED_EFFECTS.chorus, enabled: true, rate: 0.3, depth: 0.15, mix: 0.2 },
     },
   },
   {
@@ -105,9 +105,9 @@ export const EFFECT_PRESETS: EffectPreset[] = [
     description: 'Dreamy, atmospheric sound',
     effects: {
       compressor: { ...DEFAULT_UNIFIED_EFFECTS.compressor, enabled: true, threshold: -24, ratio: 2.5 },
-      chorus: { ...DEFAULT_UNIFIED_EFFECTS.chorus, enabled: true, rate: 0.4, depth: 40, mix: 35 },
-      delay: { ...DEFAULT_UNIFIED_EFFECTS.delay, enabled: true, time: 0.5, feedback: 40, mix: 25 },
-      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'hall', size: 80, decay: 4, mix: 40 },
+      chorus: { ...DEFAULT_UNIFIED_EFFECTS.chorus, enabled: true, rate: 0.4, depth: 0.4, mix: 0.35 },
+      delay: { ...DEFAULT_UNIFIED_EFFECTS.delay, enabled: true, time: 0.5, feedback: 0.4, mix: 0.25 },
+      reverb: { ...DEFAULT_UNIFIED_EFFECTS.reverb, enabled: true, type: 'hall', decay: 4, mix: 0.4 },
     },
   },
 ];
@@ -120,23 +120,17 @@ export const DEFAULT_EFFECTS_CHAIN: TrackEffectsChain = {
     attack: 1,
     hold: 50,
     release: 100,
-    range: 80,
+    range: -80,
   },
   eq: {
     enabled: false,
-    lowShelfFreq: 80,
-    lowShelfGain: 0,
-    lowMidFreq: 250,
-    lowMidGain: 0,
-    lowMidQ: 1,
-    midFreq: 1000,
-    midGain: 0,
-    midQ: 1,
-    highMidFreq: 3000,
-    highMidGain: 0,
-    highMidQ: 1,
-    highShelfFreq: 8000,
-    highShelfGain: 0,
+    bands: [
+      { frequency: 80, gain: 0, q: 1, type: 'lowshelf' },
+      { frequency: 250, gain: 0, q: 1, type: 'peaking' },
+      { frequency: 1000, gain: 0, q: 1, type: 'peaking' },
+      { frequency: 3000, gain: 0, q: 1, type: 'peaking' },
+      { frequency: 8000, gain: 0, q: 1, type: 'highshelf' },
+    ],
   },
   compressor: {
     enabled: false,
@@ -146,20 +140,15 @@ export const DEFAULT_EFFECTS_CHAIN: TrackEffectsChain = {
     release: 100,
     knee: 6,
     makeupGain: 0,
-    mix: 100,
   },
   reverb: {
     enabled: false,
     type: 'hall',
-    size: 50,
+    mix: 0.3,
     decay: 2,
-    damping: 50,
-    predelay: 20,
-    mix: 30,
+    preDelay: 20,
     highCut: 8000,
     lowCut: 100,
-    modulation: 20,
-    stereoWidth: 100,
   },
   limiter: {
     enabled: false,
