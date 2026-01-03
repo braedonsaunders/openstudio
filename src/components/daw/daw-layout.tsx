@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import { useRoom } from '@/hooks/useRoom';
+import { useRoom, type SongPlayPayload, type SongPausePayload, type SongSeekPayload, type SongSelectPayload } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
 import { useTrackPersistence } from '@/hooks/useTrackPersistence';
@@ -105,6 +105,12 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [sessionStartTime] = useState(() => Date.now());
 
+  // Song sync handler refs - these are updated after audio engine is available
+  const handleSongPlayRef = useRef<(payload: SongPlayPayload) => void>(() => {});
+  const handleSongPauseRef = useRef<(payload: SongPausePayload) => void>(() => {});
+  const handleSongSeekRef = useRef<(payload: SongSeekPayload) => void>(() => {});
+  const handleSongSelectRef = useRef<(payload: SongSelectPayload) => void>(() => {});
+
   // Room hooks
   const {
     users,
@@ -135,7 +141,18 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     broadcastTempoUpdate,
     broadcastTempoSource,
     broadcastTimeSignature,
-  } = useRoom(roomId);
+    // Song playback broadcasts
+    broadcastSongPlay,
+    broadcastSongPause,
+    broadcastSongSeek,
+    broadcastSongSelect,
+  } = useRoom(roomId, {
+    // Song sync callbacks - use refs so we can update them after audio engine is available
+    onSongPlay: (payload) => handleSongPlayRef.current(payload),
+    onSongPause: (payload) => handleSongPauseRef.current(payload),
+    onSongSeek: (payload) => handleSongSeekRef.current(payload),
+    onSongSelect: (payload) => handleSongSelectRef.current(payload),
+  });
 
   const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource, loadMultiTrack, playMultiTracks, stopMultiTracks, setMultiTrackVolume } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue } = useRoomStore();
@@ -247,6 +264,202 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
   // Loop playback - connects loop scheduler to sound engine
   // This is now BULLETPROOF - it automatically reacts to song changes during playback
   const { initialize: initLoopPlayback, startLoop, stopLoop: stopLoopAudio, syncPlaybackWithSong } = useLoopPlayback();
+
+  // ============================================================================
+  // Song sync handlers - handle playback events from other users in the room
+  // ============================================================================
+
+  // Update handler refs with implementations that use audio engine functions
+  // This effect runs after all hooks are set up
+  useEffect(() => {
+    // Handle song:play from another user (non-master receives this)
+    handleSongPlayRef.current = async (payload) => {
+      console.log('[Song Sync] Received play event:', payload);
+
+      // Select the song if not already selected
+      const songsStore = useSongsStore.getState();
+      if (songsStore.currentSongId !== payload.songId) {
+        songsStore.selectSong(payload.songId);
+      }
+
+      // Get the song data
+      const song = songsStore.songs.get(payload.songId);
+      if (!song) {
+        console.warn('[Song Sync] Song not found:', payload.songId);
+        return;
+      }
+
+      // Set duration
+      const queueState = useRoomStore.getState().queue;
+      const loopTracksState = useLoopTracksStore.getState().getTracksByRoom(roomId);
+      const customLoopsStore = useCustomLoopsStore.getState();
+
+      // Calculate song duration
+      let maxDuration = 0;
+      for (const trackRef of song.tracks) {
+        let trackDuration = 0;
+        if (trackRef.type === 'audio') {
+          const audioTrack = queueState.tracks.find(t => t.id === trackRef.trackId);
+          trackDuration = audioTrack?.duration || 0;
+        } else if (trackRef.type === 'loop') {
+          const loopTrack = loopTracksState.find(t => t.id === trackRef.trackId);
+          if (loopTrack) {
+            const loopDef = getCachedLoopById(loopTrack.loopId) || customLoopsStore.getLoop(loopTrack.loopId);
+            if (loopDef) {
+              const beatsPerBar = loopDef.timeSignature[0];
+              const totalBeats = loopDef.bars * beatsPerBar;
+              trackDuration = (totalBeats / loopDef.bpm) * 60;
+            }
+          }
+        }
+        const endTime = trackRef.startOffset + trackDuration;
+        maxDuration = Math.max(maxDuration, endTime);
+      }
+
+      if (maxDuration > 0) {
+        setDuration(maxDuration);
+      }
+
+      // Initialize audio
+      try {
+        await initialize();
+        await initLoopPlayback();
+      } catch (err) {
+        console.error('[Song Sync] Failed to initialize audio:', err);
+        return;
+      }
+
+      // Apply track states from payload
+      const hasSoloTrack = payload.trackStates.some(ts => ts.solo);
+
+      // Load and play audio tracks
+      const audioTrackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }> = [];
+
+      for (const trackRef of song.tracks) {
+        const trackState = payload.trackStates.find(ts => ts.trackRefId === trackRef.id);
+        const isEffectivelyMuted = trackState?.muted || (hasSoloTrack && !trackState?.solo);
+        const volume = trackState?.volume ?? 1;
+
+        if (trackRef.type === 'audio') {
+          const audioTrack = queueState.tracks.find(t => t.id === trackRef.trackId);
+          if (audioTrack) {
+            const trackOffset = Math.max(0, payload.currentTime - trackRef.startOffset);
+            const loadSuccess = await loadMultiTrack(audioTrack.id, audioTrack.url);
+            if (loadSuccess) {
+              audioTrackConfigs.push({
+                trackId: audioTrack.id,
+                offset: trackOffset,
+                volume,
+                muted: isEffectivelyMuted,
+              });
+            }
+          }
+        } else if (trackRef.type === 'loop') {
+          const loopTrack = loopTracksState.find(t => t.id === trackRef.trackId);
+          if (loopTrack) {
+            playLoopTrack(loopTrack.id, payload.syncTime, 0);
+          }
+        }
+      }
+
+      // Play all audio tracks
+      if (audioTrackConfigs.length > 0) {
+        playMultiTracks(payload.syncTime, audioTrackConfigs);
+      }
+
+      // Set current time and playing state
+      setCurrentTime(payload.currentTime);
+      setPlaying(true);
+    };
+
+    // Handle song:pause from another user
+    handleSongPauseRef.current = (payload) => {
+      console.log('[Song Sync] Received pause event:', payload);
+
+      // Stop all audio tracks
+      stopMultiTracks();
+
+      // Stop all loop tracks
+      const loopTracksState = useLoopTracksStore.getState().getTracksByRoom(roomId);
+      for (const loopTrack of loopTracksState) {
+        stopLoopTrack(loopTrack.id);
+      }
+
+      // Update state
+      setCurrentTime(payload.currentTime);
+      setPlaying(false);
+    };
+
+    // Handle song:seek from another user
+    handleSongSeekRef.current = async (payload) => {
+      console.log('[Song Sync] Received seek event:', payload);
+
+      const wasPlaying = useAudioStore.getState().isPlaying;
+
+      // Stop current playback
+      stopMultiTracks();
+      const loopTracksState = useLoopTracksStore.getState().getTracksByRoom(roomId);
+      for (const loopTrack of loopTracksState) {
+        stopLoopTrack(loopTrack.id);
+      }
+
+      // Set the new time
+      setCurrentTime(payload.seekTime);
+
+      // If was playing, restart at new position
+      if (wasPlaying) {
+        // Get the current song
+        const songsStore = useSongsStore.getState();
+        const song = songsStore.songs.get(payload.songId);
+        if (!song) return;
+
+        // Initialize audio
+        try {
+          await initialize();
+          await initLoopPlayback();
+        } catch (err) {
+          console.error('[Song Sync] Failed to initialize audio:', err);
+          return;
+        }
+
+        const queueState = useRoomStore.getState().queue;
+        const audioTrackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }> = [];
+
+        for (const trackRef of song.tracks) {
+          if (trackRef.type === 'audio') {
+            const audioTrack = queueState.tracks.find(t => t.id === trackRef.trackId);
+            if (audioTrack) {
+              const trackOffset = Math.max(0, payload.seekTime - trackRef.startOffset);
+              const loadSuccess = await loadMultiTrack(audioTrack.id, audioTrack.url);
+              if (loadSuccess) {
+                audioTrackConfigs.push({
+                  trackId: audioTrack.id,
+                  offset: trackOffset,
+                  volume: trackRef.volume ?? 1,
+                  muted: trackRef.muted ?? false,
+                });
+              }
+            }
+          } else if (trackRef.type === 'loop') {
+            const loopTrack = loopTracksState.find(t => t.id === trackRef.trackId);
+            if (loopTrack) {
+              playLoopTrack(loopTrack.id, payload.syncTime, 0);
+            }
+          }
+        }
+
+        if (audioTrackConfigs.length > 0) {
+          playMultiTracks(payload.syncTime, audioTrackConfigs);
+        }
+      }
+    };
+
+    // Handle song:select from another user
+    handleSongSelectRef.current = (payload) => {
+      console.log('[Song Sync] Received select event:', payload);
+      useSongsStore.getState().selectSong(payload.songId);
+    };
+  }, [roomId, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, stopMultiTracks, playLoopTrack, stopLoopTrack, setCurrentTime, setDuration, setPlaying]);
 
   // YouTube player ref
   const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
@@ -472,7 +685,16 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     }
 
     setPlaying(true);
-  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, playLoopTrack, setDuration, setPlaying]);
+
+    // Broadcast to other users in the room
+    const trackStates = songTracks.map(t => ({
+      trackRefId: t.ref.id,
+      muted: t.ref.muted ?? false,
+      solo: t.ref.solo ?? false,
+      volume: t.ref.volume ?? 1,
+    }));
+    broadcastSongPlay(currentSong.id, playbackOffset, syncTime, trackStates);
+  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, playLoopTrack, setDuration, setPlaying, broadcastSongPlay]);
 
   const handleSongPause = useCallback(() => {
     console.log('Pausing Song playback');
@@ -494,7 +716,14 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
     }
 
     setPlaying(false);
-  }, [songTracks, stopMultiTracks, stopLoopTrack, setPlaying]);
+
+    // Broadcast to other users in the room
+    const song = useSongsStore.getState().getCurrentSong();
+    if (song) {
+      const pauseTime = useAudioStore.getState().currentTime;
+      broadcastSongPause(song.id, pauseTime);
+    }
+  }, [songTracks, stopMultiTracks, stopLoopTrack, setPlaying, broadcastSongPause]);
 
   const handleSongSeek = useCallback(async (time: number) => {
     if (!isMaster) return;
@@ -525,6 +754,15 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
       setSeekVersion((v) => v + 1);
     }
 
+    // Calculate sync time for broadcast
+    const syncTime = Date.now() + 50;
+
+    // Broadcast seek to other users
+    const song = useSongsStore.getState().getCurrentSong();
+    if (song) {
+      broadcastSongSeek(song.id, seekTime, syncTime);
+    }
+
     // If was playing, restart at new position
     if (wasPlaying && songTracks.length > 0) {
       // Initialize audio systems
@@ -536,8 +774,6 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         setPlaying(false);
         return;
       }
-
-      const syncTime = Date.now() + 50; // Small delay for sync
 
       // Check if ANY track has solo enabled (across all track types)
       const hasSoloTrack = songTracks.some(t => t.ref.solo);
@@ -585,7 +821,7 @@ export function DAWLayout({ roomId, onLeaveRoom }: DAWLayoutProps) {
         }
       }
     }
-  }, [isMaster, isPlaying, songTracks, hasLoopTracks, hasAudioTracks, stopMultiTracks, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, playLoopTrack, setPlaying]);
+  }, [isMaster, isPlaying, songTracks, hasLoopTracks, hasAudioTracks, stopMultiTracks, stopLoopTrack, setCurrentTime, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, playLoopTrack, setPlaying, broadcastSongSeek]);
 
   // Playback handlers - Song system only, no legacy fallback
   const handlePlay = useCallback(() => {

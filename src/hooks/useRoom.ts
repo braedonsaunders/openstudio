@@ -19,12 +19,45 @@ import { useStatsTracker } from './useStatsTracker';
 import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
+import type { SongTrackReference } from '@/types/songs';
+
+// Song playback event payloads
+export interface SongPlayPayload {
+  songId: string;
+  currentTime: number;
+  syncTime: number;
+  trackStates: Array<{ trackRefId: string; muted: boolean; solo: boolean; volume: number }>;
+  userId: string;
+}
+
+export interface SongPausePayload {
+  songId: string;
+  currentTime: number;
+  userId: string;
+}
+
+export interface SongSeekPayload {
+  songId: string;
+  seekTime: number;
+  syncTime: number;
+  userId: string;
+}
+
+export interface SongSelectPayload {
+  songId: string;
+  userId: string;
+}
 
 interface UseRoomOptions {
   onUserJoined?: (user: User) => void;
   onUserLeft?: (userId: string) => void;
   onTrackChanged?: (track: BackingTrack | null) => void;
   onError?: (error: Error) => void;
+  // Song playback sync callbacks
+  onSongPlay?: (payload: SongPlayPayload) => void;
+  onSongPause?: (payload: SongPausePayload) => void;
+  onSongSeek?: (payload: SongSeekPayload) => void;
+  onSongSelect?: (payload: SongSelectPayload) => void;
 }
 
 export function useRoom(roomId: string, options: UseRoomOptions = {}) {
@@ -809,6 +842,32 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       });
 
+      // Song playback event handlers (multi-track timeline sync)
+      // These sync the Song system playback across all room members
+      realtime.on('song:play', (data) => {
+        const payload = data as SongPlayPayload;
+        if (payload.userId === user.id) return;
+        options.onSongPlay?.(payload);
+      });
+
+      realtime.on('song:pause', (data) => {
+        const payload = data as SongPausePayload;
+        if (payload.userId === user.id) return;
+        options.onSongPause?.(payload);
+      });
+
+      realtime.on('song:seek', (data) => {
+        const payload = data as SongSeekPayload;
+        if (payload.userId === user.id) return;
+        options.onSongSeek?.(payload);
+      });
+
+      realtime.on('song:select', (data) => {
+        const payload = data as SongSelectPayload;
+        if (payload.userId === user.id) return;
+        options.onSongSelect?.(payload);
+      });
+
       await realtime.connect(user);
       realtimeRef.current = realtime;
 
@@ -1471,6 +1530,28 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastTimeSignature(beatsPerBar, beatUnit);
   }, []);
 
+  // Song playback broadcasts (for multi-track timeline sync)
+  const broadcastSongPlay = useCallback((
+    songId: string,
+    currentTime: number,
+    syncTime: number,
+    trackStates: Array<{ trackRefId: string; muted: boolean; solo: boolean; volume: number }>
+  ) => {
+    realtimeRef.current?.broadcastSongPlay(songId, currentTime, syncTime, trackStates);
+  }, []);
+
+  const broadcastSongPause = useCallback((songId: string, currentTime: number) => {
+    realtimeRef.current?.broadcastSongPause(songId, currentTime);
+  }, []);
+
+  const broadcastSongSeek = useCallback((songId: string, seekTime: number, syncTime: number) => {
+    realtimeRef.current?.broadcastSongSeek(songId, seekTime, syncTime);
+  }, []);
+
+  const broadcastSongSelect = useCallback((songId: string) => {
+    realtimeRef.current?.broadcastSongSelect(songId);
+  }, []);
+
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -1520,5 +1601,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     broadcastTempoUpdate,
     broadcastTempoSource,
     broadcastTimeSignature,
+    // Song playback broadcasts
+    broadcastSongPlay,
+    broadcastSongPause,
+    broadcastSongSeek,
+    broadcastSongSelect,
   };
 }
