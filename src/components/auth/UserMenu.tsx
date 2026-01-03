@@ -20,7 +20,14 @@ import {
   Flame,
   FolderOpen,
   DoorOpen,
+  Mail,
+  Check,
+  X,
+  Clock,
+  Music,
 } from 'lucide-react';
+import { useMyInvitations } from '@/hooks/useMyInvitations';
+import { ROOM_COLORS, ROOM_ICONS } from '@/types/index';
 
 interface UserMenuProps {
   onLeaveRoom?: () => void;
@@ -35,6 +42,10 @@ export function UserMenu({ onLeaveRoom }: UserMenuProps = {}) {
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const { user, profile, signOut, isLoading, isInitialized, isProfileLoading, profileError, refreshProfile, initialize } = useAuthStore();
+
+  // Invitations
+  const { invitations, count: invitationCount, acceptInvitation, declineInvitation } = useMyInvitations();
+  const [processingInviteId, setProcessingInviteId] = useState<string | null>(null);
 
   // Trigger initialization on mount as a backup
   // The auth-store also initializes itself, but this ensures it happens if component mounts first
@@ -95,6 +106,32 @@ export function UserMenu({ onLeaveRoom }: UserMenuProps = {}) {
   const openSignup = () => {
     setAuthTab('signup');
     setShowAuthModal(true);
+  };
+
+  const handleAcceptInvite = async (invitationId: string) => {
+    setProcessingInviteId(invitationId);
+    const result = await acceptInvitation(invitationId);
+    setProcessingInviteId(null);
+    if (result?.success && result.roomId) {
+      setShowDropdown(false);
+      router.push(`/room/${result.roomId}`);
+    }
+  };
+
+  const handleDeclineInvite = async (invitationId: string) => {
+    setProcessingInviteId(invitationId);
+    await declineInvitation(invitationId);
+    setProcessingInviteId(null);
+  };
+
+  const getRoomColor = (colorValue?: string) => {
+    const color = ROOM_COLORS.find((c) => c.value === colorValue);
+    return color?.bg || 'bg-indigo-500';
+  };
+
+  const getRoomIcon = (iconValue?: string) => {
+    const icon = ROOM_ICONS.find((i) => i.value === iconValue);
+    return icon?.icon || null;
   };
 
   // Show skeleton only during actual loading, not when profile failed to load
@@ -258,6 +295,73 @@ export function UserMenu({ onLeaveRoom }: UserMenuProps = {}) {
                   setShowDropdown(false);
                 }}
               />
+
+              {/* Invitations Section */}
+              {invitationCount > 0 && (
+                <>
+                  <div className="my-2 border-t border-gray-200 dark:border-gray-800" />
+                  <div className="px-4 py-2">
+                    <div className="flex items-center gap-2 mb-2">
+                      <Mail className="w-4 h-4 text-indigo-500" />
+                      <span className="text-sm font-medium text-gray-900 dark:text-white">
+                        Room Invitations
+                      </span>
+                      <span className="ml-auto text-xs bg-indigo-500 text-white px-1.5 py-0.5 rounded-full">
+                        {invitationCount}
+                      </span>
+                    </div>
+                    <div className="space-y-2 max-h-48 overflow-y-auto">
+                      {invitations.slice(0, 3).map((inv) => (
+                        <div
+                          key={inv.id}
+                          className="p-2 bg-gray-50 dark:bg-gray-800 rounded-lg"
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={`w-8 h-8 flex items-center justify-center rounded-lg text-white text-sm ${getRoomColor(inv.roomColor)}`}
+                            >
+                              {getRoomIcon(inv.roomIcon) || <Music className="w-4 h-4" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-gray-900 dark:text-white truncate">
+                                {inv.roomName}
+                              </p>
+                              <p className="text-xs text-gray-500 dark:text-gray-400 truncate">
+                                from {inv.inviterName || 'Unknown'}
+                              </p>
+                            </div>
+                          </div>
+                          <div className="flex gap-2 mt-2">
+                            <button
+                              onClick={() => handleDeclineInvite(inv.id)}
+                              disabled={processingInviteId === inv.id}
+                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs text-gray-600 dark:text-gray-400 hover:bg-gray-200 dark:hover:bg-gray-700 rounded transition-colors"
+                            >
+                              <X className="w-3 h-3" />
+                              Decline
+                            </button>
+                            <button
+                              onClick={() => handleAcceptInvite(inv.id)}
+                              disabled={processingInviteId === inv.id}
+                              className="flex-1 flex items-center justify-center gap-1 px-2 py-1 text-xs bg-indigo-500 text-white hover:bg-indigo-600 rounded transition-colors"
+                            >
+                              <Check className="w-3 h-3" />
+                              Accept
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                      {invitationCount > 3 && (
+                        <p className="text-xs text-center text-gray-500 dark:text-gray-400 pt-1">
+                          +{invitationCount - 3} more invitation{invitationCount - 3 > 1 ? 's' : ''}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+
+              <div className="my-2 border-t border-gray-200 dark:border-gray-800" />
               <MenuItem
                 icon={Settings}
                 label="Settings"
