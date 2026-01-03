@@ -1,9 +1,8 @@
 // Core Audio Engine for OpenStudio
 // Manages all audio processing, routing, and playback
+// Effects processing is handled by native bridge - this is playback/routing only
 
 import { AdaptiveJitterBuffer } from './jitter-buffer';
-import { ExtendedEffectsProcessor } from './effects/extended-effects-processor';
-import { MasterEffectsProcessor, type MasterEffectsChain } from './effects/master-effects-processor';
 import { TrackAudioProcessor, type TrackAudioState, type TrackInputConfig } from './track-audio-processor';
 import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, ExtendedEffectsChain, TrackAudioSettings } from '@/types';
 
@@ -45,8 +44,6 @@ export class AudioEngine {
   private localInputGain: GainNode | null = null;
   private localArmGain: GainNode | null = null;
   private localMuteGain: GainNode | null = null;
-  private localEffectsProcessor: ExtendedEffectsProcessor | null = null;
-  private masterEffectsProcessor: MasterEffectsProcessor | null = null;
   private monitoringEnabled: boolean = true;
   private localTrackMuted: boolean = false;
   private localTrackArmed: boolean = false;
@@ -131,13 +128,9 @@ export class AudioEngine {
     }
 
     // Create master gain node
+    // Signal flow: masterGain → destination (effects handled by native bridge)
     this.masterGain = this.audioContext.createGain();
-
-    // Create master effects processor (optional effects chain on master bus)
-    // Signal flow: masterGain → masterEffects → destination
-    this.masterEffectsProcessor = new MasterEffectsProcessor(this.audioContext);
-    this.masterGain.connect(this.masterEffectsProcessor.getInputNode());
-    this.masterEffectsProcessor.connect(this.audioContext.destination);
+    this.masterGain.connect(this.audioContext.destination);
 
     // Create song gain node (controls all song-related audio: backing tracks, stems, Lyria AI, etc.)
     // Signal flow: backingTrackGain/externalSources → songGain → masterGain
@@ -160,11 +153,10 @@ export class AudioEngine {
     this.backingTrackGain.connect(this.backingTrackAnalyser);
 
     // Create master analyser for analyzing all audio (backing + all users)
-    // Placed after master effects to analyze the final output
     this.masterAnalyser = this.audioContext.createAnalyser();
     this.masterAnalyser.fftSize = 2048;
     this.masterAnalyser.smoothingTimeConstant = 0.3;
-    this.masterEffectsProcessor.getOutputNode().connect(this.masterAnalyser);
+    this.masterGain.connect(this.masterAnalyser);
 
     // Load audio worklet processor
     try {
@@ -210,9 +202,6 @@ export class AudioEngine {
       localTrackMuted: this.localTrackMuted,
       localTrackVolume: this.localTrackVolume,
       monitoringEnabled: this.monitoringEnabled,
-      effectsSettings: this.localEffectsProcessor?.getSettings() ?? null,
-      masterEffectsEnabled: this.masterEffectsProcessor?.isEnabled() ?? false,
-      masterEffectsSettings: this.masterEffectsProcessor?.getSettings() ?? null,
     };
 
     // Stop level monitoring
@@ -243,11 +232,9 @@ export class AudioEngine {
     this.localArmGain?.disconnect();
     this.localMuteGain?.disconnect();
     this.localMonitorGain?.disconnect();
-    this.localEffectsProcessor?.dispose();
 
     // Clean up master nodes
     this.masterGain?.disconnect();
-    this.masterEffectsProcessor?.dispose();
     this.songGain?.disconnect();
     this.backingTrackGain?.disconnect();
 
@@ -266,12 +253,6 @@ export class AudioEngine {
     this.localTrackMuted = savedState.localTrackMuted;
     this.localTrackVolume = savedState.localTrackVolume;
     this.monitoringEnabled = savedState.monitoringEnabled;
-
-    // Restore master effects
-    if (savedState.masterEffectsSettings) {
-      this.masterEffectsProcessor?.updateSettings(savedState.masterEffectsSettings);
-    }
-    this.masterEffectsProcessor?.setEnabled(savedState.masterEffectsEnabled);
 
     // Note: Bridge audio for tracks is re-enabled via setTrackBridgeInput calls
     // from useNativeBridge after sample rate change completes
@@ -387,13 +368,6 @@ export class AudioEngine {
       }
     }
 
-    // IMPORTANT: Save current effects settings before disposing the processor
-    // This ensures effects are preserved when switching to bridge audio
-    const savedEffectsSettings = this.localEffectsProcessor?.getSettings() ?? null;
-    if (savedEffectsSettings) {
-      console.log('[AudioEngine] Saved effects settings before bridge switch');
-    }
-
     this.useBridgeAudio = true;
 
     // Clean up any existing local source
@@ -444,7 +418,6 @@ export class AudioEngine {
     this.localArmGain?.disconnect();
     this.localMuteGain?.disconnect();
     this.localMonitorGain?.disconnect();
-    this.localEffectsProcessor?.dispose();
 
     // Create gain nodes
     this.localAnalyser = this.audioContext.createAnalyser();
@@ -462,24 +435,13 @@ export class AudioEngine {
     this.localMonitorGain = this.audioContext.createGain();
     this.localMonitorGain.gain.value = this.monitoringEnabled ? 1 : 0;
 
-    // Connect the chain
+    // Connect the chain (no effects - native bridge handles all processing)
     // bridgeWorklet -> inputGain -> analyser
-    // bridgeWorklet -> inputGain -> armGain -> effects -> muteGain -> monitorGain -> masterGain
+    // bridgeWorklet -> inputGain -> armGain -> muteGain -> monitorGain -> masterGain
     this.bridgeWorkletNode.connect(this.localInputGain);
     this.localInputGain.connect(this.localAnalyser);
     this.localInputGain.connect(this.localArmGain);
-
-    // Create effects processor and restore saved settings
-    this.localEffectsProcessor = new ExtendedEffectsProcessor(this.audioContext);
-
-    // Restore effects settings that were saved before switching
-    if (savedEffectsSettings) {
-      console.log('[AudioEngine] Restoring effects settings to new processor');
-      this.localEffectsProcessor.updateSettings(savedEffectsSettings);
-    }
-
-    this.localArmGain.connect(this.localEffectsProcessor.getInputNode());
-    this.localEffectsProcessor.connect(this.localMuteGain);
+    this.localArmGain.connect(this.localMuteGain);
     this.localMuteGain.connect(this.localMonitorGain);
     this.localMonitorGain.connect(this.masterGain);
 
@@ -824,31 +786,6 @@ export class AudioEngine {
     return this.calculateLevel(this.songAnalyser);
   }
 
-  // Master effects chain controls
-  setMasterEffectsEnabled(enabled: boolean): void {
-    this.masterEffectsProcessor?.setEnabled(enabled);
-  }
-
-  isMasterEffectsEnabled(): boolean {
-    return this.masterEffectsProcessor?.isEnabled() ?? false;
-  }
-
-  updateMasterEffects(settings: Partial<MasterEffectsChain>): void {
-    this.masterEffectsProcessor?.updateSettings(settings);
-  }
-
-  getMasterEffectsSettings(): MasterEffectsChain | null {
-    return this.masterEffectsProcessor?.getSettings() ?? null;
-  }
-
-  getMasterEffectsMetering(): { compressorReduction: number; limiterReduction: number } | null {
-    return this.masterEffectsProcessor?.getMeteringData() ?? null;
-  }
-
-  getMasterEffectsLatency(): number {
-    return this.masterEffectsProcessor?.getEstimatedLatency() ?? 0;
-  }
-
   async setOutputDevice(deviceId: string): Promise<void> {
     if (!this.audioContext) {
       console.warn('[AudioEngine] Cannot set output device: audio context not initialized');
@@ -949,21 +886,12 @@ export class AudioEngine {
   }
 
   /**
-   * Update the local track effects (extended - all 35 effects)
-   * Updates the primary track processor
+   * Update the local track effects - sends to native bridge via WebSocket
+   * Effects are no longer processed in JS - native bridge handles all DSP
    */
-  updateLocalEffects(effects: Partial<ExtendedEffectsChain>): void {
-    if (this.primaryTrackId) {
-      const processor = this.trackProcessors.get(this.primaryTrackId);
-      processor?.updateEffects(effects);
-    }
-  }
-
-  /**
-   * Get the local effects processor (for direct manipulation)
-   */
-  getLocalEffectsProcessor(): ExtendedEffectsProcessor | null {
-    return this.localEffectsProcessor;
+  updateLocalEffects(_effects: Partial<ExtendedEffectsChain>): void {
+    // Effects are sent to native bridge via useNativeBridge hook
+    // This method is kept for API compatibility but does nothing
   }
 
   // ==========================================
@@ -1245,11 +1173,7 @@ export class AudioEngine {
       this.jitterBuffer.setMode('balanced');
     }
 
-    // Set effects processor low-latency mode
-    if (this.localEffectsProcessor) {
-      this.localEffectsProcessor.setLowLatencyMode(enabled);
-    }
-
+    // Effects latency is handled by native bridge
     console.log(`[AudioEngine] Live Jamming Mode: ${enabled ? 'ENABLED' : 'DISABLED'}`);
     console.log(`[AudioEngine] Estimated latency savings: ${enabled ? '~30-40ms round-trip' : 'none (balanced mode)'}`);
   }
@@ -1279,14 +1203,15 @@ export class AudioEngine {
   /**
    * Get metering data from the local track effects
    */
+  /**
+   * Effects metering - now provided by native bridge via WebSocket
+   */
   getLocalEffectsMetering(): {
     noiseGateOpen: boolean;
     compressorReduction: number;
     limiterReduction: number;
   } | null {
-    if (this.localEffectsProcessor) {
-      return this.localEffectsProcessor.getMeteringData();
-    }
+    // Metering data comes from native bridge, not JS processor
     return null;
   }
 
@@ -2057,16 +1982,6 @@ export class AudioEngine {
     console.warn('[AudioEngine] Detected audio processing error, attempting recovery...');
 
     try {
-      // Recover local effects processor
-      if (this.localEffectsProcessor) {
-        this.localEffectsProcessor.recoverFromError();
-      }
-
-      // Recover master effects processor
-      if (this.masterEffectsProcessor) {
-        this.masterEffectsProcessor.recoverFromError();
-      }
-
       // Resume audio context if suspended
       if (this.audioContext?.state === 'suspended') {
         this.audioContext.resume().catch(e => {
@@ -2074,7 +1989,7 @@ export class AudioEngine {
         });
       }
 
-      console.log('[AudioEngine] Recovery attempt complete - effects bypassed');
+      console.log('[AudioEngine] Recovery attempt complete');
     } catch (e) {
       console.error('[AudioEngine] Recovery failed:', e);
     }
@@ -2209,11 +2124,6 @@ export class AudioEngine {
     this.localArmGain = null;
     this.localMuteGain?.disconnect();
     this.localMuteGain = null;
-    this.localEffectsProcessor?.dispose();
-    this.localEffectsProcessor = null;
-
-    this.masterEffectsProcessor?.dispose();
-    this.masterEffectsProcessor = null;
 
     this.workletNode?.disconnect();
     this.masterGain?.disconnect();

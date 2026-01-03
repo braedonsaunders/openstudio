@@ -10,7 +10,7 @@ import { useSavedTracksStore } from '@/stores/saved-tracks-store';
 import { useNativeBridge } from '@/hooks/useNativeBridge';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
-import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects/unified-effects-processor';
+import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects-defaults';
 import type { UnifiedEffectsChain } from '@/types';
 import {
   Mic,

@@ -230,6 +230,20 @@ export interface TrackEffectsChain {
   limiter: LimiterSettings;
 }
 
+// Master limiter with additional controls
+export interface MasterLimiterSettings extends LimiterSettings {
+  lookahead: number; // ms (0 to 10)
+  linkChannels: boolean;
+}
+
+// Master bus effects chain
+export interface MasterEffectsChain {
+  eq: EQSettings;
+  compressor: CompressorSettings;
+  reverb: ReverbSettings;
+  limiter: MasterLimiterSettings;
+}
+
 // Effect presets
 export type EffectPresetType = 'vocal' | 'guitar' | 'bass' | 'drums' | 'keys' | 'acoustic' | 'clean' | 'custom';
 

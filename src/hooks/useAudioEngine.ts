@@ -6,7 +6,6 @@ import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
 import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import type { BackingTrack, TrackAudioSettings } from '@/types';
-import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
 
 // Singleton audio engine instance - shared across all components
 // This prevents issues when multiple components call useAudioEngine()
@@ -354,27 +353,6 @@ export function useAudioEngine() {
   // Set local monitoring enabled (for browser-side WET monitoring)
   const setLocalMonitoring = useCallback((enabled: boolean) => {
     globalEngine?.setMonitoringEnabled(enabled);
-  }, []);
-
-  // Master effects chain controls (EQ, Compressor, Reverb, Limiter)
-  const setMasterEffectsEnabled = useCallback((enabled: boolean) => {
-    globalEngine?.setMasterEffectsEnabled(enabled);
-  }, []);
-
-  const isMasterEffectsEnabled = useCallback((): boolean => {
-    return globalEngine?.isMasterEffectsEnabled() ?? false;
-  }, []);
-
-  const updateMasterEffects = useCallback((settings: Partial<MasterEffectsChain>) => {
-    globalEngine?.updateMasterEffects(settings);
-  }, []);
-
-  const getMasterEffectsSettings = useCallback((): MasterEffectsChain | null => {
-    return globalEngine?.getMasterEffectsSettings() ?? null;
-  }, []);
-
-  const getMasterEffectsMetering = useCallback(() => {
-    return globalEngine?.getMasterEffectsMetering() ?? null;
   }, []);
 
   // Check if backing track audio is available for analysis
@@ -840,12 +818,6 @@ export function useAudioEngine() {
     setLocalInputGainDb,
     updateLocalEffects,
     setLocalMonitoring,
-    // Master effects chain
-    setMasterEffectsEnabled,
-    isMasterEffectsEnabled,
-    updateMasterEffects,
-    getMasterEffectsSettings,
-    getMasterEffectsMetering,
     // Analyser nodes as state (triggers re-render when available)
     audioContext,
     backingTrackAnalyser,

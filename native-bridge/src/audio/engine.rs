@@ -87,6 +87,15 @@ pub struct LatencyInfo {
     pub buffer_size_samples: u32,
 }
 
+/// Device info for TUI display
+#[derive(Debug, Clone)]
+pub struct TuiDeviceInfo {
+    pub input_device: String,
+    pub output_device: String,
+    pub sample_rate: u32,
+    pub buffer_size: u32,
+}
+
 /// Effects metering data
 #[derive(Debug, Clone, Default)]
 pub struct EffectsMetering {
@@ -358,6 +367,22 @@ impl AudioEngine {
         }
     }
 
+    /// Set room musical context for pitch/tempo-aware effects
+    pub fn set_room_context(
+        &self,
+        key: Option<String>,
+        scale: Option<String>,
+        bpm: Option<f32>,
+        time_sig_num: Option<u8>,
+        time_sig_denom: Option<u8>,
+    ) {
+        if let Ok(mut state) = self.processing_state.write() {
+            state
+                .effects_chain
+                .set_room_context(key, scale, bpm, time_sig_num, time_sig_denom);
+        }
+    }
+
     pub fn set_master_volume(&self, volume: f32) {
         if let Ok(mut state) = self.processing_state.write() {
             state.master_volume = volume;
@@ -500,6 +525,24 @@ impl AudioEngine {
             output_latency_ms: buffer_latency,
             total_latency_ms: buffer_latency * 2.0,
             buffer_size_samples: buffer_samples,
+        }
+    }
+
+    /// Get device info for TUI display
+    pub fn get_device_info(&self) -> TuiDeviceInfo {
+        TuiDeviceInfo {
+            input_device: self
+                .input_device
+                .as_ref()
+                .map(|d| d.info.name.clone())
+                .unwrap_or_else(|| "None".to_string()),
+            output_device: self
+                .output_device
+                .as_ref()
+                .map(|d| d.info.name.clone())
+                .unwrap_or_else(|| "None".to_string()),
+            sample_rate: self.config.sample_rate as u32,
+            buffer_size: self.config.buffer_size as u32,
         }
     }
 

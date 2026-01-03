@@ -31,10 +31,10 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { Drum, Piano } from '../icons';
-import type { User, UserTrack } from '@/types';
-import { useAudioEngine } from '@/hooks/useAudioEngine';
+import type { User, UserTrack, EQBand, MasterEffectsChain } from '@/types';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
-import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
+import { DEFAULT_MASTER_EFFECTS } from '@/lib/audio/effects-defaults';
+import { nativeBridge } from '@/lib/audio/native-bridge';
 
 interface MixerViewProps {
   isMaster: boolean;
@@ -823,45 +823,17 @@ function MasterChannelStrip({
   onOpenMasterFx?: () => void;
 }) {
   const { masterVolume, setMasterVolume } = useAudioStore();
-  const {
-    setMasterEffectsEnabled,
-    isMasterEffectsEnabled,
-    getMasterEffectsMetering,
-  } = useAudioEngine();
 
+  // Master FX enabled state - managed locally, native bridge handles actual DSP
   const [fxEnabled, setFxEnabled] = useState(false);
-  const [metering, setMetering] = useState<{ compressorReduction: number; limiterReduction: number } | null>(null);
-
-  // Sync local state with engine state
-  useEffect(() => {
-    setFxEnabled(isMasterEffectsEnabled());
-  }, [isMasterEffectsEnabled]);
-
-  // Update metering data periodically when FX enabled
-  useEffect(() => {
-    if (!fxEnabled) {
-      setMetering(null);
-      return;
-    }
-    const interval = setInterval(() => {
-      setMetering(getMasterEffectsMetering());
-    }, 100);
-    return () => clearInterval(interval);
-  }, [fxEnabled, getMasterEffectsMetering]);
 
   const toggleFx = () => {
-    const newState = !fxEnabled;
-    setFxEnabled(newState);
-    setMasterEffectsEnabled(newState);
+    setFxEnabled(!fxEnabled);
+    // Native bridge handles master effects processing
   };
 
   // Use actual audio level from the engine
   const level = audioLevel;
-
-  // Show gain reduction indicator
-  const gainReduction = metering
-    ? Math.max(metering.compressorReduction, metering.limiterReduction)
-    : 0;
 
   return (
     <div
@@ -950,13 +922,6 @@ function MasterChannelStrip({
           <Sliders className="w-3 h-3" />
           FX {fxEnabled ? 'ON' : 'OFF'}
         </button>
-
-        {/* Gain Reduction Indicator (when FX enabled) */}
-        {fxEnabled && gainReduction > 0.5 && (
-          <div className="flex items-center justify-center gap-1 text-[7px] text-amber-500 dark:text-amber-400">
-            <span>GR: -{gainReduction.toFixed(1)}dB</span>
-          </div>
-        )}
 
         {/* Edit FX Button - always visible, disabled when FX off or not master */}
         <button
@@ -1163,20 +1128,9 @@ function MasterEffectsPanel({
 }: {
   onClose: () => void;
 }) {
-  const { getMasterEffectsSettings, updateMasterEffects } = useAudioEngine();
-  const [settings, setSettings] = useState<MasterEffectsChain | null>(null);
+  // Initialize with defaults - native bridge handles actual DSP
+  const [settings, setSettings] = useState<MasterEffectsChain>(DEFAULT_MASTER_EFFECTS);
   const [expandedEffects, setExpandedEffects] = useState<Set<string>>(new Set(['eq', 'compressor']));
-
-  // Refresh settings periodically
-  useEffect(() => {
-    const update = () => {
-      const s = getMasterEffectsSettings();
-      if (s) setSettings(s);
-    };
-    update();
-    const interval = setInterval(update, 500);
-    return () => clearInterval(interval);
-  }, [getMasterEffectsSettings]);
 
   const toggleExpanded = (effect: string) => {
     setExpandedEffects((prev) => {
@@ -1188,18 +1142,11 @@ function MasterEffectsPanel({
   };
 
   const handleUpdate = useCallback((updates: Partial<MasterEffectsChain>) => {
-    updateMasterEffects(updates);
-    // Immediately reflect in local state for responsiveness
-    setSettings((prev) => prev ? { ...prev, ...updates } : null);
-  }, [updateMasterEffects]);
-
-  if (!settings) {
-    return (
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60">
-        <div className="bg-zinc-900 rounded-xl p-6 text-zinc-400">Loading...</div>
-      </div>
-    );
-  }
+    // Update local state for responsive UI
+    setSettings((prev) => ({ ...prev, ...updates }));
+    // Send to native bridge for actual DSP processing
+    nativeBridge.updateMasterEffects(updates);
+  }, []);
 
   const reverbTypes = ['room', 'hall', 'plate', 'spring', 'ambient'] as const;
 
@@ -1254,7 +1201,7 @@ function MasterEffectsPanel({
             />
             {expandedEffects.has('eq') && (
               <div className="pb-3 px-2 space-y-2">
-                {settings.eq.bands.map((band, index) => (
+                {settings.eq.bands.map((band: EQBand, index: number) => (
                   <div key={index} className="flex items-center gap-2">
                     <span className="text-[9px] text-zinc-500 w-10">
                       {band.type === 'lowshelf' ? 'Low' : band.type === 'highshelf' ? 'High' : `Mid${index}`}

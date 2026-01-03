@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { Modal } from '../ui/modal';
 import { Button } from '../ui/button';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
-import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
+import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects-defaults';
 import { MidiDeviceSelector } from '../midi/midi-device-selector';
 import { useNativeBridge } from '@/hooks/useNativeBridge';
 import type { TrackAudioSettings, MidiInputSettings } from '@/types';

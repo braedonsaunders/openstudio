@@ -81,6 +81,14 @@ crc32fast = "1.4"
 # UUID generation
 uuid = { version = "1.6", features = ["v4"] }
 
+# === Audio DSP for Effects ===
+# realfft - FFT for convolution (cabinet IRs, pitch detection)
+realfft = "3.4"
+
+# === TUI Interface ===
+ratatui = "0.29"
+crossterm = "0.28"
+
 # Protocol registration (Windows only)
 [target.'cfg(windows)'.dependencies]
 winreg = "0.52"

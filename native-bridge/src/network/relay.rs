@@ -895,17 +895,20 @@ impl MoqRelay {
 
     /// Attempt reconnection
     pub async fn reconnect(&self) -> Result<()> {
-        let mut attempts = self.reconnect_attempts.write();
-        *attempts += 1;
+        // Check and update attempt count (scope to release lock before await)
+        {
+            let mut attempts = self.reconnect_attempts.write();
+            *attempts += 1;
 
-        if *attempts > self.config.max_reconnect_attempts {
-            *self.state.write() = MoqConnectionState::Failed;
-            return Err(NetworkError::ConnectionFailed(
-                "Max reconnect attempts exceeded".to_string(),
-            ));
-        }
+            if *attempts > self.config.max_reconnect_attempts {
+                *self.state.write() = MoqConnectionState::Failed;
+                return Err(NetworkError::ConnectionFailed(
+                    "Max reconnect attempts exceeded".to_string(),
+                ));
+            }
 
-        *self.state.write() = MoqConnectionState::Reconnecting;
+            *self.state.write() = MoqConnectionState::Reconnecting;
+        } // Lock released here before await
 
         // Wait before retry
         tokio::time::sleep(self.config.reconnect_interval).await;
@@ -913,9 +916,6 @@ impl MoqRelay {
         // Get saved room/user info
         let room_id = self.room_id.read().clone().unwrap_or_default();
         let user_id = self.user_id.read().clone().unwrap_or_default();
-
-        // Attempt reconnection
-        drop(attempts);
         match self.connect(&room_id, &user_id).await {
             Ok(_) => {
                 info!("Reconnected successfully");

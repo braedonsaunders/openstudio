@@ -303,6 +303,12 @@ impl NetworkManager {
             });
         }
 
+        // Start connection health monitor (handles reconnection and error recovery)
+        let manager = self.clone_for_task();
+        tokio::spawn(async move {
+            manager.connection_health_loop().await;
+        });
+
         Ok(event_rx)
     }
 
@@ -720,6 +726,110 @@ impl NetworkManager {
                     }
                 }
                 _ => {}
+            }
+        }
+    }
+
+    /// Connection health monitor - handles automatic reconnection
+    async fn connection_health_loop(&self) {
+        let mut interval = tokio::time::interval(Duration::from_secs(2));
+        let mut consecutive_failures = 0u32;
+        let max_backoff_secs = 30u64;
+
+        loop {
+            interval.tick().await;
+
+            let mode = self.mode();
+            if mode == NetworkMode::Disconnected {
+                break;
+            }
+
+            // Check relay connection state
+            let relay_state = self.relay.state();
+            let needs_reconnect = matches!(
+                relay_state,
+                MoqConnectionState::Disconnected | MoqConnectionState::Failed
+            ) && (mode == NetworkMode::Relay || mode == NetworkMode::Hybrid);
+
+            if needs_reconnect {
+                warn!(
+                    "Relay connection lost (state: {:?}), attempting reconnect...",
+                    relay_state
+                );
+
+                // Calculate backoff with exponential increase
+                let backoff_secs = std::cmp::min(
+                    2u64.saturating_pow(consecutive_failures),
+                    max_backoff_secs,
+                );
+
+                if consecutive_failures > 0 {
+                    info!("Waiting {}s before reconnect attempt...", backoff_secs);
+                    tokio::time::sleep(Duration::from_secs(backoff_secs)).await;
+                }
+
+                match self.relay.reconnect().await {
+                    Ok(()) => {
+                        info!("Relay reconnected successfully");
+                        consecutive_failures = 0;
+
+                        // Notify about reconnection
+                        if let Some(tx) = self.event_tx.read().as_ref() {
+                            let _ = tx.send(NetworkEvent::StateChanged { mode });
+                        }
+                    }
+                    Err(e) => {
+                        consecutive_failures += 1;
+                        warn!(
+                            "Relay reconnection attempt {} failed: {}",
+                            consecutive_failures, e
+                        );
+
+                        if consecutive_failures >= self.config.moq.max_reconnect_attempts {
+                            warn!(
+                                "Max reconnection attempts ({}) reached, giving up",
+                                self.config.moq.max_reconnect_attempts
+                            );
+                            if let Some(tx) = self.event_tx.read().as_ref() {
+                                let _ = tx.send(NetworkEvent::Error {
+                                    error: format!(
+                                        "Connection lost after {} reconnection attempts",
+                                        consecutive_failures
+                                    ),
+                                });
+                            }
+                            // Reset counter to allow future attempts if user initiates
+                            consecutive_failures = 0;
+                        }
+                    }
+                }
+            } else if relay_state == MoqConnectionState::Connected {
+                // Connection is healthy, reset failure counter
+                consecutive_failures = 0;
+            }
+
+            // Check P2P health (connection quality monitoring)
+            if mode == NetworkMode::P2P || mode == NetworkMode::Hybrid {
+                let stats = self.p2p.stats();
+
+                // If packet loss is too high, notify
+                if stats.packet_loss_pct > 10.0 {
+                    warn!(
+                        "High packet loss detected: {:.1}%",
+                        stats.packet_loss_pct
+                    );
+                    if let Some(tx) = self.event_tx.read().as_ref() {
+                        let _ = tx.send(NetworkEvent::StatsUpdate { stats: stats.clone() });
+                    }
+                }
+
+                // If RTT is too high for live jamming, consider switching to relay
+                if stats.rtt_ms > 100.0 && mode == NetworkMode::P2P && self.config.auto_switch {
+                    warn!(
+                        "High latency detected ({:.0}ms), considering relay mode",
+                        stats.rtt_ms
+                    );
+                }
             }
         }
     }

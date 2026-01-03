@@ -85,6 +85,16 @@ pub enum BrowserMessage {
     /// Set monitoring
     SetMonitoring { enabled: bool, volume: f32 },
 
+    // === Room Context (for pitch/tempo-sync effects) ===
+    /// Update room musical context (key, scale, BPM)
+    SetRoomContext {
+        key: Option<String>,        // C, C#, D, etc.
+        scale: Option<String>,      // major, minor, chromatic, etc.
+        bpm: Option<f32>,           // Tempo in BPM
+        time_sig_num: Option<u8>,   // Time signature numerator
+        time_sig_denom: Option<u8>, // Time signature denominator
+    },
+
     // === Remote Users ===
     /// Add remote user stream (metadata - actual audio comes via WebRTC)
     AddRemoteUser { user_id: String, user_name: String },
