@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { UserTrack, TrackAudioSettings, ExtendedEffectsChain, InputChannelConfig, MidiInputSettings, UserTrackType } from '@/types';
-import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
+import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects-defaults';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
 

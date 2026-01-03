@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
 import type { SavedTrackPreset } from '@/types/user';
 import type { UserTrack, ExtendedEffectsChain } from '@/types';
-import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
+import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects-defaults';
 import { authFetch, authFetchJson } from '@/lib/auth-fetch';
 
 interface SavedTracksState {

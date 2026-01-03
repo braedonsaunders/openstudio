@@ -6,8 +6,8 @@ import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { Knob } from '@/components/ui/knob';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
-import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects/unified-effects-processor';
-import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects/extended-effects-processor';
+import { DEFAULT_UNIFIED_EFFECTS } from '@/lib/audio/effects-defaults';
+import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects-defaults';
 import type { UserTrack, ExtendedEffectsChain } from '@/types';
 import {
   Sparkles,

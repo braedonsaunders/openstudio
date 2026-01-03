@@ -1,8 +1,8 @@
-// Track Audio Processor - Manages per-track audio processing
-// Includes: input gain, effects chain, mute, solo, volume, monitoring
+// Track Audio Processor - Manages per-track audio routing
+// Includes: input gain, mute, solo, volume, monitoring
+// Effects processing is handled by native bridge
 // Supports multiple input sources: MediaStream (web) or AudioWorklet (native bridge)
 
-import { ExtendedEffectsProcessor } from './effects/extended-effects-processor';
 import type { ExtendedEffectsChain, TrackAudioSettings, InputChannelConfig } from '@/types';
 
 export interface TrackAudioState {
@@ -65,9 +65,6 @@ export class TrackAudioProcessor {
   private monitorGainNode: GainNode; // Controls monitoring output
   private inputAnalyser: AnalyserNode;
   private outputAnalyser: AnalyserNode;
-
-  // Effects processor
-  private effectsProcessor: ExtendedEffectsProcessor;
 
   // State
   private state: TrackAudioState = {
@@ -141,22 +138,14 @@ export class TrackAudioProcessor {
     this.outputAnalyser = audioContext.createAnalyser();
     this.outputAnalyser.fftSize = 256;
 
-    // Create effects processor
-    this.effectsProcessor = new ExtendedEffectsProcessor(
-      audioContext,
-      initialSettings?.effects,
-      onEffectsChange
-    );
-
-    // Wire up the signal chain:
-    // [source] -> inputGain -> armGain -> inputAnalyser -> effects -> volumeGain -> muteGain -> outputAnalyser
+    // Wire up the signal chain (effects handled by native bridge):
+    // [source] -> inputGain -> armGain -> inputAnalyser -> volumeGain -> muteGain -> outputAnalyser
     // outputAnalyser branches to:
     //   1. monitorGain -> [monitoring output]
     //   2. [broadcast/mix output]
     this.inputGainNode.connect(this.armGainNode);
     this.armGainNode.connect(this.inputAnalyser);
-    this.inputAnalyser.connect(this.effectsProcessor.getInputNode());
-    this.effectsProcessor.connect(this.volumeGainNode);
+    this.inputAnalyser.connect(this.volumeGainNode);
     this.volumeGainNode.connect(this.muteGainNode);
     this.muteGainNode.connect(this.outputAnalyser);
     this.outputAnalyser.connect(this.monitorGainNode);
@@ -661,16 +650,9 @@ export class TrackAudioProcessor {
     });
   }
 
-  // Update effects settings
-  updateEffects(effects: Partial<ExtendedEffectsChain>): void {
-    const start = performance.now();
-    this.effectsProcessor.updateSettings(effects);
-    this.lastProcessingTime = performance.now() - start;
-  }
-
-  // Get effects processor for direct manipulation
-  getEffectsProcessor(): ExtendedEffectsProcessor {
-    return this.effectsProcessor;
+  // Effects are handled by native bridge - this is a compatibility stub
+  updateEffects(_effects: Partial<ExtendedEffectsChain>): void {
+    // Effects are sent to native bridge via useNativeBridge hook
   }
 
   // Get current state
@@ -706,17 +688,16 @@ export class TrackAudioProcessor {
 
   // Get processing metrics
   getMetrics(): TrackProcessingMetrics {
-    const effectsMetering = this.effectsProcessor.getMeteringData();
     const outputLevel = this.getOutputLevel();
 
     return {
       inputLevel: this.getInputLevel(),
       outputLevel,
-      effectsProcessingTime: this.lastProcessingTime,
+      effectsProcessingTime: 0, // Effects handled by native bridge
       isClipping: outputLevel > 0.95,
-      noiseGateOpen: effectsMetering.noiseGateOpen,
-      compressorReduction: effectsMetering.compressorReduction,
-      limiterReduction: effectsMetering.limiterReduction,
+      noiseGateOpen: true, // Metering from native bridge
+      compressorReduction: 0,
+      limiterReduction: 0,
     };
   }
 
@@ -741,7 +722,6 @@ export class TrackAudioProcessor {
 
     // Disconnect all nodes
     this.disconnect();
-    this.effectsProcessor.dispose();
     this.inputGainNode.disconnect();
     this.armGainNode.disconnect();
     this.volumeGainNode.disconnect();

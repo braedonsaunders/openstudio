@@ -34,7 +34,7 @@ import { Drum, Piano } from '../icons';
 import type { User, UserTrack } from '@/types';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
-import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
+import type { MasterEffectsChain } from '@/lib/audio/effects-defaults';
 
 interface MixerViewProps {
   isMaster: boolean;

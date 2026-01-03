@@ -6,7 +6,7 @@ import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
 import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import type { BackingTrack, TrackAudioSettings } from '@/types';
-import type { MasterEffectsChain } from '@/lib/audio/effects/master-effects-processor';
+import type { MasterEffectsChain } from '@/lib/audio/effects-defaults';
 
 // Singleton audio engine instance - shared across all components
 // This prevents issues when multiple components call useAudioEngine()
