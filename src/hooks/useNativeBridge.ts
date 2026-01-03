@@ -404,16 +404,21 @@ export function useNativeBridge() {
 
     nativeBridge.setBufferSize(state.bufferSize);
     nativeBridge.setSampleRate(state.sampleRate);
-    nativeBridge.setChannelConfig(channelConfigToUse);
+    // Use forceSetChannelConfig on startup to ensure config is always sent
+    // (setChannelConfig might skip if it thinks config is unchanged)
+    nativeBridge.forceSetChannelConfig(channelConfigToUse);
+    console.log('[useNativeBridge] Channel config sent:', channelConfigToUse);
 
     // Send track state AND effects to native bridge for direct monitoring
     if (currentUserId && primaryTrack) {
+      const panValue = primaryTrack.pan ?? 0;
+      console.log('[useNativeBridge] Sending track state with pan:', panValue);
       nativeBridge.updateTrackState(primaryTrack.id, {
         isArmed: primaryTrack.isArmed,
         isMuted: primaryTrack.isMuted,
         isSolo: primaryTrack.isSolo,
         volume: primaryTrack.volume,
-        pan: primaryTrack.pan ?? 0,
+        pan: panValue,
         inputGainDb: primaryTrack.audioSettings.inputGain || 0,
         monitoringEnabled: primaryTrack.audioSettings.directMonitoring ?? true,
         monitoringVolume: primaryTrack.audioSettings.monitoringVolume ?? 1,
