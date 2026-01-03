@@ -117,10 +117,10 @@ impl BridgeServer {
 
                     // Send to TUI if channel exists
                     if let Some(ref tx) = app.tui_tx {
-                        // Audio levels
+                        // Audio levels (mono for now - TODO: stereo from audio engine)
                         let _ = tx.try_send(AppEvent::AudioLevels {
                             input_l: audio_levels.input_level,
-                            input_r: audio_levels.input_level, // Mono for now
+                            input_r: audio_levels.input_level,
                             output_l: audio_levels.output_level,
                             output_r: audio_levels.output_level,
                         });
@@ -130,6 +130,18 @@ impl BridgeServer {
                             noise_gate_open: effects_metering.noise_gate_open,
                             compressor_reduction: effects_metering.compressor_reduction,
                             limiter_reduction: effects_metering.limiter_reduction,
+                        });
+
+                        // Remote user levels
+                        if !audio_levels.remote_levels.is_empty() {
+                            let _ = tx.try_send(AppEvent::RemoteLevels {
+                                levels: audio_levels.remote_levels.clone(),
+                            });
+                        }
+
+                        // Backing track level
+                        let _ = tx.try_send(AppEvent::BackingLevel {
+                            level: audio_levels.backing_level,
                         });
                     }
 
@@ -160,6 +172,40 @@ impl BridgeServer {
                     app.audio_engine.get_browser_stream_occupancy();
                 let is_healthy = app.audio_engine.is_browser_stream_healthy();
                 let ms_since_last_read = app.audio_engine.ms_since_last_browser_read();
+
+                // Send stream health to TUI
+                if let Some(ref tx) = app.tui_tx {
+                    let buffer_occupancy = buffer_used as f32 / buffer_capacity as f32;
+                    let _ = tx.try_send(AppEvent::StreamHealth {
+                        buffer_occupancy,
+                        overflow_count,
+                        is_healthy,
+                    });
+
+                    // Send network stats if we're in a room
+                    if let Some(ref network) = app.network {
+                        let stats = network.stats();
+                        let _ = tx.try_send(AppEvent::NetworkState {
+                            connected: true,
+                            mode: match stats.mode {
+                                crate::network::NetworkMode::P2P => crate::tui::NetworkMode::P2P,
+                                crate::network::NetworkMode::Relay => crate::tui::NetworkMode::Relay,
+                                crate::network::NetworkMode::Hybrid => crate::tui::NetworkMode::Hybrid,
+                                crate::network::NetworkMode::Disconnected => crate::tui::NetworkMode::Disconnected,
+                            },
+                            peer_count: stats.peer_count,
+                            latency_ms: stats.rtt_ms,
+                            packet_loss: stats.packet_loss_pct,
+                        });
+                        let _ = tx.try_send(AppEvent::NetworkStats {
+                            jitter_ms: stats.jitter_ms,
+                            clock_offset_ms: stats.clock_offset_ms,
+                            bytes_sent_per_sec: stats.bytes_sent_per_sec,
+                            bytes_recv_per_sec: stats.bytes_recv_per_sec,
+                        });
+                    }
+                }
+
                 drop(app);
 
                 let health = NativeMessage::StreamHealth {
@@ -489,7 +535,57 @@ impl BridgeServer {
 
             BrowserMessage::UpdateEffects { effects, .. } => {
                 let app = self.state.lock().await;
-                app.audio_engine.update_effects(effects);
+                app.audio_engine.update_effects(effects.clone());
+
+                // Send EffectToggled events to TUI
+                if let Some(ref tx) = app.tui_tx {
+                    // Map effect settings to TUI effect names
+                    let effect_states = [
+                        ("Wah", effects.wah.enabled),
+                        ("Overdrive", effects.overdrive.enabled),
+                        ("Distortion", effects.distortion.enabled),
+                        ("Amp Sim", effects.amp.enabled),
+                        ("Cabinet", effects.cabinet.enabled),
+                        ("Noise Gate", effects.noise_gate.enabled),
+                        ("Compressor", effects.compressor.enabled),
+                        ("De-Esser", effects.de_esser.enabled),
+                        ("Transient", effects.transient_shaper.enabled),
+                        ("Multiband", effects.multiband_compressor.enabled),
+                        ("Exciter", effects.exciter.enabled),
+                        ("Limiter", effects.limiter.enabled),
+                        ("Chorus", effects.chorus.enabled),
+                        ("Flanger", effects.flanger.enabled),
+                        ("Phaser", effects.phaser.enabled),
+                        ("Tremolo", effects.tremolo.enabled),
+                        ("Vibrato", effects.vibrato.enabled),
+                        ("Auto Pan", effects.auto_pan.enabled),
+                        ("Rotary", effects.rotary_speaker.enabled),
+                        ("Ring Mod", effects.ring_modulator.enabled),
+                        ("Delay", effects.delay.enabled),
+                        ("Stereo Delay", effects.stereo_delay.enabled),
+                        ("Granular", effects.granular_delay.enabled),
+                        ("Pitch Correct", effects.pitch_correction.enabled),
+                        ("Harmonizer", effects.harmonizer.enabled),
+                        ("Formant", effects.formant_shifter.enabled),
+                        ("Freq Shift", effects.frequency_shifter.enabled),
+                        ("Vocal Double", effects.vocal_doubler.enabled),
+                        ("EQ", effects.eq.enabled),
+                        ("Reverb", effects.reverb.enabled),
+                        ("Room Sim", effects.room_simulator.enabled),
+                        ("Shimmer", effects.shimmer_reverb.enabled),
+                        ("Stereo Img", effects.stereo_imager.enabled),
+                        ("Multi Filter", effects.multi_filter.enabled),
+                        ("Bitcrusher", effects.bitcrusher.enabled),
+                    ];
+
+                    for (name, enabled) in effect_states {
+                        let _ = tx.try_send(AppEvent::EffectToggled {
+                            name: name.to_string(),
+                            enabled,
+                        });
+                    }
+                }
+
                 None
             }
 
@@ -515,6 +611,26 @@ impl BridgeServer {
                 info!("AddRemoteUser: {} ({})", user_name, user_id);
                 let app = self.state.lock().await;
                 app.audio_engine.add_remote_user(&user_id, &user_name);
+
+                // Notify TUI of peer join
+                if let Some(ref tx) = app.tui_tx {
+                    let _ = tx.try_send(AppEvent::ConnectionEvent {
+                        event_type: crate::tui::ConnectionEventType::PeerJoined,
+                        peer_id: Some(user_name.clone()),
+                    });
+                    // Update user count (get from network if available)
+                    if let Some(ref network) = app.network {
+                        let stats = network.stats();
+                        let _ = tx.try_send(AppEvent::RoomContext {
+                            room_id: app.connected_room.clone(),
+                            user_count: stats.peer_count + 1, // peers + self
+                            key: None,
+                            scale: None,
+                            bpm: None,
+                        });
+                    }
+                }
+
                 None
             }
 
@@ -522,6 +638,26 @@ impl BridgeServer {
                 info!("RemoveRemoteUser: {}", user_id);
                 let app = self.state.lock().await;
                 app.audio_engine.remove_remote_user(&user_id);
+
+                // Notify TUI of peer leave
+                if let Some(ref tx) = app.tui_tx {
+                    let _ = tx.try_send(AppEvent::ConnectionEvent {
+                        event_type: crate::tui::ConnectionEventType::PeerLeft,
+                        peer_id: Some(user_id.clone()),
+                    });
+                    // Update user count
+                    if let Some(ref network) = app.network {
+                        let stats = network.stats();
+                        let _ = tx.try_send(AppEvent::RoomContext {
+                            room_id: app.connected_room.clone(),
+                            user_count: stats.peer_count + 1,
+                            key: None,
+                            scale: None,
+                            bpm: None,
+                        });
+                    }
+                }
+
                 None
             }
 
@@ -796,7 +932,19 @@ impl BridgeServer {
                 // Update effects chain with room context
                 let app = self.state.lock().await;
                 app.audio_engine
-                    .set_room_context(key, scale, bpm, time_sig_num, time_sig_denom);
+                    .set_room_context(key.clone(), scale.clone(), bpm, time_sig_num, time_sig_denom);
+
+                // Send room context to TUI
+                if let Some(ref tx) = app.tui_tx {
+                    let _ = tx.try_send(AppEvent::RoomContext {
+                        room_id: app.connected_room.clone(),
+                        user_count: app.network.as_ref().map(|n| n.stats().peer_count + 1).unwrap_or(1),
+                        key,
+                        scale,
+                        bpm,
+                    });
+                }
+
                 None
             }
 

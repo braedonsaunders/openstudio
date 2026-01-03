@@ -109,15 +109,30 @@ fn draw_audio_panel(f: &mut Frame, app: &App, area: Rect) {
     let inner = block.inner(area);
     f.render_widget(block, area);
 
-    // Split into sections
-    let chunks = Layout::default()
-        .direction(Direction::Vertical)
-        .constraints([
+    // Dynamic layout based on whether we have remote users
+    let has_remotes = !app.remote_levels.is_empty();
+    let has_backing = app.backing_level > -59.0;
+
+    let constraints = if has_remotes || has_backing {
+        vec![
+            Constraint::Length(4), // Input levels
+            Constraint::Length(4), // Output levels
+            Constraint::Length(4), // Device info
+            Constraint::Length(3), // Dynamics metering
+            Constraint::Min(3),    // Remote/Backing levels
+        ]
+    } else {
+        vec![
             Constraint::Length(4), // Input levels
             Constraint::Length(4), // Output levels
             Constraint::Length(4), // Device info
             Constraint::Min(3),    // Dynamics metering
-        ])
+        ]
+    };
+
+    let chunks = Layout::default()
+        .direction(Direction::Vertical)
+        .constraints(constraints)
         .split(inner);
 
     // Input levels
@@ -165,6 +180,34 @@ fn draw_audio_panel(f: &mut Frame, app: &App, area: Rect) {
     ])
     .block(Block::default().title(" Dynamics ").borders(Borders::ALL));
     f.render_widget(dynamics, chunks[3]);
+
+    // Remote/Backing levels if present
+    if chunks.len() > 4 {
+        let mut remote_lines: Vec<Line> = Vec::new();
+
+        // Backing track
+        if has_backing {
+            remote_lines.push(Line::from(vec![
+                Span::raw("♫ Track: "),
+                level_bar(app.backing_level, 15),
+                Span::styled(format!(" {:.0}dB", app.backing_level), Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+
+        // Remote users
+        for (user_id, level) in &app.remote_levels {
+            let short_id = if user_id.len() > 8 { &user_id[..8] } else { user_id };
+            remote_lines.push(Line::from(vec![
+                Span::styled(format!("{}: ", short_id), Style::default().fg(Color::Cyan)),
+                level_bar(*level, 15),
+                Span::styled(format!(" {:.0}dB", level), Style::default().fg(Color::DarkGray)),
+            ]));
+        }
+
+        let remote_panel = Paragraph::new(remote_lines)
+            .block(Block::default().title(" Remote/Backing ").borders(Borders::ALL));
+        f.render_widget(remote_panel, chunks[4]);
+    }
 }
 
 fn draw_stereo_meter(f: &mut Frame, label: &str, level_l: f32, level_r: f32,
@@ -338,6 +381,11 @@ fn draw_network_panel(f: &mut Frame, app: &App, area: Rect) {
                 format!("{}", app.peer_count),
                 Style::default().fg(Color::Yellow),
             ),
+            Span::raw("   Users: "),
+            Span::styled(
+                format!("{}", app.user_count),
+                Style::default().fg(Color::Cyan),
+            ),
         ]),
         Line::from(vec![
             Span::raw("Latency: "),
@@ -349,14 +397,32 @@ fn draw_network_panel(f: &mut Frame, app: &App, area: Rect) {
                     else { Color::Red }
                 ),
             ),
+            Span::raw("   Jitter: "),
+            Span::styled(
+                format!("{:.1}ms", app.jitter_ms),
+                Style::default().fg(
+                    if app.jitter_ms < 5.0 { Color::Green }
+                    else if app.jitter_ms < 15.0 { Color::Yellow }
+                    else { Color::Red }
+                ),
+            ),
         ]),
         Line::from(vec![
             Span::raw("Loss:    "),
             Span::styled(
-                format!("{:.2}%", app.packet_loss * 100.0),
+                format!("{:.2}%", app.packet_loss),
                 Style::default().fg(
-                    if app.packet_loss < 0.01 { Color::Green }
-                    else if app.packet_loss < 0.05 { Color::Yellow }
+                    if app.packet_loss < 1.0 { Color::Green }
+                    else if app.packet_loss < 5.0 { Color::Yellow }
+                    else { Color::Red }
+                ),
+            ),
+            Span::raw("   Sync: "),
+            Span::styled(
+                format!("{:+.1}ms", app.clock_offset_ms),
+                Style::default().fg(
+                    if app.clock_offset_ms.abs() < 5.0 { Color::Green }
+                    else if app.clock_offset_ms.abs() < 20.0 { Color::Yellow }
                     else { Color::Red }
                 ),
             ),
@@ -458,14 +524,29 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(5), // Levels mini
+            Constraint::Length(6), // Levels mini (with stream health)
             Constraint::Length(4), // Network mini
             Constraint::Length(4), // Room mini
             Constraint::Min(3),    // Active effects
         ])
         .split(inner);
 
-    // Mini levels
+    // Mini levels with stream health
+    let stream_bar = {
+        let filled = (app.stream_buffer_occupancy * 10.0) as usize;
+        let bar: String = (0..10)
+            .map(|i| if i < filled { '▓' } else { '░' })
+            .collect();
+        let color = if !app.stream_healthy {
+            Color::Red
+        } else if app.stream_buffer_occupancy > 0.8 {
+            Color::Yellow
+        } else {
+            Color::Green
+        };
+        Span::styled(bar, Style::default().fg(color))
+    };
+
     let levels = Paragraph::new(vec![
         Line::from(vec![
             Span::raw("In:  "),
@@ -476,8 +557,15 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
             level_bar(app.output_level_l.max(app.output_level_r), 10),
         ]),
         Line::from(vec![
-            Span::raw("CPU: "),
-            Span::styled("▓▓▓░░░░░░░", Style::default().fg(Color::Green)), // Placeholder
+            Span::raw("Buf: "),
+            stream_bar,
+        ]),
+        Line::from(vec![
+            Span::raw("Ovf: "),
+            Span::styled(
+                format!("{}", app.stream_overflow_count),
+                Style::default().fg(if app.stream_overflow_count == 0 { Color::Green } else { Color::Red }),
+            ),
         ]),
     ])
     .block(Block::default().title("Meters").borders(Borders::TOP));
