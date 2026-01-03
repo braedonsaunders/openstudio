@@ -32,6 +32,7 @@ import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { OutputSettingsModal } from '../settings/output-settings-modal';
+import { InviteMemberModal } from '@/components/room/invite-member-modal';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
 import { MixerView } from './mixer-view';
 import { AvatarWorldView } from './avatar-world-view';
@@ -125,6 +126,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false);
   const [isYouTubeModalOpen, setIsYouTubeModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [isInviteModalOpen, setIsInviteModalOpen] = useState(false);
 
   // Saved room state
   const [isRoomSaved, setIsRoomSaved] = useState(false);
@@ -1118,6 +1120,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
         onToggleLoop={() => setLoopEnabled(!loopEnabled)}
         onGenerateTrack={handleOpenAIPanel}
         onSeparateStems={handleSeparateTrack}
+        onInviteUsers={() => setIsInviteModalOpen(true)}
         onRoomSettings={() => setIsSettingsModalOpen(true)}
         onLeaveRoom={onLeaveRoom || leave}
         onSaveRoom={handleSaveRoom}
@@ -1347,6 +1350,12 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
       <OutputSettingsModal
         isOpen={isSettingsModalOpen}
         onClose={() => setIsSettingsModalOpen(false)}
+      />
+
+      <InviteMemberModal
+        isOpen={isInviteModalOpen}
+        onClose={() => setIsInviteModalOpen(false)}
+        roomId={roomId}
       />
 
     </div>
