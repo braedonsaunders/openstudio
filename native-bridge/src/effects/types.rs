@@ -13,7 +13,7 @@ pub struct EffectsSettings {
     pub overdrive: OverdriveSettings,
     #[serde(default)]
     pub distortion: DistortionSettings,
-    #[serde(default)]
+    #[serde(default, alias = "ampSimulator")]
     pub amp: AmpSettings,
     #[serde(default)]
     pub cabinet: CabinetSettings,

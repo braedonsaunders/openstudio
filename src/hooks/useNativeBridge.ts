@@ -252,17 +252,21 @@ export function useNativeBridge() {
 
   // Auto-start native bridge when room is connected and bridge is preferred
   // This ensures users don't have to manually start audio after joining a room
+  // DISABLED: This was causing issues by trying to start without an ASIO device selected
+  // Users must manually start audio from settings after selecting their device
+  /*
   useEffect(() => {
     // Subscribe to room store for connection changes
     const unsubscribeRoom = useRoomStore.subscribe((roomState) => {
       const bridgeState = useBridgeAudioStore.getState();
 
-      // Check if we should auto-start: room connected + bridge connected + bridge preferred + not already running
+      // Check if we should auto-start: room connected + bridge connected + bridge preferred + not already running + device selected
       if (
         roomState.isConnected &&
         bridgeState.isConnected &&
         bridgeState.preferNativeBridge &&
-        !bridgeState.isRunning
+        !bridgeState.isRunning &&
+        bridgeState.inputDevice // Must have a device selected
       ) {
         console.log('[useNativeBridge] Room connected with bridge preferred, auto-starting audio...');
         // Use a small delay to ensure all other initialization has completed
@@ -275,6 +279,7 @@ export function useNativeBridge() {
             latestBridge.isConnected &&
             latestBridge.preferNativeBridge &&
             !latestBridge.isRunning &&
+            latestBridge.inputDevice &&
             startAudioRef.current
           ) {
             console.log('[useNativeBridge] Executing auto-start via ref...');
@@ -292,6 +297,7 @@ export function useNativeBridge() {
       unsubscribeRoom();
     };
   }, []);
+  */
 
   // Connect to bridge
   const connect = useCallback(async () => {

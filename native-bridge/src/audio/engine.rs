@@ -382,8 +382,33 @@ impl AudioEngine {
     }
 
     pub fn update_effects(&self, effects: crate::effects::EffectsSettings) {
-        if let Ok(mut state) = self.processing_state.write() {
-            state.effects_chain.update_settings(effects);
+        // Log which effects are enabled for debugging
+        let enabled_effects: Vec<&str> = [
+            ("wah", effects.wah.enabled),
+            ("overdrive", effects.overdrive.enabled),
+            ("distortion", effects.distortion.enabled),
+            ("amp", effects.amp.enabled),
+            ("reverb", effects.reverb.enabled),
+            ("delay", effects.delay.enabled),
+            ("chorus", effects.chorus.enabled),
+            ("compressor", effects.compressor.enabled),
+            ("eq", effects.eq.enabled),
+        ]
+        .iter()
+        .filter(|(_, enabled)| *enabled)
+        .map(|(name, _)| *name)
+        .collect();
+
+        info!("Updating effects chain. Enabled: {:?}", enabled_effects);
+
+        match self.processing_state.write() {
+            Ok(mut state) => {
+                state.effects_chain.update_settings(effects);
+                info!("Effects chain updated successfully");
+            }
+            Err(e) => {
+                tracing::error!("Failed to acquire write lock for effects update: {:?}", e);
+            }
         }
     }
 

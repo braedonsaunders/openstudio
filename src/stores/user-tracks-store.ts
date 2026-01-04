@@ -20,11 +20,12 @@ export const TRACK_COLORS = [
   '#c084fc', // Purple
 ];
 
-// Default channel configuration (stereo)
+// Default channel configuration (MONO - most common for single input)
+// Users with stereo inputs can change this in settings
 const DEFAULT_CHANNEL_CONFIG: InputChannelConfig = {
-  channelCount: 2,
+  channelCount: 1,
   leftChannel: 0,
-  rightChannel: 1,
+  rightChannel: undefined,
 };
 
 // Default audio settings with extended effects chain
