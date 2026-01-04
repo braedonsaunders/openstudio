@@ -537,14 +537,19 @@ function parseNote(
     // Note type is specified
     const noteType = reader.readByte();
     if (noteType === 1) {
-      // Tie note - linked to previous note
+      // Tie note - linked to previous note, still has fret byte
       isTieNote = true;
+      fret = reader.readSignedByte(); // Read but don't use
     } else if (noteType === 2) {
       // Normal note - read fret
       fret = reader.readSignedByte();
     } else if (noteType === 3) {
-      // Dead/muted note
+      // Dead/muted note - still has fret byte in file
       isDeadNote = true;
+      fret = reader.readSignedByte(); // Read but don't use
+    } else {
+      // Unknown note type, try reading fret anyway to stay in sync
+      fret = reader.readSignedByte();
     }
   } else {
     // Default: normal note, read fret directly
@@ -624,7 +629,8 @@ function parseNote(
   }
 
   // Add note if valid (skip dead notes and tie notes without fret info)
-  if (!isDeadNote && !isTieNote && fret >= 0 && fret < 30) {
+  // Max fret on most guitars is 24, anything higher is likely bad data
+  if (!isDeadNote && !isTieNote && fret >= 0 && fret <= 24) {
     track.notes.push({
       pitch: `${string}:${fret}`,
       duration,
@@ -640,6 +646,9 @@ function parseNote(
       letRing,
       slide,
     });
+  } else if (fret > 24 && !isDeadNote && !isTieNote) {
+    // Log suspicious fret values for debugging
+    console.warn(`GP: Skipping invalid fret ${fret} on string ${string}`);
   }
 }
 
