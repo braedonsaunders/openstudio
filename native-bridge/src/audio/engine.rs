@@ -208,6 +208,10 @@ pub struct AudioEngine {
 
     // Connection health tracking
     last_browser_read_time: Arc<AtomicU64>,
+
+    // Diagnostic counters for effects processing
+    effects_applied_count: Arc<AtomicU64>,
+    effects_skipped_count: Arc<AtomicU64>,
 }
 
 impl AudioEngine {
@@ -248,6 +252,9 @@ impl AudioEngine {
             browser_stream_overflow_count: Arc::new(AtomicU64::new(0)),
             browser_stream_overflow_samples: Arc::new(AtomicU64::new(0)),
             last_browser_read_time: Arc::new(AtomicU64::new(0)),
+            // Diagnostic counters for effects processing
+            effects_applied_count: Arc::new(AtomicU64::new(0)),
+            effects_skipped_count: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -382,8 +389,33 @@ impl AudioEngine {
     }
 
     pub fn update_effects(&self, effects: crate::effects::EffectsSettings) {
-        if let Ok(mut state) = self.processing_state.write() {
-            state.effects_chain.update_settings(effects);
+        // Log which effects are enabled for debugging
+        let enabled_effects: Vec<&str> = [
+            ("wah", effects.wah.enabled),
+            ("overdrive", effects.overdrive.enabled),
+            ("distortion", effects.distortion.enabled),
+            ("amp", effects.amp.enabled),
+            ("reverb", effects.reverb.enabled),
+            ("delay", effects.delay.enabled),
+            ("chorus", effects.chorus.enabled),
+            ("compressor", effects.compressor.enabled),
+            ("eq", effects.eq.enabled),
+        ]
+        .iter()
+        .filter(|(_, enabled)| *enabled)
+        .map(|(name, _)| *name)
+        .collect();
+
+        info!("Updating effects chain. Enabled: {:?}", enabled_effects);
+
+        match self.processing_state.write() {
+            Ok(mut state) => {
+                state.effects_chain.update_settings(effects);
+                info!("Effects chain updated successfully");
+            }
+            Err(e) => {
+                tracing::error!("Failed to acquire write lock for effects update: {:?}", e);
+            }
         }
     }
 
@@ -980,7 +1012,22 @@ impl AudioEngine {
             stereo_buffer.push(right_sample);
         }
 
+        // Apply effects FIRST so they're included in both browser stream and local monitoring
+        // This ensures other users in the session hear the effects too
+        if let Ok(mut state) = processing_state.try_write() {
+            let gain = state.track_state.input_gain_linear();
+
+            // Apply input gain
+            for sample in stereo_buffer.iter_mut() {
+                *sample *= gain;
+            }
+
+            // Process through effects chain
+            state.effects_chain.process(stereo_buffer);
+        }
+
         // Calculate input levels (stereo) - interleaved L/R samples
+        // Note: levels are post-effects now
         let (level_l, level_r) = stereo_buffer
             .chunks_exact(2)
             .fold((0.0_f32, 0.0_f32), |(max_l, max_r), chunk| {
@@ -1015,22 +1062,16 @@ impl AudioEngine {
             false // Default to not muted - let audio through
         };
 
-        // WET monitoring: apply effects chain for local monitoring
+        // Local monitoring: apply volume, pan, and push to output
+        // Note: Effects were already applied above (before browser stream)
         let should_monitor = monitoring_enabled && !is_muted;
 
         if should_monitor {
-            if let Ok(mut state) = processing_state.try_write() {
-                let gain = state.track_state.input_gain_linear();
+            // Apply volume and pan for local monitoring
+            // Effects are already applied, just need volume/pan
+            if let Ok(state) = processing_state.try_read() {
                 let volume = state.track_state.volume;
                 let (pan_left, pan_right) = state.track_state.pan_gains();
-
-                // Apply input gain first
-                for sample in stereo_buffer.iter_mut() {
-                    *sample *= gain;
-                }
-
-                // Process through effects chain (if any effects are enabled)
-                state.effects_chain.process(stereo_buffer);
 
                 // Apply volume, pan, and monitoring volume to stereo pairs
                 for chunk in stereo_buffer.chunks_exact_mut(2) {

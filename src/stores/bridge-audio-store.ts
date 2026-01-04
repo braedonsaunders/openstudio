@@ -98,11 +98,14 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
       // Persisted settings
       selectedInputDeviceId: null,
       selectedOutputDeviceId: null,
+      // Default to MONO for most common use case (single microphone/instrument)
+      // Stereo users will configure this in settings
       inputChannelConfig: {
-        channelCount: 2,
+        channelCount: 1,
         leftChannel: 0,
-        rightChannel: 1,
+        rightChannel: undefined,
       },
+      // Output stays stereo for monitoring
       outputChannelConfig: {
         channelCount: 2,
         leftChannel: 0,
