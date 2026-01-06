@@ -8,17 +8,32 @@ const nextConfig: NextConfig = {
     },
   },
 
-  // COOP/COEP headers for SharedArrayBuffer support (ultra-low-latency audio)
+  // Security and COOP/COEP headers
   async headers() {
     return [
       {
         source: '/:path*',
         headers: [
-          // Required for SharedArrayBuffer
+          // Required for SharedArrayBuffer (ultra-low-latency audio)
           { key: 'Cross-Origin-Opener-Policy', value: 'same-origin' },
           // Using credentialless instead of require-corp for better compatibility
           // with third-party resources (fonts, analytics, etc.)
           { key: 'Cross-Origin-Embedder-Policy', value: 'credentialless' },
+
+          // Security headers
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'X-Frame-Options', value: 'DENY' },
+          { key: 'X-XSS-Protection', value: '1; mode=block' },
+          { key: 'Referrer-Policy', value: 'strict-origin-when-cross-origin' },
+          { key: 'Permissions-Policy', value: 'microphone=(self), camera=(), geolocation=()' },
+        ],
+      },
+      // Additional security for API routes
+      {
+        source: '/api/:path*',
+        headers: [
+          { key: 'X-Content-Type-Options', value: 'nosniff' },
+          { key: 'Cache-Control', value: 'no-store, max-age=0' },
         ],
       },
     ];

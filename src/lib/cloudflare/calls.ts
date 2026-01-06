@@ -124,36 +124,67 @@ interface CallsConfig {
 }
 
 /**
- * Build ICE servers configuration
- * Uses Cloudflare's free TURN servers when available, falls back to Google STUN
+ * Cached ICE servers configuration
+ * Fetched from server to keep TURN credentials secure
  */
-function buildIceServers(): RTCIceServer[] {
-  const servers: RTCIceServer[] = [];
+let cachedIceServers: RTCIceServer[] | null = null;
+let iceServersCacheExpiry: number = 0;
 
-  // Always include Google STUN server as fallback
-  servers.push({ urls: 'stun:stun.l.google.com:19302' });
+/**
+ * Build default ICE servers (STUN only, no TURN)
+ * Used as fallback when credentials cannot be fetched
+ */
+function buildDefaultIceServers(): RTCIceServer[] {
+  return [
+    { urls: 'stun:stun.cloudflare.com:3478' },
+    { urls: 'stun:stun.l.google.com:19302' },
+  ];
+}
 
-  // Add Cloudflare TURN servers if credentials are configured
-  const turnUsername = process.env.NEXT_PUBLIC_CLOUDFLARE_TURN_USERNAME;
-  const turnCredential = process.env.NEXT_PUBLIC_CLOUDFLARE_TURN_CREDENTIAL;
-
-  if (turnUsername && turnCredential) {
-    servers.push({
-      urls: [
-        'turn:turn.cloudflare.com:3478?transport=udp',
-        'turn:turn.cloudflare.com:3478?transport=tcp',
-        'turns:turn.cloudflare.com:5349?transport=tcp',
-      ],
-      username: turnUsername,
-      credential: turnCredential,
-    });
+/**
+ * Fetch ICE servers configuration from server
+ * SECURITY: TURN credentials are fetched server-side to prevent exposure
+ */
+async function fetchIceServers(guestId?: string): Promise<RTCIceServer[]> {
+  // Return cached servers if still valid
+  if (cachedIceServers && Date.now() < iceServersCacheExpiry) {
+    return cachedIceServers;
   }
 
-  return servers;
+  try {
+    const url = guestId
+      ? `/api/webrtc/turn-credentials?guestId=${encodeURIComponent(guestId)}`
+      : '/api/webrtc/turn-credentials';
+
+    const authHeaders = await getAuthHeaders();
+    const response = await fetch(url, {
+      headers: authHeaders,
+    });
+
+    if (!response.ok) {
+      console.warn('[CloudflareCalls] Failed to fetch TURN credentials, using STUN only');
+      return buildDefaultIceServers();
+    }
+
+    const data = await response.json();
+
+    if (data.iceServers && Array.isArray(data.iceServers)) {
+      cachedIceServers = data.iceServers;
+      // Cache for TTL minus 5 minutes buffer, or 55 minutes by default
+      const ttl = (data.ttl || 3600) - 300;
+      iceServersCacheExpiry = Date.now() + ttl * 1000;
+      return data.iceServers;
+    }
+
+    return buildDefaultIceServers();
+  } catch (error) {
+    console.error('[CloudflareCalls] Error fetching ICE servers:', error);
+    return buildDefaultIceServers();
+  }
 }
 
 const defaultConfig: CallsConfig = {
-  iceServers: buildIceServers(),
+  iceServers: buildDefaultIceServers(), // Default STUN-only, TURN added async
   sdpSemantics: 'unified-plan',
   bundlePolicy: 'max-bundle',
 };
@@ -325,6 +356,41 @@ export class CloudflareCalls {
     this.networkTrend = new NetworkTrendAnalyzer();
 
     this.initializePeerConnection({ ...defaultConfig, ...config });
+  }
+
+  /**
+   * Factory method to create CloudflareCalls with proper ICE server configuration
+   * SECURITY: Fetches TURN credentials from server to keep them secure
+   */
+  static async create(roomId: string, userId: string, guestId?: string): Promise<CloudflareCalls> {
+    // Fetch ICE servers with TURN credentials from server
+    const iceServers = await fetchIceServers(guestId);
+
+    const instance = new CloudflareCalls(roomId, userId, {
+      iceServers,
+    });
+
+    return instance;
+  }
+
+  /**
+   * Update ICE servers configuration (e.g., when TURN credentials expire)
+   * This will trigger an ICE restart if currently connected
+   */
+  async refreshIceServers(guestId?: string): Promise<void> {
+    const iceServers = await fetchIceServers(guestId);
+
+    if (this.peerConnection && this.peerConnection.connectionState !== 'closed') {
+      // Set the new ICE servers configuration
+      const config = this.peerConnection.getConfiguration();
+      config.iceServers = iceServers;
+      this.peerConnection.setConfiguration(config);
+
+      // Trigger ICE restart if connected
+      if (this.peerConnection.connectionState === 'connected') {
+        this.peerConnection.restartIce();
+      }
+    }
   }
 
   private initializePeerConnection(config: CallsConfig): void {

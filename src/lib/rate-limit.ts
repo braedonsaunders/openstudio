@@ -113,6 +113,18 @@ export const rateLimiters = {
 
   // General API: 100 requests per minute
   general: { limit: 100, windowSeconds: 60 },
+
+  // Standard API endpoints: 120 requests per minute
+  api: { limit: 120, windowSeconds: 60 },
+
+  // Room operations: 20 per minute (creation, joining)
+  room: { limit: 20, windowSeconds: 60 },
+
+  // WebRTC session operations: 60 per minute
+  webrtc: { limit: 60, windowSeconds: 60 },
+
+  // Guest ID generation: 10 per hour per IP (prevent abuse)
+  guest: { limit: 10, windowSeconds: 3600 },
 };
 
 /**
