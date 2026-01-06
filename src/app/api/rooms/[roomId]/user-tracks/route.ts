@@ -272,9 +272,10 @@ export async function PATCH(
     }
 
     // SECURITY: Verify the user owns this track
+    // Allow access if: user_id matches, OR owner_user_id matches (for rejoining users)
     const { data: track } = await supabase
       .from('user_tracks')
-      .select('user_id')
+      .select('user_id, owner_user_id, owner_user_name')
       .eq('id', trackId)
       .eq('room_id', roomId)
       .single();
@@ -283,7 +284,13 @@ export async function PATCH(
       return NextResponse.json({ error: 'Track not found' }, { status: 404 });
     }
 
-    if (track.user_id !== effectiveUserId) {
+    // Allow if: current user owns the track, OR they're the original owner (rejoining)
+    const isCurrentOwner = track.user_id === effectiveUserId;
+    const isOriginalOwner = track.owner_user_id === effectiveUserId;
+    // Also allow if they're reassigning ownership to themselves (ownerUserId in updates matches)
+    const isClaimingOwnership = updates.ownerUserId === effectiveUserId;
+
+    if (!isCurrentOwner && !isOriginalOwner && !isClaimingOwnership) {
       return NextResponse.json(
         { error: 'You can only modify your own tracks' },
         { status: 403 }

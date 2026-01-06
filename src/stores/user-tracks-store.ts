@@ -696,15 +696,42 @@ export const useUserTracksStore = create<UserTracksState>()(
         const userTrackOrder = new Map(state.userTrackOrder);
 
         for (const track of persistedTracks) {
-          // Don't overwrite existing tracks (already loaded)
-          if (!tracks.has(track.id)) {
-            tracks.set(track.id, track);
+          const existingTrack = tracks.get(track.id);
 
-            // Add to user track order
-            const order = userTrackOrder.get(track.userId) || [];
-            if (!order.includes(track.id)) {
-              userTrackOrder.set(track.userId, [...order, track.id]);
+          // Update existing track if it's inactive but incoming track is active
+          // This handles the case where a user rejoins and their tracks are reactivated
+          if (existingTrack) {
+            if (track.isActive && !existingTrack.isActive) {
+              // Reactivate the track - update userId and isActive
+              tracks.set(track.id, { ...existingTrack, ...track });
+
+              // Update track order if userId changed
+              if (existingTrack.userId !== track.userId) {
+                // Remove from old user's order
+                const oldOrder = userTrackOrder.get(existingTrack.userId) || [];
+                userTrackOrder.set(
+                  existingTrack.userId,
+                  oldOrder.filter((id) => id !== track.id)
+                );
+
+                // Add to new user's order
+                const newOrder = userTrackOrder.get(track.userId) || [];
+                if (!newOrder.includes(track.id)) {
+                  userTrackOrder.set(track.userId, [...newOrder, track.id]);
+                }
+              }
             }
+            // If existing track is active, don't overwrite it
+            continue;
+          }
+
+          // Add new track
+          tracks.set(track.id, track);
+
+          // Add to user track order
+          const order = userTrackOrder.get(track.userId) || [];
+          if (!order.includes(track.id)) {
+            userTrackOrder.set(track.userId, [...order, track.id]);
           }
         }
 
