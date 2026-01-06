@@ -19,6 +19,8 @@ interface LiveChannelsPanelProps {
   onMuteSelf: () => void;
   isGlobalMuted?: boolean;
   roomId?: string;
+  /** If true, user is in listen-only mode (no own channels) */
+  listenerMode?: boolean;
 }
 
 export function LiveChannelsPanel({
@@ -31,6 +33,7 @@ export function LiveChannelsPanel({
   onMuteSelf,
   isGlobalMuted,
   roomId,
+  listenerMode = false,
 }: LiveChannelsPanelProps) {
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
 
@@ -56,16 +59,17 @@ export function LiveChannelsPanel({
   }, []);
 
   // Initialize a default track for current user if they don't have any
+  // Skip for listeners - they don't have channels
   // Use getState() to avoid unstable store refs in effect dependencies
   useEffect(() => {
-    if (currentUser) {
+    if (currentUser && !listenerMode) {
       const { getTracksByUser, addTrack } = useUserTracksStore.getState();
       const userTracks = getTracksByUser(currentUser.id);
       if (userTracks.length === 0) {
         addTrack(currentUser.id, 'Channel 1');
       }
     }
-  }, [currentUser]);
+  }, [currentUser, listenerMode]);
 
   // Get local user tracks
   const localTracks = currentUser ? getTracksByUser(currentUser.id) : [];
@@ -106,8 +110,9 @@ export function LiveChannelsPanel({
     return userColorsRef.current.get(userId)!;
   }, [getUsedColors]);
 
-  // Count total channels for display
-  const totalChannels = localTracks.length + remoteUsers.length + inactiveTracks.length;
+  // Count total channels for display - exclude local tracks for listeners
+  const localTrackCount = listenerMode ? 0 : localTracks.length;
+  const totalChannels = localTrackCount + remoteUsers.length + inactiveTracks.length;
 
   // Handle claiming an abandoned track
   const handleClaimTrack = async (trackId: string) => {
@@ -165,8 +170,8 @@ export function LiveChannelsPanel({
 
       {/* Channel Headers List */}
       <div className="flex-1 overflow-y-auto">
-        {/* Local User Channels (Your channels) */}
-        {currentUser && localTracks.length > 0 && (
+        {/* Local User Channels (Your channels) - hidden for listeners */}
+        {!listenerMode && currentUser && localTracks.length > 0 && (
           <div className="border-b border-gray-200 dark:border-white/10">
             <div className="px-3 py-1 bg-gray-100/50 dark:bg-white/[0.02]">
               <span className="text-[9px] font-medium text-gray-500 dark:text-zinc-500 uppercase tracking-wider">
@@ -251,16 +256,18 @@ export function LiveChannelsPanel({
         )}
       </div>
 
-      {/* Footer with Add Channel button */}
-      <div className="h-10 px-3 flex items-center border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
-        <button
-          onClick={() => setShowAddTrackModal(true)}
-          className="flex items-center gap-1.5 px-2.5 py-1.5 w-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/30 rounded-lg text-emerald-600 dark:text-emerald-400 transition-all"
-        >
-          <Plus className="w-3.5 h-3.5" />
-          <span className="text-xs font-medium">Add Channel</span>
-        </button>
-      </div>
+      {/* Footer with Add Channel button - hidden for listeners */}
+      {!listenerMode && (
+        <div className="h-10 px-3 flex items-center border-t border-gray-200 dark:border-white/5 bg-gray-50 dark:bg-[#0d0d14] shrink-0">
+          <button
+            onClick={() => setShowAddTrackModal(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 w-full bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/20 hover:border-emerald-500/30 rounded-lg text-emerald-600 dark:text-emerald-400 transition-all"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="text-xs font-medium">Add Channel</span>
+          </button>
+        </div>
+      )}
 
       {/* Add Track Modal */}
       <AddTrackModal

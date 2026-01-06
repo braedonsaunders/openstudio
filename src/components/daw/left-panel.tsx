@@ -7,6 +7,9 @@ import { LiveChannelsPanel } from './live-channels-panel';
 import type { User, BackingTrack } from '@/types';
 
 interface LeftPanelProps {
+  // Mode props
+  /** If true, user is in listen-only mode (no channels) */
+  listenerMode?: boolean;
   // Tracks (Queue) props
   onTrackSelect: (track: BackingTrack) => void;
   onTrackRemove: (trackId: string) => void;
@@ -34,6 +37,8 @@ interface LeftPanelProps {
 }
 
 export const LeftPanel = forwardRef<TracksPanelRef, LeftPanelProps>(function LeftPanel({
+  // Mode props
+  listenerMode = false,
   // Tracks props
   onTrackSelect,
   onTrackRemove,
@@ -148,6 +153,7 @@ export const LeftPanel = forwardRef<TracksPanelRef, LeftPanelProps>(function Lef
           onMuteSelf={onMuteSelf}
           isGlobalMuted={isGlobalMuted}
           roomId={roomId}
+          listenerMode={listenerMode}
         />
       </div>
     </div>

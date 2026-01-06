@@ -7,6 +7,7 @@ import { Tooltip } from '@/components/ui/tooltip';
 import { useRoomStore } from '@/stores/room-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useSongsStore } from '@/stores/songs-store';
+import { useTransportPermissions } from '@/hooks/usePermissions';
 import { useSessionTempoStore, selectTempo, selectKey, selectSource, type TempoSource } from '@/stores/session-tempo-store';
 import {
   Play,
@@ -569,6 +570,9 @@ export function TransportBar({
   const getTracksByUser = useUserTracksStore((s) => s.getTracksByUser);
   const currentSong = useSongsStore((s) => s.getCurrentSong());
 
+  // Use permissions system for transport controls
+  const { canPlay, canPause, canSeek, canSkip, canLoop } = useTransportPermissions();
+
   // Check if there's something to play - either legacy queue track or song with tracks
   const hasPlayableContent = currentTrack || (currentSong && currentSong.tracks.length > 0);
 
@@ -774,10 +778,10 @@ export function TransportBar({
         {/* Previous */}
         <button
           onClick={onPrevious}
-          disabled={!isMaster}
+          disabled={!canSkip}
           className={cn(
             'p-2 rounded-lg transition-all',
-            isMaster
+            canSkip
               ? 'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white'
               : 'text-gray-300 dark:text-zinc-600 cursor-not-allowed'
           )}
@@ -788,10 +792,10 @@ export function TransportBar({
         {/* Play/Pause */}
         <button
           onClick={isPlaying ? onPause : onPlay}
-          disabled={!isMaster || !hasPlayableContent}
+          disabled={!(isPlaying ? canPause : canPlay) || !hasPlayableContent}
           className={cn(
             'w-12 h-12 rounded-full flex items-center justify-center transition-all',
-            isMaster && hasPlayableContent
+            (isPlaying ? canPause : canPlay) && hasPlayableContent
               ? 'neon-button text-white'
               : 'bg-gray-200 dark:bg-zinc-800 text-gray-400 dark:text-zinc-500 cursor-not-allowed'
           )}
@@ -806,10 +810,10 @@ export function TransportBar({
         {/* Next */}
         <button
           onClick={onNext}
-          disabled={!isMaster}
+          disabled={!canSkip}
           className={cn(
             'p-2 rounded-lg transition-all',
-            isMaster
+            canSkip
               ? 'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white'
               : 'text-gray-300 dark:text-zinc-600 cursor-not-allowed'
           )}
@@ -820,9 +824,12 @@ export function TransportBar({
         {/* Loop */}
         <button
           onClick={onLoopToggle}
+          disabled={!canLoop}
           className={cn(
             'p-2 rounded-lg transition-all ml-2',
-            loopEnabled
+            !canLoop
+              ? 'text-gray-300 dark:text-zinc-600 cursor-not-allowed'
+              : loopEnabled
               ? 'bg-indigo-500/20 text-indigo-600 dark:text-indigo-400'
               : 'hover:bg-gray-100 dark:hover:bg-white/10 text-gray-400 dark:text-zinc-500 hover:text-gray-900 dark:hover:text-white'
           )}
