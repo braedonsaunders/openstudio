@@ -484,22 +484,20 @@ export async function DELETE(
     }
 
     // SECURITY: Verify the authenticated user has permission to kick/ban
+    // Only owner can kick/ban users (not co-hosts)
     const requesterMembership = await getRoomMembership(roomId, user.id);
-    if (!requesterMembership || !requesterMembership.isModerator) {
+    if (!requesterMembership || !requesterMembership.isOwner) {
       return NextResponse.json(
-        { error: 'Only room owner or co-host can kick/ban users' },
+        { error: 'Only the room owner can kick/ban users' },
         { status: 403 }
       );
     }
 
-    // SECURITY: Check the target user's role to prevent kicking higher-ranked members
-    const targetMembership = await getRoomMembership(roomId, targetUserId);
-
-    // Prevent non-owners from kicking owners
-    if (targetMembership?.isOwner && !requesterMembership.isOwner) {
+    // SECURITY: Prevent owner from kicking themselves
+    if (targetUserId === user.id) {
       return NextResponse.json(
-        { error: 'Only the room owner can kick/ban another owner' },
-        { status: 403 }
+        { error: 'You cannot kick/ban yourself' },
+        { status: 400 }
       );
     }
 

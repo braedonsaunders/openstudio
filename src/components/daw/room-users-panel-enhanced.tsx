@@ -13,6 +13,7 @@ import {
   UserX,
   Ban,
   UserPlus,
+  AlertTriangle,
 } from 'lucide-react';
 import type { User, UserPerformanceInfo, JamCompatibility, QualityPresetName, OpusEncodingSettings } from '@/types';
 import { UserPerformanceCard } from './user-performance-card';
@@ -25,6 +26,8 @@ import { PermissionModal } from './permission-modal';
 import { RolePresetsModal } from './role-presets-modal';
 import { InviteMemberModal } from '@/components/room/invite-member-modal';
 import { PendingInvitationsPanel } from '@/components/room/pending-invitations-panel';
+import { Modal } from '@/components/ui/modal';
+import { Button } from '@/components/ui/button';
 import {
   RoomRole,
   RoomMember,
@@ -70,6 +73,10 @@ export function EnhancedRoomUsersPanel({
   const [showRolePresets, setShowRolePresets] = useState(false);
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showPendingInvitations, setShowPendingInvitations] = useState(false);
+  // Kick/Ban modal state
+  const [kickTarget, setKickTarget] = useState<{ id: string; name: string } | null>(null);
+  const [banTarget, setBanTarget] = useState<{ id: string; name: string } | null>(null);
+  const [banReason, setBanReason] = useState('');
 
   // Get performance data from store
   const {
@@ -159,20 +166,39 @@ export function EnhancedRoomUsersPanel({
   );
 
   const handleKickUser = useCallback(
-    async (userId: string) => {
-      if (!confirm('Are you sure you want to kick this user?')) return;
-      await kickUser(userId);
+    (userId: string, userName: string) => {
+      setKickTarget({ id: userId, name: userName });
+      setOpenRoleDropdown(null);
     },
-    [kickUser]
+    []
+  );
+
+  const confirmKick = useCallback(
+    async () => {
+      if (!kickTarget) return;
+      await kickUser(kickTarget.id);
+      setKickTarget(null);
+    },
+    [kickUser, kickTarget]
   );
 
   const handleBanUser = useCallback(
-    async (userId: string) => {
-      const reason = prompt('Enter a reason for the ban (optional):');
-      if (reason === null) return;
-      await banUser(userId, reason || undefined);
+    (userId: string, userName: string) => {
+      setBanTarget({ id: userId, name: userName });
+      setBanReason('');
+      setOpenRoleDropdown(null);
     },
-    [banUser]
+    []
+  );
+
+  const confirmBan = useCallback(
+    async () => {
+      if (!banTarget) return;
+      await banUser(banTarget.id, banReason || undefined);
+      setBanTarget(null);
+      setBanReason('');
+    },
+    [banUser, banTarget, banReason]
   );
 
   const handleSavePermissions = useCallback(
@@ -343,6 +369,8 @@ export function EnhancedRoomUsersPanel({
                   const member = getMemberData(user, isThisUserMaster);
                   const roleInfo = ROLE_INFO[member.role];
                   const canModify = canManageRoom && !isCurrentUserCard && (isOwner || member.role !== 'owner');
+                  // Only owner can kick/ban users
+                  const canKickBan = isOwner && !isCurrentUserCard && member.role !== 'owner';
 
                   return (
                     <div key={user.id} className="space-y-0">
@@ -369,8 +397,8 @@ export function EnhancedRoomUsersPanel({
                         assignableRoles={assignableRoles}
                         onRoleChange={(role) => handleRoleChange(user.id, role)}
                         onCustomizePermissions={() => setSelectedMember(member)}
-                        onKickUser={() => handleKickUser(user.id)}
-                        onBanUser={() => handleBanUser(user.id)}
+                        onKickUser={canKickBan ? () => handleKickUser(user.id, user.name) : undefined}
+                        onBanUser={canKickBan ? () => handleBanUser(user.id, user.name) : undefined}
                         hasCustomPermissions={!!member.customPermissions && Object.keys(member.customPermissions).length > 0}
                       />
                     </div>
@@ -462,6 +490,82 @@ export function EnhancedRoomUsersPanel({
         onClose={() => setShowInviteModal(false)}
         roomId={roomId}
       />
+
+      {/* Kick Confirmation Modal */}
+      <Modal
+        isOpen={!!kickTarget}
+        onClose={() => setKickTarget(null)}
+        title="Kick User"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-amber-500/10 border border-amber-500/20">
+            <AlertTriangle className="w-5 h-5 text-amber-500 flex-shrink-0" />
+            <p className="text-sm text-gray-700 dark:text-zinc-300">
+              Are you sure you want to kick <span className="font-semibold">{kickTarget?.name}</span> from the room?
+              They will be removed but can rejoin if they have access.
+            </p>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="ghost"
+              onClick={() => setKickTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmKick}
+            >
+              <UserX className="w-4 h-4" />
+              Kick User
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Ban Confirmation Modal */}
+      <Modal
+        isOpen={!!banTarget}
+        onClose={() => setBanTarget(null)}
+        title="Ban User"
+      >
+        <div className="space-y-4">
+          <div className="flex items-center gap-3 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
+            <Ban className="w-5 h-5 text-red-500 flex-shrink-0" />
+            <p className="text-sm text-gray-700 dark:text-zinc-300">
+              Are you sure you want to ban <span className="font-semibold">{banTarget?.name}</span> from the room?
+              They will be permanently removed and cannot rejoin.
+            </p>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">
+              Reason (optional)
+            </label>
+            <input
+              type="text"
+              value={banReason}
+              onChange={(e) => setBanReason(e.target.value)}
+              placeholder="Enter a reason for the ban..."
+              className="w-full px-3 py-2 rounded-lg border border-gray-200 dark:border-white/10 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            />
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button
+              variant="ghost"
+              onClick={() => setBanTarget(null)}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={confirmBan}
+            >
+              <Ban className="w-4 h-4" />
+              Ban User
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 }

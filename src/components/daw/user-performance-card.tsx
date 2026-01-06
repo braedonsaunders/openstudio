@@ -317,21 +317,29 @@ export function UserPerformanceCard({
                         <Settings2 className="w-3 h-3" />
                         <span>Customize...</span>
                       </button>
-                      <div className="border-t border-gray-200 dark:border-white/10 my-1" />
-                      <button
-                        onClick={onKickUser}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-amber-50 dark:hover:bg-amber-500/10 text-left text-amber-600 dark:text-amber-400"
-                      >
-                        <UserX className="w-3 h-3" />
-                        <span>Kick</span>
-                      </button>
-                      <button
-                        onClick={onBanUser}
-                        className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-500/10 text-left text-red-600 dark:text-red-400"
-                      >
-                        <Ban className="w-3 h-3" />
-                        <span>Ban</span>
-                      </button>
+                      {(onKickUser || onBanUser) && (
+                        <>
+                          <div className="border-t border-gray-200 dark:border-white/10 my-1" />
+                          {onKickUser && (
+                            <button
+                              onClick={onKickUser}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-amber-50 dark:hover:bg-amber-500/10 text-left text-amber-600 dark:text-amber-400"
+                            >
+                              <UserX className="w-3 h-3" />
+                              <span>Kick</span>
+                            </button>
+                          )}
+                          {onBanUser && (
+                            <button
+                              onClick={onBanUser}
+                              className="w-full flex items-center gap-2 px-3 py-1.5 text-xs hover:bg-red-50 dark:hover:bg-red-500/10 text-left text-red-600 dark:text-red-400"
+                            >
+                              <Ban className="w-3 h-3" />
+                              <span>Ban</span>
+                            </button>
+                          )}
+                        </>
+                      )}
                     </div>
                   )}
                 </div>
