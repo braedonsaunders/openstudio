@@ -10,6 +10,7 @@ import { getLevelTitle, xpProgress } from '@/types/user';
 import {
   User,
   Settings,
+  LogIn,
   LogOut,
   Trophy,
   BarChart3,
@@ -25,6 +26,7 @@ import {
   X,
   Clock,
   Music,
+  UserPlus,
 } from 'lucide-react';
 import { useMyInvitations } from '@/hooks/useMyInvitations';
 import { ROOM_COLORS, ROOM_ICONS } from '@/types/index';
@@ -168,18 +170,77 @@ export function UserMenu({ onLeaveRoom }: UserMenuProps = {}) {
     );
   }
 
-  // Not logged in - show login/signup buttons
+  // Not logged in - show guest dropdown menu
   if (!user || !profile) {
     return (
       <>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={openLogin}>
-            Log In
-          </Button>
-          <Button size="sm" onClick={openSignup}>
-            Sign Up
-          </Button>
+        <div className="relative" ref={dropdownRef}>
+          <button
+            onClick={() => setShowDropdown(!showDropdown)}
+            className="flex items-center gap-2 p-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          >
+            <div className="w-8 h-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+              <User className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+            </div>
+            <div className="hidden sm:block text-left">
+              <p className="text-sm font-medium text-gray-900 dark:text-white">Guest</p>
+            </div>
+            <ChevronDown className={`w-4 h-4 text-gray-500 dark:text-gray-400 transition-transform ${showDropdown ? 'rotate-180' : ''}`} />
+          </button>
+
+          {showDropdown && (
+            <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-800 rounded-xl shadow-2xl z-50 overflow-hidden">
+              {/* Header */}
+              <div className="p-4 border-b border-gray-200 dark:border-gray-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center">
+                    <User className="w-5 h-5 text-gray-500 dark:text-gray-400" />
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-gray-900 dark:text-white">Guest</p>
+                    <p className="text-sm text-gray-500 dark:text-gray-400">Not signed in</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Menu Items */}
+              <div className="py-2">
+                <MenuItem
+                  icon={LogIn}
+                  label="Log In"
+                  onClick={() => {
+                    setShowDropdown(false);
+                    openLogin();
+                  }}
+                />
+                <MenuItem
+                  icon={UserPlus}
+                  label="Sign Up"
+                  onClick={() => {
+                    setShowDropdown(false);
+                    openSignup();
+                  }}
+                />
+
+                {onLeaveRoom && (
+                  <>
+                    <div className="my-2 border-t border-gray-200 dark:border-gray-800" />
+                    <MenuItem
+                      icon={DoorOpen}
+                      label="Leave Room"
+                      onClick={() => {
+                        setShowDropdown(false);
+                        onLeaveRoom();
+                      }}
+                      className="text-red-500 dark:text-red-400"
+                    />
+                  </>
+                )}
+              </div>
+            </div>
+          )}
         </div>
+
         <AuthModal
           isOpen={showAuthModal}
           onClose={() => setShowAuthModal(false)}
