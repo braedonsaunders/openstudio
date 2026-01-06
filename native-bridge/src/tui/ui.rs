@@ -171,6 +171,11 @@ fn draw_audio_panel(f: &mut Frame, app: &App, area: Rect) {
                 format!("-{:.1}dB", app.compressor_reduction),
                 Style::default().fg(Color::Yellow),
             ),
+            Span::raw("  De-Ess: "),
+            Span::styled(
+                format!("-{:.1}dB", app.de_esser_reduction),
+                Style::default().fg(if app.de_esser_reduction > 6.0 { Color::Red } else { Color::Cyan }),
+            ),
             Span::raw("  Limiter: "),
             Span::styled(
                 format!("-{:.1}dB", app.limiter_reduction),

@@ -818,6 +818,7 @@ impl Default for LimiterSettings {
 pub struct EffectsMetering {
     pub noise_gate_open: bool,
     pub compressor_reduction: f32, // dB
+    pub de_esser_reduction: f32,   // dB
     pub limiter_reduction: f32,    // dB
 }
 

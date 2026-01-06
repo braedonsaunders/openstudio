@@ -136,6 +136,7 @@ impl BridgeServer {
                         let _ = tx.try_send(AppEvent::EffectsMetering {
                             noise_gate_open: effects_metering.noise_gate_open,
                             compressor_reduction: effects_metering.compressor_reduction,
+                            de_esser_reduction: effects_metering.de_esser_reduction,
                             limiter_reduction: effects_metering.limiter_reduction,
                         });
 
