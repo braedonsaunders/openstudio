@@ -32,6 +32,8 @@ impl Vibrato {
         let waveform = match settings.waveform {
             VibratoWaveform::Sine => LfoWaveform::Sine,
             VibratoWaveform::Triangle => LfoWaveform::Triangle,
+            VibratoWaveform::Square => LfoWaveform::Square,
+            VibratoWaveform::Sawtooth => LfoWaveform::Sawtooth,
         };
         self.lfo.set_waveform(waveform);
         self.settings = settings;
