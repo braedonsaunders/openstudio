@@ -575,15 +575,19 @@ export function TransportBar({
   // Check if current song has Lyria track (infinite duration)
   const isLyriaSong = currentSong?.tracks.some(t => t.type === 'lyria') ?? false;
 
-  // Get the buffer size from the user's track settings (not global settings)
+  // Get the buffer size - prefer currentBufferSize (actual active value) over static settings
   const userBufferSize = useMemo(() => {
-    if (!currentUser) return settings.bufferSize;
-    const userTracks = getTracksByUser(currentUser.id);
-    if (userTracks.length === 0) return settings.bufferSize;
-    // Use the first audio track's buffer setting
-    const audioTrack = userTracks.find((t) => t.type !== 'midi');
-    return audioTrack?.audioSettings.bufferSize ?? settings.bufferSize;
-  }, [currentUser, getTracksByUser, settings.bufferSize]);
+    // First check user's track settings
+    if (currentUser) {
+      const userTracks = getTracksByUser(currentUser.id);
+      const audioTrack = userTracks.find((t) => t.type !== 'midi');
+      if (audioTrack?.audioSettings.bufferSize) {
+        return audioTrack.audioSettings.bufferSize;
+      }
+    }
+    // Fall back to currentBufferSize (dynamically updated) or settings.bufferSize
+    return currentBufferSize || settings.bufferSize;
+  }, [currentUser, getTracksByUser, currentBufferSize, settings.bufferSize]);
 
   const handleCopyRoomId = useCallback(() => {
     navigator.clipboard.writeText(roomId);
