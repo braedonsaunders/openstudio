@@ -3,7 +3,7 @@
 //! Creates up to 3 additional voices at scale-correct intervals.
 
 use super::pitch::{key_to_offset, PitchDetector, PitchShifter, Scale};
-use super::types::{HarmonizerSettings, HarmonyType, PitchCorrectionScale};
+use super::types::{HarmonizerScale, HarmonizerSettings, HarmonyType};
 use super::AudioEffect;
 
 /// A single harmony voice
@@ -100,15 +100,8 @@ impl Harmonizer {
         // Update key/scale
         self.key_offset = key_to_offset(&settings.key);
         self.scale = match settings.scale {
-            PitchCorrectionScale::Major => Scale::Major,
-            PitchCorrectionScale::Minor => Scale::Minor,
-            PitchCorrectionScale::PentatonicMajor => Scale::PentatonicMajor,
-            PitchCorrectionScale::PentatonicMinor => Scale::PentatonicMinor,
-            PitchCorrectionScale::Blues => Scale::Blues,
-            PitchCorrectionScale::Dorian => Scale::Dorian,
-            PitchCorrectionScale::Mixolydian => Scale::Mixolydian,
-            PitchCorrectionScale::HarmonicMinor => Scale::HarmonicMinor,
-            _ => Scale::Chromatic,
+            HarmonizerScale::Major => Scale::Major,
+            HarmonizerScale::Minor => Scale::Minor,
         };
 
         // Set up voices based on harmony type
@@ -139,6 +132,20 @@ impl Harmonizer {
                 self.voice2.enabled = false;
                 self.voice3.enabled = false;
             }
+            HarmonyType::MinorThird => {
+                self.voice1.interval = 3; // Minor third
+                self.voice1.level = 0.7;
+                self.voice1.enabled = true;
+                self.voice2.enabled = false;
+                self.voice3.enabled = false;
+            }
+            HarmonyType::Fourth => {
+                self.voice1.interval = 5; // Perfect fourth
+                self.voice1.level = 0.7;
+                self.voice1.enabled = true;
+                self.voice2.enabled = false;
+                self.voice3.enabled = false;
+            }
             HarmonyType::Fifth => {
                 self.voice1.interval = 7; // Perfect fifth
                 self.voice1.level = 0.7;
@@ -146,8 +153,36 @@ impl Harmonizer {
                 self.voice2.enabled = false;
                 self.voice3.enabled = false;
             }
+            HarmonyType::Sixth => {
+                self.voice1.interval = 9; // Major sixth
+                self.voice1.level = 0.7;
+                self.voice1.enabled = true;
+                self.voice2.enabled = false;
+                self.voice3.enabled = false;
+            }
             HarmonyType::Octave => {
                 self.voice1.interval = 12;
+                self.voice1.level = 0.5;
+                self.voice1.enabled = true;
+                self.voice2.enabled = false;
+                self.voice3.enabled = false;
+            }
+            HarmonyType::ThirdBelow => {
+                self.voice1.interval = -4; // Major third below
+                self.voice1.level = 0.7;
+                self.voice1.enabled = true;
+                self.voice2.enabled = false;
+                self.voice3.enabled = false;
+            }
+            HarmonyType::FifthBelow => {
+                self.voice1.interval = -7; // Perfect fifth below
+                self.voice1.level = 0.7;
+                self.voice1.enabled = true;
+                self.voice2.enabled = false;
+                self.voice3.enabled = false;
+            }
+            HarmonyType::OctaveBelow => {
+                self.voice1.interval = -12;
                 self.voice1.level = 0.5;
                 self.voice1.enabled = true;
                 self.voice2.enabled = false;
@@ -176,6 +211,15 @@ impl Harmonizer {
                 self.voice1.level = 0.6;
                 self.voice1.enabled = true;
                 self.voice2.interval = 7;
+                self.voice2.level = 0.6;
+                self.voice2.enabled = true;
+                self.voice3.enabled = false;
+            }
+            HarmonyType::ThirdAndFifth => {
+                self.voice1.interval = 4; // Major third
+                self.voice1.level = 0.6;
+                self.voice1.enabled = true;
+                self.voice2.interval = 7; // Perfect fifth
                 self.voice2.level = 0.6;
                 self.voice2.enabled = true;
                 self.voice3.enabled = false;

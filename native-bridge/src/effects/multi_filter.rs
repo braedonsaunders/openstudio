@@ -44,6 +44,7 @@ impl MultiFilter {
             MultiFilterType::Highpass => BiquadType::Highpass,
             MultiFilterType::Bandpass => BiquadType::Bandpass,
             MultiFilterType::Notch => BiquadType::Notch,
+            MultiFilterType::Allpass => BiquadType::Allpass,
             MultiFilterType::Formant => BiquadType::Peak, // Approximate formant with peak
         }
     }

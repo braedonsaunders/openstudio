@@ -163,6 +163,7 @@ impl RotarySpeaker {
             RotarySpeed::Stop => (0.0, 0.0),
             RotarySpeed::Slow => (settings.slow_rate, settings.slow_rate * 0.85), // Drum slightly slower
             RotarySpeed::Fast => (settings.fast_rate, settings.fast_rate * 0.85),
+            RotarySpeed::Brake => (0.0, 0.0), // Brake slows to stop (handled by acceleration ramp)
         };
 
         self.horn.set_speed(horn_speed);

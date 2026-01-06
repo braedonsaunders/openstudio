@@ -133,7 +133,7 @@ impl GranularDelay {
         // Find inactive grain slot index
         let slot_idx = self.grains.iter().position(|g| !g.active);
         if let Some(idx) = slot_idx {
-            let delay_samples = (self.sample_rate as f32 * self.settings.delay_time / 1000.0) as usize;
+            let delay_samples = (self.sample_rate as f32 * self.settings.position / 1000.0) as usize;
             let grain_size = self.window.len();
 
             // Add texture randomization (generate randoms before borrowing grain)
