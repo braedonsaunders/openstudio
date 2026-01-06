@@ -98,14 +98,15 @@ export function useRoomPermissions(roomId: string) {
 
   const kickUser = useCallback(
     async (targetUserId: string) => {
+      console.log('[kickUser] Kicking user:', { roomId, targetUserId });
       removeMember(targetUserId);
 
       // Persist to database (performedBy is now derived from JWT on server)
       try {
-        const response = await authFetch(
-          `/api/rooms/${roomId}/permissions?userId=${targetUserId}`,
-          { method: 'DELETE' }
-        );
+        const url = `/api/rooms/${roomId}/permissions?userId=${encodeURIComponent(targetUserId)}`;
+        console.log('[kickUser] DELETE request to:', url);
+        const response = await authFetch(url, { method: 'DELETE' });
+        console.log('[kickUser] Response status:', response.status);
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));

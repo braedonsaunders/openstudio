@@ -487,7 +487,9 @@ export async function DELETE(
 
     // SECURITY: Verify the authenticated user has permission to kick/ban
     // Only owner can kick/ban users (not co-hosts)
+    console.log('[DELETE permissions] Attempting to kick/ban:', { roomId, targetUserId, ban, requesterId: user.id });
     const requesterMembership = await getRoomMembership(roomId, user.id);
+    console.log('[DELETE permissions] Requester membership:', requesterMembership);
     if (!requesterMembership || !requesterMembership.isOwner) {
       return NextResponse.json(
         { error: 'Only the room owner can kick/ban users' },
@@ -543,11 +545,29 @@ export async function DELETE(
         .eq('user_id', targetUserId);
     } else {
       // Just remove from members (kick)
-      await supabase
+      console.log('[DELETE permissions] Deleting member:', { roomId, targetUserId });
+      const { error: deleteError, count } = await supabase
         .from('room_members')
-        .delete()
+        .delete({ count: 'exact' })
         .eq('room_id', roomId)
         .eq('user_id', targetUserId);
+      console.log('[DELETE permissions] Delete result:', { error: deleteError, count });
+
+      if (deleteError) {
+        console.error('[DELETE permissions] Delete error:', deleteError);
+        return NextResponse.json(
+          { error: 'Failed to remove user from room' },
+          { status: 500 }
+        );
+      }
+
+      if (count === 0) {
+        console.log('[DELETE permissions] No member found to delete');
+        return NextResponse.json(
+          { error: 'User not found in room' },
+          { status: 404 }
+        );
+      }
     }
 
     // Log the action - SECURITY: Use authenticated user ID
