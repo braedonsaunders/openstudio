@@ -847,14 +847,9 @@ export function getNativeBridgeDownloadUrl(): string {
   if (platform.includes('win')) {
     return `${baseUrl}/openstudio-bridge-windows.exe`;
   } else if (platform.includes('mac')) {
-    // Detect Apple Silicon vs Intel
-    const isAppleSilicon = userAgent.includes('arm') ||
-      (platform.includes('mac') && !userAgent.includes('intel'));
-
-    if (isAppleSilicon) {
-      return `${baseUrl}/openstudio-bridge-macos-arm64`;
-    }
-    return `${baseUrl}/openstudio-bridge-macos-x64`;
+    // Currently only ARM64 (Apple Silicon) build is available
+    // Intel Macs can run ARM64 binaries via Rosetta 2
+    return `${baseUrl}/openstudio-bridge-macos-arm64`;
   } else if (platform.includes('linux')) {
     return `${baseUrl}/openstudio-bridge-linux`;
   }
@@ -871,8 +866,7 @@ export function getAllDownloadUrls(): Record<string, string> {
 
   return {
     windows: `${baseUrl}/openstudio-bridge-windows.exe`,
-    macosIntel: `${baseUrl}/openstudio-bridge-macos-x64`,
-    macosArm: `${baseUrl}/openstudio-bridge-macos-arm64`,
+    macos: `${baseUrl}/openstudio-bridge-macos-arm64`,
     linux: `${baseUrl}/openstudio-bridge-linux`,
   };
 }
