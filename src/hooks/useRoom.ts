@@ -528,6 +528,18 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         } catch (err) {
           console.error('Failed to load tracks:', err);
         }
+
+        // Broadcast this user's active tracks to other clients
+        // This ensures other users see our tracks when we join/rejoin
+        const userTracksToSync = useUserTracksStore.getState().getTracksByUser(user.id);
+        if (userTracksToSync.length > 0) {
+          console.log(`[useRoom] Broadcasting ${userTracksToSync.length} active tracks on connect`);
+          for (const track of userTracksToSync) {
+            if (track.isActive) {
+              await realtime.broadcastUserTrackAdd(track);
+            }
+          }
+        }
       });
 
       realtime.on('presence:sync', (data) => {
