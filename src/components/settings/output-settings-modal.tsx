@@ -66,6 +66,9 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
     // Preference
     preferNativeBridge,
     setPreferNativeBridge,
+    // Network mode
+    networkMode,
+    setNetworkMode,
     // Audio control
     startAudio,
     stopAudio,
@@ -360,6 +363,43 @@ export function OutputSettingsModal({ isOpen, onClose }: OutputSettingsModalProp
               <p className="text-xs text-gray-500 dark:text-gray-400">
                 Lower buffer = lower latency but higher CPU. 128-256 recommended for most interfaces.
               </p>
+
+              {/* Network Transmission Mode */}
+              <div className="pt-3 border-t border-indigo-200/30 dark:border-indigo-500/20">
+                <label className="text-xs font-medium text-gray-600 dark:text-gray-300 flex items-center gap-1.5 mb-2">
+                  <Radio className="w-3.5 h-3.5" />
+                  Network Transmission
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    onClick={() => setNetworkMode('p2p')}
+                    className={cn(
+                      'flex flex-col items-start p-2.5 rounded-lg border transition-all text-left',
+                      networkMode === 'p2p'
+                        ? 'border-indigo-500 bg-indigo-500/10'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    )}
+                  >
+                    <span className="text-xs font-medium text-gray-900 dark:text-white">P2P Direct</span>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400">Lowest latency (2-4 users)</span>
+                  </button>
+                  <button
+                    onClick={() => setNetworkMode('webrtc')}
+                    className={cn(
+                      'flex flex-col items-start p-2.5 rounded-lg border transition-all text-left',
+                      networkMode === 'webrtc'
+                        ? 'border-indigo-500 bg-indigo-500/10'
+                        : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600'
+                    )}
+                  >
+                    <span className="text-xs font-medium text-gray-900 dark:text-white">WebRTC Relay</span>
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400">Stable (5+ users)</span>
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-500 dark:text-gray-400 mt-1.5">
+                  P2P uses direct connections for minimal latency. WebRTC relay is more reliable for larger rooms.
+                </p>
+              </div>
 
               {/* Start/Stop Audio Button */}
               <div className="pt-2">

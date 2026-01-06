@@ -744,6 +744,7 @@ export function useNativeBridge() {
     sampleRate: storeState.sampleRate,
     inputChannelConfig: storeState.inputChannelConfig,
     preferNativeBridge: storeState.preferNativeBridge,
+    networkMode: storeState.networkMode,
 
     // Error
     lastError: storeState.lastError,
@@ -765,5 +766,6 @@ export function useNativeBridge() {
     setSampleRate,
     setChannelConfig,
     setPreferNativeBridge: storeState.setPreferNativeBridge,
+    setNetworkMode: storeState.setNetworkMode,
   };
 }

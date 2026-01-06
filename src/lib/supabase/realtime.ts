@@ -186,6 +186,10 @@ export class RealtimeRoomManager {
       this.emit('tempo:timesig', payload);
     });
 
+    this.channel.on('broadcast', { event: 'key:update' }, ({ payload }) => {
+      this.emit('key:update', payload);
+    });
+
     // World position events (for synced avatar movement)
     this.channel.on('broadcast', { event: 'world:position' }, ({ payload }) => {
       this.emit('world:position', payload);
@@ -231,6 +235,23 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'song:select' }, ({ payload }) => {
       this.emit('song:select', payload);
+    });
+
+    // Songs CRUD sync events
+    this.channel.on('broadcast', { event: 'songs:sync' }, ({ payload }) => {
+      this.emit('songs:sync', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'songs:create' }, ({ payload }) => {
+      this.emit('songs:create', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'songs:update' }, ({ payload }) => {
+      this.emit('songs:update', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'songs:delete' }, ({ payload }) => {
+      this.emit('songs:delete', payload);
     });
   }
 
@@ -569,6 +590,14 @@ export class RealtimeRoomManager {
     });
   }
 
+  async broadcastKeyUpdate(key: string | null, keyScale: 'major' | 'minor' | null, keySource: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'key:update',
+      payload: { key, keyScale, keySource, userId: this.userId },
+    });
+  }
+
   // Permission broadcasts
   async broadcastRoleUpdate(targetUserId: string, role: RoomRole): Promise<void> {
     await this.channel?.send({
@@ -671,6 +700,39 @@ export class RealtimeRoomManager {
     await this.channel?.send({
       type: 'broadcast',
       event: 'song:select',
+      payload: { songId, userId: this.userId },
+    });
+  }
+
+  // Songs CRUD broadcasts
+  async broadcastSongsSync(songs: Array<{ id: string; name: string; [key: string]: unknown }>, currentSongId: string | null): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'songs:sync',
+      payload: { songs, currentSongId, userId: this.userId },
+    });
+  }
+
+  async broadcastSongCreate(song: { id: string; name: string; [key: string]: unknown }): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'songs:create',
+      payload: { song, userId: this.userId },
+    });
+  }
+
+  async broadcastSongUpdate(songId: string, changes: Record<string, unknown>): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'songs:update',
+      payload: { songId, changes, userId: this.userId },
+    });
+  }
+
+  async broadcastSongDelete(songId: string): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'songs:delete',
       payload: { songId, userId: this.userId },
     });
   }
