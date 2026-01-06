@@ -220,7 +220,7 @@ export async function getRoomMembership(
 
     const role = member.role as string;
     const isOwner = role === 'owner';
-    const isModerator = isOwner || role === 'co_host';
+    const isModerator = isOwner || role === 'co-host';
 
     return { role, isOwner, isModerator };
   } catch {
