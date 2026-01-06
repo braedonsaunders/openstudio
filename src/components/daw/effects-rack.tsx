@@ -3,6 +3,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
+import { useSessionTempoStore } from '@/stores/session-tempo-store';
 import { Knob } from '@/components/ui/knob';
 import { EFFECT_PRESETS } from '@/lib/audio/effects/presets';
 import { GUITAR_PRESETS } from '@/lib/audio/effects/guitar';
@@ -629,9 +630,11 @@ function FormantShifterUI({ settings, onChange }: EffectProps) {
 function HarmonizerUI({ settings, onChange }: EffectProps) {
   const harm = settings.harmonizer;
   const [expanded, setExpanded] = useState(harm?.enabled ?? false);
+  // Use global key from session tempo store
+  const globalKey = useSessionTempoStore((s) => s.key);
+  const globalScale = useSessionTempoStore((s) => s.keyScale);
   if (!harm) return null;
 
-  const keys = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
   const harmonies = [
     { value: 'third', label: '3rd' },
     { value: 'fifth', label: '5th' },
@@ -640,13 +643,17 @@ function HarmonizerUI({ settings, onChange }: EffectProps) {
     { value: 'powerChord', label: 'Power' },
   ];
 
+  // Display current global key
+  const keyDisplay = globalKey ? `${globalKey} ${globalScale || ''}`.trim() : 'No key set';
+
   return (
     <div className="border-b border-white/5">
       <EffectHeader name="Harmonizer" icon={Music} enabled={harm.enabled} onToggle={() => onChange({ harmonizer: { ...harm, enabled: !harm.enabled } })} expanded={expanded} onExpandToggle={() => setExpanded(!expanded)} color="purple" />
       {expanded && (
         <div className="pb-3 px-2 space-y-3">
-          <div className="flex gap-1 flex-wrap">
-            {keys.map((k) => <button key={k} onClick={() => onChange({ harmonizer: { ...harm, key: k } })} disabled={!harm.enabled} className={cn('px-1.5 py-0.5 text-[9px] font-medium rounded', harm.key === k ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !harm.enabled && 'opacity-50')}>{k}</button>)}
+          <div className="text-center text-[10px] text-zinc-400">
+            Key: <span className="text-purple-400 font-medium">{keyDisplay}</span>
+            <span className="text-zinc-600 ml-1">(from transport)</span>
           </div>
           <div className="flex gap-1">
             {harmonies.map((h) => <button key={h.value} onClick={() => onChange({ harmonizer: { ...harm, harmonyType: h.value as typeof harm.harmonyType } })} disabled={!harm.enabled} className={cn('flex-1 px-1.5 py-1 text-[9px] font-medium rounded', harm.harmonyType === h.value ? 'bg-purple-500/20 text-purple-400' : 'bg-white/5 text-zinc-500 hover:bg-white/10', !harm.enabled && 'opacity-50')}>{h.label}</button>)}
@@ -1380,38 +1387,6 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
         ) : (
           filteredEffects.map((effect) => renderEffect(effect.id))
         )}
-      </div>
-
-      {/* Signal Flow Indicator */}
-      <div className="px-4 py-2 bg-white/[0.02] border-t border-white/5">
-        <div className="text-[9px] text-zinc-600 mb-1">Signal Flow:</div>
-        <div className="flex flex-wrap items-center gap-1 text-[9px] text-zinc-600">
-          <span className={effectsSettings.wah.enabled ? 'text-purple-400' : ''}>Wah</span>
-          <span>→</span>
-          <span className={effectsSettings.overdrive.enabled ? 'text-yellow-400' : ''}>OD</span>
-          <span>→</span>
-          <span className={effectsSettings.distortion.enabled ? 'text-red-400' : ''}>Dist</span>
-          <span>→</span>
-          <span className={effectsSettings.ampSimulator.enabled ? 'text-orange-400' : ''}>Amp</span>
-          <span>→</span>
-          <span className={effectsSettings.cabinet.enabled ? 'text-amber-400' : ''}>Cab</span>
-          <span>→</span>
-          <span className={effectsSettings.noiseGate.enabled ? 'text-emerald-400' : ''}>Gate</span>
-          <span>→</span>
-          <span className={effectsSettings.eq.enabled ? 'text-cyan-400' : ''}>EQ</span>
-          <span>→</span>
-          <span className={effectsSettings.compressor.enabled ? 'text-amber-400' : ''}>Comp</span>
-          <span>→</span>
-          <span className={effectsSettings.chorus.enabled || effectsSettings.flanger.enabled || effectsSettings.phaser.enabled ? 'text-indigo-400' : ''}>Mod</span>
-          <span>→</span>
-          <span className={effectsSettings.delay.enabled ? 'text-cyan-400' : ''}>Dly</span>
-          <span>→</span>
-          <span className={effectsSettings.tremolo.enabled ? 'text-amber-400' : ''}>Trem</span>
-          <span>→</span>
-          <span className={effectsSettings.reverb.enabled ? 'text-indigo-400' : ''}>Verb</span>
-          <span>→</span>
-          <span className={effectsSettings.limiter.enabled ? 'text-rose-400' : ''}>Limit</span>
-        </div>
       </div>
     </div>
   );

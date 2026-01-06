@@ -996,7 +996,7 @@ impl AudioEngine {
         is_monitoring: &Arc<AtomicBool>,
         monitoring_volume: &Arc<AtomicU32>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
-        _effects_metering: &Arc<RwLock<EffectsMetering>>,
+        effects_metering: &Arc<RwLock<EffectsMetering>>,
         overflow_count: &Arc<AtomicU64>,
         overflow_samples: &Arc<AtomicU64>,
     ) {
@@ -1043,6 +1043,14 @@ impl AudioEngine {
 
             // Process through effects chain
             state.effects_chain.process(stereo_buffer);
+
+            // Update effects metering for TUI display
+            if let Ok(mut metering) = effects_metering.try_write() {
+                let chain_metering = state.effects_chain.get_metering();
+                metering.noise_gate_open = chain_metering.noise_gate_open;
+                metering.compressor_reduction = chain_metering.compressor_reduction;
+                metering.limiter_reduction = chain_metering.limiter_reduction;
+            }
         }
 
         // Calculate input levels (stereo) - interleaved L/R samples

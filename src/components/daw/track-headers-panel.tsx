@@ -7,7 +7,7 @@ import { InactiveTrackHeader } from './inactive-track-header';
 import { AddTrackModal } from './add-track-modal';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { Plus } from 'lucide-react';
-import type { User } from '@/types';
+import type { User, UserTrack } from '@/types';
 
 interface TrackHeadersPanelProps {
   users: User[];
@@ -19,6 +19,7 @@ interface TrackHeadersPanelProps {
   onMuteSelf: () => void;
   width?: number;
   roomId?: string;
+  onTrackCreated?: (track: UserTrack) => void;
 }
 
 // Track color palette for remote users
@@ -45,6 +46,7 @@ export function TrackHeadersPanel({
   onMuteSelf,
   width,
   roomId,
+  onTrackCreated,
 }: TrackHeadersPanelProps) {
   const [showAddTrackModal, setShowAddTrackModal] = useState(false);
 
@@ -250,6 +252,7 @@ export function TrackHeadersPanel({
         userId={currentUser?.id || ''}
         userName={currentUser?.name}
         roomId={roomId}
+        onTrackCreated={onTrackCreated}
       />
     </div>
   );
