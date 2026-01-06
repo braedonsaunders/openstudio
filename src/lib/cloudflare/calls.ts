@@ -502,6 +502,10 @@ export class CloudflareCalls {
     if (!stream) {
       console.log('[CloudflareCalls] Listener mode - establishing receive-only session');
 
+      // Add a recvonly transceiver to create a valid SDP with at least one media line
+      // This is required because bundlePolicy: 'max-bundle' needs a BUNDLE group
+      this.peerConnection!.addTransceiver('audio', { direction: 'recvonly' });
+
       // Create initial offer to establish the session
       const offer = await this.peerConnection!.createOffer();
 
