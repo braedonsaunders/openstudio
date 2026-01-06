@@ -431,6 +431,63 @@ export class CloudflareCalls {
     // Initial clock sync
     await this.syncRoomClock();
 
+    // For listeners (no stream), we need to establish the session with a receive-only offer
+    // This ensures the WebRTC connection is properly initialized before pulling remote tracks
+    if (!stream) {
+      console.log('[CloudflareCalls] Listener mode - establishing receive-only session');
+
+      // Create initial offer to establish the session
+      const offer = await this.peerConnection!.createOffer();
+
+      // Optimize SDP with current preset's Opus settings
+      const preset = QUALITY_PRESETS[this.activePreset];
+      const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '', {
+        frameSize: preset.encoding.frameSize,
+        fec: preset.encoding.fec,
+        dtx: preset.encoding.dtx,
+        cbr: preset.encoding.cbr,
+      });
+
+      await this.peerConnection!.setLocalDescription({
+        type: offer.type,
+        sdp: optimizedSdp,
+      });
+
+      // Wait for ICE gathering
+      await this.waitForIceGathering();
+
+      const localDescription = this.peerConnection!.localDescription;
+      if (localDescription) {
+        // Initialize session with Cloudflare (no track, just establish connection)
+        try {
+          const initResponse = await fetchWithTimeout('/api/cloudflare/session', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'initSession',
+              sessionId: this.sessionId,
+              roomId: this.roomId,
+              sdp: localDescription.sdp,
+            }),
+          });
+
+          if (initResponse.ok) {
+            const initData = await initResponse.json();
+            if (initData.sdp) {
+              await this.peerConnection!.setRemoteDescription({
+                type: 'answer',
+                sdp: initData.sdp,
+              });
+            }
+            console.log('[CloudflareCalls] Listener session initialized');
+          }
+        } catch (err) {
+          // Non-fatal - we can still try to pull tracks
+          console.warn('[CloudflareCalls] Failed to init listener session, continuing:', err);
+        }
+      }
+    }
+
     // If a stream is provided, add it as the initial track
     if (stream) {
       const audioTrack = stream.getAudioTracks()[0];

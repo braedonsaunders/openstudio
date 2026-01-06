@@ -296,14 +296,33 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
           console.log(`Loaded permissions: ${permissionsData.members?.length || 0} members`);
         }
+
+        // Register as listener if in listener mode
+        // This sets the correct role in the database and permissions store
+        if (listenerMode) {
+          try {
+            const registerResponse = await authFetchJson(`/api/rooms/${roomId}/permissions`, 'POST', {
+              userId: user.id,
+              userName: userName,
+              listenerMode: true,
+            });
+            if (registerResponse.ok) {
+              const permissionsStore = usePermissionsStore.getState();
+              permissionsStore.setMyPermissions('listener');
+              console.log('[useRoom] Registered as listener');
+            }
+          } catch (err) {
+            console.error('Failed to register as listener:', err);
+          }
+        }
       } catch (err) {
         console.error('Failed to load permissions:', err);
         // Set basic permissions as fallback
-        usePermissionsStore.getState().setMyPermissions('member');
+        usePermissionsStore.getState().setMyPermissions(listenerMode ? 'listener' : 'member');
       }
 
-      // Create a default track if user has none
-      if (userTracks.length === 0) {
+      // Create a default track if user has none (skip for listeners - they don't need tracks)
+      if (!listenerMode && userTracks.length === 0) {
         userTracks = userTracksState.getTracksByUser(user.id);
         if (userTracks.length === 0) {
           const newTrack = userTracksState.addTrack(user.id, 'Track 1', undefined, user.name);
@@ -531,6 +550,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
             // Broadcast current tempo source
             realtime.broadcastTempoSource(tempoState.source);
+
+            // CRITICAL: Broadcast current queue state so new users (especially listeners)
+            // can sync their queue and respond to play/pause/seek events
+            const currentQueue = useRoomStore.getState().queue;
+            if (currentQueue.tracks.length > 0) {
+              console.log(`[useRoom] Broadcasting queue with ${currentQueue.tracks.length} tracks to new users`);
+              realtime.broadcastQueueUpdate(currentQueue);
+            }
           }, 500);
         }
       });
@@ -583,7 +610,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       realtime.on('track:play', async (data) => {
         const payload = data as { trackId: string; timestamp: number; syncTime: number };
-        const track = queue.tracks.find((t) => t.id === payload.trackId);
+        // CRITICAL: Get fresh queue state, not stale closure
+        const freshQueue = useRoomStore.getState().queue;
+        const track = freshQueue.tracks.find((t) => t.id === payload.trackId);
         if (track) {
           // YouTube tracks are handled by the YouTube player component, not audio engine
           if (track.youtubeId) {
@@ -606,6 +635,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           } else {
             console.error('Failed to load track for playback sync');
           }
+        } else {
+          console.warn(`[useRoom] track:play received for unknown track ${payload.trackId}, queue has ${freshQueue.tracks.length} tracks`);
         }
       });
 
@@ -622,6 +653,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('track:queue', (data) => {
         const payload = data as { queue: TrackQueue };
         setQueue(payload.queue);
+        // Also set the current track based on the queue's currentIndex
+        const currentTrackFromQueue = payload.queue.tracks[payload.queue.currentIndex];
+        if (currentTrackFromQueue) {
+          setCurrentTrack(currentTrackFromQueue);
+        }
       });
 
       realtime.on('track:next', () => {

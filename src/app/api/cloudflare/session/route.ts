@@ -329,6 +329,39 @@ export async function POST(request: NextRequest) {
         return NextResponse.json({ success: true });
       }
 
+      case 'initSession': {
+        // Initialize a receive-only session for listeners
+        // This establishes the WebRTC connection without pushing any tracks
+        // Listeners don't publish audio, so we don't store them in roomSessions
+        console.log(`[WebRTC Sessions] Initializing receive-only session ${sessionId} for listener ${effectiveUserId}`);
+
+        try {
+          // Use renegotiate to establish the session
+          const result = await callCloudflareAPI(
+            `/sessions/${sessionId}/renegotiate`,
+            'PUT',
+            {
+              sessionDescription: {
+                type: 'offer',
+                sdp: sdp,
+              },
+            }
+          );
+
+          return NextResponse.json({
+            sessionId: sessionId,
+            sdp: result.sessionDescription?.sdp,
+          });
+        } catch (err) {
+          // If renegotiate fails, just return success - listener can still try to pull tracks
+          console.warn(`[WebRTC Sessions] initSession renegotiate failed, continuing:`, err);
+          return NextResponse.json({
+            sessionId: sessionId,
+            sdp: null,
+          });
+        }
+      }
+
       default:
         return NextResponse.json(
           { error: `Unknown action: ${action}` },
