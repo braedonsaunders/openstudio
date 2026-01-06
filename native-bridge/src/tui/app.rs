@@ -17,6 +17,7 @@ pub enum AppEvent {
     EffectsMetering {
         noise_gate_open: bool,
         compressor_reduction: f32,
+        de_esser_reduction: f32,
         limiter_reduction: f32,
     },
     /// Network state changed
@@ -193,6 +194,7 @@ pub struct App {
     // Effects metering
     pub noise_gate_open: bool,
     pub compressor_reduction: f32,
+    pub de_esser_reduction: f32,
     pub limiter_reduction: f32,
 
     // Effects chain
@@ -266,6 +268,7 @@ impl App {
 
             noise_gate_open: false,
             compressor_reduction: 0.0,
+            de_esser_reduction: 0.0,
             limiter_reduction: 0.0,
 
             effects,
@@ -384,9 +387,10 @@ impl App {
 
                 self.frames_processed += 1;
             }
-            AppEvent::EffectsMetering { noise_gate_open, compressor_reduction, limiter_reduction } => {
+            AppEvent::EffectsMetering { noise_gate_open, compressor_reduction, de_esser_reduction, limiter_reduction } => {
                 self.noise_gate_open = noise_gate_open;
                 self.compressor_reduction = compressor_reduction;
+                self.de_esser_reduction = de_esser_reduction;
                 self.limiter_reduction = limiter_reduction;
             }
             AppEvent::NetworkState { connected, mode, peer_count, latency_ms, packet_loss } => {
