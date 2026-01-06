@@ -389,26 +389,18 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Start audio capture with track settings (device, channel config, etc.)
       // Skip audio capture in listener mode - listeners only receive, not send
       let stream: MediaStream | undefined;
-      if (!listenerMode) {
-        stream = await startCapture(trackSettings);
+      let broadcastStream: MediaStream | undefined;
 
-        // Connect MediaStream to TrackAudioProcessor for each track (web audio monitoring)
-        // This allows users to hear themselves through the effects chain when monitoring is enabled
-        // NOTE: Only do this when NOT using native bridge (bridge handles its own audio routing)
+      if (!listenerMode) {
         const bridgeState = useBridgeAudioStore.getState();
         const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge;
 
-        if (!useBridge && stream) {
+        if (useBridge) {
+          // NATIVE BRIDGE MODE: Audio flows through bridge -> TrackAudioProcessor -> WebRTC
+          // Create track processors for each user track (bridge input will be connected by useNativeBridge)
           for (const track of userTracks) {
-            // Create/get the track processor
             getOrCreateTrackProcessor(track.id, track.audioSettings);
 
-            // Connect the MediaStream to the processor
-            await setTrackMediaStreamInput(track.id, stream, {
-              channelConfig: track.audioSettings.channelConfig,
-            });
-
-            // Set the track state - send raw monitoringEnabled, TrackAudioProcessor handles its own calculation
             const monitoringEnabled = track.audioSettings.directMonitoring ?? true;
             updateTrackState(track.id, {
               isArmed: track.isArmed,
@@ -419,7 +411,60 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
               monitoringEnabled: monitoringEnabled,
             });
 
-            console.log(`[useRoom] Connected MediaStream to track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${monitoringEnabled}`);
+            console.log(`[useRoom] Created track processor for bridge audio: ${track.id}, armed: ${track.isArmed}`);
+          }
+
+          // CRITICAL: Create broadcast stream from AudioEngine's track processors
+          // This mixes all armed tracks into a single MediaStream for WebRTC
+          const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+          if (audioEngine) {
+            broadcastStream = audioEngine.createBroadcastStream() || undefined;
+            console.log('[useRoom] Created broadcast stream for native bridge WebRTC:', broadcastStream ? 'success' : 'failed');
+          }
+        } else {
+          // WEB AUDIO MODE: Audio flows through getUserMedia -> TrackAudioProcessor -> WebRTC
+          stream = await startCapture(trackSettings);
+
+          // Connect MediaStream to TrackAudioProcessor for each track (web audio monitoring)
+          // This allows users to hear themselves through the effects chain when monitoring is enabled
+          if (stream) {
+            for (const track of userTracks) {
+              // Create/get the track processor
+              getOrCreateTrackProcessor(track.id, track.audioSettings);
+
+              // Connect the MediaStream to the processor
+              await setTrackMediaStreamInput(track.id, stream, {
+                channelConfig: track.audioSettings.channelConfig,
+              });
+
+              // Set the track state - send raw monitoringEnabled, TrackAudioProcessor handles its own calculation
+              const monitoringEnabled = track.audioSettings.directMonitoring ?? true;
+              updateTrackState(track.id, {
+                isArmed: track.isArmed,
+                isMuted: track.isMuted,
+                isSolo: track.isSolo,
+                volume: track.volume,
+                inputGain: track.audioSettings.inputGain || 0,
+                monitoringEnabled: monitoringEnabled,
+              });
+
+              console.log(`[useRoom] Connected MediaStream to track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${monitoringEnabled}`);
+            }
+
+            // For web audio mode, also create a broadcast stream from track processors
+            const webAudioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+            if (webAudioEngine) {
+              broadcastStream = webAudioEngine.createBroadcastStream() || undefined;
+              // If broadcast stream creation failed, fall back to raw getUserMedia stream
+              if (!broadcastStream) {
+                broadcastStream = stream;
+                console.log('[useRoom] Falling back to raw getUserMedia stream for WebRTC');
+              } else {
+                console.log('[useRoom] Created broadcast stream from track processors');
+              }
+            } else {
+              broadcastStream = stream;
+            }
           }
         }
       } else {
@@ -481,7 +526,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         setRemoteCompensationDelay(userId, delayMs);
       });
 
-      await cloudflare.joinRoom(stream);
+      // Use broadcast stream (from track processors) for WebRTC, or raw stream as fallback
+      await cloudflare.joinRoom(broadcastStream || stream);
       cloudflareRef.current = cloudflare;
 
       // Initialize realtime connection
@@ -602,14 +648,20 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             const { useSessionTempoStore } = require('@/stores/session-tempo-store');
             const tempoState = useSessionTempoStore.getState();
 
-            // Broadcast current tempo
-            realtime.broadcastTempoUpdate(tempoState.manualTempo, tempoState.source);
+            // Broadcast current effective tempo (not just manualTempo)
+            // This ensures new joiners get the actual tempo being used
+            realtime.broadcastTempoUpdate(tempoState.tempo, tempoState.source);
 
             // Broadcast current time signature
             realtime.broadcastTimeSignature(tempoState.beatsPerBar, tempoState.beatUnit);
 
             // Broadcast current tempo source
             realtime.broadcastTempoSource(tempoState.source);
+
+            // Broadcast current key/scale if set
+            if (tempoState.key) {
+              realtime.broadcastKeyUpdate(tempoState.key, tempoState.keyScale, tempoState.keySource);
+            }
 
             // CRITICAL: Broadcast current queue state so new users (especially listeners)
             // can sync their queue and respond to play/pause/seek events
@@ -628,6 +680,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
               }
             }
             console.log(`[useRoom] Broadcast ${allTracks.filter(t => t.isActive).length} active tracks to new users`);
+
+            // Broadcast current songs list so new joiners can sync
+            const { useSongsStore } = require('@/stores/songs-store');
+            const songsState = useSongsStore.getState();
+            const roomSongs = songsState.getSongsByRoom(roomId);
+            if (roomSongs.length > 0) {
+              realtime.broadcastSongsSync(roomSongs, songsState.currentSongId);
+              console.log(`[useRoom] Broadcast ${roomSongs.length} songs to new users`);
+            }
           }, 500);
         }
       });
@@ -871,6 +932,17 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         tempoStore.setTimeSignature(payload.beatsPerBar, payload.beatUnit);
       });
 
+      realtime.on('key:update', (data) => {
+        const payload = data as { key: string | null; keyScale: 'major' | 'minor' | null; keySource: string; userId: string };
+        if (payload.userId === user.id) return;
+        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
+        const tempoStore = useSessionTempoStore.getState();
+        tempoStore.setKeySource(payload.keySource as 'manual' | 'track' | 'analyzer');
+        if (payload.keySource === 'manual') {
+          tempoStore.setManualKey(payload.key, payload.keyScale);
+        }
+      });
+
       // Permission event handlers
       realtime.on('permissions:role_update', (data) => {
         const payload = data as { targetUserId: string; role: RoomRole; userId: string };
@@ -979,6 +1051,53 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         const payload = data as SongSelectPayload;
         if (payload.userId === user.id) return;
         options.onSongSelect?.(payload);
+      });
+
+      // Songs CRUD sync handlers
+      realtime.on('songs:sync', (data) => {
+        const payload = data as { songs: unknown[]; currentSongId: string | null; userId: string };
+        if (payload.userId === user.id) return;
+        const { useSongsStore } = require('@/stores/songs-store');
+        const songsStore = useSongsStore.getState();
+        songsStore.setSongs(payload.songs);
+        if (payload.currentSongId) {
+          songsStore.selectSong(payload.currentSongId);
+        }
+      });
+
+      realtime.on('songs:create', (data) => {
+        const payload = data as { song: unknown; userId: string };
+        if (payload.userId === user.id) return;
+        const { useSongsStore } = require('@/stores/songs-store');
+        const songsStore = useSongsStore.getState();
+        // Add the song directly without persisting (it's already on server)
+        const songs = new Map(songsStore.songs);
+        const song = payload.song as { id: string; [key: string]: unknown };
+        songs.set(song.id, song);
+        useSongsStore.setState({ songs });
+      });
+
+      realtime.on('songs:update', (data) => {
+        const payload = data as { songId: string; changes: Record<string, unknown>; userId: string };
+        if (payload.userId === user.id) return;
+        const { useSongsStore } = require('@/stores/songs-store');
+        const songsStore = useSongsStore.getState();
+        const song = songsStore.songs.get(payload.songId);
+        if (song) {
+          const songs = new Map(songsStore.songs);
+          songs.set(payload.songId, { ...song, ...payload.changes });
+          useSongsStore.setState({ songs });
+        }
+      });
+
+      realtime.on('songs:delete', (data) => {
+        const payload = data as { songId: string; userId: string };
+        if (payload.userId === user.id) return;
+        const { useSongsStore } = require('@/stores/songs-store');
+        const songsStore = useSongsStore.getState();
+        const songs = new Map(songsStore.songs);
+        songs.delete(payload.songId);
+        useSongsStore.setState({ songs });
       });
 
       await realtime.connect(user);
@@ -1648,6 +1767,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastTimeSignature(beatsPerBar, beatUnit);
   }, []);
 
+  const broadcastKeyUpdate = useCallback((key: string | null, keyScale: 'major' | 'minor' | null, keySource: string) => {
+    realtimeRef.current?.broadcastKeyUpdate(key, keyScale, keySource);
+  }, []);
+
   // Song playback broadcasts (for multi-track timeline sync)
   const broadcastSongPlay = useCallback((
     songId: string,
@@ -1720,6 +1843,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     broadcastTempoUpdate,
     broadcastTempoSource,
     broadcastTimeSignature,
+    broadcastKeyUpdate,
     // Song playback broadcasts
     broadcastSongPlay,
     broadcastSongPause,

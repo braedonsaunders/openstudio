@@ -56,6 +56,11 @@ interface BridgeAudioState {
   // Preference: use native bridge when available (persisted)
   preferNativeBridge: boolean;
 
+  // Network transmission mode for native bridge (persisted)
+  // 'p2p': Direct peer-to-peer, lowest latency for small groups (2-4 users)
+  // 'webrtc': WebRTC relay via Cloudflare, more stable for larger groups (5+ users)
+  networkMode: 'p2p' | 'webrtc';
+
   // Error state
   lastError: { code: string; message: string } | null;
 
@@ -73,6 +78,7 @@ interface BridgeAudioState {
   setBufferSize: (size: 32 | 64 | 128 | 256 | 512 | 1024) => void;
   setSampleRate: (rate: 44100 | 48000) => void;
   setPreferNativeBridge: (prefer: boolean) => void;
+  setNetworkMode: (mode: 'p2p' | 'webrtc') => void;
   setError: (error: { code: string; message: string } | null) => void;
   reset: () => void;
 
@@ -114,6 +120,7 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
       bufferSize: 256,
       sampleRate: 48000,
       preferNativeBridge: true,
+      networkMode: 'webrtc', // Default to WebRTC for reliability, P2P for pros
 
       // Actions
       setConnected: (connected) => set({ isConnected: connected }),
@@ -158,6 +165,7 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
       setBufferSize: (size) => set({ bufferSize: size }),
       setSampleRate: (rate) => set({ sampleRate: rate }),
       setPreferNativeBridge: (prefer) => set({ preferNativeBridge: prefer }),
+      setNetworkMode: (mode) => set({ networkMode: mode }),
 
       setError: (error) => set({ lastError: error }),
 
@@ -195,6 +203,7 @@ export const useBridgeAudioStore = create<BridgeAudioState>()(
         bufferSize: state.bufferSize,
         sampleRate: state.sampleRate,
         preferNativeBridge: state.preferNativeBridge,
+        networkMode: state.networkMode,
       }),
     }
   )
