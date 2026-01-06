@@ -1383,6 +1383,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
         {/* Left Panel - Tracks (upper 1/3) + Live Channels (lower 2/3) */}
         <LeftPanel
           ref={leftPanelRef}
+          listenerMode={listenerMode}
           // Tracks (Queue) props
           onTrackSelect={handleTrackSelect}
           onTrackRemove={removeTrack}
