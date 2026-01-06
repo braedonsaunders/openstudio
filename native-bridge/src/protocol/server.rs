@@ -508,11 +508,32 @@ impl BridgeServer {
                     256 => crate::audio::BufferSize::Samples256,
                     512 => crate::audio::BufferSize::Samples512,
                     1024 => crate::audio::BufferSize::Samples1024,
-                    _ => crate::audio::BufferSize::Samples128,
+                    _ => crate::audio::BufferSize::Samples256,
                 };
 
                 match app.audio_engine.set_buffer_size(buffer_size) {
-                    Ok(_) => None,
+                    Ok(_) => {
+                        // Send updated device info to TUI
+                        let device_info = app.audio_engine.get_device_info();
+                        if let Some(ref tx) = app.tui_tx {
+                            let _ = tx.try_send(AppEvent::DeviceInfo {
+                                input_device: device_info.input_device.clone(),
+                                output_device: device_info.output_device.clone(),
+                                sample_rate: device_info.sample_rate,
+                                buffer_size: device_info.buffer_size,
+                            });
+                        }
+                        // Send DeviceConfig back to browser to confirm
+                        Some(NativeMessage::DeviceConfig {
+                            input_device: app.audio_engine.get_input_devices().ok()
+                                .and_then(|devs| devs.into_iter().find(|d| Some(d.id.clone()) == app.audio_engine.get_input_device_id())),
+                            output_device: app.audio_engine.get_output_devices().ok()
+                                .and_then(|devs| devs.into_iter().find(|d| Some(d.id.clone()) == app.audio_engine.get_output_device_id())),
+                            sample_rate: device_info.sample_rate,
+                            buffer_size: device_info.buffer_size,
+                            channel_config: app.audio_engine.get_channel_config(),
+                        })
+                    }
                     Err(e) => Some(NativeMessage::Error {
                         code: "CONFIG_ERROR".to_string(),
                         message: e.to_string(),
@@ -531,7 +552,28 @@ impl BridgeServer {
                 };
 
                 match app.audio_engine.set_sample_rate(sample_rate) {
-                    Ok(_) => None,
+                    Ok(_) => {
+                        // Send updated device info to TUI
+                        let device_info = app.audio_engine.get_device_info();
+                        if let Some(ref tx) = app.tui_tx {
+                            let _ = tx.try_send(AppEvent::DeviceInfo {
+                                input_device: device_info.input_device.clone(),
+                                output_device: device_info.output_device.clone(),
+                                sample_rate: device_info.sample_rate,
+                                buffer_size: device_info.buffer_size,
+                            });
+                        }
+                        // Send DeviceConfig back to browser to confirm
+                        Some(NativeMessage::DeviceConfig {
+                            input_device: app.audio_engine.get_input_devices().ok()
+                                .and_then(|devs| devs.into_iter().find(|d| Some(d.id.clone()) == app.audio_engine.get_input_device_id())),
+                            output_device: app.audio_engine.get_output_devices().ok()
+                                .and_then(|devs| devs.into_iter().find(|d| Some(d.id.clone()) == app.audio_engine.get_output_device_id())),
+                            sample_rate: device_info.sample_rate,
+                            buffer_size: device_info.buffer_size,
+                            channel_config: app.audio_engine.get_channel_config(),
+                        })
+                    }
                     Err(e) => Some(NativeMessage::Error {
                         code: "CONFIG_ERROR".to_string(),
                         message: e.to_string(),

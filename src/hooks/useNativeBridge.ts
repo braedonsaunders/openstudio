@@ -170,6 +170,21 @@ export function useNativeBridge() {
       s.setError(data);
     };
 
+    // Handle device config confirmation from native bridge - sync actual values back to store
+    const handleDeviceConfig = (data: {
+      inputDevice: BridgeDevice | null;
+      outputDevice: BridgeDevice | null;
+      sampleRate: number;
+      bufferSize: number;
+      channelConfig: { channelCount: 1 | 2; leftChannel: number; rightChannel?: number };
+    }) => {
+      console.log('[useNativeBridge] DeviceConfig confirmed:', data.sampleRate, 'Hz,', data.bufferSize, 'samples');
+      const s = useBridgeAudioStore.getState();
+      // Update store with actual values from native bridge
+      s.setSampleRate(data.sampleRate as 44100 | 48000);
+      s.setBufferSize(data.bufferSize as 32 | 64 | 128 | 256 | 512 | 1024);
+    };
+
     // Handle audio levels from native bridge - update track levels for waveform display
     const handleLevels = (data: {
       inputLevel: number;
@@ -211,6 +226,7 @@ export function useNativeBridge() {
     nativeBridge.on('disconnected', handleDisconnected);
     nativeBridge.on('audioStatus', handleAudioStatus);
     nativeBridge.on('devices', handleDevices);
+    nativeBridge.on('deviceConfig', handleDeviceConfig);
     nativeBridge.on('error', handleError);
     nativeBridge.on('levels', handleLevels);
 
@@ -244,6 +260,7 @@ export function useNativeBridge() {
       nativeBridge.off('disconnected', handleDisconnected);
       nativeBridge.off('audioStatus', handleAudioStatus);
       nativeBridge.off('devices', handleDevices);
+      nativeBridge.off('deviceConfig', handleDeviceConfig);
       nativeBridge.off('error', handleError);
       nativeBridge.off('levels', handleLevels);
       initialized.current = false;

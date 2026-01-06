@@ -59,7 +59,7 @@ impl Default for EngineConfig {
     fn default() -> Self {
         Self {
             sample_rate: SampleRate::Hz48000,
-            buffer_size: BufferSize::Samples128,
+            buffer_size: BufferSize::Samples256,
             input_device_id: None,
             output_device_id: None,
             channel_config: ChannelConfig::default(),
@@ -595,6 +595,25 @@ impl AudioEngine {
                 .unwrap_or_else(|| "None".to_string()),
             sample_rate: self.config.sample_rate as u32,
             buffer_size: self.config.buffer_size as u32,
+        }
+    }
+
+    /// Get current input device ID
+    pub fn get_input_device_id(&self) -> Option<String> {
+        self.config.input_device_id.clone()
+    }
+
+    /// Get current output device ID
+    pub fn get_output_device_id(&self) -> Option<String> {
+        self.config.output_device_id.clone()
+    }
+
+    /// Get current channel configuration
+    pub fn get_channel_config(&self) -> ChannelConfig {
+        if let Ok(state) = self.processing_state.try_read() {
+            state.channel_config.clone()
+        } else {
+            self.config.channel_config.clone()
         }
     }
 

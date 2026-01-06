@@ -50,12 +50,25 @@ interface BridgeStreamHealth {
   msSinceLastRead: number;
 }
 
+interface BridgeDeviceConfig {
+  inputDevice: BridgeDevice | null;
+  outputDevice: BridgeDevice | null;
+  sampleRate: number;
+  bufferSize: number;
+  channelConfig: {
+    channelCount: 1 | 2;
+    leftChannel: number;
+    rightChannel?: number;
+  };
+}
+
 // Native bridge sends snake_case, we normalize to camelCase
 type NativeMessage =
   | { type: 'welcome'; version: string; driverType?: string; driver_type?: string }
   | { type: 'pong'; timestamp: number; nativeTime: number }
   | { type: 'error'; code: string; message: string }
   | { type: 'devices'; inputs: BridgeDevice[]; outputs: BridgeDevice[] }
+  | { type: 'deviceConfig' } & BridgeDeviceConfig
   | { type: 'audioStatus' } & BridgeAudioStatus
   | { type: 'levels' } & BridgeLevels
   | { type: 'streamHealth' } & BridgeStreamHealth
@@ -88,6 +101,7 @@ export type BridgeEventType =
   | 'connected'
   | 'disconnected'
   | 'devices'
+  | 'deviceConfig'
   | 'levels'
   | 'audioStatus'
   | 'streamHealth'
@@ -99,6 +113,7 @@ type BridgeEventData = {
   connected: { version: string; driverType: string };
   disconnected: { reason: string };
   devices: { inputs: BridgeDevice[]; outputs: BridgeDevice[] };
+  deviceConfig: BridgeDeviceConfig;
   levels: BridgeLevels;
   audioStatus: BridgeAudioStatus;
   streamHealth: BridgeStreamHealth;
@@ -318,6 +333,17 @@ export class NativeBridge {
         case 'devices':
           console.log('[NativeBridge] Devices received:', msg.inputs?.length, 'inputs,', msg.outputs?.length, 'outputs');
           this.emit('devices', { inputs: msg.inputs, outputs: msg.outputs });
+          break;
+
+        case 'deviceConfig':
+          console.log('[NativeBridge] DeviceConfig received:', msg.sampleRate, 'Hz,', msg.bufferSize, 'samples');
+          this.emit('deviceConfig', {
+            inputDevice: msg.inputDevice,
+            outputDevice: msg.outputDevice,
+            sampleRate: msg.sampleRate,
+            bufferSize: msg.bufferSize,
+            channelConfig: msg.channelConfig,
+          });
           break;
 
         case 'levels':
