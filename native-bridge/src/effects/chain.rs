@@ -331,6 +331,7 @@ impl EffectsChain {
         // 10. De-Esser - tame sibilance (especially for vocals)
         if self.settings.de_esser.enabled {
             self.de_esser.process(samples, sr);
+            self.metering.de_esser_reduction = self.de_esser.get_reduction();
         }
 
         // 11. Transient Shaper - attack/sustain control

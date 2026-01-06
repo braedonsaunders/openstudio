@@ -106,6 +106,7 @@ pub struct EffectsMetering {
     pub track_id: String,
     pub noise_gate_open: bool,
     pub compressor_reduction: f32,
+    pub de_esser_reduction: f32,
     pub limiter_reduction: f32,
 }
 
@@ -1049,6 +1050,7 @@ impl AudioEngine {
                 let chain_metering = state.effects_chain.get_metering();
                 metering.noise_gate_open = chain_metering.noise_gate_open;
                 metering.compressor_reduction = chain_metering.compressor_reduction;
+                metering.de_esser_reduction = chain_metering.de_esser_reduction;
                 metering.limiter_reduction = chain_metering.limiter_reduction;
             }
         }
