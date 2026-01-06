@@ -8,7 +8,7 @@ import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { DEFAULT_FULL_EFFECTS } from '@/lib/audio/effects-defaults';
 import { MidiDeviceSelector } from '../midi/midi-device-selector';
 import { useNativeBridge } from '@/hooks/useNativeBridge';
-import type { TrackAudioSettings, MidiInputSettings } from '@/types';
+import type { TrackAudioSettings, MidiInputSettings, UserTrack } from '@/types';
 import {
   Mic,
   Monitor,
@@ -156,6 +156,7 @@ interface AddTrackModalProps {
   userId: string;
   userName?: string;
   roomId?: string;
+  onTrackCreated?: (track: UserTrack) => void;
 }
 
 const DEFAULT_SETTINGS: TrackAudioSettings = {
@@ -185,7 +186,7 @@ const DEFAULT_MIDI_SETTINGS: MidiInputSettings = {
   velocityCurve: 'linear',
 };
 
-export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: AddTrackModalProps) {
+export function AddTrackModal({ isOpen, onClose, userId, userName, roomId, onTrackCreated }: AddTrackModalProps) {
   const { inputDevices, devicesLoaded, loadDevices, addTrack, addMidiTrack, getTracksByUser } = useUserTracksStore();
   const {
     isConnected: nativeBridgeConnected,
@@ -334,8 +335,11 @@ export function AddTrackModal({ isOpen, onClose, userId, userName, roomId }: Add
       }
     }
 
+    // Broadcast the new track to other users
+    onTrackCreated?.(newTrack);
+
     onClose();
-  }, [userId, userName, roomId, trackName, settings, addTrack, onClose, stopTesting]);
+  }, [userId, userName, roomId, trackName, settings, addTrack, onClose, stopTesting, onTrackCreated]);
 
   return (
     <Modal

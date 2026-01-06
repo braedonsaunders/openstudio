@@ -331,6 +331,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           // Persist the new track
           authFetchJson(`/api/rooms/${roomId}/user-tracks`, 'POST', newTrack)
             .catch(err => console.error('Failed to persist new track:', err));
+          // Note: Track will be broadcast via presence:join handler when other users join
         }
       }
 
@@ -537,7 +538,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         if (hasNewUsers && useRoomStore.getState().isMaster) {
           // Small delay to ensure new user's broadcast handlers are ready
           // The new user needs time to complete subscription before receiving broadcasts
-          setTimeout(() => {
+          setTimeout(async () => {
             console.log('[useRoom] Master broadcasting room state to new users...');
             const { useSessionTempoStore } = require('@/stores/session-tempo-store');
             const tempoState = useSessionTempoStore.getState();
@@ -558,6 +559,16 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
               console.log(`[useRoom] Broadcasting queue with ${currentQueue.tracks.length} tracks to new users`);
               realtime.broadcastQueueUpdate(currentQueue);
             }
+
+            // Broadcast all user tracks so new joiners see everyone's tracks
+            const userTracksStore = useUserTracksStore.getState();
+            const allTracks = userTracksStore.getAllTracks();
+            for (const track of allTracks) {
+              if (track.isActive) {
+                await realtime.broadcastUserTrackAdd(track);
+              }
+            }
+            console.log(`[useRoom] Broadcast ${allTracks.filter(t => t.isActive).length} active tracks to new users`);
           }, 500);
         }
       });
@@ -1560,6 +1571,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastUserTrackUpdate(trackId, updates);
   }, []);
 
+  // Broadcast new user track creation
+  const broadcastUserTrackAdd = useCallback((track: UserTrack) => {
+    realtimeRef.current?.broadcastUserTrackAdd(track);
+  }, []);
+
   // Broadcast tempo updates (for real-time sync of BPM/time signature)
   const broadcastTempoUpdate = useCallback((tempo: number, source: string) => {
     realtimeRef.current?.broadcastTempoUpdate(tempo, source);
@@ -1640,6 +1656,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     kickUser,
     banUser,
     // Real-time broadcast functions
+    broadcastUserTrackAdd,
     broadcastUserTrackUpdate,
     broadcastTempoUpdate,
     broadcastTempoSource,

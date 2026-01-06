@@ -939,10 +939,9 @@ export class AudioEngine {
       onEffectsChange
     );
 
-    // Connect track output to master gain
-    processor.connect(this.masterGain);
-
     // Connect track monitor output to master gain for local monitoring
+    // This is the only path to speakers - controlled by monitorGainNode
+    // (the broadcast path via getBroadcastNode() goes to WebRTC, not speakers)
     processor.connectMonitor(this.masterGain);
 
     // If this is the first track, set it as primary for backward compat
