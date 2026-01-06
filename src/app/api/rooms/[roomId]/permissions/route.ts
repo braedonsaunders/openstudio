@@ -324,6 +324,7 @@ export async function PATCH(
 ) {
   // SECURITY: Require authentication
   const user = await getUserFromRequest(request);
+  console.log('[PATCH permissions] User from request:', user?.id || 'not authenticated');
   if (!user) {
     return NextResponse.json(
       { error: 'Authentication required' },
@@ -355,6 +356,7 @@ export async function PATCH(
 
     // SECURITY: Verify the authenticated user has permission to modify roles
     const requesterMembership = await getRoomMembership(roomId, user.id);
+    console.log('[PATCH permissions] Requester membership:', requesterMembership);
     if (!requesterMembership || !requesterMembership.isModerator) {
       return NextResponse.json(
         { error: 'Only room owner or co-host can modify permissions' },

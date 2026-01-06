@@ -33,10 +33,12 @@ export function useRoomPermissions(roomId: string) {
 
       // Persist to database (performedBy is now derived from JWT on server)
       try {
+        console.log('[updateUserRole] Sending PATCH request:', { roomId, targetUserId, role });
         const response = await authFetchJson(`/api/rooms/${roomId}/permissions`, 'PATCH', {
           userId: targetUserId,
           role,
         });
+        console.log('[updateUserRole] Response status:', response.status);
 
         if (!response.ok) {
           const data = await response.json().catch(() => ({}));
