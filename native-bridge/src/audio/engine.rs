@@ -1085,21 +1085,15 @@ impl AudioEngine {
         // Get monitoring state - use atomic flag for monitoring_enabled (never fails!)
         let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
         let monitoring_enabled = is_monitoring.load(Ordering::Relaxed);
-        // Read arm and mute state from processing_state
-        // Both affect whether we should monitor: must be armed AND not muted
-        let (is_armed, is_muted) = if let Ok(state) = processing_state.try_read() {
-            (state.track_state.is_armed, state.track_state.is_muted)
+        let is_muted = if let Ok(state) = processing_state.try_read() {
+            state.track_state.is_muted
         } else {
-            // Default: armed=true (let audio through), muted=false (let audio through)
-            // This prevents audio dropout if lock is briefly contested
-            (true, false)
+            false // Default to not muted - let audio through
         };
 
         // Local monitoring: apply volume, pan, and push to output
         // Note: Effects were already applied above (before browser stream)
-        // Monitoring requires: armed AND monitoring enabled AND not muted
-        // This matches DAW behavior where disarming a track stops input monitoring
-        let should_monitor = is_armed && monitoring_enabled && !is_muted;
+        let should_monitor = monitoring_enabled && !is_muted;
 
         if should_monitor {
             // Apply volume and pan for local monitoring
