@@ -178,14 +178,55 @@ export function UserTrackHeader({
   const { saveFromTrack } = useSavedTracksStore();
   const { user } = useAuthStore();
 
-  // Count active effects
-  const activeEffectsCount = [
-    track.audioSettings.effects?.noiseGate?.enabled,
-    track.audioSettings.effects?.eq?.enabled,
-    track.audioSettings.effects?.compressor?.enabled,
-    track.audioSettings.effects?.reverb?.enabled,
-    track.audioSettings.effects?.limiter?.enabled,
-  ].filter(Boolean).length;
+  // Count active effects (all 35 effects)
+  const activeEffectsCount = (() => {
+    const effects = track.audioSettings.effects;
+    if (!effects) return 0;
+    let count = 0;
+    // Standard effects
+    if (effects.noiseGate?.enabled) count++;
+    if (effects.eq?.enabled) count++;
+    if (effects.compressor?.enabled) count++;
+    if (effects.reverb?.enabled) count++;
+    if (effects.limiter?.enabled) count++;
+    // Guitar effects
+    if (effects.wah?.enabled) count++;
+    if (effects.overdrive?.enabled) count++;
+    if (effects.distortion?.enabled) count++;
+    if (effects.ampSimulator?.enabled) count++;
+    if (effects.cabinet?.enabled) count++;
+    if (effects.chorus?.enabled) count++;
+    if (effects.flanger?.enabled) count++;
+    if (effects.phaser?.enabled) count++;
+    if (effects.delay?.enabled) count++;
+    if (effects.tremolo?.enabled) count++;
+    // Vocal effects
+    if (effects.pitchCorrection?.enabled) count++;
+    if (effects.vocalDoubler?.enabled) count++;
+    if (effects.deEsser?.enabled) count++;
+    if (effects.formantShifter?.enabled) count++;
+    if (effects.harmonizer?.enabled) count++;
+    // Creative effects
+    if (effects.bitcrusher?.enabled) count++;
+    if (effects.ringModulator?.enabled) count++;
+    if (effects.frequencyShifter?.enabled) count++;
+    if (effects.granularDelay?.enabled) count++;
+    // Extended modulation
+    if (effects.rotarySpeaker?.enabled) count++;
+    if (effects.autoPan?.enabled) count++;
+    if (effects.multiFilter?.enabled) count++;
+    if (effects.vibrato?.enabled) count++;
+    // Dynamics/Utility
+    if (effects.transientShaper?.enabled) count++;
+    if (effects.stereoImager?.enabled) count++;
+    if (effects.exciter?.enabled) count++;
+    if (effects.multibandCompressor?.enabled) count++;
+    // Spatial effects
+    if (effects.stereoDelay?.enabled) count++;
+    if (effects.roomSimulator?.enabled) count++;
+    if (effects.shimmerReverb?.enabled) count++;
+    return count;
+  })();
 
   // Focus input when track editor opens
   useEffect(() => {
