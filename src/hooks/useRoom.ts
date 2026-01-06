@@ -416,8 +416,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
           // CRITICAL: Create broadcast stream from AudioEngine's track processors
           // This mixes all armed tracks into a single MediaStream for WebRTC
-          const { useAudioEngineStore } = require('@/stores/audio-engine-store');
-          const audioEngine = useAudioEngineStore.getState().engine;
+          const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
           if (audioEngine) {
             broadcastStream = audioEngine.createBroadcastStream() || undefined;
             console.log('[useRoom] Created broadcast stream for native bridge WebRTC:', broadcastStream ? 'success' : 'failed');
@@ -453,10 +452,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             }
 
             // For web audio mode, also create a broadcast stream from track processors
-            const { useAudioEngineStore } = require('@/stores/audio-engine-store');
-            const audioEngine = useAudioEngineStore.getState().engine;
-            if (audioEngine) {
-              broadcastStream = audioEngine.createBroadcastStream() || undefined;
+            const webAudioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+            if (webAudioEngine) {
+              broadcastStream = webAudioEngine.createBroadcastStream() || undefined;
               // If broadcast stream creation failed, fall back to raw getUserMedia stream
               if (!broadcastStream) {
                 broadcastStream = stream;
