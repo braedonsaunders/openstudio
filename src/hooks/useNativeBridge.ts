@@ -179,10 +179,19 @@ export function useNativeBridge() {
       channelConfig: { channelCount: 1 | 2; leftChannel: number; rightChannel?: number };
     }) => {
       console.log('[useNativeBridge] DeviceConfig confirmed:', data.sampleRate, 'Hz,', data.bufferSize, 'samples');
-      const s = useBridgeAudioStore.getState();
-      // Update store with actual values from native bridge
-      s.setSampleRate(data.sampleRate as 44100 | 48000);
-      s.setBufferSize(data.bufferSize as 32 | 64 | 128 | 256 | 512 | 1024);
+
+      // Update bridge audio store with actual values from native bridge
+      const bridgeStore = useBridgeAudioStore.getState();
+      bridgeStore.setSampleRate(data.sampleRate as 44100 | 48000);
+      bridgeStore.setBufferSize(data.bufferSize as 32 | 64 | 128 | 256 | 512 | 1024);
+
+      // Also update the main audio store settings so UI components (like transport bar) show correct values
+      const audioStore = useAudioStore.getState();
+      audioStore.setSettings({
+        sampleRate: data.sampleRate,
+        bufferSize: data.bufferSize,
+      });
+      audioStore.setCurrentBufferSize(data.bufferSize);
     };
 
     // Handle audio levels from native bridge - update track levels for waveform display
