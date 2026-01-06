@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { v4 as uuidv4 } from 'uuid';
 import { deleteRoomFiles } from '@/lib/storage/r2';
 import { getSupabase, getAdminSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
+import { createRoomSchema, validateRequest } from '@/lib/validation/schemas';
+import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
 
 // Transform database row to API response
 function transformRoom(room: Record<string, unknown>) {
@@ -27,6 +29,13 @@ function transformRoom(room: Record<string, unknown>) {
 }
 
 export async function POST(request: NextRequest) {
+  // Rate limiting for room creation
+  const clientId = getClientIdentifier(request);
+  const rateLimit = checkRateLimit(`room:${clientId}`, rateLimiters.room);
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
   const supabase = getSupabase();
 
   // SECURITY: Require authentication to create rooms
@@ -40,6 +49,16 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
+
+    // SECURITY: Validate input with Zod schema
+    const validation = validateRequest(createRoomSchema, body);
+    if (!validation.success) {
+      return NextResponse.json(
+        { error: validation.error },
+        { status: 400 }
+      );
+    }
+
     const {
       id,
       name,
@@ -48,11 +67,11 @@ export async function POST(request: NextRequest) {
       maxUsers = 10,
       genre,
       tags,
-      rules,
       settings,
-      color = 'indigo',
-      icon = 'music',
-    } = body;
+    } = validation.data;
+
+    // Extract additional fields not in schema (backwards compatibility)
+    const { rules, color = 'indigo', icon = 'music' } = body;
 
     // Use provided ID or generate a new one
     const roomId = id || uuidv4().slice(0, 8);

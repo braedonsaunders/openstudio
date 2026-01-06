@@ -1,24 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
 import { getSupabase, getAdminSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
+import { validateGuestId, getEffectiveUserId } from '@/lib/auth/guest';
+import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
 
 interface RouteContext {
   params: Promise<{ roomId: string }>;
 }
 
+// Helper to check if room is public
+async function isRoomPublic(supabase: ReturnType<typeof getAdminSupabase>, roomId: string): Promise<boolean> {
+  if (!supabase) return false;
+  try {
+    const { data } = await supabase
+      .from('rooms')
+      .select('is_public')
+      .eq('id', roomId)
+      .single();
+    return data?.is_public === true;
+  } catch {
+    return false;
+  }
+}
+
 // GET /api/rooms/[roomId]/permissions - Load all members and their permissions for a room
-// SECURITY: Supports both authenticated users and guests (for joining public rooms)
+// SECURITY: Supports both authenticated users and validated guests (for joining public rooms)
 export async function GET(
   request: NextRequest,
   context: RouteContext
 ) {
-  // Support both authenticated users and guests
+  // Rate limiting
+  const clientId = getClientIdentifier(request);
+  const rateLimit = checkRateLimit(`permissions:${clientId}`, rateLimiters.api);
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
+  // Support both authenticated users and validated guests
   const user = await getUserFromRequest(request);
 
-  // For guests, get userId from query param (they provide their guest ID)
+  // For guests, get userId from query param and validate it
   const { searchParams } = new URL(request.url);
   const guestUserId = searchParams.get('guestUserId');
-  const effectiveUserId = user?.id || guestUserId;
+
+  // SECURITY: Validate guest ID if provided
+  if (!user && guestUserId && !validateGuestId(guestUserId)) {
+    return NextResponse.json(
+      { error: 'Invalid guest ID. Use /api/auth/guest to get a valid guest ID.' },
+      { status: 401 }
+    );
+  }
+
+  const effectiveUserId = getEffectiveUserId(user?.id, guestUserId);
 
   const supabase = getAdminSupabase();
 
@@ -33,13 +66,22 @@ export async function GET(
       );
     }
 
-    // For authenticated users, verify membership
-    // For guests, skip membership check (they're joining)
+    // SECURITY: For authenticated users, verify membership or allow them to see public room info
+    // For guests, verify the room is public before allowing access
     if (user) {
       const membership = await getRoomMembership(roomId, user.id);
       if (!membership) {
         // User is authenticated but not a member - allow reading to see room info
         // They'll get limited permissions as a new joiner
+      }
+    } else if (guestUserId) {
+      // SECURITY: Guests can only access public rooms
+      const roomIsPublic = await isRoomPublic(supabase, roomId);
+      if (!roomIsPublic) {
+        return NextResponse.json(
+          { error: 'This room requires authentication to access' },
+          { status: 403 }
+        );
       }
     }
 
@@ -128,12 +170,19 @@ export async function GET(
 }
 
 // POST /api/rooms/[roomId]/permissions - Add/update a member's permissions
-// SECURITY: Supports authenticated users and guests; users can only add themselves or moderators can add others
+// SECURITY: Supports authenticated users and validated guests; users can only add themselves or moderators can add others
 export async function POST(
   request: NextRequest,
   context: RouteContext
 ) {
-  // Support both authenticated users and guests
+  // Rate limiting
+  const clientId = getClientIdentifier(request);
+  const rateLimit = checkRateLimit(`permissions:${clientId}`, rateLimiters.api);
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
+  // Support both authenticated users and validated guests
   const user = await getUserFromRequest(request);
 
   const supabase = getAdminSupabase();
@@ -143,18 +192,37 @@ export async function POST(
     const body = await request.json();
     const { userId, userName, userAvatar, role, listenerMode } = body;
 
-    // Determine effective user ID: prefer authenticated user, fall back to provided userId
-    const effectiveUserId = user?.id || userId;
+    // SECURITY: Validate guest ID if provided
+    if (!user && userId && !validateGuestId(userId)) {
+      return NextResponse.json(
+        { error: 'Invalid guest ID. Use /api/auth/guest to get a valid guest ID.' },
+        { status: 401 }
+      );
+    }
+
+    // Determine effective user ID: prefer authenticated user, fall back to validated guest ID
+    const effectiveUserId = getEffectiveUserId(user?.id, userId);
 
     if (!effectiveUserId) {
       return NextResponse.json(
-        { error: 'User identification required (either login or provide userId)' },
-        { status: 400 }
+        { error: 'Valid authentication required (login or use /api/auth/guest to get a guest ID)' },
+        { status: 401 }
       );
     }
 
     // Target user for membership: the userId in body, or the effective user
     const targetUserId = userId || effectiveUserId;
+
+    // SECURITY: Guests can only join public rooms
+    if (!user && userId) {
+      const roomIsPublic = await isRoomPublic(supabase, roomId);
+      if (!roomIsPublic) {
+        return NextResponse.json(
+          { error: 'This room requires authentication to join' },
+          { status: 403 }
+        );
+      }
+    }
 
     // If Supabase is not configured, return error
     if (!supabase) {

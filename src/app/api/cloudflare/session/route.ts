@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase, getAdminSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
+import { validateGuestId, getEffectiveUserId } from '@/lib/auth/guest';
+import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
 
 // Cloudflare Calls API configuration
 const CLOUDFLARE_CALLS_APP_ID = process.env.NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID || '';
@@ -86,6 +88,41 @@ async function getRoomSessions(roomId: string): Promise<Map<string, string>> {
   }
 }
 
+// SECURITY: Verify session ownership before deletion
+async function getSessionOwner(roomId: string, sessionId: string): Promise<string | null> {
+  const supabase = getSupabase();
+
+  if (supabase) {
+    try {
+      const { data, error } = await supabase
+        .from('room_webrtc_sessions')
+        .select('user_id')
+        .eq('room_id', roomId)
+        .eq('session_id', sessionId)
+        .single();
+
+      if (error || !data) {
+        return null;
+      }
+
+      return data.user_id;
+    } catch {
+      return null;
+    }
+  }
+
+  // Fallback to in-memory
+  const roomSessions = inMemoryFallback.get(roomId);
+  if (roomSessions) {
+    for (const [uid, sid] of roomSessions.entries()) {
+      if (sid === sessionId) {
+        return uid;
+      }
+    }
+  }
+  return null;
+}
+
 async function removeRoomSession(roomId: string, sessionId: string): Promise<void> {
   const supabase = getSupabase();
 
@@ -113,6 +150,25 @@ async function removeRoomSession(roomId: string, sessionId: string): Promise<voi
   }
 }
 
+// SECURITY: Check if room is public (for guest access)
+async function isRoomPublic(roomId: string): Promise<boolean> {
+  const supabase = getAdminSupabase();
+  if (!supabase) return false;
+
+  try {
+    const { data, error } = await supabase
+      .from('rooms')
+      .select('is_public')
+      .eq('id', roomId)
+      .single();
+
+    if (error || !data) return false;
+    return data.is_public === true;
+  } catch {
+    return false;
+  }
+}
+
 async function callCloudflareAPI(endpoint: string, method: string, body?: object) {
   const url = `${CALLS_API_BASE}${endpoint}`;
   console.log(`Cloudflare API: ${method} ${url}`);
@@ -130,48 +186,72 @@ async function callCloudflareAPI(endpoint: string, method: string, body?: object
   console.log(`Cloudflare API response (${response.status}):`, text);
 
   if (!response.ok) {
-    throw new Error(`Cloudflare API error: ${response.status} - ${text}`);
+    throw new Error(`Cloudflare API error: ${response.status}`);
   }
 
   return text ? JSON.parse(text) : {};
 }
 
 export async function POST(request: NextRequest) {
-  // SECURITY: Support both authenticated users and anonymous guests
-  // Authenticated users get their ID from JWT; guests use client-provided userId
+  // Rate limiting
+  const clientId = getClientIdentifier(request);
+  const rateLimit = checkRateLimit(`webrtc:${clientId}`, rateLimiters.webrtc);
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
+  // SECURITY: Support both authenticated users and validated guest users
   const user = await getUserFromRequest(request);
 
   try {
     const body = await request.json();
-    const { action, roomId, sessionId, trackName, sdp, mid, metadata, userId: clientUserId } = body;
+    const { action, roomId, sessionId, trackName, sdp, mid, userId: clientUserId } = body;
 
-    // Determine effective user ID: prefer authenticated user, fall back to client-provided guest ID
-    const effectiveUserId = user?.id || clientUserId;
+    // SECURITY: Get effective user ID with guest validation
+    const effectiveUserId = getEffectiveUserId(user?.id, clientUserId);
 
     if (!effectiveUserId) {
       return NextResponse.json(
-        { error: 'User identification required (either login or provide guest userId)' },
-        { status: 400 }
+        { error: 'Valid authentication required (login or use /api/auth/guest to get a guest ID)' },
+        { status: 401 }
+      );
+    }
+
+    // SECURITY: For guests, validate the guest ID format
+    if (!user && clientUserId && !validateGuestId(clientUserId)) {
+      return NextResponse.json(
+        { error: 'Invalid guest ID. Use /api/auth/guest to get a valid guest ID.' },
+        { status: 401 }
       );
     }
 
     if (!CLOUDFLARE_CALLS_APP_ID || !CLOUDFLARE_CALLS_APP_SECRET) {
       return NextResponse.json(
-        { error: 'Cloudflare Calls not configured. Set CLOUDFLARE_CALLS_APP_ID and CLOUDFLARE_CALLS_APP_SECRET.' },
-        { status: 500 }
+        { error: 'WebRTC service not configured' },
+        { status: 503 }
       );
     }
 
-    // SECURITY: For authenticated users, verify room membership for room-scoped actions
-    // Anonymous guests can join public rooms (room access control handled by room settings)
-    if (roomId && action !== 'syncClock' && user) {
-      const membership = await getRoomMembership(roomId, user.id);
-      // Allow users to join rooms (they become members), but verify for other actions
-      if (!membership && action !== 'create') {
-        return NextResponse.json(
-          { error: 'You must be a member of this room to perform this action' },
-          { status: 403 }
-        );
+    // SECURITY: For room-scoped actions, verify access
+    if (roomId && action !== 'syncClock') {
+      if (user) {
+        // Authenticated users: verify membership (except for initial join via 'create')
+        const membership = await getRoomMembership(roomId, user.id);
+        if (!membership && action !== 'create') {
+          return NextResponse.json(
+            { error: 'Room membership required' },
+            { status: 403 }
+          );
+        }
+      } else {
+        // Guest users: verify room is public
+        const roomIsPublic = await isRoomPublic(roomId);
+        if (!roomIsPublic) {
+          return NextResponse.json(
+            { error: 'This room requires authentication to join' },
+            { status: 403 }
+          );
+        }
       }
     }
 
@@ -235,7 +315,7 @@ export async function POST(request: NextRequest) {
         if (!remoteSessionId) {
           console.error(`[WebRTC Sessions] No session found for user ${remoteUserId} in room ${roomId}. Available users:`, Array.from(roomSessions.keys()));
           return NextResponse.json(
-            { error: `No session found for user ${remoteUserId}. Available: ${Array.from(roomSessions.keys()).join(', ')}` },
+            { error: 'Remote user session not found' },
             { status: 404 }
           );
         }
@@ -288,9 +368,18 @@ export async function POST(request: NextRequest) {
       }
 
       case 'close': {
+        // SECURITY: Verify session ownership before deletion
+        const owner = await getSessionOwner(roomId, sessionId);
+        if (owner && owner !== effectiveUserId) {
+          return NextResponse.json(
+            { error: 'Cannot close another user\'s session' },
+            { status: 403 }
+          );
+        }
+
         // Close tracks in a session - remove from persistent storage
         await removeRoomSession(roomId, sessionId);
-        console.log(`[WebRTC Sessions] Closed session ${sessionId} in room ${roomId}`);
+        console.log(`[WebRTC Sessions] Closed session ${sessionId} in room ${roomId} by ${effectiveUserId}`);
 
         return NextResponse.json({ success: true });
       }
@@ -364,41 +453,80 @@ export async function POST(request: NextRequest) {
 
       default:
         return NextResponse.json(
-          { error: `Unknown action: ${action}` },
+          { error: 'Unknown action' },
           { status: 400 }
         );
     }
   } catch (error) {
     console.error('Cloudflare session error:', error);
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Failed to process session request' },
+      { error: 'Failed to process request' },
       { status: 500 }
     );
   }
 }
 
 export async function DELETE(request: NextRequest) {
-  // SECURITY: Support both authenticated users and guests for session cleanup
+  // Rate limiting
+  const clientId = getClientIdentifier(request);
+  const rateLimit = checkRateLimit(`webrtc:${clientId}`, rateLimiters.webrtc);
+  if (!rateLimit.success) {
+    return rateLimitResponse(rateLimit);
+  }
+
+  // SECURITY: Get authenticated user or validate guest ID
   const user = await getUserFromRequest(request);
 
   try {
     const { searchParams } = new URL(request.url);
     const sessionId = searchParams.get('sessionId');
     const roomId = searchParams.get('roomId');
+    const guestUserId = searchParams.get('guestUserId');
 
     if (!sessionId) {
       return NextResponse.json(
-        { error: 'Session ID is required' },
+        { error: 'Session ID required' },
         { status: 400 }
       );
     }
 
-    // Remove session from persistent storage
-    // Both authenticated users and guests can clean up their sessions
-    if (roomId) {
-      await removeRoomSession(roomId, sessionId);
-      console.log(`[WebRTC Sessions] Deleted session ${sessionId} from room ${roomId} by user ${user?.id || 'guest'}`);
+    if (!roomId) {
+      return NextResponse.json(
+        { error: 'Room ID required' },
+        { status: 400 }
+      );
     }
+
+    // SECURITY: Get effective user ID with validation
+    const effectiveUserId = getEffectiveUserId(user?.id, guestUserId);
+
+    if (!effectiveUserId) {
+      return NextResponse.json(
+        { error: 'Authentication required' },
+        { status: 401 }
+      );
+    }
+
+    // SECURITY: Validate guest ID if provided
+    if (!user && guestUserId && !validateGuestId(guestUserId)) {
+      return NextResponse.json(
+        { error: 'Invalid guest ID' },
+        { status: 401 }
+      );
+    }
+
+    // SECURITY: Verify session ownership before deletion
+    const owner = await getSessionOwner(roomId, sessionId);
+    if (owner && owner !== effectiveUserId) {
+      return NextResponse.json(
+        { error: 'Cannot delete another user\'s session' },
+        { status: 403 }
+      );
+    }
+
+    // Remove session from persistent storage
+    await removeRoomSession(roomId, sessionId);
+    console.log(`[WebRTC Sessions] Deleted session ${sessionId} from room ${roomId} by ${effectiveUserId}`);
 
     return NextResponse.json({ success: true });
   } catch (error) {
