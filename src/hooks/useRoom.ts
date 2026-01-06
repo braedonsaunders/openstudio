@@ -1,10 +1,52 @@
 'use client';
 
 import { useCallback, useEffect, useRef } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { RealtimeRoomManager } from '@/lib/supabase/realtime';
 import { CloudflareCalls } from '@/lib/cloudflare/calls';
 import { authFetch, authFetchJson } from '@/lib/auth-fetch';
+
+// Storage key for persisted guest ID
+const GUEST_ID_STORAGE_KEY = 'openstudio_guest_id';
+
+/**
+ * Get or create a signed guest ID for unauthenticated users.
+ * Guest IDs are fetched from the server and cached in localStorage.
+ */
+async function getOrCreateGuestId(): Promise<string> {
+  // Check localStorage for existing guest ID
+  if (typeof window !== 'undefined') {
+    const stored = localStorage.getItem(GUEST_ID_STORAGE_KEY);
+    if (stored) {
+      // Validate the stored guest ID is still valid
+      try {
+        const response = await fetch(`/api/auth/guest?guestId=${encodeURIComponent(stored)}`);
+        if (response.ok) {
+          const { valid } = await response.json();
+          if (valid) {
+            return stored;
+          }
+        }
+      } catch {
+        // Validation failed, will generate new ID below
+      }
+    }
+  }
+
+  // Fetch a new signed guest ID from the server
+  const response = await fetch('/api/auth/guest', { method: 'POST' });
+  if (!response.ok) {
+    throw new Error('Failed to generate guest ID');
+  }
+
+  const { guestId } = await response.json();
+
+  // Store for future sessions
+  if (typeof window !== 'undefined') {
+    localStorage.setItem(GUEST_ID_STORAGE_KEY, guestId);
+  }
+
+  return guestId;
+}
 import { useRoomStore } from '@/stores/room-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
@@ -64,10 +106,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const realtimeRef = useRef<RealtimeRoomManager | null>(null);
   const cloudflareRef = useRef<CloudflareCalls | null>(null);
 
-  // Use authenticated user ID if available, otherwise generate a random one for anonymous users
+  // Use authenticated user ID if available, otherwise will be populated with signed guest ID
   // This is initialized once, but updated in join() if auth state changes
   const initialAuthUser = useAuthStore.getState().user;
-  const userIdRef = useRef<string>(initialAuthUser?.id || uuidv4());
+  const userIdRef = useRef<string>(initialAuthUser?.id || '');
 
   // Only destructure state values, not functions - prevents infinite loops
   // All store functions are accessed via getState() inside callbacks
@@ -173,8 +215,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       const authUser = useAuthStore.getState().user;
 
       // Update userIdRef to use authenticated user ID if available
-      if (authUser?.id && userIdRef.current !== authUser.id) {
+      if (authUser?.id) {
         userIdRef.current = authUser.id;
+      } else if (!userIdRef.current || !userIdRef.current.startsWith('guest-')) {
+        // For unauthenticated users, fetch a signed guest ID from the server
+        // This is required for security - the server validates guest ID signatures
+        console.log('[useRoom] Fetching signed guest ID for unauthenticated user');
+        userIdRef.current = await getOrCreateGuestId();
       }
 
       // Create user
