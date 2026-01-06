@@ -141,7 +141,7 @@ export async function POST(
   try {
     const { roomId } = await context.params;
     const body = await request.json();
-    const { userId, userName, userAvatar, role } = body;
+    const { userId, userName, userAvatar, role, listenerMode } = body;
 
     // Determine effective user ID: prefer authenticated user, fall back to provided userId
     const effectiveUserId = user?.id || userId;
@@ -191,10 +191,17 @@ export async function POST(
       .single();
 
     // SECURITY: Non-moderators can only join as default role or lower
+    // Exception: Users can explicitly request 'listener' role (lower than member)
     let memberRole = role || room?.default_role || 'member';
     if (targetUserId === effectiveUserId) {
-      // User joining themselves - can only get default role
-      memberRole = room?.default_role || 'member';
+      // User joining themselves
+      if (listenerMode) {
+        // Listener mode explicitly requested - allow it (listener is lower than member)
+        memberRole = 'listener';
+      } else {
+        // Default behavior - can only get default role
+        memberRole = room?.default_role || 'member';
+      }
     }
 
     // Upsert member record
