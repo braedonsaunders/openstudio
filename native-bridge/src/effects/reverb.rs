@@ -192,7 +192,9 @@ impl Reverb {
         );
 
         // Update comb filter parameters based on decay
-        let feedback = 0.28 + settings.decay * 0.7; // 0.28 to 0.98
+        // Decay is in seconds (0.1-10), normalize to 0-1 range for feedback calculation
+        let decay_normalized = (settings.decay.clamp(0.1, 10.0) - 0.1) / 9.9;
+        let feedback = (0.28 + decay_normalized * 0.65).min(0.93); // 0.28 to 0.93, capped for stability
         let damp = self.get_damping_for_type(settings.reverb_type);
 
         for comb in &mut self.combs_left {
