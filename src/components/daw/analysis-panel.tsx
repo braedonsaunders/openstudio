@@ -222,22 +222,64 @@ export function AnalysisPanel() {
         </div>
       </div>
 
-      {/* Current Chord */}
-      {displayChord && (
-        <div className="px-4 pb-3">
-          <div className="bg-gray-100 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-xl p-3 text-center">
-            <div className="flex items-center justify-center gap-2">
-              <Music className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
-              <span className="text-lg font-semibold text-gray-900 dark:text-white">{displayChord}</span>
-              {localAnalysis?.chordConfidence !== undefined && (
-                <span className="text-xs text-gray-500 dark:text-zinc-500">
-                  {Math.round(localAnalysis.chordConfidence * 100)}%
+      {/* Current Chord / Note - Always Visible */}
+      <div className="px-4 pb-3">
+        <div className="bg-gradient-to-br from-indigo-500/10 to-purple-500/10 dark:from-indigo-500/20 dark:to-purple-500/20 border border-indigo-500/20 dark:border-indigo-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Music className="w-4 h-4 text-indigo-500 dark:text-indigo-400" />
+            <span className="text-[10px] text-indigo-600 dark:text-indigo-400 uppercase tracking-wider font-medium">
+              {displayChord ? 'Current Chord' : localAnalysis?.detectedNote ? 'Detected Note' : 'Chord / Note'}
+            </span>
+          </div>
+          <div className="flex items-center justify-center">
+            {displayChord ? (
+              <div className="text-center">
+                <span className="text-4xl font-bold text-gray-900 dark:text-white tracking-tight">
+                  {displayChord}
                 </span>
-              )}
-            </div>
+                {localAnalysis?.chordConfidence !== undefined && localAnalysis.chordConfidence > 0 && (
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <div className="w-16 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 rounded-full transition-all duration-150"
+                        style={{ width: `${Math.min(100, localAnalysis.chordConfidence * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-zinc-500 tabular-nums">
+                      {Math.round(localAnalysis.chordConfidence * 100)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : localAnalysis?.detectedNote ? (
+              <div className="text-center">
+                <span className="text-4xl font-bold text-gray-700 dark:text-gray-300 tracking-tight">
+                  {localAnalysis.detectedNote}
+                </span>
+                <span className="text-sm text-gray-500 dark:text-zinc-500 ml-1">note</span>
+                {localAnalysis.noteConfidence > 0 && (
+                  <div className="mt-2 flex items-center justify-center gap-2">
+                    <div className="w-16 h-1.5 bg-gray-200 dark:bg-white/10 rounded-full overflow-hidden">
+                      <div
+                        className="h-full bg-purple-500 rounded-full transition-all duration-150"
+                        style={{ width: `${Math.min(100, localAnalysis.noteConfidence * 100)}%` }}
+                      />
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-zinc-500 tabular-nums">
+                      {Math.round(localAnalysis.noteConfidence * 100)}%
+                    </span>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-2">
+                <span className="text-3xl font-bold text-gray-400 dark:text-zinc-600">--</span>
+                <p className="text-xs text-gray-500 dark:text-zinc-600 mt-1">Play audio to detect</p>
+              </div>
+            )}
           </div>
         </div>
-      )}
+      </div>
 
       {/* Spectrum Analyzer - Always Visible */}
       <div className="pb-3">

@@ -14,6 +14,12 @@ export interface AnalysisData {
   // Chord detection
   currentChord: string | null;
   chordConfidence: number;
+  chordRootNote: string | null;
+  chordType: string | null;
+
+  // Note detection (single notes)
+  detectedNote: string | null;
+  noteConfidence: number;
 
   // Spectral features
   spectralCentroid: number;
@@ -97,6 +103,10 @@ const initialAnalysis: AnalysisData = {
   bpmConfidence: 0,
   currentChord: null,
   chordConfidence: 0,
+  chordRootNote: null,
+  chordType: null,
+  detectedNote: null,
+  noteConfidence: 0,
   spectralCentroid: 0,
   spectralRolloff: 0,
   spectralFlux: 0,

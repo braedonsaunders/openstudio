@@ -380,9 +380,13 @@ function analyzeFrame(audioData, frameSize) {
       // Pitch detection failed, ignore
     }
 
-    // Chord detection from HPCP (moderate cost)
+    // Chord and note detection from HPCP (moderate cost)
     let currentChord = null;
     let chordConfidence = 0;
+    let detectedNote = null;
+    let noteConfidence = 0;
+    let chordRootNote = null;
+    let chordType = null;
 
     try {
       hpcpFreqVector = essentia.arrayToVector(new Float32Array(spectrum.spectrum.length));
@@ -392,9 +396,18 @@ function analyzeFrame(audioData, frameSize) {
         true, 500, 0, 4000, false, 0.5, true, sampleRate
       );
       const hpcpArray = essentia.vectorToArray(hpcp.hpcp);
+
+      // Try chord detection first
       const chordResult = detectChordFromHPCP(hpcpArray);
       currentChord = chordResult.chord;
       chordConfidence = chordResult.confidence;
+      chordRootNote = chordResult.rootNote;
+      chordType = chordResult.chordType;
+
+      // Also detect single note (useful when chord isn't clear)
+      const noteResult = detectNoteFromHPCP(hpcpArray);
+      detectedNote = noteResult.note;
+      noteConfidence = noteResult.confidence;
     } catch (e) {}
 
     // Energy estimation using spectral energy relative to RMS
@@ -433,6 +446,10 @@ function analyzeFrame(audioData, frameSize) {
       tunerIsStable,
       currentChord,
       chordConfidence,
+      chordRootNote,
+      chordType,
+      detectedNote,
+      noteConfidence,
       key: lastKey,
       keyScale: lastKeyScale,
       keyConfidence: lastKeyStrength,
@@ -707,49 +724,232 @@ function analyzeLongTerm(combinedAudio) {
   }
 }
 
-// Chord detection from HPCP
+// Extended chord templates for comprehensive chord detection
+// Each template is a 12-dimensional vector representing pitch classes (C, C#, D, D#, E, F, F#, G, G#, A, A#, B)
+// Template values: 1 = root, 0.9 = important chord tone, 0.7 = extension, 0.5 = optional tone
+
+// Base interval patterns (will be rotated for each root)
+const CHORD_PATTERNS = {
+  // Triads
+  major: [1, 0, 0, 0, 0.9, 0, 0, 0.9, 0, 0, 0, 0],        // 1, 3, 5
+  minor: [1, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0, 0],        // 1, b3, 5
+  dim: [1, 0, 0, 0.9, 0, 0, 0.9, 0, 0, 0, 0, 0],          // 1, b3, b5
+  aug: [1, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0],          // 1, 3, #5
+  sus2: [1, 0, 0.9, 0, 0, 0, 0, 0.9, 0, 0, 0, 0],         // 1, 2, 5
+  sus4: [1, 0, 0, 0, 0, 0.9, 0, 0.9, 0, 0, 0, 0],         // 1, 4, 5
+
+  // Seventh chords
+  maj7: [1, 0, 0, 0, 0.9, 0, 0, 0.9, 0, 0, 0, 0.7],       // 1, 3, 5, 7
+  dom7: [1, 0, 0, 0, 0.9, 0, 0, 0.9, 0, 0, 0.7, 0],       // 1, 3, 5, b7
+  min7: [1, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0.7, 0],       // 1, b3, 5, b7
+  minMaj7: [1, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0, 0, 0.7],    // 1, b3, 5, 7
+  dim7: [1, 0, 0, 0.9, 0, 0, 0.9, 0, 0, 0.7, 0, 0],       // 1, b3, b5, bb7
+  halfDim7: [1, 0, 0, 0.9, 0, 0, 0.9, 0, 0, 0, 0.7, 0],   // 1, b3, b5, b7
+  aug7: [1, 0, 0, 0, 0.9, 0, 0, 0, 0.9, 0, 0.7, 0],       // 1, 3, #5, b7
+
+  // Add chords
+  add9: [1, 0, 0.7, 0, 0.9, 0, 0, 0.9, 0, 0, 0, 0],       // 1, 2, 3, 5
+  madd9: [1, 0, 0.7, 0.9, 0, 0, 0, 0.9, 0, 0, 0, 0],      // 1, 2, b3, 5
+
+  // Power chord (common in rock)
+  power: [1, 0, 0, 0, 0, 0, 0, 0.9, 0, 0, 0, 0],          // 1, 5
+};
+
+// Chord type display names and suffix
+const CHORD_DISPLAY = {
+  major: '',
+  minor: 'm',
+  dim: 'dim',
+  aug: 'aug',
+  sus2: 'sus2',
+  sus4: 'sus4',
+  maj7: 'maj7',
+  dom7: '7',
+  min7: 'm7',
+  minMaj7: 'mMaj7',
+  dim7: 'dim7',
+  halfDim7: 'm7b5',
+  aug7: 'aug7',
+  add9: 'add9',
+  madd9: 'madd9',
+  power: '5',
+};
+
+// Root note names
+const ROOT_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B'];
+
+// Rotate array by n positions (for transposing chord templates)
+function rotateTemplate(template, semitones) {
+  const result = new Array(12);
+  for (let i = 0; i < 12; i++) {
+    result[(i + semitones) % 12] = template[i];
+  }
+  return result;
+}
+
+// Build all chord templates (precomputed for performance)
+const ALL_CHORD_TEMPLATES = {};
+for (const [chordType, pattern] of Object.entries(CHORD_PATTERNS)) {
+  for (let root = 0; root < 12; root++) {
+    const chordName = ROOT_NAMES[root] + CHORD_DISPLAY[chordType];
+    ALL_CHORD_TEMPLATES[chordName] = rotateTemplate(pattern, root);
+  }
+}
+
+// Chord detection state for smoothing
+let chordBuffer = [];
+let lastDetectedChord = null;
+let lastChordConfidence = 0;
+let chordHoldFrames = 0;
+const CHORD_BUFFER_SIZE = 5;       // Number of frames to average
+const CHORD_MIN_CONFIDENCE = 0.4;  // Minimum confidence to report chord
+const CHORD_HOLD_FRAMES = 3;       // Frames to hold chord after detection
+
+// Detect chord from HPCP with extended chord types
 function detectChordFromHPCP(hpcp) {
   if (!hpcp || hpcp.length !== 12) {
-    return { chord: null, confidence: 0 };
+    return { chord: null, confidence: 0, rootNote: null, chordType: null };
   }
 
-  const chordTemplates = {
-    'C': [1, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0],
-    'Cm': [1, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0],
-    'D': [0, 0, 1, 0, 0, 0, 1, 0, 0, 1, 0, 0],
-    'Dm': [0, 0, 1, 0, 0, 1, 0, 0, 0, 1, 0, 0],
-    'E': [0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 1],
-    'Em': [0, 0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 1],
-    'F': [1, 0, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0],
-    'Fm': [1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
-    'G': [0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
-    'Gm': [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-    'A': [0, 1, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
-    'Am': [1, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0],
-    'B': [0, 0, 0, 1, 0, 0, 1, 0, 0, 0, 0, 1],
-    'Bm': [0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
-  };
-
+  // Normalize HPCP
   const maxHPCP = Math.max(...hpcp);
-  const normHPCP = maxHPCP > 0 ? hpcp.map(v => v / maxHPCP) : hpcp;
+  if (maxHPCP < 0.01) {
+    // Signal too weak - use held chord or return null
+    if (chordHoldFrames > 0) {
+      chordHoldFrames--;
+      return { chord: lastDetectedChord, confidence: lastChordConfidence * 0.9, rootNote: null, chordType: null };
+    }
+    return { chord: null, confidence: 0, rootNote: null, chordType: null };
+  }
+  const normHPCP = hpcp.map(v => v / maxHPCP);
 
-  let bestChord = '';
+  // Find best matching chord
+  let bestChord = null;
   let bestScore = -1;
+  let bestRoot = null;
+  let bestType = null;
 
-  for (const [chord, template] of Object.entries(chordTemplates)) {
+  for (const [chordName, template] of Object.entries(ALL_CHORD_TEMPLATES)) {
+    // Weighted dot product correlation
     let score = 0;
+    let templateSum = 0;
     for (let i = 0; i < 12; i++) {
       score += normHPCP[i] * template[i];
+      templateSum += template[i];
     }
+    // Normalize by template weight
+    score = score / templateSum;
+
+    // Penalize complex chords slightly to prefer simpler interpretations
+    const isComplex = chordName.includes('7') || chordName.includes('dim') || chordName.includes('aug') || chordName.includes('add');
+    if (isComplex) {
+      score *= 0.95;
+    }
+
     if (score > bestScore) {
       bestScore = score;
-      bestChord = chord;
+      bestChord = chordName;
+      // Extract root and type
+      for (let r = 0; r < 12; r++) {
+        if (chordName.startsWith(ROOT_NAMES[r])) {
+          bestRoot = ROOT_NAMES[r];
+          bestType = chordName.slice(ROOT_NAMES[r].length) || 'major';
+          break;
+        }
+      }
     }
   }
 
+  // Add to buffer for smoothing
+  if (bestChord && bestScore > CHORD_MIN_CONFIDENCE) {
+    chordBuffer.push({ chord: bestChord, score: bestScore });
+    if (chordBuffer.length > CHORD_BUFFER_SIZE) {
+      chordBuffer.shift();
+    }
+  }
+
+  // Find most frequent chord in buffer (temporal smoothing)
+  let finalChord = bestChord;
+  let finalConfidence = bestScore;
+
+  if (chordBuffer.length >= 3) {
+    const chordCounts = {};
+    let totalScore = 0;
+    for (const item of chordBuffer) {
+      if (!chordCounts[item.chord]) {
+        chordCounts[item.chord] = { count: 0, totalScore: 0 };
+      }
+      chordCounts[item.chord].count++;
+      chordCounts[item.chord].totalScore += item.score;
+      totalScore += item.score;
+    }
+
+    // Find most common chord
+    let maxCount = 0;
+    for (const [chord, data] of Object.entries(chordCounts)) {
+      if (data.count > maxCount || (data.count === maxCount && data.totalScore > chordCounts[finalChord]?.totalScore)) {
+        maxCount = data.count;
+        finalChord = chord;
+        finalConfidence = data.totalScore / data.count;
+      }
+    }
+  }
+
+  // Apply confidence threshold
+  if (finalConfidence < CHORD_MIN_CONFIDENCE) {
+    // Hold previous chord briefly
+    if (chordHoldFrames > 0) {
+      chordHoldFrames--;
+      return { chord: lastDetectedChord, confidence: lastChordConfidence * 0.9, rootNote: bestRoot, chordType: bestType };
+    }
+    return { chord: null, confidence: finalConfidence, rootNote: null, chordType: null };
+  }
+
+  // Update state
+  lastDetectedChord = finalChord;
+  lastChordConfidence = finalConfidence;
+  chordHoldFrames = CHORD_HOLD_FRAMES;
+
   return {
-    chord: bestScore > 0.5 ? bestChord : null,
-    confidence: bestScore,
+    chord: finalChord,
+    confidence: finalConfidence,
+    rootNote: bestRoot,
+    chordType: bestType,
+  };
+}
+
+// Detect single note from HPCP (for when a chord isn't detected)
+function detectNoteFromHPCP(hpcp) {
+  if (!hpcp || hpcp.length !== 12) {
+    return { note: null, confidence: 0 };
+  }
+
+  // Find the strongest pitch class
+  let maxValue = 0;
+  let maxIndex = -1;
+  let secondMax = 0;
+
+  for (let i = 0; i < 12; i++) {
+    if (hpcp[i] > maxValue) {
+      secondMax = maxValue;
+      maxValue = hpcp[i];
+      maxIndex = i;
+    } else if (hpcp[i] > secondMax) {
+      secondMax = hpcp[i];
+    }
+  }
+
+  if (maxValue < 0.01 || maxIndex < 0) {
+    return { note: null, confidence: 0 };
+  }
+
+  // Confidence based on how dominant the note is
+  const ratio = secondMax > 0 ? maxValue / secondMax : 10;
+  const confidence = Math.min(1, (ratio - 1) / 3); // ratio of 4:1 = full confidence
+
+  return {
+    note: ROOT_NAMES[maxIndex],
+    confidence: confidence,
   };
 }
 
@@ -758,6 +958,10 @@ function reset() {
   audioFrameBuffer = [];
   bpmBuffer = [];
   keyBuffer = [];
+  chordBuffer = [];
+  lastDetectedChord = null;
+  lastChordConfidence = 0;
+  chordHoldFrames = 0;
   lastBPM = null;
   lastKey = null;
   lastKeyScale = null;
