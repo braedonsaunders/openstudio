@@ -22,25 +22,6 @@
 
 ---
 
-## 🎯 The Problem
-
-Every musician knows the pain:
-
-> *"Hey, want to jam?"*
-> *"Sure! Let me just... set up OBS, configure ASIO, open Discord, share my screen, deal with 200ms latency, and... actually, never mind."*
-
-**Online jamming has been broken for decades.** Existing solutions either:
-- Have unplayable latency (100ms+)
-- Require complex networking setup (port forwarding, VPNs)
-- Need expensive dedicated hardware
-- Don't work in the browser
-
-**OpenStudio fixes all of this.**
-
----
-
-## ⚡ The Solution
-
 OpenStudio is a **browser-based collaborative music studio** that achieves **sub-30ms latency** worldwide — low enough to actually play music together in real-time.
 
 ```
@@ -77,8 +58,6 @@ OpenStudio is a **browser-based collaborative music studio** that achieves **sub
 | Feature | Description |
 |---------|-------------|
 | **AI Stem Separation** | Isolate vocals, drums, bass, and instruments from any track (Meta SAM) |
-| **AI Track Generation** | Describe what you want → get a backing track (Suno AI) |
-| **Endless Mode** | AI continuously extends your backing track as you play |
 | **Real-time Music AI** | Google Lyria integration for live music generation |
 
 ### 🎵 Complete Backing Track System
