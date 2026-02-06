@@ -58,7 +58,7 @@ import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import type { QualityPresetName, OpusEncodingSettings } from '@/types';
 import { useAudioEngine } from './useAudioEngine';
 import { useStatsTracker } from './useStatsTracker';
-import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
+import type { User, Room, BackingTrack, TrackQueue, UserTrack, StemMixState } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
 import type { SongTrackReference } from '@/types/songs';
@@ -139,6 +139,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     seekTo,
     updateFromStats,
     destroyEngine,
+    toggleStem: audioToggleStem,
+    setStemVolume: audioSetStemVolume,
     // For connecting MediaStream to TrackAudioProcessor for monitoring
     getOrCreateTrackProcessor,
     setTrackMediaStreamInput,
@@ -669,6 +671,17 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             if (currentQueue.tracks.length > 0) {
               console.log(`[useRoom] Broadcasting queue with ${currentQueue.tracks.length} tracks to new users`);
               realtime.broadcastQueueUpdate(currentQueue);
+
+              // CRITICAL: If a track is currently playing, broadcast the playback state
+              // so late joiners can start playing from the current position
+              const audioState = useAudioStore.getState();
+              const currentTrackFromStore = useRoomStore.getState().currentTrack;
+              if (currentQueue.isPlaying && currentTrackFromStore) {
+                const currentPlaybackTime = audioState.currentTime || 0;
+                const syncTime = Date.now() + 200; // Give late joiner time to load
+                console.log(`[useRoom] Broadcasting current playback state to late joiner: track=${currentTrackFromStore.id}, time=${currentPlaybackTime}`);
+                realtime.broadcastPlay(currentTrackFromStore.id, currentPlaybackTime, syncTime);
+              }
             }
 
             // Broadcast all user tracks so new joiners see everyone's tracks
@@ -688,6 +701,21 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             if (roomSongs.length > 0) {
               realtime.broadcastSongsSync(roomSongs, songsState.currentSongId);
               console.log(`[useRoom] Broadcast ${roomSongs.length} songs to new users`);
+            }
+
+            // Broadcast current loop tracks so new joiners can sync
+            const loopTracksState = useLoopTracksStore.getState();
+            const allLoopTracks = Array.from(loopTracksState.tracks.values());
+            if (allLoopTracks.length > 0) {
+              realtime.broadcastLoopTrackSync(allLoopTracks);
+              console.log(`[useRoom] Broadcast ${allLoopTracks.length} loop tracks to new users`);
+            }
+
+            // Broadcast current permissions so new joiners get accurate role info
+            const permissionsState = usePermissionsStore.getState();
+            if (permissionsState.members.length > 0) {
+              realtime.broadcastPermissionsSync(permissionsState.members, permissionsState.defaultRole);
+              console.log(`[useRoom] Broadcast permissions to new users`);
             }
           }, 500);
         }
@@ -771,8 +799,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       });
 
-      realtime.on('track:pause', () => {
+      realtime.on('track:pause', (data) => {
+        const payload = data as { trackId: string; timestamp: number; userId: string };
         pauseBackingTrack();
+        // Save the playback position from the master so we can resume from this point
+        if (payload.timestamp !== undefined) {
+          const { setQueueTime } = useRoomStore.getState();
+          setQueueTime(payload.timestamp);
+          useAudioStore.getState().setCurrentTime(payload.timestamp);
+        }
         setQueuePlaying(false);
       });
 
@@ -791,8 +826,17 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       });
 
-      realtime.on('track:next', () => {
-        nextTrack();
+      realtime.on('track:next', (data) => {
+        const payload = data as { index: number; userId: string };
+        // Use jumpToTrack with the specific index from the broadcast
+        // This handles both forward (skipToNext) and backward (skipToPrevious) navigation
+        const { jumpToTrack: storeJumpToTrack } = useRoomStore.getState();
+        if (payload.index !== undefined) {
+          storeJumpToTrack(payload.index);
+        } else {
+          // Fallback for legacy broadcasts without index
+          nextTrack();
+        }
       });
 
       realtime.on('user:mute', (data) => {
@@ -902,6 +946,44 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         if (payload.userId === user.id) return;
         const loopTracksStore = useLoopTracksStore.getState();
         loopTracksStore.loadTracks(payload.tracks);
+      });
+
+      // Stem toggle sync handler - sync stem mute/unmute across all clients
+      realtime.on('stem:toggle', (data) => {
+        const payload = data as { trackId: string; stem: string; enabled: boolean; userId: string };
+        if (payload.userId === user.id) return;
+
+        // Update the room store's stem mix state
+        const roomStore = useRoomStore.getState();
+        const stemKey = payload.stem as keyof StemMixState;
+        if (roomStore.stemMixState[stemKey]) {
+          roomStore.setStemMixState({
+            ...roomStore.stemMixState,
+            [stemKey]: {
+              ...roomStore.stemMixState[stemKey],
+              enabled: payload.enabled,
+            },
+          });
+        }
+
+        // Apply to audio engine
+        audioToggleStem(payload.stem, payload.enabled);
+      });
+
+      // Stem volume sync handler - sync stem volume changes across all clients
+      realtime.on('stem:volume', (data) => {
+        const payload = data as { trackId: string; stem: string; volume: number; userId: string };
+        if (payload.userId === user.id) return;
+
+        // Update the room store's stem mix state
+        const roomStore = useRoomStore.getState();
+        const stemKey = payload.stem as keyof StemMixState;
+        if (roomStore.stemMixState[stemKey]) {
+          roomStore.setStemVolume(stemKey, payload.volume);
+        }
+
+        // Apply to audio engine
+        audioSetStemVolume(payload.stem, payload.volume);
       });
 
       // Tempo broadcast handlers - sync BPM/time signature across all clients
@@ -1752,6 +1834,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   // Broadcast new user track creation
   const broadcastUserTrackAdd = useCallback((track: UserTrack) => {
     realtimeRef.current?.broadcastUserTrackAdd(track);
+    // Update broadcast connections so the new track's audio is included in WebRTC stream
+    const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+    if (audioEngine?.updateBroadcastConnections) {
+      audioEngine.updateBroadcastConnections();
+      console.log('[useRoom] Updated broadcast connections after new track added');
+    }
   }, []);
 
   // Broadcast tempo updates (for real-time sync of BPM/time signature)
@@ -1792,6 +1880,22 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const broadcastSongSelect = useCallback((songId: string) => {
     realtimeRef.current?.broadcastSongSelect(songId);
   }, []);
+
+  // Broadcast stem toggle - syncs stem mute/unmute to all room members
+  const broadcastStemToggle = useCallback((trackId: string, stem: string, enabled: boolean) => {
+    // Apply to local audio engine
+    audioToggleStem(stem, enabled);
+    // Broadcast to other users
+    realtimeRef.current?.broadcastStemToggle(trackId, stem, enabled);
+  }, [audioToggleStem]);
+
+  // Broadcast stem volume - syncs stem volume changes to all room members
+  const broadcastStemVolume = useCallback((trackId: string, stem: string, volume: number) => {
+    // Apply to local audio engine
+    audioSetStemVolume(stem, volume);
+    // Broadcast to other users
+    realtimeRef.current?.broadcastStemVolume(trackId, stem, volume);
+  }, [audioSetStemVolume]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1849,5 +1953,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     broadcastSongPause,
     broadcastSongSeek,
     broadcastSongSelect,
+    // Stem control
+    broadcastStemToggle,
+    broadcastStemVolume,
   };
 }

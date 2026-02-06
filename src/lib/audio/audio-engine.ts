@@ -63,6 +63,7 @@ export class AudioEngine {
   // WebRTC broadcast support - mixes MIDI audio with mic for streaming
   private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
   private broadcastMixerGain: GainNode | null = null;
+  private broadcastSongGain: GainNode | null = null; // Routes song/backing track audio to broadcast
   private midiSourceNode: MediaStreamAudioSourceNode | null = null;
   private midiMixGain: GainNode | null = null;
 
@@ -1246,6 +1247,17 @@ export class AudioEngine {
       console.log(`[AudioEngine] Connected ${this.trackProcessors.size} tracks to broadcast mix`);
     }
 
+    // CRITICAL: Route song audio (backing tracks, stems, Lyria AI) to broadcast
+    // Without this, listeners only hear performer mic/instrument audio but NOT the backing track.
+    // Song signal chain: backingTrackGain/externalSources → songGain → broadcastSongGain → broadcastMixerGain
+    if (this.songGain && this.broadcastMixerGain && !this.broadcastSongGain) {
+      this.broadcastSongGain = this.audioContext.createGain();
+      this.broadcastSongGain.gain.value = 1.0;
+      this.songGain.connect(this.broadcastSongGain);
+      this.broadcastSongGain.connect(this.broadcastMixerGain);
+      console.log('[AudioEngine] Song audio (backing tracks/stems) connected to broadcast mix');
+    }
+
     // Connect MIDI stream to broadcast mixer if provided
     if (midiStream && this.broadcastMixerGain) {
       if (this.midiSourceNode) {
@@ -1274,11 +1286,20 @@ export class AudioEngine {
    * Call this after adding new tracks while broadcast is active
    */
   updateBroadcastConnections(): void {
-    if (!this.broadcastMixerGain) return;
+    if (!this.broadcastMixerGain || !this.audioContext) return;
 
     for (const processor of this.trackProcessors.values()) {
-      // Only connect if not already connected
       processor.getBroadcastNode().connect(this.broadcastMixerGain);
+    }
+
+    // Ensure song audio is still connected to broadcast
+    // This can become disconnected after sample rate changes or engine recreation
+    if (this.songGain && !this.broadcastSongGain) {
+      this.broadcastSongGain = this.audioContext.createGain();
+      this.broadcastSongGain.gain.value = 1.0;
+      this.songGain.connect(this.broadcastSongGain);
+      this.broadcastSongGain.connect(this.broadcastMixerGain);
+      console.log('[AudioEngine] Reconnected song audio to broadcast mix');
     }
   }
 
@@ -2103,6 +2124,8 @@ export class AudioEngine {
 
     // Clean up broadcast resources
     this.disconnectMidiFromBroadcast();
+    this.broadcastSongGain?.disconnect();
+    this.broadcastSongGain = null;
     this.broadcastMixerGain?.disconnect();
     this.broadcastMixerGain = null;
     this.broadcastDestination = null;

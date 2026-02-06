@@ -467,6 +467,14 @@ export class RealtimeRoomManager {
     });
   }
 
+  async broadcastStemVolume(trackId: string, stem: string, volume: number): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'stem:volume',
+      payload: { trackId, stem, volume, userId: this.userId },
+    });
+  }
+
   async broadcastAIGeneration(request: { prompt: string; status: string; trackId?: string }): Promise<void> {
     await this.channel?.send({
       type: 'broadcast',

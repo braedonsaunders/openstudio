@@ -211,6 +211,9 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     broadcastSongPause,
     broadcastSongSeek,
     broadcastSongSelect,
+    // Stem control
+    broadcastStemToggle,
+    broadcastStemVolume,
   } = useRoom(roomId, {
     // Song sync callbacks - use refs so we can update them after audio engine is available
     onSongPlay: (payload) => handleSongPlayRef.current(payload),
@@ -1268,12 +1271,20 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
   const handleToggleStem = useCallback((stem: StemType, enabled: boolean) => {
     toggleStem(stem, enabled);
     storeToggleStem(stem as 'vocals' | 'drums' | 'bass' | 'other');
-  }, [toggleStem, storeToggleStem]);
+    // Broadcast stem toggle to other room members
+    if (currentTrack?.id) {
+      broadcastStemToggle(currentTrack.id, stem, enabled);
+    }
+  }, [toggleStem, storeToggleStem, broadcastStemToggle, currentTrack]);
 
   const handleStemVolume = useCallback((stem: StemType, volume: number) => {
     setStemVolume(stem, volume);
     storeStemVolume(stem as 'vocals' | 'drums' | 'bass' | 'other', volume);
-  }, [setStemVolume, storeStemVolume]);
+    // Broadcast stem volume to other room members
+    if (currentTrack?.id) {
+      broadcastStemVolume(currentTrack.id, stem, volume);
+    }
+  }, [setStemVolume, storeStemVolume, broadcastStemVolume, currentTrack]);
 
   // Quality/Latency settings handlers
   const handlePresetChange = useCallback((preset: QualityPresetName) => {
