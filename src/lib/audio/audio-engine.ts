@@ -63,6 +63,7 @@ export class AudioEngine {
   // WebRTC broadcast support - mixes MIDI audio with mic for streaming
   private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
   private broadcastMixerGain: GainNode | null = null;
+  private broadcastSongGain: GainNode | null = null; // Routes song/backing track audio to broadcast
   private midiSourceNode: MediaStreamAudioSourceNode | null = null;
   private midiMixGain: GainNode | null = null;
 
@@ -70,6 +71,15 @@ export class AudioEngine {
   private bridgeWorkletNode: AudioWorkletNode | null = null;
   private bridgeWorkletReady: boolean = false;
   private useBridgeAudio: boolean = false;
+
+  // Remote audio capture for native bridge routing
+  // When native bridge is active, incoming WebRTC streams are captured and forwarded
+  // to the Rust engine for mixing and output through ASIO/CoreAudio
+  private remoteCaptureWorklets: Map<string, AudioWorkletNode> = new Map();
+  private remoteCaptureWorkletLoaded: boolean = false;
+  private onRemoteAudioCaptured: ((userId: string, samples: Float32Array) => void) | null = null;
+  private onRemoteUserAdded: ((userId: string) => void) | null = null;
+  private onRemoteUserRemoved: ((userId: string) => void) | null = null;
   private stemMixState: StemMixState = {
     vocals: { enabled: true, volume: 1 },
     drums: { enabled: true, volume: 1 },
@@ -172,6 +182,24 @@ export class AudioEngine {
     } catch (error) {
       console.warn('AudioWorklet not available, falling back to ScriptProcessor:', error);
     }
+
+    // Register AudioContext state change handler for mobile browser suspensions
+    // iOS Safari and Android can suspend the AudioContext at any time (phone calls, backgrounding, etc.)
+    this.audioContext.onstatechange = () => {
+      const state = this.audioContext?.state;
+      console.log(`[AudioEngine] AudioContext state changed: ${state}`);
+
+      if (state === 'suspended') {
+        console.log('[AudioEngine] AudioContext suspended, attempting auto-resume...');
+        this.audioContext?.resume()
+          .then(() => {
+            console.log('[AudioEngine] AudioContext auto-resumed successfully');
+          })
+          .catch((error) => {
+            console.warn('[AudioEngine] AudioContext auto-resume failed (user interaction may be required):', error);
+          });
+      }
+    };
 
     // Start level monitoring
     this.startLevelMonitoring();
@@ -531,6 +559,43 @@ export class AudioEngine {
     return this.useBridgeAudio;
   }
 
+  /**
+   * Set callbacks for routing remote audio to the native bridge.
+   * When native bridge is active, incoming WebRTC audio is captured and forwarded
+   * to the Rust engine via these callbacks for mixing through ASIO/CoreAudio output.
+   * @param onCapture Called with (userId, samples) for each batch of captured audio
+   * @param onAdded Called when a remote user stream is added
+   * @param onRemoved Called when a remote user stream is removed
+   */
+  setNativeBridgeCallbacks(
+    onCapture: ((userId: string, samples: Float32Array) => void) | null,
+    onAdded: ((userId: string) => void) | null,
+    onRemoved: ((userId: string) => void) | null
+  ): void {
+    this.onRemoteAudioCaptured = onCapture;
+    this.onRemoteUserAdded = onAdded;
+    this.onRemoteUserRemoved = onRemoved;
+    console.log('[AudioEngine] Native bridge callbacks', onCapture ? 'registered' : 'cleared');
+  }
+
+  /**
+   * Load the remote capture AudioWorklet module.
+   * Must be called before addRemoteStream when bridge routing is needed.
+   */
+  private async loadRemoteCaptureWorklet(): Promise<void> {
+    if (this.remoteCaptureWorkletLoaded || !this.audioContext) return;
+
+    try {
+      await this.audioContext.audioWorklet.addModule('/audio/remote-capture-processor.js');
+      this.remoteCaptureWorkletLoaded = true;
+      console.log('[AudioEngine] Remote capture worklet loaded');
+    } catch (err) {
+      // Module may already be loaded
+      this.remoteCaptureWorkletLoaded = true;
+      console.log('[AudioEngine] Remote capture worklet already loaded or error:', err);
+    }
+  }
+
   async addRemoteStream(userId: string, stream: MediaStream): Promise<void> {
     if (!this.audioContext || !this.masterGain) {
       console.warn('[AudioEngine] Cannot add remote stream: AudioContext not initialized');
@@ -590,8 +655,19 @@ export class AudioEngine {
         level: 0,
       });
 
+      // NATIVE BRIDGE ROUTING: When bridge audio is active, also capture remote audio
+      // and forward it to the Rust engine for mixing through ASIO/CoreAudio output.
+      // This ensures performers hear ALL audio through their low-latency interface.
+      if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
+        await this.setupRemoteCapture(userId, gainNode);
+      }
+
+      // Notify native bridge that a remote user was added
+      this.onRemoteUserAdded?.(userId);
+
       console.log('[AudioEngine] Added remote stream for user:', userId,
-        'AudioContext state:', this.audioContext.state);
+        'AudioContext state:', this.audioContext.state,
+        'bridgeCapture:', this.useBridgeAudio && this.onRemoteAudioCaptured ? 'enabled' : 'disabled');
     } catch (err) {
       console.error('[AudioEngine] Failed to add remote stream:', userId, err);
       // On iOS Safari, this can fail if the stream is invalid or context is in wrong state
@@ -612,11 +688,56 @@ export class AudioEngine {
           gainNode.connect(analyser);
           gainNode.connect(this.masterGain);
           this.remoteStreams.set(userId, { userId, stream, analyser, gainNode, delayNode, level: 0 });
+
+          // Also set up capture for retry path
+          if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
+            await this.setupRemoteCapture(userId, gainNode);
+          }
+          this.onRemoteUserAdded?.(userId);
+
           console.log('[AudioEngine] Remote stream connected after retry:', userId);
         } catch (retryErr) {
           console.error('[AudioEngine] Retry failed for remote stream:', userId, retryErr);
         }
       }
+    }
+  }
+
+  /**
+   * Set up an AudioWorklet to capture remote audio for native bridge routing.
+   * Inserts a capture node in the signal chain that extracts raw samples
+   * and forwards them via callback to the native bridge's Rust engine.
+   */
+  private async setupRemoteCapture(userId: string, sourceNode: AudioNode): Promise<void> {
+    if (!this.audioContext) return;
+
+    await this.loadRemoteCaptureWorklet();
+
+    try {
+      const captureNode = new AudioWorkletNode(this.audioContext, 'remote-capture-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+
+      // Handle captured audio samples from the worklet
+      const captureCallback = this.onRemoteAudioCaptured;
+      captureNode.port.onmessage = (event) => {
+        if (event.data.type === 'audio' && captureCallback) {
+          captureCallback(userId, event.data.samples);
+        }
+      };
+
+      // Insert capture node: sourceNode -> captureNode -> (continues to masterGain)
+      // The capture node passes audio through unchanged while also extracting samples
+      sourceNode.connect(captureNode);
+      // captureNode output is not connected to anything since sourceNode already routes to masterGain
+      // The worklet captures by tapping the input
+
+      this.remoteCaptureWorklets.set(userId, captureNode);
+      console.log(`[AudioEngine] Remote capture enabled for user ${userId}`);
+    } catch (err) {
+      console.error(`[AudioEngine] Failed to set up remote capture for ${userId}:`, err);
     }
   }
 
@@ -656,6 +777,18 @@ export class AudioEngine {
       streamData.stream.getTracks().forEach((track) => track.stop());
       this.remoteStreams.delete(userId);
     }
+
+    // Clean up remote capture worklet for native bridge
+    const captureNode = this.remoteCaptureWorklets.get(userId);
+    if (captureNode) {
+      captureNode.port.postMessage({ type: 'stop' });
+      captureNode.disconnect();
+      this.remoteCaptureWorklets.delete(userId);
+      console.log(`[AudioEngine] Remote capture cleaned up for user ${userId}`);
+    }
+
+    // Notify native bridge that remote user was removed
+    this.onRemoteUserRemoved?.(userId);
   }
 
   setRemoteVolume(userId: string, volume: number): void {
@@ -1111,6 +1244,20 @@ export class AudioEngine {
   }
 
   /**
+   * Get all track processor IDs that have bridge input configured.
+   * Used to distribute bridge audio to all tracks (not just primary).
+   */
+  getBridgeTrackIds(): string[] {
+    const ids: string[] = [];
+    for (const [trackId, processor] of this.trackProcessors) {
+      if (processor.getInputSourceType() === 'bridge') {
+        ids.push(trackId);
+      }
+    }
+    return ids;
+  }
+
+  /**
    * Enable multi-track bridge audio mode
    * Sets up bridge input for all configured tracks
    * @param trackConfigs Array of track configurations
@@ -1246,6 +1393,17 @@ export class AudioEngine {
       console.log(`[AudioEngine] Connected ${this.trackProcessors.size} tracks to broadcast mix`);
     }
 
+    // CRITICAL: Route song audio (backing tracks, stems, Lyria AI) to broadcast
+    // Without this, listeners only hear performer mic/instrument audio but NOT the backing track.
+    // Song signal chain: backingTrackGain/externalSources → songGain → broadcastSongGain → broadcastMixerGain
+    if (this.songGain && this.broadcastMixerGain && !this.broadcastSongGain) {
+      this.broadcastSongGain = this.audioContext.createGain();
+      this.broadcastSongGain.gain.value = 1.0;
+      this.songGain.connect(this.broadcastSongGain);
+      this.broadcastSongGain.connect(this.broadcastMixerGain);
+      console.log('[AudioEngine] Song audio (backing tracks/stems) connected to broadcast mix');
+    }
+
     // Connect MIDI stream to broadcast mixer if provided
     if (midiStream && this.broadcastMixerGain) {
       if (this.midiSourceNode) {
@@ -1274,11 +1432,20 @@ export class AudioEngine {
    * Call this after adding new tracks while broadcast is active
    */
   updateBroadcastConnections(): void {
-    if (!this.broadcastMixerGain) return;
+    if (!this.broadcastMixerGain || !this.audioContext) return;
 
     for (const processor of this.trackProcessors.values()) {
-      // Only connect if not already connected
       processor.getBroadcastNode().connect(this.broadcastMixerGain);
+    }
+
+    // Ensure song audio is still connected to broadcast
+    // This can become disconnected after sample rate changes or engine recreation
+    if (this.songGain && !this.broadcastSongGain) {
+      this.broadcastSongGain = this.audioContext.createGain();
+      this.broadcastSongGain.gain.value = 1.0;
+      this.songGain.connect(this.broadcastSongGain);
+      this.broadcastSongGain.connect(this.broadcastMixerGain);
+      console.log('[AudioEngine] Reconnected song audio to broadcast mix');
     }
   }
 
@@ -1500,7 +1667,7 @@ export class AudioEngine {
     this.stemBuffers.set(stemType, buffer);
   }
 
-  playBackingTrack(syncTimestamp: number, offset: number = 0): void {
+  async playBackingTrack(syncTimestamp: number, offset: number = 0): Promise<void> {
     if (!this.audioContext) {
       console.error('Cannot play: audio context not initialized');
       return;
@@ -1514,10 +1681,15 @@ export class AudioEngine {
       return;
     }
 
-    // Resume if suspended
+    // Resume if suspended (must await for iOS Safari)
     if (this.audioContext.state === 'suspended') {
-      console.log('Resuming suspended audio context');
-      this.audioContext.resume();
+      console.log('[AudioEngine] Resuming suspended audio context for backing track playback');
+      try {
+        await this.audioContext.resume();
+      } catch (error) {
+        console.error('[AudioEngine] Failed to resume audio context:', error);
+        return;
+      }
     }
 
     this.stopBackingTrack();
@@ -1550,8 +1722,19 @@ export class AudioEngine {
     this.isPlaying = true;
   }
 
-  playStemmedTrack(syncTimestamp: number, offset: number = 0): void {
+  async playStemmedTrack(syncTimestamp: number, offset: number = 0): Promise<void> {
     if (!this.audioContext || !this.backingTrackGain) return;
+
+    // Resume if suspended (must await for iOS Safari)
+    if (this.audioContext.state === 'suspended') {
+      console.log('[AudioEngine] Resuming suspended audio context for stem playback');
+      try {
+        await this.audioContext.resume();
+      } catch (error) {
+        console.error('[AudioEngine] Failed to resume audio context for stems:', error);
+        return;
+      }
+    }
 
     this.stopStemmedTrack();
 
@@ -1708,18 +1891,24 @@ export class AudioEngine {
    * @param syncTimestamp Timestamp to sync playback to
    * @param trackConfigs Array of { trackId, offset, volume, muted }
    */
-  playMultiTracks(
+  async playMultiTracks(
     syncTimestamp: number,
     trackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }>
-  ): void {
+  ): Promise<void> {
     if (!this.audioContext || !this.masterGain) {
       console.error('[AudioEngine] Cannot play multi-tracks: audio context not ready');
       return;
     }
 
-    // Resume if suspended
+    // Resume if suspended (must await for iOS Safari)
     if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+      console.log('[AudioEngine] Resuming suspended audio context for multi-track playback');
+      try {
+        await this.audioContext.resume();
+      } catch (error) {
+        console.error('[AudioEngine] Failed to resume audio context for multi-tracks:', error);
+        return;
+      }
     }
 
     // Stop any currently playing multi-tracks
@@ -2075,6 +2264,7 @@ export class AudioEngine {
 
     this.stopBackingTrack();
     this.stopStemmedTrack();
+    this.clearMultiTracks();
 
     // Clean up track processors
     for (const processor of this.trackProcessors.values()) {
@@ -2103,6 +2293,8 @@ export class AudioEngine {
 
     // Clean up broadcast resources
     this.disconnectMidiFromBroadcast();
+    this.broadcastSongGain?.disconnect();
+    this.broadcastSongGain = null;
     this.broadcastMixerGain?.disconnect();
     this.broadcastMixerGain = null;
     this.broadcastDestination = null;

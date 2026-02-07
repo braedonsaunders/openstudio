@@ -211,6 +211,10 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     broadcastSongPause,
     broadcastSongSeek,
     broadcastSongSelect,
+    broadcastSongTrackStates,
+    // Stem control
+    broadcastStemToggle,
+    broadcastStemVolume,
   } = useRoom(roomId, {
     // Song sync callbacks - use refs so we can update them after audio engine is available
     onSongPlay: (payload) => handleSongPlayRef.current(payload),
@@ -1008,6 +1012,8 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
 
   // Real-time sync of audio track mute/solo state with multi-track volume
   // This allows mute/solo buttons to work during playback
+  // Also broadcasts changes to other room members when master adjusts mix
+  const lastBroadcastTrackStatesRef = useRef<string>('');
   useEffect(() => {
     if (!isPlaying || !hasAudioTracks) return;
 
@@ -1021,7 +1027,22 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
         setMultiTrackVolume(track.audioTrack.id, track.ref.volume ?? 1, isEffectivelyMuted);
       }
     }
-  }, [isPlaying, hasAudioTracks, songTracks, setMultiTrackVolume]);
+
+    // Broadcast track state changes to other room members
+    if (isMaster && currentSong) {
+      const trackStates = songTracks.map(t => ({
+        trackRefId: t.ref.id,
+        muted: t.ref.muted ?? false,
+        solo: t.ref.solo ?? false,
+        volume: t.ref.volume ?? 1,
+      }));
+      const stateKey = JSON.stringify(trackStates);
+      if (stateKey !== lastBroadcastTrackStatesRef.current) {
+        lastBroadcastTrackStatesRef.current = stateKey;
+        broadcastSongTrackStates(currentSong.id, trackStates);
+      }
+    }
+  }, [isPlaying, hasAudioTracks, songTracks, setMultiTrackVolume, isMaster, currentSong, broadcastSongTrackStates]);
 
   // Time update for loop-only playback (when no audio tracks are driving the time)
   const playStartTimeRef = useRef<number | null>(null);
@@ -1268,12 +1289,20 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
   const handleToggleStem = useCallback((stem: StemType, enabled: boolean) => {
     toggleStem(stem, enabled);
     storeToggleStem(stem as 'vocals' | 'drums' | 'bass' | 'other');
-  }, [toggleStem, storeToggleStem]);
+    // Broadcast stem toggle to other room members
+    if (currentTrack?.id) {
+      broadcastStemToggle(currentTrack.id, stem, enabled);
+    }
+  }, [toggleStem, storeToggleStem, broadcastStemToggle, currentTrack]);
 
   const handleStemVolume = useCallback((stem: StemType, volume: number) => {
     setStemVolume(stem, volume);
     storeStemVolume(stem as 'vocals' | 'drums' | 'bass' | 'other', volume);
-  }, [setStemVolume, storeStemVolume]);
+    // Broadcast stem volume to other room members
+    if (currentTrack?.id) {
+      broadcastStemVolume(currentTrack.id, stem, volume);
+    }
+  }, [setStemVolume, storeStemVolume, broadcastStemVolume, currentTrack]);
 
   // Quality/Latency settings handlers
   const handlePresetChange = useCallback((preset: QualityPresetName) => {

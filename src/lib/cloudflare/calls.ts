@@ -340,6 +340,13 @@ export class CloudflareCalls {
   // Current quality preset
   private activePreset: QualityPresetName = 'low-latency';
 
+  // Reconnection state
+  private reconnectionAttempts: number = 0;
+  private maxReconnectionAttempts: number = 5;
+  private reconnectionTimer: ReturnType<typeof setTimeout> | null = null;
+  private isReconnecting: boolean = false;
+  private onConnectionStateChange?: (state: string) => void;
+
   // Callbacks for sync system
   private onClockSync?: (offset: number, rtt: number) => void;
   private onParticipantPerformanceUpdate?: (userId: string, info: BroadcastPerformanceInfo) => void;
@@ -432,16 +439,28 @@ export class CloudflareCalls {
     };
 
     this.peerConnection.onconnectionstatechange = () => {
-      console.log('Connection state:', this.peerConnection?.connectionState);
+      const state = this.peerConnection?.connectionState;
+      console.log('[CloudflareCalls] Connection state:', state);
+      this.onConnectionStateChange?.(state || 'unknown');
+
+      if (state === 'connected') {
+        // Connection restored, reset reconnection tracking
+        this.reconnectionAttempts = 0;
+        this.isReconnecting = false;
+      } else if (state === 'failed' && !this.isReconnecting) {
+        // Connection failed and we're not already trying to reconnect
+        console.warn('[CloudflareCalls] Connection failed, attempting reconnection...');
+        this.attemptReconnection();
+      }
     };
 
     this.peerConnection.oniceconnectionstatechange = () => {
       const state = this.peerConnection?.iceConnectionState;
-      console.log('ICE connection state:', state);
+      console.log('[CloudflareCalls] ICE connection state:', state);
 
-      // Attempt ICE restart on connection failure
       if (state === 'failed') {
-        console.log('[CloudflareCalls] ICE connection failed, attempting restart...');
+        // Try ICE restart first (lightweight recovery)
+        console.log('[CloudflareCalls] ICE connection failed, attempting ICE restart...');
         this.peerConnection?.restartIce();
       }
 
@@ -1544,12 +1563,108 @@ export class CloudflareCalls {
     return this.disconnect();
   }
 
+  /**
+   * Set callback for connection state changes.
+   * UI can use this to show reconnection status to the user.
+   */
+  setOnConnectionStateChange(callback: (state: string) => void): void {
+    this.onConnectionStateChange = callback;
+  }
+
+  /**
+   * Attempt to reconnect after connection failure.
+   * Uses exponential backoff with max 5 attempts.
+   * First tries ICE restart, then falls back to full session recreation.
+   */
+  private async attemptReconnection(): Promise<void> {
+    if (this.isReconnecting) return;
+    if (this.reconnectionAttempts >= this.maxReconnectionAttempts) {
+      console.error('[CloudflareCalls] Max reconnection attempts reached, giving up');
+      this.onConnectionStateChange?.('reconnection_failed');
+      return;
+    }
+
+    this.isReconnecting = true;
+    this.reconnectionAttempts++;
+    const delay = 1000 * Math.pow(2, this.reconnectionAttempts - 1); // 1s, 2s, 4s, 8s, 16s
+
+    console.log(`[CloudflareCalls] Reconnection attempt ${this.reconnectionAttempts}/${this.maxReconnectionAttempts} in ${delay}ms`);
+    this.onConnectionStateChange?.('reconnecting');
+
+    this.reconnectionTimer = setTimeout(async () => {
+      try {
+        // Close old peer connection if it exists
+        if (this.peerConnection) {
+          this.peerConnection.onconnectionstatechange = null;
+          this.peerConnection.oniceconnectionstatechange = null;
+          this.peerConnection.ontrack = null;
+          this.peerConnection.close();
+          this.peerConnection = null;
+        }
+
+        // Recreate peer connection with fresh ICE servers
+        const iceServers = await fetchIceServers();
+        this.initializePeerConnection({ iceServers });
+
+        // Create a new Cloudflare session
+        const sessionResponse = await fetchWithTimeout('/api/cloudflare/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: 'create', roomId: this.roomId, userId: this.userId }),
+        });
+
+        if (!sessionResponse.ok) {
+          throw new Error('Failed to create new Cloudflare session');
+        }
+
+        const sessionData = await sessionResponse.json();
+        this.sessionId = sessionData.sessionId;
+        console.log('[CloudflareCalls] New session created:', this.sessionId);
+
+        // Re-add local tracks from stored info
+        for (const [trackId, trackInfo] of this.localTracks) {
+          const transceiver = this.transceivers.get(trackId);
+          if (transceiver?.sender?.track) {
+            const stream = new MediaStream([transceiver.sender.track]);
+            await this.addTrack(stream, trackInfo.type, trackInfo.label, true);
+          }
+        }
+
+        // Re-pull remote tracks
+        await this.pullRemoteTracks();
+
+        console.log('[CloudflareCalls] Reconnection successful');
+        this.isReconnecting = false;
+        this.reconnectionAttempts = 0;
+        this.onConnectionStateChange?.('connected');
+      } catch (error) {
+        console.error('[CloudflareCalls] Reconnection attempt failed:', error);
+        this.isReconnecting = false;
+
+        // Try again if we haven't exceeded max attempts
+        if (this.reconnectionAttempts < this.maxReconnectionAttempts) {
+          this.attemptReconnection();
+        } else {
+          console.error('[CloudflareCalls] All reconnection attempts exhausted');
+          this.onConnectionStateChange?.('reconnection_failed');
+        }
+      }
+    }, delay);
+  }
+
   async disconnect(): Promise<void> {
     // Capture sessionId and immediately nullify to prevent duplicate close requests
     // This is critical because disconnect() can be called multiple times
     // (e.g., from component cleanup + exit animation callback)
     const sessionIdToClose = this.sessionId;
     this.sessionId = null;
+
+    // Cancel any pending reconnection
+    if (this.reconnectionTimer) {
+      clearTimeout(this.reconnectionTimer);
+      this.reconnectionTimer = null;
+    }
+    this.isReconnecting = false;
 
     this.stopClockBroadcast();
     this.stopPerformanceBroadcast();

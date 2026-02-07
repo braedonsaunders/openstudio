@@ -55,13 +55,15 @@ import { useAuthStore } from '@/stores/auth-store';
 import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
 import { usePermissionsStore } from '@/stores/permissions-store';
 import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
+import { nativeBridge } from '@/lib/audio/native-bridge';
 import type { QualityPresetName, OpusEncodingSettings } from '@/types';
 import { useAudioEngine } from './useAudioEngine';
 import { useStatsTracker } from './useStatsTracker';
-import type { User, Room, BackingTrack, TrackQueue, UserTrack } from '@/types';
+import type { User, Room, BackingTrack, TrackQueue, UserTrack, StemMixState } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
 import type { SongTrackReference } from '@/types/songs';
+import { setSongBroadcastCallbacks } from '@/stores/songs-store';
 
 // Song playback event payloads
 export interface SongPlayPayload {
@@ -139,6 +141,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     seekTo,
     updateFromStats,
     destroyEngine,
+    toggleStem: audioToggleStem,
+    setStemVolume: audioSetStemVolume,
     // For connecting MediaStream to TrackAudioProcessor for monitoring
     getOrCreateTrackProcessor,
     setTrackMediaStreamInput,
@@ -478,7 +482,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       cloudflare.setOnRemoteStream(async (userId, remoteStream) => {
         // Await to ensure AudioContext is resumed on iOS Safari before proceeding
         await addRemoteStream(userId, remoteStream);
-        options.onUserJoined?.(users.get(userId) || { id: userId, name: 'Unknown', volume: 1, latency: 0, jitterBuffer: 256, connectionQuality: 'good' });
+        // Use fresh store state instead of closure to avoid stale user data
+        const freshUser = useRoomStore.getState().users.get(userId);
+        options.onUserJoined?.(freshUser || { id: userId, name: 'Unknown', volume: 1, latency: 0, jitterBuffer: 256, connectionQuality: 'good' });
       });
 
       cloudflare.setOnRemoteStreamRemoved((userId) => {
@@ -529,6 +535,53 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Use broadcast stream (from track processors) for WebRTC, or raw stream as fallback
       await cloudflare.joinRoom(broadcastStream || stream);
       cloudflareRef.current = cloudflare;
+
+      // === NATIVE BRIDGE P2P NETWORKING ===
+      // When native bridge is connected, join the room through the Rust P2P/Relay network.
+      // This enables direct native-to-native audio routing (Rust → P2P → Rust) for performers
+      // who both have the native bridge, bypassing WebRTC and Web Audio entirely.
+      // For mixed scenarios (one native, one web-only), the AudioEngine's remote capture
+      // worklet routes WebRTC audio to the native bridge for ASIO/CoreAudio output.
+      const bridgeState = useBridgeAudioStore.getState();
+      if (bridgeState.isConnected && bridgeState.preferNativeBridge && !listenerMode) {
+        // Join room through native bridge P2P network
+        nativeBridge.joinRoom(roomId, roomId, user.name || 'Unknown');
+        console.log('[useRoom] Native bridge joining P2P room:', roomId);
+
+        // Set up native bridge callbacks on the audio engine for hybrid mode
+        // (routing WebRTC audio from web-only performers to native ASIO output)
+        const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+        if (audioEngine) {
+          audioEngine.setNativeBridgeCallbacks(
+            // onCapture: forward captured remote WebRTC audio to native bridge
+            (userId: string, samples: Float32Array) => {
+              nativeBridge.sendRemoteAudio(userId, samples);
+            },
+            // onAdded: register remote user with native bridge for mixing
+            (userId: string) => {
+              const remoteUser = useRoomStore.getState().users.get(userId);
+              nativeBridge.addRemoteUser(userId, remoteUser?.name || 'Unknown');
+              console.log('[useRoom] Registered remote user with native bridge:', userId);
+            },
+            // onRemoved: deregister remote user from native bridge
+            (userId: string) => {
+              nativeBridge.removeRemoteUser(userId);
+              console.log('[useRoom] Deregistered remote user from native bridge:', userId);
+            }
+          );
+          console.log('[useRoom] Native bridge audio callbacks registered');
+        }
+
+        // Listen for peers connecting via native bridge P2P
+        // (these are performers with native bridges on the other end)
+        nativeBridge.on('peerConnected', (data) => {
+          console.log('[useRoom] Native bridge peer connected:', data.userName, 'native:', data.hasNativeBridge);
+        });
+
+        nativeBridge.on('peerDisconnected', (data) => {
+          console.log('[useRoom] Native bridge peer disconnected:', data.userId, data.reason);
+        });
+      }
 
       // Initialize realtime connection
       const realtime = new RealtimeRoomManager(roomId, user.id);
@@ -669,6 +722,17 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             if (currentQueue.tracks.length > 0) {
               console.log(`[useRoom] Broadcasting queue with ${currentQueue.tracks.length} tracks to new users`);
               realtime.broadcastQueueUpdate(currentQueue);
+
+              // CRITICAL: If a track is currently playing, broadcast the playback state
+              // so late joiners can start playing from the current position
+              const audioState = useAudioStore.getState();
+              const currentTrackFromStore = useRoomStore.getState().currentTrack;
+              if (currentQueue.isPlaying && currentTrackFromStore) {
+                const currentPlaybackTime = audioState.currentTime || 0;
+                const syncTime = Date.now() + 200; // Give late joiner time to load
+                console.log(`[useRoom] Broadcasting current playback state to late joiner: track=${currentTrackFromStore.id}, time=${currentPlaybackTime}`);
+                realtime.broadcastPlay(currentTrackFromStore.id, currentPlaybackTime, syncTime);
+              }
             }
 
             // Broadcast all user tracks so new joiners see everyone's tracks
@@ -688,6 +752,44 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             if (roomSongs.length > 0) {
               realtime.broadcastSongsSync(roomSongs, songsState.currentSongId);
               console.log(`[useRoom] Broadcast ${roomSongs.length} songs to new users`);
+
+              // If a song is currently playing, broadcast playback state
+              // so late joiners can start hearing it from the correct position
+              const songAudioState = useAudioStore.getState();
+              if (songAudioState.isPlaying && songsState.currentSongId) {
+                const currentSong = songsState.songs.get(songsState.currentSongId);
+                if (currentSong) {
+                  const trackStates = currentSong.tracks.map((trackRef: SongTrackReference) => ({
+                    trackRefId: trackRef.id,
+                    muted: trackRef.muted ?? false,
+                    solo: trackRef.solo ?? false,
+                    volume: trackRef.volume ?? 1,
+                  }));
+                  const syncTime = Date.now() + 300; // Give late joiner time to load
+                  realtime.broadcastSongPlay(
+                    songsState.currentSongId,
+                    songAudioState.currentTime || 0,
+                    syncTime,
+                    trackStates
+                  );
+                  console.log(`[useRoom] Broadcast song playback state for late joiner: song=${songsState.currentSongId}, time=${songAudioState.currentTime}`);
+                }
+              }
+            }
+
+            // Broadcast current loop tracks so new joiners can sync
+            const loopTracksState = useLoopTracksStore.getState();
+            const allLoopTracks = Array.from(loopTracksState.tracks.values());
+            if (allLoopTracks.length > 0) {
+              realtime.broadcastLoopTrackSync(allLoopTracks);
+              console.log(`[useRoom] Broadcast ${allLoopTracks.length} loop tracks to new users`);
+            }
+
+            // Broadcast current permissions so new joiners get accurate role info
+            const permissionsState = usePermissionsStore.getState();
+            if (permissionsState.members.length > 0) {
+              realtime.broadcastPermissionsSync(permissionsState.members, permissionsState.defaultRole);
+              console.log(`[useRoom] Broadcast permissions to new users`);
             }
           }, 500);
         }
@@ -771,8 +873,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       });
 
-      realtime.on('track:pause', () => {
+      realtime.on('track:pause', (data) => {
+        const payload = data as { trackId: string; timestamp: number; userId: string };
         pauseBackingTrack();
+        // Save the playback position from the master so we can resume from this point
+        if (payload.timestamp !== undefined) {
+          const { setQueueTime } = useRoomStore.getState();
+          setQueueTime(payload.timestamp);
+          useAudioStore.getState().setCurrentTime(payload.timestamp);
+        }
         setQueuePlaying(false);
       });
 
@@ -791,8 +900,17 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       });
 
-      realtime.on('track:next', () => {
-        nextTrack();
+      realtime.on('track:next', (data) => {
+        const payload = data as { index: number; userId: string };
+        // Use jumpToTrack with the specific index from the broadcast
+        // This handles both forward (skipToNext) and backward (skipToPrevious) navigation
+        const { jumpToTrack: storeJumpToTrack } = useRoomStore.getState();
+        if (payload.index !== undefined) {
+          storeJumpToTrack(payload.index);
+        } else {
+          // Fallback for legacy broadcasts without index
+          nextTrack();
+        }
       });
 
       realtime.on('user:mute', (data) => {
@@ -904,6 +1022,44 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         loopTracksStore.loadTracks(payload.tracks);
       });
 
+      // Stem toggle sync handler - sync stem mute/unmute across all clients
+      realtime.on('stem:toggle', (data) => {
+        const payload = data as { trackId: string; stem: string; enabled: boolean; userId: string };
+        if (payload.userId === user.id) return;
+
+        // Update the room store's stem mix state
+        const roomStore = useRoomStore.getState();
+        const stemKey = payload.stem as keyof StemMixState;
+        if (roomStore.stemMixState[stemKey]) {
+          roomStore.setStemMixState({
+            ...roomStore.stemMixState,
+            [stemKey]: {
+              ...roomStore.stemMixState[stemKey],
+              enabled: payload.enabled,
+            },
+          });
+        }
+
+        // Apply to audio engine
+        audioToggleStem(payload.stem, payload.enabled);
+      });
+
+      // Stem volume sync handler - sync stem volume changes across all clients
+      realtime.on('stem:volume', (data) => {
+        const payload = data as { trackId: string; stem: string; volume: number; userId: string };
+        if (payload.userId === user.id) return;
+
+        // Update the room store's stem mix state
+        const roomStore = useRoomStore.getState();
+        const stemKey = payload.stem as keyof StemMixState;
+        if (roomStore.stemMixState[stemKey]) {
+          roomStore.setStemVolume(stemKey, payload.volume);
+        }
+
+        // Apply to audio engine
+        audioSetStemVolume(payload.stem, payload.volume);
+      });
+
       // Tempo broadcast handlers - sync BPM/time signature across all clients
       realtime.on('tempo:update', (data) => {
         const payload = data as { tempo: number; source: string; userId: string };
@@ -937,10 +1093,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         if (payload.userId === user.id) return;
         const { useSessionTempoStore } = require('@/stores/session-tempo-store');
         const tempoStore = useSessionTempoStore.getState();
-        tempoStore.setKeySource(payload.keySource as 'manual' | 'track' | 'analyzer');
+        // Apply key value based on source type so all clients stay in sync
         if (payload.keySource === 'manual') {
           tempoStore.setManualKey(payload.key, payload.keyScale);
+        } else if (payload.keySource === 'analyzer') {
+          tempoStore.setAnalyzerData({ key: payload.key, keyScale: payload.keyScale });
+        } else if (payload.keySource === 'track') {
+          tempoStore.setTrackMetadata({ key: payload.key ?? undefined, keyScale: payload.keyScale ?? undefined });
         }
+        tempoStore.setKeySource(payload.keySource as 'manual' | 'track' | 'analyzer');
       });
 
       // Permission event handlers
@@ -1053,6 +1214,38 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         options.onSongSelect?.(payload);
       });
 
+      // Song track state changes during playback (mute/solo/volume)
+      realtime.on('song:trackStates', (data) => {
+        const payload = data as {
+          songId: string;
+          trackStates: Array<{ trackRefId: string; muted: boolean; solo: boolean; volume: number }>;
+          userId: string;
+        };
+        if (payload.userId === user.id) return;
+
+        const { useSongsStore } = require('@/stores/songs-store');
+        const songsStore = useSongsStore.getState();
+        const song = songsStore.songs.get(payload.songId);
+        if (song) {
+          // Apply track states to the song without triggering broadcast (to avoid loops)
+          const updatedTracks = song.tracks.map((trackRef: SongTrackReference) => {
+            const state = payload.trackStates.find(s => s.trackRefId === trackRef.id);
+            if (state) {
+              return {
+                ...trackRef,
+                muted: state.muted,
+                solo: state.solo,
+                volume: state.volume,
+              };
+            }
+            return trackRef;
+          });
+          const newSongs = new Map(songsStore.songs);
+          newSongs.set(payload.songId, { ...song, tracks: updatedTracks });
+          useSongsStore.setState({ songs: newSongs });
+        }
+      });
+
       // Songs CRUD sync handlers
       realtime.on('songs:sync', (data) => {
         const payload = data as { songs: unknown[]; currentSongId: string | null; userId: string };
@@ -1102,6 +1295,19 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
       await realtime.connect(user);
       realtimeRef.current = realtime;
+
+      // Register song broadcast callbacks so CRUD operations auto-broadcast
+      setSongBroadcastCallbacks({
+        onSongCreate: (song) => {
+          realtime.broadcastSongCreate(song as unknown as { id: string; name: string; [key: string]: unknown });
+        },
+        onSongUpdate: (songId, changes) => {
+          realtime.broadcastSongUpdate(songId, changes);
+        },
+        onSongDelete: (songId) => {
+          realtime.broadcastSongDelete(songId);
+        },
+      });
 
       // Create room object
       const roomData: Room = {
@@ -1180,6 +1386,24 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     await realtimeRef.current?.disconnect();
     await cloudflareRef.current?.leaveRoom();
+
+    // Leave native bridge P2P room and clean up callbacks
+    const bridgeState = useBridgeAudioStore.getState();
+    if (bridgeState.isConnected) {
+      nativeBridge.leaveRoom();
+      nativeBridge.removeAllListeners('peerConnected');
+      nativeBridge.removeAllListeners('peerDisconnected');
+
+      // Clear native bridge audio callbacks
+      const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+      if (audioEngine) {
+        audioEngine.setNativeBridgeCallbacks(null, null, null);
+      }
+      console.log('[useRoom] Native bridge left room and cleaned up');
+    }
+
+    // Clear song broadcast callbacks since we're leaving
+    setSongBroadcastCallbacks(null);
 
     // NOTE: Room cleanup is handled server-side, not by clients.
     // Client-side deletion was removed due to race conditions causing
@@ -1752,6 +1976,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   // Broadcast new user track creation
   const broadcastUserTrackAdd = useCallback((track: UserTrack) => {
     realtimeRef.current?.broadcastUserTrackAdd(track);
+    // Update broadcast connections so the new track's audio is included in WebRTC stream
+    const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+    if (audioEngine?.updateBroadcastConnections) {
+      audioEngine.updateBroadcastConnections();
+      console.log('[useRoom] Updated broadcast connections after new track added');
+    }
   }, []);
 
   // Broadcast tempo updates (for real-time sync of BPM/time signature)
@@ -1792,6 +2022,29 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const broadcastSongSelect = useCallback((songId: string) => {
     realtimeRef.current?.broadcastSongSelect(songId);
   }, []);
+
+  const broadcastSongTrackStates = useCallback((
+    songId: string,
+    trackStates: Array<{ trackRefId: string; muted: boolean; solo: boolean; volume: number }>
+  ) => {
+    realtimeRef.current?.broadcastSongTrackStates(songId, trackStates);
+  }, []);
+
+  // Broadcast stem toggle - syncs stem mute/unmute to all room members
+  const broadcastStemToggle = useCallback((trackId: string, stem: string, enabled: boolean) => {
+    // Apply to local audio engine
+    audioToggleStem(stem, enabled);
+    // Broadcast to other users
+    realtimeRef.current?.broadcastStemToggle(trackId, stem, enabled);
+  }, [audioToggleStem]);
+
+  // Broadcast stem volume - syncs stem volume changes to all room members
+  const broadcastStemVolume = useCallback((trackId: string, stem: string, volume: number) => {
+    // Apply to local audio engine
+    audioSetStemVolume(stem, volume);
+    // Broadcast to other users
+    realtimeRef.current?.broadcastStemVolume(trackId, stem, volume);
+  }, [audioSetStemVolume]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -1849,5 +2102,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     broadcastSongPause,
     broadcastSongSeek,
     broadcastSongSelect,
+    broadcastSongTrackStates,
+    // Stem control
+    broadcastStemToggle,
+    broadcastStemVolume,
   };
 }
