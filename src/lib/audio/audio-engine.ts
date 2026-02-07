@@ -610,9 +610,16 @@ export class AudioEngine {
       this.remoteCaptureWorkletLoaded = true;
       console.log('[AudioEngine] Remote capture worklet loaded');
     } catch (err) {
-      // Module may already be loaded
-      this.remoteCaptureWorkletLoaded = true;
-      console.log('[AudioEngine] Remote capture worklet already loaded or error:', err);
+      // Check if module was already registered (not a real error)
+      try {
+        new AudioWorkletNode(this.audioContext, 'remote-capture-processor');
+        // If this succeeds, the module IS loaded
+        this.remoteCaptureWorkletLoaded = true;
+        console.log('[AudioEngine] Remote capture worklet was already loaded');
+      } catch {
+        // Module genuinely not available - do NOT set flag, allow retry
+        console.error('[AudioEngine] Remote capture worklet failed to load:', err);
+      }
     }
   }
 
@@ -678,6 +685,7 @@ export class AudioEngine {
       this.remoteStreams.set(userId, {
         userId,
         stream,
+        source,
         analyser,
         gainNode,
         delayNode,
@@ -713,7 +721,7 @@ export class AudioEngine {
           delayNode.connect(gainNode);
           gainNode.connect(analyser);
           gainNode.connect(this.masterGain);
-          this.remoteStreams.set(userId, { userId, stream, analyser, gainNode, delayNode, level: 0 });
+          this.remoteStreams.set(userId, { userId, stream, source, analyser, gainNode, delayNode, level: 0 });
           this.onRemoteUserAdded?.(userId);
 
           console.log('[AudioEngine] Remote stream connected after retry:', userId);
@@ -815,6 +823,8 @@ export class AudioEngine {
   removeRemoteStream(userId: string): void {
     const streamData = this.remoteStreams.get(userId);
     if (streamData) {
+      streamData.source?.disconnect();
+      streamData.analyser?.disconnect();
       streamData.delayNode?.disconnect();
       streamData.gainNode?.disconnect();
       streamData.stream.getTracks().forEach((track) => track.stop());
@@ -2088,6 +2098,9 @@ export class AudioEngine {
       if (!gainNode) {
         gainNode = this.audioContext.createGain();
         gainNode.connect(this.masterGain);
+        if (this.broadcastMixerGain) {
+          gainNode.connect(this.broadcastMixerGain);
+        }
         this.multiTrackGains.set(config.trackId, gainNode);
       }
       gainNode.gain.value = config.muted ? 0 : config.volume;
@@ -2431,7 +2444,17 @@ export class AudioEngine {
     }
     this.externalSources.clear();
 
+    // Clean up remote capture worklets for native bridge
+    for (const [userId, worklet] of this.remoteCaptureWorklets) {
+      worklet.port.postMessage({ type: 'stop' });
+      worklet.disconnect();
+    }
+    this.remoteCaptureWorklets.clear();
+
     for (const streamData of this.remoteStreams.values()) {
+      streamData.source?.disconnect();
+      streamData.analyser?.disconnect();
+      streamData.delayNode?.disconnect();
       streamData.gainNode?.disconnect();
       streamData.stream.getTracks().forEach((track) => track.stop());
     }
