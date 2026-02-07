@@ -149,7 +149,7 @@ function broadcastFullStateSync(realtime: RealtimeRoomManager, requestId?: strin
     loopTracks: allLoopTracks,
     songs: roomSongs,
     currentSongId: songsState.currentSongId,
-    stemMixState: roomState.stemMixState as Record<string, { enabled: boolean; volume: number }>,
+    stemMixState: roomState.stemMixState as unknown as Record<string, { enabled: boolean; volume: number }>,
     permissions: {
       members: permissionsStore.members,
       defaultRole: permissionsStore.defaultRole,
