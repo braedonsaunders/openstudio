@@ -10,6 +10,29 @@ export interface RoomState {
   messages: RoomMessage[];
 }
 
+/** Full room state payload for state sync protocol (WS2) */
+export interface StateSyncPayload {
+  requestId: string;
+  queue: BackingTrack[];
+  currentTrack: BackingTrack | null;
+  currentTrackPosition: number;
+  isPlaying: boolean;
+  tempo: number;
+  tempoSource: string;
+  timeSignature: { beatsPerBar: number; beatUnit: number };
+  key: string | null;
+  keyScale: string | null;
+  keySource: string;
+  userTracks: UserTrack[];
+  loopTracks: LoopTrackState[];
+  songs: Array<{ id: string; name: string; [key: string]: unknown }>;
+  currentSongId: string | null;
+  stemMixState: Record<string, { enabled: boolean; volume: number }>;
+  permissions: Record<string, unknown>;
+  songTrackStates: Record<string, { muted: boolean; solo: boolean; volume: number }>;
+  timestamp: number;
+}
+
 // Track active channels by room ID to prevent conflicts
 const activeChannels = new Map<string, RealtimeChannel>();
 
@@ -18,6 +41,9 @@ export class RealtimeRoomManager {
   private roomId: string;
   private userId: string;
   private listeners: Map<string, Set<(data: unknown) => void>> = new Map();
+  private connectionState: 'connected' | 'disconnected' | 'reconnecting' = 'disconnected';
+  private seekDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+  private songSeekDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(roomId: string, userId: string) {
     this.roomId = roomId;
@@ -262,6 +288,24 @@ export class RealtimeRoomManager {
     this.channel.on('broadcast', { event: 'song:trackStates' }, ({ payload }) => {
       this.emit('song:trackStates', payload);
     });
+
+    // State sync events (WS2: request/response state sync protocol)
+    this.channel.on('broadcast', { event: 'state:request' }, ({ payload }) => {
+      this.emit('state:request', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'state:sync' }, ({ payload }) => {
+      this.emit('state:sync', payload);
+    });
+
+    // Transport position sync events (WS6)
+    this.channel.on('broadcast', { event: 'track:position' }, ({ payload }) => {
+      this.emit('track:position', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'song:position' }, ({ payload }) => {
+      this.emit('song:position', payload);
+    });
   }
 
   async connect(user: User): Promise<void> {
@@ -309,28 +353,54 @@ export class RealtimeRoomManager {
           }, BASE_TIMEOUT);
 
           this.channel!.subscribe(async (status) => {
-            if (resolved) return; // Prevent multiple resolutions
-
             console.log('[Realtime] Subscription status:', status);
 
-            if (status === 'SUBSCRIBED') {
-              resolved = true;
-              clearTimeout(timeoutId);
-              try {
-                await this.channel?.track(user);
-                this.emit('connected', { roomId: this.roomId });
-                resolve();
-              } catch (err) {
-                reject(err);
-              }
-            } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
-              if (!resolved) {
+            if (!resolved) {
+              // Initial connection phase
+              if (status === 'SUBSCRIBED') {
                 resolved = true;
                 clearTimeout(timeoutId);
+                this.connectionState = 'connected';
+                try {
+                  await this.channel?.track(user);
+                  this.emit('connected', { roomId: this.roomId });
+                  resolve();
+                } catch (err) {
+                  reject(err);
+                }
+              } else if (status === 'TIMED_OUT' || status === 'CHANNEL_ERROR' || status === 'CLOSED') {
+                resolved = true;
+                clearTimeout(timeoutId);
+                this.connectionState = 'disconnected';
                 reject(new Error(`Realtime subscription failed with status: ${status}`));
               }
+              // SUBSCRIBING status is transitional, just wait
+            } else {
+              // Post-connection: detect reconnection (WS2)
+              if (status === 'CLOSED' || status === 'CHANNEL_ERROR') {
+                const previousState = this.connectionState;
+                this.connectionState = 'disconnected';
+                if (previousState === 'connected') {
+                  console.log('[Realtime] Connection lost, waiting for reconnection');
+                  this.emit('disconnected', { roomId: this.roomId });
+                }
+              } else if (status === 'SUBSCRIBED') {
+                const previousState = this.connectionState;
+                this.connectionState = 'connected';
+                if (previousState === 'disconnected' || previousState === 'reconnecting') {
+                  console.log('[Realtime] Reconnected to room:', this.roomId);
+                  this.emit('reconnected', { roomId: this.roomId });
+                  // Auto-request state sync on reconnection
+                  this.broadcastStateRequest().catch((err) => {
+                    console.warn('[Realtime] Failed to request state sync on reconnect:', err);
+                  });
+                }
+              } else if (status === 'SUBSCRIBING') {
+                if (this.connectionState === 'disconnected') {
+                  this.connectionState = 'reconnecting';
+                }
+              }
             }
-            // SUBSCRIBING status is transitional, just wait
           });
         });
 
@@ -354,6 +424,17 @@ export class RealtimeRoomManager {
   }
 
   async disconnect(): Promise<void> {
+    // Clear debounce timers to prevent stale broadcasts after disconnect
+    if (this.seekDebounceTimer !== null) {
+      clearTimeout(this.seekDebounceTimer);
+      this.seekDebounceTimer = null;
+    }
+    if (this.songSeekDebounceTimer !== null) {
+      clearTimeout(this.songSeekDebounceTimer);
+      this.songSeekDebounceTimer = null;
+    }
+    this.connectionState = 'disconnected';
+
     if (this.channel) {
       const channelToRemove = this.channel;
       const roomIdToCleanup = this.roomId;
@@ -399,29 +480,74 @@ export class RealtimeRoomManager {
     }
   }
 
+  /**
+   * Reliable broadcast wrapper (WS3).
+   * Awaits the broadcast result and retries once after 500ms on failure.
+   * Returns true on success, false after exhausting the single retry.
+   */
+  private async reliableBroadcast(event: string, payload: Record<string, unknown>): Promise<boolean> {
+    if (!this.channel) {
+      console.warn('[Realtime] reliableBroadcast: no channel available for event:', event);
+      return false;
+    }
+
+    try {
+      const result = await this.channel.send({
+        type: 'broadcast',
+        event,
+        payload,
+      });
+      if (result === 'ok') {
+        return true;
+      }
+      console.warn('[Realtime] Broadcast returned non-ok for event:', event, 'result:', result);
+    } catch (err) {
+      console.warn('[Realtime] Broadcast failed for event:', event, err);
+    }
+
+    // Retry once after 500ms
+    await new Promise<void>((resolve) => setTimeout(resolve, 500));
+
+    if (!this.channel) {
+      console.warn('[Realtime] reliableBroadcast: channel lost during retry for event:', event);
+      return false;
+    }
+
+    try {
+      const retryResult = await this.channel.send({
+        type: 'broadcast',
+        event,
+        payload,
+      });
+      if (retryResult === 'ok') {
+        return true;
+      }
+      console.warn('[Realtime] Broadcast retry returned non-ok for event:', event, 'result:', retryResult);
+      return false;
+    } catch (retryErr) {
+      console.warn('[Realtime] Broadcast retry failed for event:', event, retryErr);
+      return false;
+    }
+  }
+
   // Broadcast events to all users
   async broadcastPlay(trackId: string, timestamp: number, syncTime: number): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'track:play',
-      payload: { trackId, timestamp, syncTime, userId: this.userId },
-    });
+    await this.reliableBroadcast('track:play', { trackId, timestamp, syncTime, userId: this.userId });
   }
 
   async broadcastPause(trackId: string, timestamp: number): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'track:pause',
-      payload: { trackId, timestamp, userId: this.userId },
-    });
+    await this.reliableBroadcast('track:pause', { trackId, timestamp, userId: this.userId });
   }
 
   async broadcastSeek(trackId: string, timestamp: number, syncTime: number): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'track:seek',
-      payload: { trackId, timestamp, syncTime, userId: this.userId },
-    });
+    // Debounce seek broadcasts (WS6) - only the final seek position gets sent
+    if (this.seekDebounceTimer !== null) {
+      clearTimeout(this.seekDebounceTimer);
+    }
+    this.seekDebounceTimer = setTimeout(() => {
+      this.seekDebounceTimer = null;
+      this.reliableBroadcast('track:seek', { trackId, timestamp, syncTime, userId: this.userId });
+    }, 100);
   }
 
   async broadcastQueueUpdate(queue: TrackQueue): Promise<void> {
@@ -469,19 +595,11 @@ export class RealtimeRoomManager {
   }
 
   async broadcastStemToggle(trackId: string, stem: string, enabled: boolean): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'stem:toggle',
-      payload: { trackId, stem, enabled, userId: this.userId },
-    });
+    await this.reliableBroadcast('stem:toggle', { trackId, stem, enabled, userId: this.userId });
   }
 
   async broadcastStemVolume(trackId: string, stem: string, volume: number): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'stem:volume',
-      payload: { trackId, stem, volume, userId: this.userId },
-    });
+    await this.reliableBroadcast('stem:volume', { trackId, stem, volume, userId: this.userId });
   }
 
   async broadcastAIGeneration(request: { prompt: string; status: string; trackId?: string }): Promise<void> {
@@ -584,27 +702,15 @@ export class RealtimeRoomManager {
 
   // Tempo broadcasts
   async broadcastTempoUpdate(tempo: number, source: string): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'tempo:update',
-      payload: { tempo, source, userId: this.userId },
-    });
+    await this.reliableBroadcast('tempo:update', { tempo, source, userId: this.userId });
   }
 
   async broadcastTempoSource(source: string): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'tempo:source',
-      payload: { source, userId: this.userId },
-    });
+    await this.reliableBroadcast('tempo:source', { source, userId: this.userId });
   }
 
   async broadcastTimeSignature(beatsPerBar: number, beatUnit: number): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'tempo:timesig',
-      payload: { beatsPerBar, beatUnit, userId: this.userId },
-    });
+    await this.reliableBroadcast('tempo:timesig', { beatsPerBar, beatUnit, userId: this.userId });
   }
 
   async broadcastKeyUpdate(key: string | null, keyScale: 'major' | 'minor' | null, keySource: string): Promise<void> {
@@ -690,27 +796,22 @@ export class RealtimeRoomManager {
     syncTime: number,
     trackStates: Array<{ trackRefId: string; muted: boolean; solo: boolean; volume: number }>
   ): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'song:play',
-      payload: { songId, currentTime, syncTime, trackStates, userId: this.userId },
-    });
+    await this.reliableBroadcast('song:play', { songId, currentTime, syncTime, trackStates, userId: this.userId });
   }
 
   async broadcastSongPause(songId: string, currentTime: number): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'song:pause',
-      payload: { songId, currentTime, userId: this.userId },
-    });
+    await this.reliableBroadcast('song:pause', { songId, currentTime, userId: this.userId });
   }
 
   async broadcastSongSeek(songId: string, seekTime: number, syncTime: number): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'song:seek',
-      payload: { songId, seekTime, syncTime, userId: this.userId },
-    });
+    // Debounce song seek broadcasts (WS6) - only the final seek position gets sent
+    if (this.songSeekDebounceTimer !== null) {
+      clearTimeout(this.songSeekDebounceTimer);
+    }
+    this.songSeekDebounceTimer = setTimeout(() => {
+      this.songSeekDebounceTimer = null;
+      this.reliableBroadcast('song:seek', { songId, seekTime, syncTime, userId: this.userId });
+    }, 100);
   }
 
   async broadcastSongSelect(songId: string): Promise<void> {
@@ -763,6 +864,53 @@ export class RealtimeRoomManager {
       event: 'song:trackStates',
       payload: { songId, trackStates, userId: this.userId },
     });
+  }
+
+  // State sync broadcasts (WS2: reliable state sync protocol)
+  async broadcastStateRequest(): Promise<void> {
+    const requestId = `${this.userId}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await this.reliableBroadcast('state:request', { userId: this.userId, requestId });
+  }
+
+  async broadcastStateSync(state: StateSyncPayload): Promise<void> {
+    await this.reliableBroadcast('state:sync', { ...state, userId: this.userId });
+  }
+
+  // Transport position sync broadcasts (WS6: periodic position updates)
+  async broadcastTrackPosition(
+    trackId: string,
+    currentTime: number,
+    syncTimestamp: number,
+    isPlaying: boolean
+  ): Promise<void> {
+    try {
+      await this.channel?.send({
+        type: 'broadcast',
+        event: 'track:position',
+        payload: { trackId, currentTime, syncTimestamp, isPlaying, userId: this.userId },
+      });
+    } catch (err) {
+      // Position syncs are periodic and non-critical; log but do not retry
+      console.warn('[Realtime] Failed to broadcast track position:', err);
+    }
+  }
+
+  async broadcastSongPosition(
+    songId: string,
+    currentTime: number,
+    syncTimestamp: number,
+    isPlaying: boolean
+  ): Promise<void> {
+    try {
+      await this.channel?.send({
+        type: 'broadcast',
+        event: 'song:position',
+        payload: { songId, currentTime, syncTimestamp, isPlaying, userId: this.userId },
+      });
+    } catch (err) {
+      // Position syncs are periodic and non-critical; log but do not retry
+      console.warn('[Realtime] Failed to broadcast song position:', err);
+    }
   }
 
   async updatePresence(data: Partial<User>): Promise<void> {

@@ -9,6 +9,7 @@
 
 use super::{NetworkEvent, NetworkManager, NetworkMode};
 use crate::audio::AudioBridgeHandle;
+use crate::network::codec::{OpusCodec, OpusConfig};
 use crate::network::osp::{OspMessageType, TrackStateMessage, TransportAction};
 use parking_lot::RwLock;
 use std::sync::Arc;
@@ -71,6 +72,10 @@ pub struct AudioNetworkBridge {
     running: Arc<std::sync::atomic::AtomicBool>,
     /// Transport event sender for metronome/playback sync
     transport_tx: RwLock<Option<broadcast::Sender<TransportEvent>>>,
+    /// Opus codec for encoding local audio before P2P transmission.
+    /// The bridge encodes once and sends the encoded data to P2P peers,
+    /// avoiding redundant encoding in the P2P layer.
+    codec: Arc<OpusCodec>,
 }
 
 impl AudioNetworkBridge {
@@ -78,14 +83,22 @@ impl AudioNetworkBridge {
         config: BridgeConfig,
         network: Arc<NetworkManager>,
         audio: AudioBridgeHandle,
-    ) -> Self {
-        Self {
+    ) -> super::Result<Self> {
+        let codec = Arc::new(OpusCodec::new(OpusConfig {
+            sample_rate: config.sample_rate,
+            channels: config.channels,
+            frame_size: config.frame_size,
+            ..OpusConfig::low_latency()
+        })?);
+
+        Ok(Self {
             config,
             network,
             audio,
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             transport_tx: RwLock::new(None),
-        }
+            codec,
+        })
     }
 
     /// Subscribe to transport events (clock sync, tempo changes, etc.)
@@ -143,6 +156,7 @@ impl AudioNetworkBridge {
         // Spawn outgoing audio sender on dedicated thread
         let audio = self.audio.clone();
         let network = self.network.clone();
+        let codec = self.codec.clone();
         let config = self.config.clone();
         let running = self.running.clone();
         std::thread::Builder::new()
@@ -152,7 +166,7 @@ impl AudioNetworkBridge {
                     .enable_all()
                     .build()
                     .expect("Failed to create runtime");
-                rt.block_on(Self::audio_send_loop(audio, network, config, running));
+                rt.block_on(Self::audio_send_loop(audio, network, codec, config, running));
             })
             .expect("Failed to spawn audio sender thread");
 
@@ -198,10 +212,18 @@ impl AudioNetworkBridge {
         match event {
             NetworkEvent::AudioReceived {
                 user_id,
-                track_id: _,
+                track_id,
                 samples,
             } => {
-                // Push audio to the remote user's buffer in the audio engine
+                // Feed received P2P/relay audio into the AudioEngine's remote user buffer.
+                // This handles both P2P-decoded and relay-decoded audio uniformly.
+                // The P2P layer has already Opus-decoded the audio; we receive PCM here.
+                debug!(
+                    "Routing {} audio samples from user {} track {} to audio engine",
+                    samples.len(),
+                    user_id,
+                    track_id,
+                );
                 audio.push_remote_audio(&user_id, &samples);
             }
 
@@ -337,10 +359,19 @@ impl AudioNetworkBridge {
         }
     }
 
-    /// Audio send loop - gets audio from engine and sends to network
+    /// Audio send loop - gets audio from engine and sends to network.
+    ///
+    /// Handles dual-path operation:
+    /// 1. Opus-encodes audio once at the bridge level
+    /// 2. Sends pre-encoded data to P2P peers via NetworkManager (unreliable UDP)
+    /// 3. Sends raw PCM to relay when in Relay or Hybrid mode
+    ///
+    /// This avoids redundant Opus encoding: the bridge encodes once, and P2P
+    /// peers receive the encoded data directly without re-encoding.
     async fn audio_send_loop(
         audio: AudioBridgeHandle,
         network: Arc<NetworkManager>,
+        codec: Arc<OpusCodec>,
         config: BridgeConfig,
         running: Arc<std::sync::atomic::AtomicBool>,
     ) {
@@ -367,10 +398,37 @@ impl AudioNetworkBridge {
             // Accumulate until we have a full frame
             frame_buffer.extend_from_slice(&samples);
 
-            // Send complete frames
+            // Send complete frames via both P2P and relay paths
             while frame_buffer.len() >= samples_per_frame {
                 let frame: Vec<f32> = frame_buffer.drain(..samples_per_frame).collect();
-                network.send_audio(config.local_track_id, frame);
+                let sample_count =
+                    (frame.len() / config.channels as usize) as u16;
+
+                // Opus-encode once at the bridge level for P2P transmission.
+                // The encoded data goes directly to P2P peers without re-encoding.
+                match codec.encoder.encode(&frame) {
+                    Ok(opus_data) => {
+                        // Send pre-encoded audio to P2P peers (unreliable UDP).
+                        // This uses the P2PEncodedAudio message type which bypasses
+                        // the mode-based routing and goes directly to P2P.
+                        network.send_p2p_encoded_audio(
+                            config.local_track_id,
+                            opus_data,
+                            config.channels,
+                            sample_count,
+                        );
+                    }
+                    Err(e) => {
+                        debug!("Opus encode failed in bridge send loop: {}", e);
+                    }
+                }
+
+                // Also send raw PCM to relay for Relay and Hybrid modes.
+                // In P2P-only mode, relay is not running so this is a no-op.
+                let mode = network.mode();
+                if mode == NetworkMode::Relay || mode == NetworkMode::Hybrid {
+                    network.send_relay_audio(config.local_track_id, frame);
+                }
             }
         }
     }
@@ -381,11 +439,11 @@ pub fn create_and_start_bridge(
     network: Arc<NetworkManager>,
     audio: AudioBridgeHandle,
     event_rx: broadcast::Receiver<NetworkEvent>,
-) -> AudioNetworkBridge {
+) -> super::Result<AudioNetworkBridge> {
     let config = BridgeConfig::default();
-    let bridge = AudioNetworkBridge::new(config, network, audio);
+    let bridge = AudioNetworkBridge::new(config, network, audio)?;
     bridge.start(event_rx);
-    bridge
+    Ok(bridge)
 }
 
 #[cfg(test)]

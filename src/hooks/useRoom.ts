@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { RealtimeRoomManager } from '@/lib/supabase/realtime';
+import type { StateSyncPayload } from '@/lib/supabase/realtime';
 import { CloudflareCalls } from '@/lib/cloudflare/calls';
 import { authFetch, authFetchJson } from '@/lib/auth-fetch';
+import { useTempoRealtimeBroadcast } from './useTempoRealtimeBroadcast';
 
 // Storage key for persisted guest ID
 const GUEST_ID_STORAGE_KEY = 'openstudio_guest_id';
@@ -92,6 +94,77 @@ export interface SongSelectPayload {
   userId: string;
 }
 
+/**
+ * WS2: Build and broadcast full room state to all clients.
+ * Called by the master when:
+ * 1. A new user joins (proactive sync)
+ * 2. A state:request is received from a joining/reconnecting user
+ * 3. A new master is elected after failover
+ */
+function broadcastFullStateSync(realtime: RealtimeRoomManager, requestId?: string): void {
+  const roomState = useRoomStore.getState();
+  const audioState = useAudioStore.getState();
+  const userTracksStore = useUserTracksStore.getState();
+  const loopTracksStore = useLoopTracksStore.getState();
+  const permissionsStore = usePermissionsStore.getState();
+
+  // Lazy-load stores to avoid circular dependency
+  const { useSessionTempoStore } = require('@/stores/session-tempo-store');
+  const { useSongsStore } = require('@/stores/songs-store');
+  const tempoState = useSessionTempoStore.getState();
+  const songsState = useSongsStore.getState();
+
+  const allTracks = userTracksStore.getAllTracks().filter((t: UserTrack) => t.isActive);
+  const allLoopTracks = Array.from(loopTracksStore.tracks.values()) as LoopTrackState[];
+  const roomSongs = songsState.getSongsByRoom(roomState.room?.id || '');
+
+  // Build song track states from current song
+  const songTrackStates: Record<string, { muted: boolean; solo: boolean; volume: number }> = {};
+  if (songsState.currentSongId) {
+    const currentSong = songsState.songs.get(songsState.currentSongId);
+    if (currentSong) {
+      for (const trackRef of currentSong.tracks) {
+        songTrackStates[trackRef.id] = {
+          muted: trackRef.muted ?? false,
+          solo: trackRef.solo ?? false,
+          volume: trackRef.volume ?? 1,
+        };
+      }
+    }
+  }
+
+  const payload: StateSyncPayload = {
+    requestId: requestId || `master-${Date.now()}`,
+    queue: roomState.queue.tracks,
+    currentTrack: roomState.currentTrack,
+    currentTrackPosition: audioState.currentTime || 0,
+    isPlaying: audioState.isPlaying || roomState.queue.isPlaying,
+    tempo: tempoState.tempo,
+    tempoSource: tempoState.source,
+    timeSignature: { beatsPerBar: tempoState.beatsPerBar, beatUnit: tempoState.beatUnit },
+    key: tempoState.key,
+    keyScale: tempoState.keyScale,
+    keySource: tempoState.keySource,
+    userTracks: allTracks,
+    loopTracks: allLoopTracks,
+    songs: roomSongs,
+    currentSongId: songsState.currentSongId,
+    stemMixState: roomState.stemMixState as unknown as Record<string, { enabled: boolean; volume: number }>,
+    permissions: {
+      members: permissionsStore.members,
+      defaultRole: permissionsStore.defaultRole,
+    },
+    songTrackStates,
+    timestamp: Date.now(),
+  };
+
+  realtime.broadcastStateSync(payload).catch((err) => {
+    console.error('[useRoom] Failed to broadcast full state sync:', err);
+  });
+
+  console.log(`[useRoom] Full state sync broadcast: ${allTracks.length} tracks, ${allLoopTracks.length} loops, ${roomSongs.length} songs, playing=${payload.isPlaying}`);
+}
+
 interface UseRoomOptions {
   onUserJoined?: (user: User) => void;
   onUserLeft?: (userId: string) => void;
@@ -107,6 +180,10 @@ interface UseRoomOptions {
 export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const realtimeRef = useRef<RealtimeRoomManager | null>(null);
   const cloudflareRef = useRef<CloudflareCalls | null>(null);
+  // WS6: Periodic position sync interval (master broadcasts every 5s during playback)
+  const positionSyncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // WS2: State sync retry tracking for new joiners
+  const stateSyncReceivedRef = useRef<boolean>(false);
 
   // Use authenticated user ID if available, otherwise will be populated with signed guest ID
   // This is initialized once, but updated in join() if auth state changes
@@ -147,6 +224,8 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     getOrCreateTrackProcessor,
     setTrackMediaStreamInput,
     updateTrackState,
+    // WS5: Listener mode (receive-only, no microphone)
+    initializeListenerAudio,
   } = useAudioEngine();
 
   // Stats tracking for gamification
@@ -259,8 +338,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         // Continue anyway - room_tracks may still work
       }
 
-      // Initialize audio engine
-      await initialize();
+      // Initialize audio engine (WS5: listener mode uses optimized receive-only path)
+      if (listenerMode) {
+        await initializeListenerAudio();
+        console.log('[useRoom] Audio engine initialized in listener mode (receive-only, stable jitter buffer)');
+      } else {
+        await initialize();
+      }
 
       // Load persisted user tracks from the database
       const userTracksState = useUserTracksStore.getState();
@@ -690,108 +774,20 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           }
         }
 
-        // CRITICAL: Sync room state to new joiners
-        // If we're the master, broadcast current tempo/time signature so new users get the current state
-        // This fixes the issue where new users always see 120 BPM regardless of actual room state
+        // CRITICAL: Sync room state to new joiners via state:request/state:sync protocol (WS2)
+        // The new user will send a state:request; the master responds via the state:request handler below.
+        // As a fallback for the initial join race condition, also proactively broadcast after a short delay.
         if (hasNewUsers && useRoomStore.getState().isMaster) {
-          // Small delay to ensure new user's broadcast handlers are ready
-          // The new user needs time to complete subscription before receiving broadcasts
-          setTimeout(async () => {
-            console.log('[useRoom] Master broadcasting room state to new users...');
-            const { useSessionTempoStore } = require('@/stores/session-tempo-store');
-            const tempoState = useSessionTempoStore.getState();
-
-            // Broadcast current effective tempo (not just manualTempo)
-            // This ensures new joiners get the actual tempo being used
-            realtime.broadcastTempoUpdate(tempoState.tempo, tempoState.source);
-
-            // Broadcast current time signature
-            realtime.broadcastTimeSignature(tempoState.beatsPerBar, tempoState.beatUnit);
-
-            // Broadcast current tempo source
-            realtime.broadcastTempoSource(tempoState.source);
-
-            // Broadcast current key/scale if set
-            if (tempoState.key) {
-              realtime.broadcastKeyUpdate(tempoState.key, tempoState.keyScale, tempoState.keySource);
+          // Short delay to allow new user's subscription to become active
+          setTimeout(() => {
+            // Only proactively broadcast if no state:request has been received yet
+            // (The state:request handler is the preferred path; this is a safety net)
+            const roomStore = useRoomStore.getState();
+            if (roomStore.isMaster) {
+              console.log('[useRoom] Master proactively broadcasting state sync to new users');
+              broadcastFullStateSync(realtime);
             }
-
-            // CRITICAL: Broadcast current queue state so new users (especially listeners)
-            // can sync their queue and respond to play/pause/seek events
-            const currentQueue = useRoomStore.getState().queue;
-            if (currentQueue.tracks.length > 0) {
-              console.log(`[useRoom] Broadcasting queue with ${currentQueue.tracks.length} tracks to new users`);
-              realtime.broadcastQueueUpdate(currentQueue);
-
-              // CRITICAL: If a track is currently playing, broadcast the playback state
-              // so late joiners can start playing from the current position
-              const audioState = useAudioStore.getState();
-              const currentTrackFromStore = useRoomStore.getState().currentTrack;
-              if (currentQueue.isPlaying && currentTrackFromStore) {
-                const currentPlaybackTime = audioState.currentTime || 0;
-                const syncTime = Date.now() + 200; // Give late joiner time to load
-                console.log(`[useRoom] Broadcasting current playback state to late joiner: track=${currentTrackFromStore.id}, time=${currentPlaybackTime}`);
-                realtime.broadcastPlay(currentTrackFromStore.id, currentPlaybackTime, syncTime);
-              }
-            }
-
-            // Broadcast all user tracks so new joiners see everyone's tracks
-            const userTracksStore = useUserTracksStore.getState();
-            const allTracks = userTracksStore.getAllTracks();
-            for (const track of allTracks) {
-              if (track.isActive) {
-                await realtime.broadcastUserTrackAdd(track);
-              }
-            }
-            console.log(`[useRoom] Broadcast ${allTracks.filter(t => t.isActive).length} active tracks to new users`);
-
-            // Broadcast current songs list so new joiners can sync
-            const { useSongsStore } = require('@/stores/songs-store');
-            const songsState = useSongsStore.getState();
-            const roomSongs = songsState.getSongsByRoom(roomId);
-            if (roomSongs.length > 0) {
-              realtime.broadcastSongsSync(roomSongs, songsState.currentSongId);
-              console.log(`[useRoom] Broadcast ${roomSongs.length} songs to new users`);
-
-              // If a song is currently playing, broadcast playback state
-              // so late joiners can start hearing it from the correct position
-              const songAudioState = useAudioStore.getState();
-              if (songAudioState.isPlaying && songsState.currentSongId) {
-                const currentSong = songsState.songs.get(songsState.currentSongId);
-                if (currentSong) {
-                  const trackStates = currentSong.tracks.map((trackRef: SongTrackReference) => ({
-                    trackRefId: trackRef.id,
-                    muted: trackRef.muted ?? false,
-                    solo: trackRef.solo ?? false,
-                    volume: trackRef.volume ?? 1,
-                  }));
-                  const syncTime = Date.now() + 300; // Give late joiner time to load
-                  realtime.broadcastSongPlay(
-                    songsState.currentSongId,
-                    songAudioState.currentTime || 0,
-                    syncTime,
-                    trackStates
-                  );
-                  console.log(`[useRoom] Broadcast song playback state for late joiner: song=${songsState.currentSongId}, time=${songAudioState.currentTime}`);
-                }
-              }
-            }
-
-            // Broadcast current loop tracks so new joiners can sync
-            const loopTracksState = useLoopTracksStore.getState();
-            const allLoopTracks = Array.from(loopTracksState.tracks.values());
-            if (allLoopTracks.length > 0) {
-              realtime.broadcastLoopTrackSync(allLoopTracks);
-              console.log(`[useRoom] Broadcast ${allLoopTracks.length} loop tracks to new users`);
-            }
-
-            // Broadcast current permissions so new joiners get accurate role info
-            const permissionsState = usePermissionsStore.getState();
-            if (permissionsState.members.length > 0) {
-              realtime.broadcastPermissionsSync(permissionsState.members, permissionsState.defaultRole);
-              console.log(`[useRoom] Broadcast permissions to new users`);
-            }
-          }, 500);
+          }, 300);
         }
       });
 
@@ -836,6 +832,14 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
               cloudflareRef.current?.setAsMaster(true);
               usePermissionsStore.getState().setMyPermissions('owner');
               console.log('[useRoom] We are now the room master');
+
+              // WS2: Re-broadcast full room state as new master so all users have authoritative state
+              setTimeout(() => {
+                if (realtimeRef.current && useRoomStore.getState().isMaster) {
+                  console.log('[useRoom] New master re-broadcasting full room state');
+                  broadcastFullStateSync(realtimeRef.current);
+                }
+              }, 200);
             }
           }
         }
@@ -1188,6 +1192,156 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       });
 
+      // WS2: State request/response protocol
+      // When a new user joins (or reconnects), they send state:request
+      // The master responds with the full room state via state:sync
+      realtime.on('state:request', (data) => {
+        const payload = data as { userId: string; requestId: string };
+        if (payload.userId === user.id) return;
+
+        // Only master responds to state requests
+        if (!useRoomStore.getState().isMaster) return;
+
+        console.log(`[useRoom] Received state:request from ${payload.userId}, broadcasting full state sync`);
+        broadcastFullStateSync(realtime, payload.requestId);
+      });
+
+      realtime.on('state:sync', (data) => {
+        const payload = data as StateSyncPayload & { userId: string };
+        if (payload.userId === user.id) return;
+
+        stateSyncReceivedRef.current = true;
+        console.log('[useRoom] Received state:sync from master, applying full state');
+
+        // Apply queue
+        if (payload.queue.length > 0) {
+          const queue: TrackQueue = {
+            tracks: payload.queue,
+            currentIndex: payload.currentTrack
+              ? payload.queue.findIndex(t => t.id === payload.currentTrack?.id)
+              : 0,
+            isPlaying: payload.isPlaying,
+            currentTime: payload.currentTrackPosition,
+            syncTimestamp: payload.timestamp,
+          };
+          useRoomStore.getState().setQueue(queue);
+          if (payload.currentTrack) {
+            useRoomStore.getState().setCurrentTrack(payload.currentTrack);
+          }
+        }
+
+        // Apply tempo
+        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
+        const tempoStore = useSessionTempoStore.getState();
+        if (payload.tempoSource === 'manual' || payload.tempoSource === 'tap') {
+          tempoStore.setManualTempo(payload.tempo);
+        }
+        tempoStore.setSource(payload.tempoSource as 'manual' | 'track' | 'analyzer' | 'tap');
+        tempoStore.setTimeSignature(payload.timeSignature.beatsPerBar, payload.timeSignature.beatUnit);
+        if (payload.key) {
+          tempoStore.setManualKey(payload.key, payload.keyScale as 'major' | 'minor' | null);
+        }
+
+        // Apply user tracks
+        if (payload.userTracks.length > 0) {
+          useUserTracksStore.getState().loadPersistedTracks(payload.userTracks);
+        }
+
+        // Apply loop tracks
+        if (payload.loopTracks.length > 0) {
+          useLoopTracksStore.getState().loadTracks(payload.loopTracks);
+        }
+
+        // Apply songs
+        if (payload.songs.length > 0) {
+          const { useSongsStore } = require('@/stores/songs-store');
+          useSongsStore.getState().setSongs(payload.songs);
+          if (payload.currentSongId) {
+            useSongsStore.getState().selectSong(payload.currentSongId);
+          }
+        }
+
+        // Apply stem mix state
+        if (payload.stemMixState && Object.keys(payload.stemMixState).length > 0) {
+          useRoomStore.getState().setStemMixState(payload.stemMixState as StemMixState);
+        }
+
+        // Apply permissions
+        if (payload.permissions) {
+          const permData = payload.permissions as { members?: RoomMember[]; defaultRole?: RoomRole };
+          if (permData.members) {
+            usePermissionsStore.getState().setMembers(permData.members);
+          }
+          if (permData.defaultRole) {
+            usePermissionsStore.getState().setDefaultRole(permData.defaultRole);
+          }
+        }
+
+        // If track is playing, sync playback
+        if (payload.isPlaying && payload.currentTrack) {
+          const syncTime = Date.now() + 200;
+          loadBackingTrack(payload.currentTrack).then((success) => {
+            if (success) {
+              playBackingTrack(syncTime, payload.currentTrackPosition);
+              useRoomStore.getState().setQueuePlaying(true);
+              console.log(`[useRoom] State sync: started playback at position ${payload.currentTrackPosition}`);
+            }
+          });
+        }
+      });
+
+      // WS2: Reconnection handler — auto-request state sync when connection is restored
+      realtime.on('reconnected', () => {
+        console.log('[useRoom] Reconnected to room, requesting state sync...');
+        stateSyncReceivedRef.current = false;
+        // State request is already sent automatically by RealtimeRoomManager on reconnect
+        // Set a timeout to warn if sync is not received
+        setTimeout(() => {
+          if (!stateSyncReceivedRef.current) {
+            console.warn('[useRoom] State sync not received after reconnection within 3s, requesting again...');
+            realtimeRef.current?.broadcastStateRequest().catch(() => {
+              console.warn('[useRoom] Failed to re-request state sync after reconnection');
+            });
+          }
+        }, 3000);
+      });
+
+      realtime.on('disconnected', () => {
+        console.log('[useRoom] Disconnected from room, waiting for reconnection...');
+      });
+
+      // WS6: Periodic transport position sync — correct drift over long sessions
+      realtime.on('track:position', (data) => {
+        const payload = data as { trackId: string; currentTime: number; syncTimestamp: number; isPlaying: boolean; userId: string };
+        if (payload.userId === user.id) return;
+
+        // Only non-masters apply position corrections (master is authoritative)
+        if (useRoomStore.getState().isMaster) return;
+
+        const localTime = useAudioStore.getState().currentTime || 0;
+        const drift = Math.abs(localTime - payload.currentTime);
+
+        // Correct if drift exceeds 200ms
+        if (drift > 0.2 && payload.isPlaying) {
+          console.log(`[useRoom] Position drift detected: ${(drift * 1000).toFixed(0)}ms, correcting to ${payload.currentTime.toFixed(2)}s`);
+          seekTo(payload.currentTime, Date.now() + 50);
+        }
+      });
+
+      realtime.on('song:position', (data) => {
+        const payload = data as { songId: string; currentTime: number; syncTimestamp: number; isPlaying: boolean; userId: string };
+        if (payload.userId === user.id) return;
+        if (useRoomStore.getState().isMaster) return;
+
+        const localTime = useAudioStore.getState().currentTime || 0;
+        const drift = Math.abs(localTime - payload.currentTime);
+
+        if (drift > 0.2 && payload.isPlaying) {
+          console.log(`[useRoom] Song position drift: ${(drift * 1000).toFixed(0)}ms, correcting`);
+          seekTo(payload.currentTime, Date.now() + 50);
+        }
+      });
+
       // Song playback event handlers (multi-track timeline sync)
       // These sync the Song system playback across all room members
       realtime.on('song:play', (data) => {
@@ -1296,6 +1450,18 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       await realtime.connect(user);
       realtimeRef.current = realtime;
 
+      // WS2: Request state sync from master after connecting
+      // Small delay to ensure subscription is fully active before requesting state
+      stateSyncReceivedRef.current = false;
+      setTimeout(() => {
+        if (realtimeRef.current && !stateSyncReceivedRef.current) {
+          console.log('[useRoom] Requesting state sync from master...');
+          realtimeRef.current.broadcastStateRequest().catch((err) => {
+            console.warn('[useRoom] Failed to request initial state sync:', err);
+          });
+        }
+      }, 200);
+
       // Register song broadcast callbacks so CRUD operations auto-broadcast
       setSongBroadcastCallbacks({
         onSongCreate: (song) => {
@@ -1382,6 +1548,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         trackId: track.id,
         isActive: false,
       }).catch(err => console.error('Failed to mark track as inactive:', err));
+    }
+
+    // WS6: Stop periodic position sync
+    if (positionSyncIntervalRef.current) {
+      clearInterval(positionSyncIntervalRef.current);
+      positionSyncIntervalRef.current = null;
     }
 
     await realtimeRef.current?.disconnect();
@@ -1475,6 +1647,23 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     realtimeRef.current?.broadcastPlay(freshCurrentTrack.id, freshQueue.currentTime, syncTime);
     setQueuePlaying(true);
+
+    // WS6: Start periodic position sync (every 5 seconds during playback)
+    if (positionSyncIntervalRef.current) {
+      clearInterval(positionSyncIntervalRef.current);
+    }
+    positionSyncIntervalRef.current = setInterval(() => {
+      const audioState = useAudioStore.getState();
+      const roomState = useRoomStore.getState();
+      if (roomState.isMaster && audioState.isPlaying && roomState.currentTrack) {
+        realtimeRef.current?.broadcastTrackPosition(
+          roomState.currentTrack.id,
+          audioState.currentTime || 0,
+          Date.now(),
+          true
+        );
+      }
+    }, 5000);
   }, [initialize, loadBackingTrack, playBackingTrack]);
 
   const pause = useCallback(async () => {
@@ -1496,6 +1685,12 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     realtimeRef.current?.broadcastPause(freshCurrentTrack.id, currentTime);
     setQueuePlaying(false);
+
+    // WS6: Stop periodic position sync during pause
+    if (positionSyncIntervalRef.current) {
+      clearInterval(positionSyncIntervalRef.current);
+      positionSyncIntervalRef.current = null;
+    }
   }, [pauseBackingTrack]);
 
   const seek = useCallback(async (time: number) => {
@@ -2045,6 +2240,29 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Broadcast to other users
     realtimeRef.current?.broadcastStemVolume(trackId, stem, volume);
   }, [audioSetStemVolume]);
+
+  // WS3: Auto-broadcast tempo/time-signature changes when we're the master
+  // This integrates the useTempoRealtimeBroadcast hook that was previously unused,
+  // ensuring BPM/key/timesig changes auto-broadcast whenever the local user modifies them.
+  const tempoBroadcastTempoUpdate = useCallback((tempo: number, source: string) => {
+    if (useRoomStore.getState().isMaster) {
+      realtimeRef.current?.broadcastTempoUpdate(tempo, source);
+    }
+  }, []);
+
+  const tempoBroadcastSource = useCallback((source: string) => {
+    if (useRoomStore.getState().isMaster) {
+      realtimeRef.current?.broadcastTempoSource(source);
+    }
+  }, []);
+
+  const tempoBroadcastTimeSig = useCallback((beatsPerBar: number, beatUnit: number) => {
+    if (useRoomStore.getState().isMaster) {
+      realtimeRef.current?.broadcastTimeSignature(beatsPerBar, beatUnit);
+    }
+  }, []);
+
+  useTempoRealtimeBroadcast(tempoBroadcastTempoUpdate, tempoBroadcastSource, tempoBroadcastTimeSig);
 
   // Cleanup on unmount
   useEffect(() => {

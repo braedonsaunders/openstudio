@@ -855,12 +855,18 @@ impl BridgeServer {
                     Ok(event_rx) => {
                         // Start AudioNetworkBridge to connect audio engine with network
                         let audio_handle = app.audio_engine.create_bridge_handle();
-                        let bridge = crate::network::bridge::create_and_start_bridge(
+                        match crate::network::bridge::create_and_start_bridge(
                             network.clone(),
                             audio_handle,
                             event_rx,
-                        );
-                        app.audio_bridge = Some(bridge);
+                        ) {
+                            Ok(bridge) => {
+                                app.audio_bridge = Some(bridge);
+                            }
+                            Err(e) => {
+                                tracing::error!("Failed to create audio-network bridge: {}", e);
+                            }
+                        }
 
                         let mode = network.mode();
                         let is_master = network.is_master();

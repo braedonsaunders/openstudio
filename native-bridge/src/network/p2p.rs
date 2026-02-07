@@ -262,8 +262,10 @@ impl P2PNetwork {
                         samples.clone(),
                     );
 
-                    // Update last seen
+                    // Update last seen and audio statistics
                     peer.touch();
+                    peer.set_audio_active(true);
+                    peer.record_audio_received(frame.data.len());
 
                     // Emit event
                     let _ = event_tx.send(P2PEvent::AudioReceived {
@@ -535,6 +537,44 @@ impl P2PNetwork {
                 .await
             {
                 warn!("Failed to send audio to peer {}: {}", peer.id, e);
+            }
+        }
+
+        Ok(())
+    }
+
+    /// Broadcast pre-encoded audio data to all connected peers via UDP.
+    /// Uses unreliable delivery (no retransmission) since real-time audio
+    /// tolerates packet loss better than retransmission latency.
+    /// The caller provides already Opus-encoded data to avoid redundant encoding
+    /// when the bridge has already encoded for other paths (e.g., browser WebSocket).
+    pub async fn broadcast_encoded_audio(
+        &self,
+        track_id: u8,
+        opus_data: &[u8],
+        channels: u8,
+        sample_count: u16,
+    ) -> Result<()> {
+        let local_id = *self.local_peer_id.read();
+        let frame = AudioFrameMessage {
+            user_id: local_id,
+            track_id,
+            codec: 1, // Opus
+            channels,
+            sample_count,
+            data: opus_data.to_vec(),
+        };
+
+        let payload = frame.to_bytes();
+
+        // Broadcast to all connected peers via unreliable UDP (audio is realtime,
+        // retransmission would add latency worse than the occasional lost packet)
+        for peer in self.peers.connected() {
+            if let Err(e) = self
+                .send_packet(&peer, OspMessageType::AudioFrame, payload.clone(), false)
+                .await
+            {
+                warn!("Failed to broadcast encoded audio to peer {}: {}", peer.id, e);
             }
         }
 

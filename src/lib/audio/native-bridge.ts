@@ -80,7 +80,8 @@ type NativeMessage =
   | { type: 'roomLeft' }
   | { type: 'peerConnected'; userId: string; userName: string; hasNativeBridge: boolean }
   | { type: 'peerDisconnected'; userId: string; reason: string }
-  | { type: 'networkModeChanged'; mode: string };
+  | { type: 'networkModeChanged'; mode: string }
+  | { type: 'p2pStats'; peerId: string; rtt: number; packetLoss: number; jitter: number };
 
 // === Audio Data Types ===
 
@@ -117,7 +118,9 @@ export type BridgeEventType =
   | 'roomLeft'
   | 'peerConnected'
   | 'peerDisconnected'
-  | 'networkModeChanged';
+  | 'networkModeChanged'
+  | 'peerAudioReceived'
+  | 'p2pStats';
 
 type BridgeEventData = {
   connected: { version: string; driverType: string };
@@ -135,6 +138,8 @@ type BridgeEventData = {
   peerConnected: { userId: string; userName: string; hasNativeBridge: boolean };
   peerDisconnected: { userId: string; reason: string };
   networkModeChanged: { mode: string };
+  peerAudioReceived: { userId: string; samples: Float32Array };
+  p2pStats: { peerId: string; rtt: number; packetLoss: number; jitter: number };
 };
 
 type BridgeEventCallback<T extends BridgeEventType> = (data: BridgeEventData[T]) => void;
@@ -157,6 +162,15 @@ export class NativeBridge {
 
   // Track last sent channel config to avoid redundant restarts
   private lastChannelConfig: { channelCount: number; leftChannel: number; rightChannel?: number } | null = null;
+
+  // P2P coordination: track which remote peers are in the room and which have native bridge
+  private roomPeers: Set<string> = new Set();
+  private nativeBridgePeers: Set<string> = new Set();
+  private currentNetworkMode: 'webrtc' | 'p2p' | 'hybrid' = 'webrtc';
+
+  // P2P audio and stats callbacks
+  onPeerAudioReceived?: (userId: string, samples: Float32Array) => void;
+  onP2PStatsUpdate?: (stats: { peerId: string; rtt: number; packetLoss: number; jitter: number }) => void;
 
   // Singleton instance
   private static instance: NativeBridge | null = null;
@@ -185,6 +199,8 @@ export class NativeBridge {
       'peerConnected',
       'peerDisconnected',
       'networkModeChanged',
+      'peerAudioReceived',
+      'p2pStats',
     ];
     for (const type of eventTypes) {
       this.listeners.set(type, new Set());
@@ -299,6 +315,10 @@ export class NativeBridge {
     this.isConnected = false;
     // Reset cached config so next connection will properly configure
     this.lastChannelConfig = null;
+    // Clear P2P peer tracking state
+    this.roomPeers.clear();
+    this.nativeBridgePeers.clear();
+    this.currentNetworkMode = 'webrtc';
   }
 
   /**
@@ -476,22 +496,49 @@ export class NativeBridge {
 
         case 'roomLeft':
           console.log('[NativeBridge] Room left');
+          this.roomPeers.clear();
+          this.nativeBridgePeers.clear();
+          this.currentNetworkMode = 'webrtc';
           this.emit('roomLeft', {});
           break;
 
         case 'peerConnected':
           console.log('[NativeBridge] Peer connected:', msg.userName, '(' + msg.userId + ')', 'native:', msg.hasNativeBridge);
+          this.roomPeers.add(msg.userId);
+          if (msg.hasNativeBridge) {
+            this.nativeBridgePeers.add(msg.userId);
+          }
+          this.evaluateAndSetNetworkMode();
           this.emit('peerConnected', { userId: msg.userId, userName: msg.userName, hasNativeBridge: msg.hasNativeBridge });
           break;
 
         case 'peerDisconnected':
           console.log('[NativeBridge] Peer disconnected:', msg.userId, 'reason:', msg.reason);
+          this.roomPeers.delete(msg.userId);
+          this.nativeBridgePeers.delete(msg.userId);
+          this.evaluateAndSetNetworkMode();
           this.emit('peerDisconnected', { userId: msg.userId, reason: msg.reason });
           break;
 
         case 'networkModeChanged':
           console.log('[NativeBridge] Network mode changed:', msg.mode);
+          this.currentNetworkMode = msg.mode as 'webrtc' | 'p2p' | 'hybrid';
           this.emit('networkModeChanged', { mode: msg.mode });
+          break;
+
+        case 'p2pStats':
+          this.emit('p2pStats', {
+            peerId: msg.peerId,
+            rtt: msg.rtt,
+            packetLoss: msg.packetLoss,
+            jitter: msg.jitter,
+          });
+          this.onP2PStatsUpdate?.({
+            peerId: msg.peerId,
+            rtt: msg.rtt,
+            packetLoss: msg.packetLoss,
+            jitter: msg.jitter,
+          });
           break;
       }
     } catch (e) {
@@ -528,6 +575,20 @@ export class NativeBridge {
           trackId = new TextDecoder().decode(trackIdBytes);
         }
         headerSize = 14 + trackIdLen;
+      }
+
+      // P2P peer audio: decoded audio received from a remote native bridge peer
+      // Format: [msg_type: 3][sample_count: u32][timestamp: u64][user_id_len: u8][user_id: utf8][samples: f32 LE...]
+      if (msgType === 3) {
+        const userIdLen = view.getUint8(13);
+        const userIdBytes = new Uint8Array(data, 14, userIdLen);
+        const peerUserId = new TextDecoder().decode(userIdBytes);
+        const peerHeaderSize = 14 + userIdLen;
+        const peerSamplesBuffer = data.slice(peerHeaderSize);
+        const peerSamples = new Float32Array(peerSamplesBuffer);
+        this.onPeerAudioReceived?.(peerUserId, peerSamples);
+        this.emit('peerAudioReceived', { userId: peerUserId, samples: peerSamples });
+        return;
       }
 
       // Parse samples (f32 little-endian)
@@ -871,11 +932,77 @@ export class NativeBridge {
   }
 
   /**
-   * Switch network mode (P2P, Relay, Hybrid)
-   * @param mode 'p2p' | 'relay' | 'hybrid'
+   * Switch network mode (WebRTC, P2P, Relay, Hybrid).
+   * Updates internal state and sends the mode change to the native bridge.
+   * @param mode 'webrtc' | 'p2p' | 'relay' | 'hybrid'
    */
-  setNetworkMode(mode: 'p2p' | 'relay' | 'hybrid'): void {
+  setNetworkMode(mode: 'webrtc' | 'p2p' | 'relay' | 'hybrid'): void {
+    // Normalize 'relay' to 'webrtc' for internal tracking (relay uses the WebRTC path from our perspective)
+    this.currentNetworkMode = mode === 'relay' ? 'webrtc' : mode as 'webrtc' | 'p2p' | 'hybrid';
     this.send({ type: 'setNetworkMode', mode });
+  }
+
+  /**
+   * Get the current network mode.
+   * Returns the mode as determined by peer evaluation or explicit setting.
+   */
+  getNetworkMode(): 'webrtc' | 'p2p' | 'hybrid' {
+    return this.currentNetworkMode;
+  }
+
+  /**
+   * Register a remote user as having native bridge active.
+   * If the user is not already in the room peers set, they are added there too.
+   * Triggers automatic network mode re-evaluation.
+   */
+  addNativeBridgePeer(userId: string): void {
+    if (!this.roomPeers.has(userId)) {
+      this.roomPeers.add(userId);
+    }
+    this.nativeBridgePeers.add(userId);
+    this.evaluateAndSetNetworkMode();
+    console.log(`[NativeBridge] Added native bridge peer: ${userId} (${this.nativeBridgePeers.size}/${this.roomPeers.size} native)`);
+  }
+
+  /**
+   * Remove a remote user from the native bridge peer set.
+   * The user remains in the room peers set (they may still be connected via WebRTC).
+   * Triggers automatic network mode re-evaluation.
+   */
+  removeNativeBridgePeer(userId: string): void {
+    this.nativeBridgePeers.delete(userId);
+    this.evaluateAndSetNetworkMode();
+    console.log(`[NativeBridge] Removed native bridge peer: ${userId} (${this.nativeBridgePeers.size}/${this.roomPeers.size} native)`);
+  }
+
+  /**
+   * Evaluate the optimal network mode based on which remote peers have native bridge.
+   * Called automatically when peers connect/disconnect via the native bridge room,
+   * and when peers are manually added/removed via addNativeBridgePeer/removeNativeBridgePeer.
+   *
+   * Mode selection logic:
+   * - ALL remote users have native bridge -> 'p2p' (lowest latency, native-to-native)
+   * - SOME remote users have native bridge -> 'hybrid' (mixed native + WebRTC)
+   * - NO remote users have native bridge -> 'webrtc' (standard WebRTC path)
+   */
+  private evaluateAndSetNetworkMode(): void {
+    const totalPeers = this.roomPeers.size;
+    const nativePeers = this.nativeBridgePeers.size;
+
+    let targetMode: 'webrtc' | 'p2p' | 'hybrid';
+
+    if (totalPeers === 0 || nativePeers === 0) {
+      targetMode = 'webrtc';
+    } else if (nativePeers === totalPeers) {
+      targetMode = 'p2p';
+    } else {
+      targetMode = 'hybrid';
+    }
+
+    if (targetMode !== this.currentNetworkMode) {
+      console.log(`[NativeBridge] Network mode evaluation: ${this.currentNetworkMode} -> ${targetMode} (${nativePeers}/${totalPeers} peers have native bridge)`);
+      this.setNetworkMode(targetMode);
+    }
   }
 
   /**
