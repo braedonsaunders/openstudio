@@ -221,10 +221,14 @@ export class AdaptiveJitterBuffer {
    * @param mode 'live-jamming' for ultra-low latency, 'balanced' for normal use, 'stable' for poor connections
    */
   setMode(mode: 'live-jamming' | 'balanced' | 'stable'): void {
+    // Clear history first (reset sets currentBufferSize=256)
+    this.reset();
+
+    // Now set the mode-specific config and buffer size AFTER reset
     switch (mode) {
       case 'live-jamming':
         this.config = { ...LIVE_JAMMING_CONFIG };
-        this.currentBufferSize = 64; // Start at minimum for lowest latency
+        this.currentBufferSize = 64;
         break;
       case 'balanced':
         this.config = { ...BALANCED_CONFIG };
@@ -235,8 +239,6 @@ export class AdaptiveJitterBuffer {
         this.currentBufferSize = 512;
         break;
     }
-    // Clear history when switching modes
-    this.reset();
     console.log(`[JitterBuffer] Mode set to '${mode}', buffer: ${this.currentBufferSize} samples (${this.getBufferLatencyMs().toFixed(1)}ms)`);
   }
 

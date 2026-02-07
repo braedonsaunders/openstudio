@@ -7,6 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "postinstall": "cp node_modules/essentia.js/dist/essentia-wasm.es.js public/audio/ && cp node_modules/essentia.js/dist/essentia.js-core.es.js public/audio/ && cp node_modules/essentia.js/dist/essentia-wasm.web.wasm public/audio/"
   },
   "dependencies": {
@@ -47,6 +49,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.1",
     "tailwindcss": "^4",
-    "typescript": "5.9.3"
+    "typescript": "5.9.3",
+    "vitest": "^4.0.18"
   }
 }
