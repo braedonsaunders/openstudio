@@ -12,6 +12,7 @@ import type { BackingTrack, TrackAudioSettings } from '@/types';
 // and ensures the engine persists across component remounts
 let globalEngine: AudioEngine | null = null;
 let globalEngineInitPromise: Promise<AudioEngine> | null = null;
+let isListenerModeActive = false;
 
 export function useAudioEngine() {
   const animationFrameRef = useRef<number | null>(null);
@@ -84,6 +85,14 @@ export function useAudioEngine() {
 
       await engine.initialize();
       console.log('Audio engine initialized successfully');
+
+      // Apply listener-optimized jitter buffer for smooth receive-only playback.
+      // Listeners don't send audio, so we use a stable (larger) buffer
+      // targeting 100-200ms latency for glitch-free playback over variable networks.
+      if (isListenerModeActive) {
+        engine.setJitterBufferMode('stable');
+        console.log('[AudioEngine] Listener mode: using stable jitter buffer (100-200ms target latency)');
+      }
 
       // Set up level monitoring - use getState() inside callback
       engine.setOnLevelUpdate((levels) => {
@@ -642,6 +651,7 @@ export function useAudioEngine() {
       globalEngine.dispose();
       globalEngine = null;
       globalEngineInitPromise = null;
+      isListenerModeActive = false;
       // Use getState() to avoid dependency issues
       const { setInitialized, setAudioContext, setBackingTrackAnalyser, setMasterAnalyser } = useAudioStore.getState();
       setInitialized(false);
@@ -793,6 +803,52 @@ export function useAudioEngine() {
     globalEngine?.updateBroadcastConnections();
   }, []);
 
+  // === Listener Mode ===
+  // Listeners receive audio without microphone access, using larger jitter buffers
+  // for smooth playback at the cost of slightly higher latency.
+
+  /**
+   * Initialize audio engine in listener mode (receive-only, no microphone).
+   * Creates AudioContext with stable jitter buffer preset for smooth playback.
+   * Does NOT request microphone permissions or create a broadcast stream.
+   */
+  const initializeListenerAudio = useCallback(async () => {
+    isListenerModeActive = true;
+    const engine = await initialize();
+    return engine;
+  }, [initialize]);
+
+  /**
+   * Switch between listener and performer modes at runtime.
+   * - Listener mode: stops capture, uses stable (larger) jitter buffers, no broadcast.
+   * - Performer mode: restores balanced jitter buffers. The caller is responsible
+   *   for calling startCapture() after switching to performer mode to enable microphone.
+   */
+  const setListenerMode = useCallback(async (mode: boolean) => {
+    const previousMode = isListenerModeActive;
+    isListenerModeActive = mode;
+
+    if (mode === previousMode) {
+      return;
+    }
+
+    if (mode) {
+      // Switching TO listener mode: stop capture, use stable jitter buffer
+      stopCapture();
+      if (globalEngine) {
+        globalEngine.setJitterBufferMode('stable');
+        console.log('[AudioEngine] Switched to listener mode: capture stopped, stable jitter buffer active');
+      }
+    } else {
+      // Switching TO performer mode: restore balanced jitter buffer
+      // Caller must call startCapture() after this to enable microphone and broadcast
+      if (globalEngine) {
+        globalEngine.setJitterBufferMode('balanced');
+        console.log('[AudioEngine] Switched to performer mode: balanced jitter buffer active, call startCapture() to enable microphone');
+      }
+    }
+  }, [stopCapture]);
+
   return {
     isInitialized,
     isPlaying,
@@ -868,5 +924,9 @@ export function useAudioEngine() {
     enableMultiTrackBridgeAudio,
     disableMultiTrackBridgeAudio,
     updateBroadcastConnections,
+    // Listener mode (receive-only, no microphone)
+    isListenerMode: isListenerModeActive,
+    initializeListenerAudio,
+    setListenerMode,
   };
 }

@@ -6,8 +6,9 @@ use super::jitter::{JitterBuffer, JitterConfig};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::net::SocketAddr;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Peer connection state
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -115,6 +116,14 @@ pub struct Peer {
     pub avatar_url: RwLock<Option<String>>,
     /// Instrument
     pub instrument: RwLock<Option<String>>,
+    /// Whether this peer is actively streaming audio
+    audio_active: RwLock<bool>,
+    /// Total audio packets received from this peer
+    audio_packets_received: AtomicU64,
+    /// Timestamp of last audio packet received from this peer (ms since UNIX epoch)
+    last_audio_timestamp_ms: AtomicU64,
+    /// Total audio bytes received from this peer
+    audio_bytes_received: AtomicU64,
 }
 
 impl Peer {
@@ -146,6 +155,10 @@ impl Peer {
             is_master: RwLock::new(false),
             avatar_url: RwLock::new(None),
             instrument: RwLock::new(None),
+            audio_active: RwLock::new(false),
+            audio_packets_received: AtomicU64::new(0),
+            last_audio_timestamp_ms: AtomicU64::new(0),
+            audio_bytes_received: AtomicU64::new(0),
         }
     }
 
@@ -343,6 +356,44 @@ impl Peer {
     pub fn set_direct_addr(&self, addr: Option<SocketAddr>) {
         *self.direct_addr.write() = addr;
     }
+
+    /// Set whether this peer is actively streaming audio
+    pub fn set_audio_active(&self, active: bool) {
+        *self.audio_active.write() = active;
+    }
+
+    /// Check if this peer is actively streaming audio
+    pub fn is_audio_active(&self) -> bool {
+        *self.audio_active.read()
+    }
+
+    /// Record reception of an audio packet from this peer.
+    /// Updates packet count, byte count, and last-received timestamp.
+    pub fn record_audio_received(&self, byte_count: usize) {
+        self.audio_packets_received.fetch_add(1, Ordering::Relaxed);
+        self.audio_bytes_received
+            .fetch_add(byte_count as u64, Ordering::Relaxed);
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        self.last_audio_timestamp_ms.store(now, Ordering::Relaxed);
+    }
+
+    /// Get total audio packets received from this peer
+    pub fn audio_packets_received(&self) -> u64 {
+        self.audio_packets_received.load(Ordering::Relaxed)
+    }
+
+    /// Get timestamp (ms since UNIX epoch) of last audio packet from this peer
+    pub fn last_audio_timestamp_ms(&self) -> u64 {
+        self.last_audio_timestamp_ms.load(Ordering::Relaxed)
+    }
+
+    /// Get total audio bytes received from this peer
+    pub fn audio_bytes_received(&self) -> u64 {
+        self.audio_bytes_received.load(Ordering::Relaxed)
+    }
 }
 
 impl std::fmt::Debug for Peer {
@@ -355,6 +406,8 @@ impl std::fmt::Debug for Peer {
             .field("has_native_bridge", &self.has_native_bridge)
             .field("rtt_ms", &self.rtt_ms())
             .field("quality_tier", &self.quality_tier())
+            .field("audio_active", &self.is_audio_active())
+            .field("audio_packets_received", &self.audio_packets_received())
             .finish()
     }
 }
@@ -433,6 +486,16 @@ impl PeerRegistry {
             .values()
             .filter(|p| p.state() == PeerState::Connected)
             .count()
+    }
+
+    /// Get all connected peers that are actively streaming audio
+    pub fn audio_active(&self) -> Vec<Arc<Peer>> {
+        self.peers
+            .read()
+            .values()
+            .filter(|p| p.state() == PeerState::Connected && p.is_audio_active())
+            .cloned()
+            .collect()
     }
 
     /// Find the current master

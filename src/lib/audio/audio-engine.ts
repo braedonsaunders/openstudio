@@ -66,6 +66,7 @@ export class AudioEngine {
   private broadcastSongGain: GainNode | null = null; // Routes song/backing track audio to broadcast
   private midiSourceNode: MediaStreamAudioSourceNode | null = null;
   private midiMixGain: GainNode | null = null;
+  private broadcastActive: boolean = false; // Tracks whether broadcast was set up (survives AudioContext recreation)
 
   // Native bridge audio source (replaces localSourceNode when bridge is active)
   private bridgeWorkletNode: AudioWorkletNode | null = null;
@@ -266,6 +267,18 @@ export class AudioEngine {
     this.songGain?.disconnect();
     this.backingTrackGain?.disconnect();
 
+    // Clean up broadcast nodes - they reference the old AudioContext and must be rebuilt
+    // broadcastActive flag is preserved so updateBroadcastConnections can rebuild them
+    this.broadcastSongGain?.disconnect();
+    this.broadcastSongGain = null;
+    this.broadcastMixerGain?.disconnect();
+    this.broadcastMixerGain = null;
+    this.broadcastDestination = null;
+    this.midiSourceNode?.disconnect();
+    this.midiSourceNode = null;
+    this.midiMixGain?.disconnect();
+    this.midiMixGain = null;
+
     // Close old context
     await this.audioContext.close();
     this.audioContext = null;
@@ -284,6 +297,13 @@ export class AudioEngine {
 
     // Note: Bridge audio for tracks is re-enabled via setTrackBridgeInput calls
     // from useNativeBridge after sample rate change completes
+
+    // Rebuild broadcast connections if broadcast was active before sample rate change
+    // Must be done after initialize() recreates core audio nodes (songGain, masterGain, etc.)
+    if (this.broadcastActive) {
+      this.updateBroadcastConnections();
+      console.log('[AudioEngine] Broadcast connections rebuilt after sample rate change');
+    }
 
     console.log('[AudioEngine] Sample rate changed to', this.config.sampleRate);
   }
@@ -1377,12 +1397,26 @@ export class AudioEngine {
       return null;
     }
 
-    // Create broadcast destination if not exists
-    if (!this.broadcastDestination) {
-      this.broadcastDestination = this.audioContext.createMediaStreamDestination();
-      this.broadcastMixerGain = this.audioContext.createGain();
-      this.broadcastMixerGain.connect(this.broadcastDestination);
+    // Idempotent: tear down existing broadcast nodes before rebuilding
+    // This prevents duplicate connections and stale node references after AudioContext recreation
+    if (this.broadcastDestination) {
+      console.log('[AudioEngine] Tearing down existing broadcast nodes for rebuild');
+      this.midiSourceNode?.disconnect();
+      this.midiSourceNode = null;
+      this.midiMixGain?.disconnect();
+      this.midiMixGain = null;
+      this.broadcastSongGain?.disconnect();
+      this.broadcastSongGain = null;
+      this.broadcastMixerGain?.disconnect();
+      this.broadcastMixerGain = null;
+      this.broadcastDestination = null;
     }
+
+    // Create fresh broadcast destination and mixer
+    this.broadcastDestination = this.audioContext.createMediaStreamDestination();
+    this.broadcastMixerGain = this.audioContext.createGain();
+    this.broadcastMixerGain.connect(this.broadcastDestination);
+    this.broadcastActive = true;
 
     // Connect all track processor outputs to broadcast mixer
     // Each track's output goes through its own mute/solo logic
@@ -1432,21 +1466,84 @@ export class AudioEngine {
    * Call this after adding new tracks while broadcast is active
    */
   updateBroadcastConnections(): void {
-    if (!this.broadcastMixerGain || !this.audioContext) return;
+    if (!this.audioContext) return;
 
-    for (const processor of this.trackProcessors.values()) {
-      processor.getBroadcastNode().connect(this.broadcastMixerGain);
+    // If broadcast infrastructure doesn't exist, rebuild it only if broadcast was previously active
+    // This handles AudioContext recreation (sample rate changes) where old nodes become invalid
+    if (!this.broadcastDestination || !this.broadcastMixerGain) {
+      if (!this.broadcastActive) return;
+
+      console.log('[AudioEngine] Rebuilding broadcast infrastructure after context recreation');
+      this.broadcastDestination = this.audioContext.createMediaStreamDestination();
+      this.broadcastMixerGain = this.audioContext.createGain();
+      this.broadcastMixerGain.connect(this.broadcastDestination);
     }
 
-    // Ensure song audio is still connected to broadcast
-    // This can become disconnected after sample rate changes or engine recreation
-    if (this.songGain && !this.broadcastSongGain) {
+    // Reconnect all track processors to broadcast mixer
+    for (const processor of this.trackProcessors.values()) {
+      try {
+        processor.getBroadcastNode().connect(this.broadcastMixerGain);
+      } catch (err) {
+        console.warn('[AudioEngine] Failed to connect track processor to broadcast:', err);
+      }
+    }
+
+    // Rebuild song -> broadcast connection unconditionally to handle stale references
+    // After AudioContext recreation, broadcastSongGain may reference nodes from the old context
+    if (this.songGain) {
+      if (this.broadcastSongGain) {
+        try {
+          this.broadcastSongGain.disconnect();
+        } catch {
+          // Node may already be disconnected from old context
+        }
+      }
       this.broadcastSongGain = this.audioContext.createGain();
       this.broadcastSongGain.gain.value = 1.0;
       this.songGain.connect(this.broadcastSongGain);
       this.broadcastSongGain.connect(this.broadcastMixerGain);
-      console.log('[AudioEngine] Reconnected song audio to broadcast mix');
+      console.log('[AudioEngine] Song audio -> broadcast connection established');
     }
+  }
+
+  /**
+   * Verify the broadcast audio chain is intact.
+   * Traces the node graph: backingTrackGain -> songGain -> broadcastSongGain -> broadcastMixerGain
+   * Logs which connections are intact and which are broken.
+   * @returns true if the full broadcast chain is complete, false if any link is broken
+   */
+  verifyBroadcastChain(): boolean {
+    // If broadcast was never set up, chain is trivially "not needed"
+    if (!this.broadcastActive) {
+      return true;
+    }
+
+    const links: Array<{ name: string; present: boolean }> = [
+      { name: 'audioContext', present: this.audioContext !== null },
+      { name: 'backingTrackGain', present: this.backingTrackGain !== null },
+      { name: 'songGain', present: this.songGain !== null },
+      { name: 'broadcastSongGain', present: this.broadcastSongGain !== null },
+      { name: 'broadcastMixerGain', present: this.broadcastMixerGain !== null },
+      { name: 'broadcastDestination', present: this.broadcastDestination !== null },
+    ];
+
+    const brokenLinks = links.filter(link => !link.present);
+    const isComplete = brokenLinks.length === 0;
+
+    if (!isComplete) {
+      console.warn(
+        '[AudioEngine] Broadcast chain BROKEN. Missing nodes:',
+        brokenLinks.map(l => l.name).join(', ')
+      );
+      console.warn(
+        '[AudioEngine] Broadcast chain status:',
+        links.map(l => `${l.name}=${l.present ? 'OK' : 'MISSING'}`).join(' -> ')
+      );
+    } else {
+      console.log('[AudioEngine] Broadcast chain verified: all nodes present');
+    }
+
+    return isComplete;
   }
 
   /**
@@ -1692,6 +1789,18 @@ export class AudioEngine {
       }
     }
 
+    // Guard: ensure broadcast chain is intact before playback
+    // broadcastSongGain can be null after AudioContext recreation or stem loading
+    if (this.broadcastActive && !this.broadcastSongGain) {
+      console.log('[AudioEngine] broadcastSongGain missing before playback, rebuilding broadcast connections');
+      this.updateBroadcastConnections();
+    }
+
+    // Verify broadcast chain and warn if broken
+    if (this.broadcastActive && !this.verifyBroadcastChain()) {
+      console.warn('[AudioEngine] Broadcast chain broken before backing track playback - listeners may not hear audio');
+    }
+
     this.stopBackingTrack();
 
     // Calculate start time based on sync timestamp
@@ -1736,6 +1845,18 @@ export class AudioEngine {
       }
     }
 
+    // Guard: ensure broadcast chain is intact before stem playback
+    // broadcastSongGain can be null after AudioContext recreation or stem loading
+    if (this.broadcastActive && !this.broadcastSongGain) {
+      console.log('[AudioEngine] broadcastSongGain missing before stem playback, rebuilding broadcast connections');
+      this.updateBroadcastConnections();
+    }
+
+    // Verify broadcast chain and warn if broken
+    if (this.broadcastActive && !this.verifyBroadcastChain()) {
+      console.warn('[AudioEngine] Broadcast chain broken before stem playback - listeners may not hear audio');
+    }
+
     this.stopStemmedTrack();
 
     const now = Date.now();
@@ -1776,6 +1897,13 @@ export class AudioEngine {
       source.start(startTime, offset);
 
       this.stemSources.set(stemType, source);
+    }
+
+    // After connecting stems through their gain nodes -> backingTrackGain,
+    // explicitly update broadcast connections so stem audio routes through
+    // to broadcastSongGain for WebRTC listeners
+    if (this.broadcastActive) {
+      this.updateBroadcastConnections();
     }
 
     this.playbackStartTime = startTime;
@@ -2298,6 +2426,7 @@ export class AudioEngine {
     this.broadcastMixerGain?.disconnect();
     this.broadcastMixerGain = null;
     this.broadcastDestination = null;
+    this.broadcastActive = false;
 
     this.localSourceNode?.disconnect();
     this.localSourceNode = null;

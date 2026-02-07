@@ -124,6 +124,21 @@ pub enum OutgoingMessage {
         bpm: f32,
         time_sig: (u8, u8),
     },
+    /// Pre-encoded audio for direct P2P transmission.
+    /// Bypasses mode-based routing and Opus encoding in the P2P layer,
+    /// since the bridge has already Opus-encoded the audio.
+    P2PEncodedAudio {
+        track_id: u8,
+        opus_data: Vec<u8>,
+        channels: u8,
+        sample_count: u16,
+    },
+    /// Audio for relay only. Used by the bridge for dual-path operation
+    /// where P2P audio is sent separately via P2PEncodedAudio.
+    RelayAudio {
+        track_id: u8,
+        samples: Vec<f32>,
+    },
 }
 
 /// Network manager state
@@ -369,6 +384,44 @@ impl NetworkManager {
         }
     }
 
+    /// Send pre-encoded audio frame to P2P peers.
+    /// Bypasses the standard outgoing queue's Opus encoding since the
+    /// bridge has already encoded the audio. Sent via the outgoing channel
+    /// so socket I/O occurs on the correct tokio runtime.
+    pub fn send_p2p_encoded_audio(
+        &self,
+        track_id: u8,
+        opus_data: Vec<u8>,
+        channels: u8,
+        sample_count: u16,
+    ) {
+        if let Some(tx) = self.outgoing_tx.read().as_ref() {
+            let _ = tx.send(OutgoingMessage::P2PEncodedAudio {
+                track_id,
+                opus_data,
+                channels,
+                sample_count,
+            });
+        }
+    }
+
+    /// Send audio frame to relay only.
+    /// Used by the bridge for dual-path operation where P2P audio
+    /// is sent separately via send_p2p_encoded_audio.
+    pub fn send_relay_audio(&self, track_id: u8, samples: Vec<f32>) {
+        if let Some(tx) = self.outgoing_tx.read().as_ref() {
+            let _ = tx.send(OutgoingMessage::RelayAudio {
+                track_id,
+                samples,
+            });
+        }
+    }
+
+    /// Get access to the audio codec for encoding/decoding
+    pub fn codec(&self) -> &OpusCodec {
+        &self.codec
+    }
+
     /// Get current mode
     pub fn mode(&self) -> NetworkMode {
         self.state.read().mode
@@ -496,6 +549,7 @@ impl NetworkManager {
 
         // Forward P2P events to our event channel
         let event_tx = self.event_tx.read().clone();
+        let peers_for_events = self.peers.clone();
         if let Some(tx) = event_tx {
             tokio::spawn(async move {
                 while let Ok(event) = rx.recv().await {
@@ -508,6 +562,10 @@ impl NetworkManager {
                             });
                         }
                         P2PEvent::PeerDisconnected { peer_id, reason } => {
+                            // Mark peer as audio-inactive on disconnect
+                            if let Some(peer) = peers_for_events.get(peer_id) {
+                                peer.set_audio_active(false);
+                            }
                             let _ = tx.send(NetworkEvent::PeerDisconnected {
                                 user_id: peer_id.to_string(),
                                 reason,
@@ -582,6 +640,30 @@ impl NetworkManager {
     }
 
     async fn send_message(&self, msg: OutgoingMessage) -> Result<()> {
+        match msg {
+            // Pre-encoded audio sent directly to P2P peers (bypass mode-based routing)
+            OutgoingMessage::P2PEncodedAudio {
+                track_id,
+                opus_data,
+                channels,
+                sample_count,
+            } => {
+                self.p2p
+                    .broadcast_encoded_audio(track_id, &opus_data, channels, sample_count)
+                    .await
+            }
+            // Audio sent directly to relay (bypass mode-based routing)
+            OutgoingMessage::RelayAudio { track_id, samples } => {
+                self.relay.send_audio(track_id, &samples).await
+            }
+            // Standard messages routed by current network mode
+            other => self.send_mode_routed(other).await,
+        }
+    }
+
+    /// Route standard outgoing messages based on current network mode.
+    /// Handles Audio, Control, and ClockSync messages for P2P, Relay, and Hybrid modes.
+    async fn send_mode_routed(&self, msg: OutgoingMessage) -> Result<()> {
         match self.mode() {
             NetworkMode::P2P => {
                 match msg {
@@ -613,6 +695,8 @@ impl NetworkManager {
                         // Broadcast clock sync to all peers
                         self.p2p.broadcast_control(OspMessageType::ClockSync, payload).await?;
                     }
+                    // P2PEncodedAudio and RelayAudio are handled in send_message
+                    _ => {}
                 }
             }
             NetworkMode::Relay => match msg {
@@ -644,6 +728,8 @@ impl NetworkManager {
                         .send_control(OspMessageType::ClockSync, payload)
                         .await?;
                 }
+                // P2PEncodedAudio and RelayAudio are handled in send_message
+                _ => {}
             },
             NetworkMode::Hybrid => {
                 // Send via both (relay handles fan-out, P2P for low-latency to nearby)
@@ -684,6 +770,8 @@ impl NetworkManager {
                             .send_control(OspMessageType::ClockSync, payload)
                             .await?;
                     }
+                    // P2PEncodedAudio and RelayAudio are handled in send_message
+                    _ => {}
                 }
             }
             NetworkMode::Disconnected => {}
