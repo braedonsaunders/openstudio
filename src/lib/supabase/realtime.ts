@@ -395,10 +395,6 @@ export class RealtimeRoomManager {
                     console.warn('[Realtime] Failed to request state sync on reconnect:', err);
                   });
                 }
-              } else if (status === 'SUBSCRIBING') {
-                if (this.connectionState === 'disconnected') {
-                  this.connectionState = 'reconnecting';
-                }
               }
             }
           });
