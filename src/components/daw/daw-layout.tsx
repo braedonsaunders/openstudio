@@ -421,6 +421,27 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
           if (loopTrack) {
             playLoopTrack(loopTrack.id, payload.syncTime, 0);
           }
+        } else if (trackRef.type === 'lyria' && trackRef.lyriaConfig) {
+          // Handle Lyria AI music tracks - connect and play via Lyria store
+          console.log('[Song Sync] Playing Lyria track:', trackRef.lyriaConfig?.customPrompt || 'AI Music');
+
+          useLyriaStore.getState().setActiveConfig(trackRef.lyriaConfig, payload.songId, trackRef.id);
+
+          const initialState = useLyriaStore.getState().sessionState;
+          if (initialState === 'disconnected' || initialState === 'error') {
+            try {
+              await useLyriaStore.getState().connect();
+            } catch (err) {
+              console.error('[Song Sync] Failed to connect Lyria:', err);
+              // Continue without Lyria - don't block other tracks
+            }
+          }
+
+          const currentState = useLyriaStore.getState().sessionState;
+          if (currentState === 'connected' || currentState === 'paused') {
+            await useLyriaStore.getState().play(trackRef.lyriaConfig);
+          }
+          // Only one Lyria track per song - no break needed since we continue iterating
         }
       }
 

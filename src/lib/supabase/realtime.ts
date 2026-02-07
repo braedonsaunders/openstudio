@@ -29,6 +29,8 @@ export interface StateSyncPayload {
   stemMixState: Record<string, { enabled: boolean; volume: number }>;
   permissions: Record<string, unknown>;
   songTrackStates: Record<string, { muted: boolean; solo: boolean; volume: number }>;
+  currentSongIsPlaying?: boolean;  // Whether Song system is actively playing
+  currentSongPosition?: number;    // Current playback position in the Song
   timestamp: number;
 }
 
@@ -133,6 +135,10 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'stem:volume' }, ({ payload }) => {
       this.emit('stem:volume', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'backingtrack:volume' }, ({ payload }) => {
+      this.emit('backingtrack:volume', payload);
     });
 
     // User track events
@@ -515,6 +521,14 @@ export class RealtimeRoomManager {
 
   async broadcastStemVolume(trackId: string, stem: string, volume: number): Promise<void> {
     await this.reliableBroadcast('stem:volume', { trackId, stem, volume, userId: this.userId });
+  }
+
+  async broadcastBackingTrackVolume(volume: number): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'backingtrack:volume',
+      payload: { volume, userId: this.userId },
+    });
   }
 
   // User track broadcasts

@@ -155,6 +155,8 @@ function broadcastFullStateSync(realtime: RealtimeRoomManager, requestId?: strin
       defaultRole: permissionsStore.defaultRole,
     },
     songTrackStates,
+    currentSongIsPlaying: audioState.isPlaying && !!songsState.currentSongId,
+    currentSongPosition: audioState.currentTime || 0,
     timestamp: Date.now(),
   };
 
@@ -220,6 +222,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     updateTrackState,
     // WS5: Listener mode (receive-only, no microphone)
     initializeListenerAudio,
+    // Multi-track volume control for song track state sync
+    setMultiTrackVolume,
+    // Backing track volume control
+    setBackingTrackVolume,
   } = useAudioEngine();
 
   // Stats tracking for gamification
@@ -933,6 +939,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         audioSetStemVolume(payload.stem, payload.volume);
       });
 
+      realtime.on('backingtrack:volume', (data) => {
+        const payload = data as { volume: number; userId: string };
+        if (payload.userId === user.id) return;
+        // Apply to audio engine
+        setBackingTrackVolume(payload.volume);
+      });
+
       // Tempo broadcast handlers - sync BPM/time signature across all clients
       realtime.on('tempo:update', (data) => {
         const payload = data as { tempo: number; source: string; userId: string };
@@ -1132,8 +1145,27 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           }
         }
 
-        // If track is playing, sync playback
-        if (payload.isPlaying && payload.currentTrack) {
+        // Sync Song playback state - trigger song:play for joining user
+        if (payload.currentSongIsPlaying && payload.currentSongId) {
+          // Build track states array from the songTrackStates record
+          const trackStatesArray = Object.entries(payload.songTrackStates || {}).map(([trackRefId, state]) => ({
+            trackRefId,
+            muted: state.muted,
+            solo: state.solo,
+            volume: state.volume,
+          }));
+
+          const syncTime = Date.now() + 200;
+          options.onSongPlay?.({
+            songId: payload.currentSongId,
+            currentTime: payload.currentSongPosition || payload.currentTrackPosition || 0,
+            syncTime,
+            trackStates: trackStatesArray,
+            userId: 'master',
+          });
+          console.log(`[useRoom] State sync: starting Song playback at position ${payload.currentSongPosition || 0}`);
+        } else if (payload.isPlaying && payload.currentTrack) {
+          // Legacy single-track playback fallback
           const syncTime = Date.now() + 200;
           loadBackingTrack(payload.currentTrack).then((success) => {
             if (success) {
@@ -1234,6 +1266,24 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           const newSongs = new Map(songsStore.songs);
           newSongs.set(payload.songId, { ...song, tracks: updatedTracks });
           useSongsStore.setState({ songs: newSongs });
+
+          // Apply track state changes to audio engine for immediate audio effect
+          const audioStore = useAudioStore.getState();
+          if (audioStore.isPlaying) {
+            const hasSoloTrack = payload.trackStates.some(ts => ts.solo);
+            const queueState = useRoomStore.getState().queue;
+            for (const trackState of payload.trackStates) {
+              // Find the matching audio track to get the audio engine track ID
+              const matchingTrackRef = song.tracks.find((tr: SongTrackReference) => tr.id === trackState.trackRefId);
+              if (matchingTrackRef && matchingTrackRef.type === 'audio') {
+                const audioTrack = queueState.tracks.find((t: BackingTrack) => t.id === matchingTrackRef.trackId);
+                if (audioTrack) {
+                  const isEffectivelyMuted = trackState.muted || (hasSoloTrack && !trackState.solo);
+                  setMultiTrackVolume(audioTrack.id, trackState.volume, isEffectivelyMuted);
+                }
+              }
+            }
+          }
         }
       });
 
@@ -1755,6 +1805,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastStemVolume(trackId, stem, volume);
   }, [audioSetStemVolume]);
 
+  const broadcastBackingTrackVolume = useCallback((volume: number) => {
+    realtimeRef.current?.broadcastBackingTrackVolume(volume);
+  }, []);
+
   // WS3: Auto-broadcast tempo/time-signature changes when we're the master
   // This integrates the useTempoRealtimeBroadcast hook that was previously unused,
   // ensuring BPM/key/timesig changes auto-broadcast whenever the local user modifies them.
@@ -1831,5 +1885,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Stem control
     broadcastStemToggle,
     broadcastStemVolume,
+    // Backing track volume
+    broadcastBackingTrackVolume,
   };
 }

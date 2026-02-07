@@ -87,6 +87,7 @@ export interface JitterStats {
 export interface AudioStream {
   userId: string;
   stream: MediaStream;
+  source?: MediaStreamAudioSourceNode;
   analyser?: AnalyserNode;
   gainNode?: GainNode;
   delayNode?: DelayNode; // For per-user latency compensation on incoming streams
