@@ -123,6 +123,10 @@ export class RealtimeRoomManager {
       this.emit('stem:toggle', payload);
     });
 
+    this.channel.on('broadcast', { event: 'stem:volume' }, ({ payload }) => {
+      this.emit('stem:volume', payload);
+    });
+
     this.channel.on('broadcast', { event: 'ai:generate' }, ({ payload }) => {
       this.emit('ai:generate', payload);
     });
@@ -252,6 +256,11 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'songs:delete' }, ({ payload }) => {
       this.emit('songs:delete', payload);
+    });
+
+    // Song track state changes during playback (mute/solo/volume)
+    this.channel.on('broadcast', { event: 'song:trackStates' }, ({ payload }) => {
+      this.emit('song:trackStates', payload);
     });
   }
 
@@ -742,6 +751,17 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'songs:delete',
       payload: { songId, userId: this.userId },
+    });
+  }
+
+  async broadcastSongTrackStates(
+    songId: string,
+    trackStates: Array<{ trackRefId: string; muted: boolean; solo: boolean; volume: number }>
+  ): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'song:trackStates',
+      payload: { songId, trackStates, userId: this.userId },
     });
   }
 

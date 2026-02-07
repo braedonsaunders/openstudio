@@ -99,6 +99,27 @@ const SONG_COLORS = [
 ];
 
 // =============================================================================
+// Broadcast Callbacks (set by useRoom when joining)
+// =============================================================================
+
+interface SongBroadcastCallbacks {
+  onSongCreate?: (song: Song) => void;
+  onSongUpdate?: (songId: string, changes: Record<string, unknown>) => void;
+  onSongDelete?: (songId: string) => void;
+}
+
+let songBroadcastCallbacks: SongBroadcastCallbacks = {};
+
+/**
+ * Register broadcast callbacks for song CRUD operations.
+ * Called by useRoom when joining a room so that song changes
+ * are automatically broadcast to other room members.
+ */
+export function setSongBroadcastCallbacks(callbacks: SongBroadcastCallbacks | null): void {
+  songBroadcastCallbacks = callbacks || {};
+}
+
+// =============================================================================
 // Store State
 // =============================================================================
 
@@ -213,6 +234,9 @@ export const useSongsStore = create<SongsState>((set, get) => ({
     // Persist to server
     createSongOnServer(song);
 
+    // Broadcast to other room members
+    songBroadcastCallbacks.onSongCreate?.(song);
+
     return song;
   },
 
@@ -233,6 +257,9 @@ export const useSongsStore = create<SongsState>((set, get) => ({
 
     // Persist to server (debounced)
     persistSong(updatedSong);
+
+    // Broadcast to other room members
+    songBroadcastCallbacks.onSongUpdate?.(songId, changes as Record<string, unknown>);
   },
 
   deleteSong: async (songId: string) => {
@@ -265,6 +292,9 @@ export const useSongsStore = create<SongsState>((set, get) => ({
 
     // Delete from server
     deleteSongOnServer(song.roomId, songId);
+
+    // Broadcast to other room members
+    songBroadcastCallbacks.onSongDelete?.(songId);
   },
 
   selectSong: async (songId: string | null) => {

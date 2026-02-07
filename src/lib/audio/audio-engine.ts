@@ -174,6 +174,24 @@ export class AudioEngine {
       console.warn('AudioWorklet not available, falling back to ScriptProcessor:', error);
     }
 
+    // Register AudioContext state change handler for mobile browser suspensions
+    // iOS Safari and Android can suspend the AudioContext at any time (phone calls, backgrounding, etc.)
+    this.audioContext.onstatechange = () => {
+      const state = this.audioContext?.state;
+      console.log(`[AudioEngine] AudioContext state changed: ${state}`);
+
+      if (state === 'suspended') {
+        console.log('[AudioEngine] AudioContext suspended, attempting auto-resume...');
+        this.audioContext?.resume()
+          .then(() => {
+            console.log('[AudioEngine] AudioContext auto-resumed successfully');
+          })
+          .catch((error) => {
+            console.warn('[AudioEngine] AudioContext auto-resume failed (user interaction may be required):', error);
+          });
+      }
+    };
+
     // Start level monitoring
     this.startLevelMonitoring();
   }
@@ -1521,7 +1539,7 @@ export class AudioEngine {
     this.stemBuffers.set(stemType, buffer);
   }
 
-  playBackingTrack(syncTimestamp: number, offset: number = 0): void {
+  async playBackingTrack(syncTimestamp: number, offset: number = 0): Promise<void> {
     if (!this.audioContext) {
       console.error('Cannot play: audio context not initialized');
       return;
@@ -1535,10 +1553,15 @@ export class AudioEngine {
       return;
     }
 
-    // Resume if suspended
+    // Resume if suspended (must await for iOS Safari)
     if (this.audioContext.state === 'suspended') {
-      console.log('Resuming suspended audio context');
-      this.audioContext.resume();
+      console.log('[AudioEngine] Resuming suspended audio context for backing track playback');
+      try {
+        await this.audioContext.resume();
+      } catch (error) {
+        console.error('[AudioEngine] Failed to resume audio context:', error);
+        return;
+      }
     }
 
     this.stopBackingTrack();
@@ -1571,8 +1594,19 @@ export class AudioEngine {
     this.isPlaying = true;
   }
 
-  playStemmedTrack(syncTimestamp: number, offset: number = 0): void {
+  async playStemmedTrack(syncTimestamp: number, offset: number = 0): Promise<void> {
     if (!this.audioContext || !this.backingTrackGain) return;
+
+    // Resume if suspended (must await for iOS Safari)
+    if (this.audioContext.state === 'suspended') {
+      console.log('[AudioEngine] Resuming suspended audio context for stem playback');
+      try {
+        await this.audioContext.resume();
+      } catch (error) {
+        console.error('[AudioEngine] Failed to resume audio context for stems:', error);
+        return;
+      }
+    }
 
     this.stopStemmedTrack();
 
@@ -1729,18 +1763,24 @@ export class AudioEngine {
    * @param syncTimestamp Timestamp to sync playback to
    * @param trackConfigs Array of { trackId, offset, volume, muted }
    */
-  playMultiTracks(
+  async playMultiTracks(
     syncTimestamp: number,
     trackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }>
-  ): void {
+  ): Promise<void> {
     if (!this.audioContext || !this.masterGain) {
       console.error('[AudioEngine] Cannot play multi-tracks: audio context not ready');
       return;
     }
 
-    // Resume if suspended
+    // Resume if suspended (must await for iOS Safari)
     if (this.audioContext.state === 'suspended') {
-      this.audioContext.resume();
+      console.log('[AudioEngine] Resuming suspended audio context for multi-track playback');
+      try {
+        await this.audioContext.resume();
+      } catch (error) {
+        console.error('[AudioEngine] Failed to resume audio context for multi-tracks:', error);
+        return;
+      }
     }
 
     // Stop any currently playing multi-tracks
@@ -2096,6 +2136,7 @@ export class AudioEngine {
 
     this.stopBackingTrack();
     this.stopStemmedTrack();
+    this.clearMultiTracks();
 
     // Clean up track processors
     for (const processor of this.trackProcessors.values()) {
