@@ -30,7 +30,6 @@ import { BottomDock } from './bottom-dock';
 import { KeyboardShortcuts } from './keyboard-shortcuts';
 import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
-import { YouTubePlayer, type YouTubePlayerRef } from '../youtube/youtube-player';
 import { OutputSettingsModal } from '../settings/output-settings-modal';
 import { InviteMemberModal } from '@/components/room/invite-member-modal';
 import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
@@ -181,15 +180,8 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     users,
     currentUser,
     isMaster,
-    currentTrack,
-    play,
-    pause,
-    seek,
     addTrack,
     removeTrack,
-    skipToNext,
-    skipToPrevious,
-    skipToTrack,
     sendMessage,
     muteUser,
     setUserVolume,
@@ -212,6 +204,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     broadcastSongSeek,
     broadcastSongSelect,
     broadcastSongTrackStates,
+    broadcastSongPosition,
     // Stem control
     broadcastStemToggle,
     broadcastStemVolume,
@@ -224,8 +217,8 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
   });
 
   const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource, loadMultiTrack, playMultiTracks, stopMultiTracks, setMultiTrackVolume } = useAudioEngine();
-  const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue } = useRoomStore();
-  const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, backingTrackVolume, currentTime } = useAudioStore();
+  const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue, currentTrack } = useRoomStore();
+  const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, currentTime } = useAudioStore();
 
   // Stats tracking
   const { trackStemSeparation } = useStatsTracker();
@@ -530,8 +523,11 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     };
   }, [roomId, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, stopMultiTracks, playLoopTrack, stopLoopTrack, setCurrentTime, setDuration, setPlaying]);
 
-  // YouTube player ref
-  const youtubePlayerRef = useRef<YouTubePlayerRef>(null);
+  // Song position sync interval ref (WS6: periodic position broadcast)
+  const songPositionSyncRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Pending auto-play ref for song skip (triggers play after React state settles)
+  const pendingAutoPlayRef = useRef(false);
 
   // Left panel ref (for focusing song input)
   const leftPanelRef = useRef<TracksPanelRef>(null);
@@ -572,13 +568,8 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     }
   }, [currentTrack?.id, resetAnalysis]);
 
-  // Legacy YouTube check - no longer used, Song system handles all playback
-  const isYouTubeTrack = false;
-
   // Handle track end for looping
   useEffect(() => {
-    if (isYouTubeTrack) return; // YouTube handles its own looping
-
     setOnTrackEnded(() => {
       if (loopEnabled && currentTrack) {
         // Restart playback from the beginning
@@ -586,20 +577,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
         playBackingTrack(Date.now(), 0);
       }
     });
-  }, [loopEnabled, currentTrack, isYouTubeTrack, setOnTrackEnded, setCurrentTime, playBackingTrack]);
-
-  // YouTube playback controls (defined before keyboard shortcuts that use them)
-  const handleYouTubePlay = useCallback(() => {
-    youtubePlayerRef.current?.play();
-  }, []);
-
-  const handleYouTubePause = useCallback(() => {
-    youtubePlayerRef.current?.pause();
-  }, []);
-
-  const handleYouTubeSeek = useCallback((time: number) => {
-    youtubePlayerRef.current?.seek(time);
-  }, []);
+  }, [loopEnabled, currentTrack, setOnTrackEnded, setCurrentTime, playBackingTrack]);
 
   // ==========================================================================
   // Lyria Integration - AI Live Music
@@ -763,10 +741,27 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
       volume: t.ref.volume ?? 1,
     }));
     broadcastSongPlay(currentSong.id, playbackOffset, syncTime, trackStates);
-  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, playLoopTrack, setDuration, setPlaying, broadcastSongPlay]);
+
+    // WS6: Start periodic Song position sync (every 5 seconds)
+    if (songPositionSyncRef.current) clearInterval(songPositionSyncRef.current);
+    songPositionSyncRef.current = setInterval(() => {
+      const audioState = useAudioStore.getState();
+      const songsStore = useSongsStore.getState();
+      const roomState = useRoomStore.getState();
+      if (roomState.isMaster && audioState.isPlaying && songsStore.currentSongId) {
+        broadcastSongPosition(songsStore.currentSongId, audioState.currentTime || 0, Date.now(), true);
+      }
+    }, 5000);
+  }, [isMaster, currentSong, songTracks, songDuration, currentTime, initialize, initLoopPlayback, loadMultiTrack, playMultiTracks, playLoopTrack, setDuration, setPlaying, broadcastSongPlay, broadcastSongPosition]);
 
   const handleSongPause = useCallback(() => {
     console.log('Pausing Song playback');
+
+    // WS6: Stop periodic Song position sync
+    if (songPositionSyncRef.current) {
+      clearInterval(songPositionSyncRef.current);
+      songPositionSyncRef.current = null;
+    }
 
     // Stop all audio tracks
     stopMultiTracks();
@@ -905,6 +900,73 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     handleSongSeek(time);
   }, [handleSongSeek]);
 
+  // Song-based skip functions - navigate between songs in the songs list
+  const handleSkipToNextSong = useCallback(() => {
+    const songsStore = useSongsStore.getState();
+    const songs = Array.from(songsStore.songs.values());
+    if (songs.length <= 1) return;
+
+    const currentIndex = songs.findIndex(s => s.id === songsStore.currentSongId);
+    const nextIndex = currentIndex < songs.length - 1 ? currentIndex + 1 : 0;
+    const nextSong = songs[nextIndex];
+    if (!nextSong) return;
+
+    const wasPlaying = isPlaying;
+
+    if (wasPlaying) {
+      handleSongPause();
+    }
+
+    // Select the new song and broadcast
+    songsStore.selectSong(nextSong.id);
+    broadcastSongSelect(nextSong.id);
+
+    // Reset position to start of new song
+    setCurrentTime(0);
+
+    // If was playing, schedule auto-play after React processes the song change
+    if (wasPlaying) {
+      pendingAutoPlayRef.current = true;
+    }
+  }, [isPlaying, handleSongPause, broadcastSongSelect, setCurrentTime]);
+
+  const handleSkipToPreviousSong = useCallback(() => {
+    const songsStore = useSongsStore.getState();
+    const songs = Array.from(songsStore.songs.values());
+    if (songs.length <= 1) return;
+
+    const currentIndex = songs.findIndex(s => s.id === songsStore.currentSongId);
+    const prevIndex = currentIndex > 0 ? currentIndex - 1 : songs.length - 1;
+    const prevSong = songs[prevIndex];
+    if (!prevSong) return;
+
+    const wasPlaying = isPlaying;
+
+    if (wasPlaying) {
+      handleSongPause();
+    }
+
+    // Select the new song and broadcast
+    songsStore.selectSong(prevSong.id);
+    broadcastSongSelect(prevSong.id);
+
+    // Reset position to start of new song
+    setCurrentTime(0);
+
+    // If was playing, schedule auto-play after React processes the song change
+    if (wasPlaying) {
+      pendingAutoPlayRef.current = true;
+    }
+  }, [isPlaying, handleSongPause, broadcastSongSelect, setCurrentTime]);
+
+  // Auto-play effect: when song changes and pendingAutoPlay is set, trigger play
+  useEffect(() => {
+    if (pendingAutoPlayRef.current && currentSong) {
+      pendingAutoPlayRef.current = false;
+      handleSongPlay();
+    }
+  }, [currentSong, handleSongPlay]);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -935,10 +997,10 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
           }
           break;
         case '[':
-          if (isMaster) skipToPrevious();
+          if (isMaster) handleSkipToPreviousSong();
           break;
         case ']':
-          if (isMaster) skipToNext();
+          if (isMaster) handleSkipToNextSong();
           break;
         case 'm':
         case 'M':
@@ -1008,7 +1070,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMaster, isPlaying, isMuted, activePanel, handlePlay, handlePause, handleSeek, setMuted, skipToNext, skipToPrevious, hasSongTracks, setMainView]);
+  }, [isMaster, isPlaying, isMuted, activePanel, handlePlay, handlePause, handleSeek, setMuted, handleSkipToNextSong, handleSkipToPreviousSong, hasSongTracks, setMainView]);
 
   // Real-time sync of audio track mute/solo state with multi-track volume
   // This allows mute/solo buttons to work during playback
@@ -1100,40 +1162,6 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     };
   }, [isPlaying, hasAudioTracks, hasLoopTracks, hasLyriaTracks, songDuration, seekVersion]);
 
-  // Handler functions - BULLETPROOF track selection
-  const handleTrackSelect = useCallback((track: BackingTrack) => {
-    // Get ALL fresh state to avoid ANY stale closure issues
-    const { queue, currentTrack: existingTrack, isMaster: freshIsMaster } = useRoomStore.getState();
-
-    console.log('handleTrackSelect called:', {
-      trackId: track.id,
-      trackName: track.name,
-      isMaster: freshIsMaster,
-      currentTrackId: existingTrack?.id,
-      queueLength: queue.tracks.length,
-    });
-
-    // Check master status with FRESH state
-    if (!freshIsMaster) {
-      console.log('handleTrackSelect: Not master, ignoring');
-      return;
-    }
-
-    // Find the track by ID
-    const trackIndex = queue.tracks.findIndex(t => t.id === track.id);
-
-    if (trackIndex === -1) {
-      console.warn('handleTrackSelect: Track not found in queue', track.id);
-      return;
-    }
-
-    // Check if already on this track - NOTE: we still call skipToTrack even if same track
-    // because the user clicked, so they probably want to do something
-    // Let skipToTrack handle the "same track" case
-    console.log('handleTrackSelect: Calling skipToTrack for index', trackIndex);
-    skipToTrack(trackIndex);
-  }, [skipToTrack]);
-
   const handleUpload = useCallback(async (uploadedTrack: { id: string; name: string; artist?: string; url: string; duration: number }) => {
     // UploadModal handles the actual upload to R2, we just add the track
     console.log('handleUpload received:', uploadedTrack);
@@ -1198,37 +1226,6 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
       toast.error(`Failed to extract audio from YouTube: ${(error as Error).message}. Please try a different video or upload an audio file directly.`);
     }
   }, [addTrack]);
-
-  // YouTube player event handlers
-  const handleYouTubeReady = useCallback(() => {
-    if (youtubePlayerRef.current) {
-      const duration = youtubePlayerRef.current.getDuration();
-      if (duration > 0) setDuration(duration);
-    }
-  }, [setDuration]);
-
-  const handleYouTubeStateChange = useCallback((playing: boolean) => {
-    setPlaying(playing);
-  }, [setPlaying]);
-
-  const handleYouTubeTimeUpdate = useCallback((time: number, dur: number) => {
-    setCurrentTime(time);
-    if (dur > 0) setDuration(dur);
-  }, [setCurrentTime, setDuration]);
-
-  const handleYouTubeDurationChange = useCallback((duration: number) => {
-    if (duration > 0) setDuration(duration);
-  }, [setDuration]);
-
-  // Handle YouTube track end for looping
-  const handleYouTubeEnded = useCallback(() => {
-    if (loopEnabled && currentTrack?.youtubeId) {
-      // Restart from beginning
-      setCurrentTime(0);
-      youtubePlayerRef.current?.seek(0);
-      youtubePlayerRef.current?.play();
-    }
-  }, [loopEnabled, currentTrack, setCurrentTime]);
 
   // Navigate to AI panel for AI generation
   const handleOpenAIPanel = useCallback(() => {
@@ -1395,8 +1392,8 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
         onPlay={handlePlay}
         onPause={handlePause}
         onSeek={handleSeek}
-        onPrevious={skipToPrevious}
-        onNext={skipToNext}
+        onPrevious={handleSkipToPreviousSong}
+        onNext={handleSkipToNextSong}
         onMuteToggle={() => setMuted(!isMuted)}
         onSettingsClick={() => setIsSettingsModalOpen(true)}
         onLeave={onLeaveRoom || leave}
@@ -1414,25 +1411,11 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
           ref={leftPanelRef}
           listenerMode={listenerMode}
           // Tracks (Queue) props
-          onTrackSelect={handleTrackSelect}
+          onTrackSelect={() => {}}
           onTrackRemove={removeTrack}
           onUpload={() => setIsUploadModalOpen(true)}
           onYouTubeSearch={() => setIsYouTubeModalOpen(true)}
           onAIGenerate={handleOpenAIPanel}
-          youtubePlayer={
-            isYouTubeTrack && currentTrack?.youtubeId ? (
-              <YouTubePlayer
-                ref={youtubePlayerRef}
-                videoId={currentTrack.youtubeId}
-                onReady={handleYouTubeReady}
-                onStateChange={handleYouTubeStateChange}
-                onTimeUpdate={handleYouTubeTimeUpdate}
-                onDurationChange={handleYouTubeDurationChange}
-                onEnded={handleYouTubeEnded}
-                volume={backingTrackVolume * 100}
-              />
-            ) : undefined
-          }
           roomId={roomId}
           userId={currentUser?.id || ''}
           userName={currentUser?.name}

@@ -397,14 +397,6 @@ export function useAudioEngine() {
     const { setDuration } = useAudioStore.getState();
     const { setWaveformData } = useRoomStore.getState();
 
-    // Skip loading for YouTube tracks (handled by iframe)
-    if (track.youtubeId) {
-      console.log('YouTube track - skipping audio engine load');
-      setDuration(track.duration);
-      setWaveformData(null); // No waveform for YouTube
-      return true; // YouTube tracks don't need audio engine loading
-    }
-
     // Validate track URL exists
     if (!track.url) {
       console.error('Track URL is missing:', track.id, track.name);

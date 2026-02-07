@@ -660,8 +660,17 @@ export class AudioEngine {
       const delayNode = this.audioContext.createDelay(0.2);
       delayNode.delayTime.value = 0; // Initially no delay, will be set by compensation system
 
-      // Signal flow: source -> delayNode -> gainNode -> analyser & masterGain
-      source.connect(delayNode);
+      // NATIVE BRIDGE ROUTING: When bridge audio is active, insert a capture node
+      // at the start of the signal chain to tap audio samples for forwarding to
+      // the native bridge's Rust engine via ASIO/CoreAudio output.
+      // This ensures performers hear ALL audio through their low-latency interface.
+      if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
+        // Chain: source -> captureNode -> delayNode -> gainNode -> analyser -> masterGain
+        await this.setupRemoteCapture(userId, source, delayNode);
+      } else {
+        // Standard chain: source -> delayNode -> gainNode -> analyser -> masterGain
+        source.connect(delayNode);
+      }
       delayNode.connect(gainNode);
       gainNode.connect(analyser);
       gainNode.connect(this.masterGain);
@@ -674,13 +683,6 @@ export class AudioEngine {
         delayNode,
         level: 0,
       });
-
-      // NATIVE BRIDGE ROUTING: When bridge audio is active, also capture remote audio
-      // and forward it to the Rust engine for mixing through ASIO/CoreAudio output.
-      // This ensures performers hear ALL audio through their low-latency interface.
-      if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
-        await this.setupRemoteCapture(userId, gainNode);
-      }
 
       // Notify native bridge that a remote user was added
       this.onRemoteUserAdded?.(userId);
@@ -703,16 +705,15 @@ export class AudioEngine {
           analyser.fftSize = 256;
           const delayNode = this.audioContext.createDelay(0.2);
           delayNode.delayTime.value = 0;
-          source.connect(delayNode);
+          if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
+            await this.setupRemoteCapture(userId, source, delayNode);
+          } else {
+            source.connect(delayNode);
+          }
           delayNode.connect(gainNode);
           gainNode.connect(analyser);
           gainNode.connect(this.masterGain);
           this.remoteStreams.set(userId, { userId, stream, analyser, gainNode, delayNode, level: 0 });
-
-          // Also set up capture for retry path
-          if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
-            await this.setupRemoteCapture(userId, gainNode);
-          }
           this.onRemoteUserAdded?.(userId);
 
           console.log('[AudioEngine] Remote stream connected after retry:', userId);
@@ -725,11 +726,30 @@ export class AudioEngine {
 
   /**
    * Set up an AudioWorklet to capture remote audio for native bridge routing.
-   * Inserts a capture node in the signal chain that extracts raw samples
-   * and forwards them via callback to the native bridge's Rust engine.
+   * Inserts a capture node between sourceNode and destinationNode in the signal chain.
+   * The capture node passes audio through unchanged (input copied to output) while also
+   * extracting interleaved stereo samples and forwarding them via callback to the
+   * native bridge's Rust engine for mixing through ASIO/CoreAudio output.
+   *
+   * Signal chain: sourceNode -> captureNode -> destinationNode
+   *
+   * If the worklet fails to load, falls back to a direct connection
+   * (sourceNode -> destinationNode) so audio playback is not interrupted.
+   *
+   * @param userId The remote user ID for routing captured samples
+   * @param sourceNode The upstream audio node (typically the MediaStreamSource)
+   * @param destinationNode The downstream audio node to connect the capture output to
    */
-  private async setupRemoteCapture(userId: string, sourceNode: AudioNode): Promise<void> {
-    if (!this.audioContext) return;
+  private async setupRemoteCapture(
+    userId: string,
+    sourceNode: AudioNode,
+    destinationNode: AudioNode
+  ): Promise<void> {
+    if (!this.audioContext) {
+      // No AudioContext available - connect directly so audio still flows
+      sourceNode.connect(destinationNode);
+      return;
+    }
 
     await this.loadRemoteCaptureWorklet();
 
@@ -748,16 +768,19 @@ export class AudioEngine {
         }
       };
 
-      // Insert capture node: sourceNode -> captureNode -> (continues to masterGain)
-      // The capture node passes audio through unchanged while also extracting samples
+      // Insert capture node into the signal chain:
+      // sourceNode -> captureNode -> destinationNode
+      // The worklet processor copies input samples to output unchanged while also
+      // accumulating interleaved stereo batches and posting them to the main thread.
       sourceNode.connect(captureNode);
-      // captureNode output is not connected to anything since sourceNode already routes to masterGain
-      // The worklet captures by tapping the input
+      captureNode.connect(destinationNode);
 
       this.remoteCaptureWorklets.set(userId, captureNode);
       console.log(`[AudioEngine] Remote capture enabled for user ${userId}`);
     } catch (err) {
       console.error(`[AudioEngine] Failed to set up remote capture for ${userId}:`, err);
+      // Fall back to direct connection so audio still flows through the chain
+      sourceNode.connect(destinationNode);
     }
   }
 
