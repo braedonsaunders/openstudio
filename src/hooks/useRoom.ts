@@ -1263,7 +1263,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
         // Apply stem mix state
         if (payload.stemMixState && Object.keys(payload.stemMixState).length > 0) {
-          useRoomStore.getState().setStemMixState(payload.stemMixState as StemMixState);
+          useRoomStore.getState().setStemMixState(payload.stemMixState as unknown as StemMixState);
         }
 
         // Apply permissions
