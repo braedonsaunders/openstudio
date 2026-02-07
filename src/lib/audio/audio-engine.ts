@@ -71,6 +71,15 @@ export class AudioEngine {
   private bridgeWorkletNode: AudioWorkletNode | null = null;
   private bridgeWorkletReady: boolean = false;
   private useBridgeAudio: boolean = false;
+
+  // Remote audio capture for native bridge routing
+  // When native bridge is active, incoming WebRTC streams are captured and forwarded
+  // to the Rust engine for mixing and output through ASIO/CoreAudio
+  private remoteCaptureWorklets: Map<string, AudioWorkletNode> = new Map();
+  private remoteCaptureWorkletLoaded: boolean = false;
+  private onRemoteAudioCaptured: ((userId: string, samples: Float32Array) => void) | null = null;
+  private onRemoteUserAdded: ((userId: string) => void) | null = null;
+  private onRemoteUserRemoved: ((userId: string) => void) | null = null;
   private stemMixState: StemMixState = {
     vocals: { enabled: true, volume: 1 },
     drums: { enabled: true, volume: 1 },
@@ -550,6 +559,43 @@ export class AudioEngine {
     return this.useBridgeAudio;
   }
 
+  /**
+   * Set callbacks for routing remote audio to the native bridge.
+   * When native bridge is active, incoming WebRTC audio is captured and forwarded
+   * to the Rust engine via these callbacks for mixing through ASIO/CoreAudio output.
+   * @param onCapture Called with (userId, samples) for each batch of captured audio
+   * @param onAdded Called when a remote user stream is added
+   * @param onRemoved Called when a remote user stream is removed
+   */
+  setNativeBridgeCallbacks(
+    onCapture: ((userId: string, samples: Float32Array) => void) | null,
+    onAdded: ((userId: string) => void) | null,
+    onRemoved: ((userId: string) => void) | null
+  ): void {
+    this.onRemoteAudioCaptured = onCapture;
+    this.onRemoteUserAdded = onAdded;
+    this.onRemoteUserRemoved = onRemoved;
+    console.log('[AudioEngine] Native bridge callbacks', onCapture ? 'registered' : 'cleared');
+  }
+
+  /**
+   * Load the remote capture AudioWorklet module.
+   * Must be called before addRemoteStream when bridge routing is needed.
+   */
+  private async loadRemoteCaptureWorklet(): Promise<void> {
+    if (this.remoteCaptureWorkletLoaded || !this.audioContext) return;
+
+    try {
+      await this.audioContext.audioWorklet.addModule('/audio/remote-capture-processor.js');
+      this.remoteCaptureWorkletLoaded = true;
+      console.log('[AudioEngine] Remote capture worklet loaded');
+    } catch (err) {
+      // Module may already be loaded
+      this.remoteCaptureWorkletLoaded = true;
+      console.log('[AudioEngine] Remote capture worklet already loaded or error:', err);
+    }
+  }
+
   async addRemoteStream(userId: string, stream: MediaStream): Promise<void> {
     if (!this.audioContext || !this.masterGain) {
       console.warn('[AudioEngine] Cannot add remote stream: AudioContext not initialized');
@@ -609,8 +655,19 @@ export class AudioEngine {
         level: 0,
       });
 
+      // NATIVE BRIDGE ROUTING: When bridge audio is active, also capture remote audio
+      // and forward it to the Rust engine for mixing through ASIO/CoreAudio output.
+      // This ensures performers hear ALL audio through their low-latency interface.
+      if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
+        await this.setupRemoteCapture(userId, gainNode);
+      }
+
+      // Notify native bridge that a remote user was added
+      this.onRemoteUserAdded?.(userId);
+
       console.log('[AudioEngine] Added remote stream for user:', userId,
-        'AudioContext state:', this.audioContext.state);
+        'AudioContext state:', this.audioContext.state,
+        'bridgeCapture:', this.useBridgeAudio && this.onRemoteAudioCaptured ? 'enabled' : 'disabled');
     } catch (err) {
       console.error('[AudioEngine] Failed to add remote stream:', userId, err);
       // On iOS Safari, this can fail if the stream is invalid or context is in wrong state
@@ -631,11 +688,56 @@ export class AudioEngine {
           gainNode.connect(analyser);
           gainNode.connect(this.masterGain);
           this.remoteStreams.set(userId, { userId, stream, analyser, gainNode, delayNode, level: 0 });
+
+          // Also set up capture for retry path
+          if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
+            await this.setupRemoteCapture(userId, gainNode);
+          }
+          this.onRemoteUserAdded?.(userId);
+
           console.log('[AudioEngine] Remote stream connected after retry:', userId);
         } catch (retryErr) {
           console.error('[AudioEngine] Retry failed for remote stream:', userId, retryErr);
         }
       }
+    }
+  }
+
+  /**
+   * Set up an AudioWorklet to capture remote audio for native bridge routing.
+   * Inserts a capture node in the signal chain that extracts raw samples
+   * and forwards them via callback to the native bridge's Rust engine.
+   */
+  private async setupRemoteCapture(userId: string, sourceNode: AudioNode): Promise<void> {
+    if (!this.audioContext) return;
+
+    await this.loadRemoteCaptureWorklet();
+
+    try {
+      const captureNode = new AudioWorkletNode(this.audioContext, 'remote-capture-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+
+      // Handle captured audio samples from the worklet
+      const captureCallback = this.onRemoteAudioCaptured;
+      captureNode.port.onmessage = (event) => {
+        if (event.data.type === 'audio' && captureCallback) {
+          captureCallback(userId, event.data.samples);
+        }
+      };
+
+      // Insert capture node: sourceNode -> captureNode -> (continues to masterGain)
+      // The capture node passes audio through unchanged while also extracting samples
+      sourceNode.connect(captureNode);
+      // captureNode output is not connected to anything since sourceNode already routes to masterGain
+      // The worklet captures by tapping the input
+
+      this.remoteCaptureWorklets.set(userId, captureNode);
+      console.log(`[AudioEngine] Remote capture enabled for user ${userId}`);
+    } catch (err) {
+      console.error(`[AudioEngine] Failed to set up remote capture for ${userId}:`, err);
     }
   }
 
@@ -675,6 +777,18 @@ export class AudioEngine {
       streamData.stream.getTracks().forEach((track) => track.stop());
       this.remoteStreams.delete(userId);
     }
+
+    // Clean up remote capture worklet for native bridge
+    const captureNode = this.remoteCaptureWorklets.get(userId);
+    if (captureNode) {
+      captureNode.port.postMessage({ type: 'stop' });
+      captureNode.disconnect();
+      this.remoteCaptureWorklets.delete(userId);
+      console.log(`[AudioEngine] Remote capture cleaned up for user ${userId}`);
+    }
+
+    // Notify native bridge that remote user was removed
+    this.onRemoteUserRemoved?.(userId);
   }
 
   setRemoteVolume(userId: string, volume: number): void {
@@ -1127,6 +1241,20 @@ export class AudioEngine {
    */
   getPrimaryTrackId(): string | null {
     return this.primaryTrackId;
+  }
+
+  /**
+   * Get all track processor IDs that have bridge input configured.
+   * Used to distribute bridge audio to all tracks (not just primary).
+   */
+  getBridgeTrackIds(): string[] {
+    const ids: string[] = [];
+    for (const [trackId, processor] of this.trackProcessors) {
+      if (processor.getInputSourceType() === 'bridge') {
+        ids.push(trackId);
+      }
+    }
+    return ids;
   }
 
   /**

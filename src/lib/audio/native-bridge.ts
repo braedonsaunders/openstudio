@@ -75,7 +75,12 @@ type NativeMessage =
   | { type: 'effectsMetering' } & EffectsMetering
   | { type: 'backingTrackLoaded'; duration: number; waveform: number[] }
   | { type: 'backingTrackPosition'; time: number }
-  | { type: 'backingTrackEnded' };
+  | { type: 'backingTrackEnded' }
+  | { type: 'roomJoined'; roomId: string; networkMode: string; isMaster: boolean }
+  | { type: 'roomLeft' }
+  | { type: 'peerConnected'; userId: string; userName: string; hasNativeBridge: boolean }
+  | { type: 'peerDisconnected'; userId: string; reason: string }
+  | { type: 'networkModeChanged'; mode: string };
 
 // === Audio Data Types ===
 
@@ -107,7 +112,12 @@ export type BridgeEventType =
   | 'streamHealth'
   | 'effectsMetering'
   | 'audioData'
-  | 'error';
+  | 'error'
+  | 'roomJoined'
+  | 'roomLeft'
+  | 'peerConnected'
+  | 'peerDisconnected'
+  | 'networkModeChanged';
 
 type BridgeEventData = {
   connected: { version: string; driverType: string };
@@ -120,6 +130,11 @@ type BridgeEventData = {
   effectsMetering: EffectsMetering;
   audioData: BridgeAudioData;
   error: { code: string; message: string };
+  roomJoined: { roomId: string; networkMode: string; isMaster: boolean };
+  roomLeft: Record<string, never>;
+  peerConnected: { userId: string; userName: string; hasNativeBridge: boolean };
+  peerDisconnected: { userId: string; reason: string };
+  networkModeChanged: { mode: string };
 };
 
 type BridgeEventCallback<T extends BridgeEventType> = (data: BridgeEventData[T]) => void;
@@ -132,6 +147,11 @@ export class NativeBridge {
   private connectingPromise: Promise<boolean> | null = null;
   private listeners: Map<BridgeEventType, Set<BridgeEventCallback<any>>> = new Map();
   private isConnected = false;
+  private shouldReconnect = false;
+  private reconnectAttempts = 0;
+  private static readonly MAX_RECONNECT_ATTEMPTS = 10;
+  private static readonly RECONNECT_BASE_DELAY_MS = 1000;
+  private static readonly RECONNECT_MAX_DELAY_MS = 30000;
   private version: string | null = null;
   private driverType: string | null = null;
 
@@ -160,6 +180,11 @@ export class NativeBridge {
       'effectsMetering',
       'audioData',
       'error',
+      'roomJoined',
+      'roomLeft',
+      'peerConnected',
+      'peerDisconnected',
+      'networkModeChanged',
     ];
     for (const type of eventTypes) {
       this.listeners.set(type, new Set());
@@ -214,6 +239,8 @@ export class NativeBridge {
             // First message should be welcome - mark as connected and resolve
             if (!this.isConnected) {
               this.isConnected = true;
+              this.shouldReconnect = true;
+              this.reconnectAttempts = 0;
               cleanup();
               resolve(true);
             }
@@ -230,6 +257,11 @@ export class NativeBridge {
           if (wasConnected) {
             console.log('[NativeBridge] Disconnected from native audio bridge');
             this.emit('disconnected', { reason: 'Connection closed' });
+
+            // Auto-reconnect if the connection was established and we didn't deliberately disconnect
+            if (this.shouldReconnect) {
+              this.scheduleReconnect();
+            }
           }
 
           cleanup();
@@ -251,9 +283,11 @@ export class NativeBridge {
   }
 
   /**
-   * Disconnect from the native bridge
+   * Disconnect from the native bridge (deliberate - disables auto-reconnect)
    */
   disconnect(): void {
+    this.shouldReconnect = false;
+    this.reconnectAttempts = 0;
     if (this.reconnectTimer) {
       clearTimeout(this.reconnectTimer);
       this.reconnectTimer = null;
@@ -265,6 +299,42 @@ export class NativeBridge {
     this.isConnected = false;
     // Reset cached config so next connection will properly configure
     this.lastChannelConfig = null;
+  }
+
+  /**
+   * Schedule a reconnection attempt with exponential backoff.
+   * Backs off from 1s to 30s, with max 10 attempts before giving up.
+   */
+  private scheduleReconnect(): void {
+    if (!this.shouldReconnect) return;
+    if (this.reconnectAttempts >= NativeBridge.MAX_RECONNECT_ATTEMPTS) {
+      console.warn('[NativeBridge] Max reconnection attempts reached, giving up');
+      this.shouldReconnect = false;
+      return;
+    }
+
+    const delay = Math.min(
+      NativeBridge.RECONNECT_BASE_DELAY_MS * Math.pow(2, this.reconnectAttempts),
+      NativeBridge.RECONNECT_MAX_DELAY_MS
+    );
+    this.reconnectAttempts++;
+
+    console.log(`[NativeBridge] Reconnecting in ${delay}ms (attempt ${this.reconnectAttempts}/${NativeBridge.MAX_RECONNECT_ATTEMPTS})`);
+
+    this.reconnectTimer = setTimeout(async () => {
+      this.reconnectTimer = null;
+
+      if (!this.shouldReconnect) return;
+
+      const connected = await this.connect();
+      if (connected) {
+        console.log('[NativeBridge] Reconnected successfully');
+        this.reconnectAttempts = 0;
+        // Re-emit connected event so listeners can reinitialize
+        this.emit('connected', { version: this.version || '', driverType: this.driverType || '' });
+      }
+      // If not connected, onclose handler will trigger another reconnect attempt
+    }, delay);
   }
 
   /**
@@ -397,6 +467,31 @@ export class NativeBridge {
           // Handle latency measurement
           const rtt = Date.now() - msg.timestamp;
           console.log(`[NativeBridge] RTT: ${rtt}ms`);
+          break;
+
+        case 'roomJoined':
+          console.log('[NativeBridge] Room joined:', msg.roomId, 'mode:', msg.networkMode, 'master:', msg.isMaster);
+          this.emit('roomJoined', { roomId: msg.roomId, networkMode: msg.networkMode, isMaster: msg.isMaster });
+          break;
+
+        case 'roomLeft':
+          console.log('[NativeBridge] Room left');
+          this.emit('roomLeft', {});
+          break;
+
+        case 'peerConnected':
+          console.log('[NativeBridge] Peer connected:', msg.userName, '(' + msg.userId + ')', 'native:', msg.hasNativeBridge);
+          this.emit('peerConnected', { userId: msg.userId, userName: msg.userName, hasNativeBridge: msg.hasNativeBridge });
+          break;
+
+        case 'peerDisconnected':
+          console.log('[NativeBridge] Peer disconnected:', msg.userId, 'reason:', msg.reason);
+          this.emit('peerDisconnected', { userId: msg.userId, reason: msg.reason });
+          break;
+
+        case 'networkModeChanged':
+          console.log('[NativeBridge] Network mode changed:', msg.mode);
+          this.emit('networkModeChanged', { mode: msg.mode });
           break;
       }
     } catch (e) {
@@ -745,6 +840,42 @@ export class NativeBridge {
    */
   ping(): void {
     this.send({ type: 'ping', timestamp: Date.now() });
+  }
+
+  // === P2P/Relay Room Management ===
+
+  /**
+   * Join a room with P2P/relay networking through the native bridge.
+   * When two performers both have native bridges, audio flows directly
+   * Rust → P2P/Relay → Rust, bypassing WebRTC and Web Audio for minimum latency.
+   * @param roomId The room to join
+   * @param roomSecret Secret for room authentication
+   * @param userName The user's display name
+   */
+  joinRoom(roomId: string, roomSecret: string, userName: string): void {
+    console.log('[NativeBridge] Joining room:', roomId, 'as', userName);
+    this.send({
+      type: 'joinRoom',
+      roomId,
+      roomSecret,
+      userName,
+    });
+  }
+
+  /**
+   * Leave the current P2P/relay room
+   */
+  leaveRoom(): void {
+    console.log('[NativeBridge] Leaving room');
+    this.send({ type: 'leaveRoom' });
+  }
+
+  /**
+   * Switch network mode (P2P, Relay, Hybrid)
+   * @param mode 'p2p' | 'relay' | 'hybrid'
+   */
+  setNetworkMode(mode: 'p2p' | 'relay' | 'hybrid'): void {
+    this.send({ type: 'setNetworkMode', mode });
   }
 
   /**

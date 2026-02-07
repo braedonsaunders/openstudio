@@ -55,6 +55,7 @@ import { useAuthStore } from '@/stores/auth-store';
 import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
 import { usePermissionsStore } from '@/stores/permissions-store';
 import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
+import { nativeBridge } from '@/lib/audio/native-bridge';
 import type { QualityPresetName, OpusEncodingSettings } from '@/types';
 import { useAudioEngine } from './useAudioEngine';
 import { useStatsTracker } from './useStatsTracker';
@@ -534,6 +535,53 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Use broadcast stream (from track processors) for WebRTC, or raw stream as fallback
       await cloudflare.joinRoom(broadcastStream || stream);
       cloudflareRef.current = cloudflare;
+
+      // === NATIVE BRIDGE P2P NETWORKING ===
+      // When native bridge is connected, join the room through the Rust P2P/Relay network.
+      // This enables direct native-to-native audio routing (Rust → P2P → Rust) for performers
+      // who both have the native bridge, bypassing WebRTC and Web Audio entirely.
+      // For mixed scenarios (one native, one web-only), the AudioEngine's remote capture
+      // worklet routes WebRTC audio to the native bridge for ASIO/CoreAudio output.
+      const bridgeState = useBridgeAudioStore.getState();
+      if (bridgeState.isConnected && bridgeState.preferNativeBridge && !listenerMode) {
+        // Join room through native bridge P2P network
+        nativeBridge.joinRoom(roomId, roomId, user.name || 'Unknown');
+        console.log('[useRoom] Native bridge joining P2P room:', roomId);
+
+        // Set up native bridge callbacks on the audio engine for hybrid mode
+        // (routing WebRTC audio from web-only performers to native ASIO output)
+        const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+        if (audioEngine) {
+          audioEngine.setNativeBridgeCallbacks(
+            // onCapture: forward captured remote WebRTC audio to native bridge
+            (userId: string, samples: Float32Array) => {
+              nativeBridge.sendRemoteAudio(userId, samples);
+            },
+            // onAdded: register remote user with native bridge for mixing
+            (userId: string) => {
+              const remoteUser = useRoomStore.getState().users.get(userId);
+              nativeBridge.addRemoteUser(userId, remoteUser?.name || 'Unknown');
+              console.log('[useRoom] Registered remote user with native bridge:', userId);
+            },
+            // onRemoved: deregister remote user from native bridge
+            (userId: string) => {
+              nativeBridge.removeRemoteUser(userId);
+              console.log('[useRoom] Deregistered remote user from native bridge:', userId);
+            }
+          );
+          console.log('[useRoom] Native bridge audio callbacks registered');
+        }
+
+        // Listen for peers connecting via native bridge P2P
+        // (these are performers with native bridges on the other end)
+        nativeBridge.on('peerConnected', (data) => {
+          console.log('[useRoom] Native bridge peer connected:', data.userName, 'native:', data.hasNativeBridge);
+        });
+
+        nativeBridge.on('peerDisconnected', (data) => {
+          console.log('[useRoom] Native bridge peer disconnected:', data.userId, data.reason);
+        });
+      }
 
       // Initialize realtime connection
       const realtime = new RealtimeRoomManager(roomId, user.id);
@@ -1338,6 +1386,21 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     await realtimeRef.current?.disconnect();
     await cloudflareRef.current?.leaveRoom();
+
+    // Leave native bridge P2P room and clean up callbacks
+    const bridgeState = useBridgeAudioStore.getState();
+    if (bridgeState.isConnected) {
+      nativeBridge.leaveRoom();
+      nativeBridge.removeAllListeners('peerConnected');
+      nativeBridge.removeAllListeners('peerDisconnected');
+
+      // Clear native bridge audio callbacks
+      const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+      if (audioEngine) {
+        audioEngine.setNativeBridgeCallbacks(null, null, null);
+      }
+      console.log('[useRoom] Native bridge left room and cleaned up');
+    }
 
     // Clear song broadcast callbacks since we're leaving
     setSongBroadcastCallbacks(null);

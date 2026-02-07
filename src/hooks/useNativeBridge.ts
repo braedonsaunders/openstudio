@@ -55,12 +55,22 @@ const handleAudioDataStable = (data: BridgeAudioData) => {
     if (data.trackId) {
       engine.pushTrackBridgeAudio(data.trackId, data.samples, data.timestamp);
     } else {
-      // No trackId - route to primary track
-      const primaryTrackId = engine.getPrimaryTrackId?.();
-      if (primaryTrackId) {
-        engine.pushTrackBridgeAudio(primaryTrackId, data.samples, data.timestamp);
-      } else if (audioDataCounter % 500 === 1) {
-        console.warn('[useNativeBridge] Audio dropped: no trackId and no primary track');
+      // No trackId from Rust - distribute to ALL tracks with bridge input configured.
+      // The native bridge sends a single stereo stream; each track's channel routing
+      // (e.g., channel selection) is handled by the TrackAudioProcessor.
+      const bridgeTrackIds = engine.getBridgeTrackIds?.();
+      if (bridgeTrackIds && bridgeTrackIds.length > 0) {
+        for (const trackId of bridgeTrackIds) {
+          engine.pushTrackBridgeAudio(trackId, data.samples, data.timestamp);
+        }
+      } else {
+        // Fallback to primary track for backward compatibility
+        const primaryTrackId = engine.getPrimaryTrackId?.();
+        if (primaryTrackId) {
+          engine.pushTrackBridgeAudio(primaryTrackId, data.samples, data.timestamp);
+        } else if (audioDataCounter % 500 === 1) {
+          console.warn('[useNativeBridge] Audio dropped: no bridge tracks and no primary track');
+        }
       }
     }
   } catch (e) {
