@@ -180,8 +180,6 @@ interface UseRoomOptions {
 export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const realtimeRef = useRef<RealtimeRoomManager | null>(null);
   const cloudflareRef = useRef<CloudflareCalls | null>(null);
-  // WS6: Periodic position sync interval (master broadcasts every 5s during playback)
-  const positionSyncIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   // WS2: State sync retry tracking for new joiners
   const stateSyncReceivedRef = useRef<boolean>(false);
 
@@ -197,8 +195,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     users,
     currentUser,
     isMaster,
-    queue,
-    currentTrack,
     isConnected,
     isJoining,
     error,
@@ -206,7 +202,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
   const {
     initialize,
-    startCapture,
     addRemoteStream,
     removeRemoteStream,
     setRemoteVolume: audioSetRemoteVolume,
@@ -214,7 +209,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     setRemoteCompensationDelay,
     loadBackingTrack,
     playBackingTrack,
-    pauseBackingTrack,
     seekTo,
     updateFromStats,
     destroyEngine,
@@ -257,7 +251,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       setQueue,
       setCurrentTrack,
       setQueuePlaying,
-      nextTrack,
       addMessage,
       setRoom,
     } = useRoomStore.getState();
@@ -510,50 +503,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             console.log('[useRoom] Created broadcast stream for native bridge WebRTC:', broadcastStream ? 'success' : 'failed');
           }
         } else {
-          // WEB AUDIO MODE: Audio flows through getUserMedia -> TrackAudioProcessor -> WebRTC
-          stream = await startCapture(trackSettings);
-
-          // Connect MediaStream to TrackAudioProcessor for each track (web audio monitoring)
-          // This allows users to hear themselves through the effects chain when monitoring is enabled
-          if (stream) {
-            for (const track of userTracks) {
-              // Create/get the track processor
-              getOrCreateTrackProcessor(track.id, track.audioSettings);
-
-              // Connect the MediaStream to the processor
-              await setTrackMediaStreamInput(track.id, stream, {
-                channelConfig: track.audioSettings.channelConfig,
-              });
-
-              // Set the track state - send raw monitoringEnabled, TrackAudioProcessor handles its own calculation
-              const monitoringEnabled = track.audioSettings.directMonitoring ?? true;
-              updateTrackState(track.id, {
-                isArmed: track.isArmed,
-                isMuted: track.isMuted,
-                isSolo: track.isSolo,
-                volume: track.volume,
-                inputGain: track.audioSettings.inputGain || 0,
-                monitoringEnabled: monitoringEnabled,
-              });
-
-              console.log(`[useRoom] Connected MediaStream to track ${track.id}, armed: ${track.isArmed}, monitoringEnabled: ${monitoringEnabled}`);
-            }
-
-            // For web audio mode, also create a broadcast stream from track processors
-            const webAudioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
-            if (webAudioEngine) {
-              broadcastStream = webAudioEngine.createBroadcastStream() || undefined;
-              // If broadcast stream creation failed, fall back to raw getUserMedia stream
-              if (!broadcastStream) {
-                broadcastStream = stream;
-                console.log('[useRoom] Falling back to raw getUserMedia stream for WebRTC');
-              } else {
-                console.log('[useRoom] Created broadcast stream from track processors');
-              }
-            } else {
-              broadcastStream = stream;
-            }
-          }
+          // Web-only users must be listeners - native bridge required to perform
+          console.warn('[useRoom] No native bridge connected for performer - audio capture requires native bridge');
+          // Don't create a broadcast stream - this user won't be heard
         }
       } else {
         console.log('[useRoom] Listener mode - skipping audio capture');
@@ -845,55 +797,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       });
 
-      realtime.on('track:play', async (data) => {
-        const payload = data as { trackId: string; timestamp: number; syncTime: number };
-        // CRITICAL: Get fresh queue state, not stale closure
-        const freshQueue = useRoomStore.getState().queue;
-        const track = freshQueue.tracks.find((t) => t.id === payload.trackId);
-        if (track) {
-          // YouTube tracks are handled by the YouTube player component, not audio engine
-          if (track.youtubeId) {
-            setQueuePlaying(true);
-            return;
-          }
-
-          // Ensure audio engine is initialized
-          try {
-            await initialize();
-          } catch (err) {
-            console.error('Failed to initialize audio engine for sync:', err);
-            return;
-          }
-
-          const loadSuccess = await loadBackingTrack(track);
-          if (loadSuccess) {
-            playBackingTrack(payload.syncTime, payload.timestamp);
-            setQueuePlaying(true);
-          } else {
-            console.error('Failed to load track for playback sync');
-          }
-        } else {
-          console.warn(`[useRoom] track:play received for unknown track ${payload.trackId}, queue has ${freshQueue.tracks.length} tracks`);
-        }
-      });
-
-      realtime.on('track:pause', (data) => {
-        const payload = data as { trackId: string; timestamp: number; userId: string };
-        pauseBackingTrack();
-        // Save the playback position from the master so we can resume from this point
-        if (payload.timestamp !== undefined) {
-          const { setQueueTime } = useRoomStore.getState();
-          setQueueTime(payload.timestamp);
-          useAudioStore.getState().setCurrentTime(payload.timestamp);
-        }
-        setQueuePlaying(false);
-      });
-
-      realtime.on('track:seek', (data) => {
-        const payload = data as { timestamp: number; syncTime: number };
-        seekTo(payload.timestamp, payload.syncTime);
-      });
-
       realtime.on('track:queue', (data) => {
         const payload = data as { queue: TrackQueue };
         setQueue(payload.queue);
@@ -901,19 +804,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         const currentTrackFromQueue = payload.queue.tracks[payload.queue.currentIndex];
         if (currentTrackFromQueue) {
           setCurrentTrack(currentTrackFromQueue);
-        }
-      });
-
-      realtime.on('track:next', (data) => {
-        const payload = data as { index: number; userId: string };
-        // Use jumpToTrack with the specific index from the broadcast
-        // This handles both forward (skipToNext) and backward (skipToPrevious) navigation
-        const { jumpToTrack: storeJumpToTrack } = useRoomStore.getState();
-        if (payload.index !== undefined) {
-          storeJumpToTrack(payload.index);
-        } else {
-          // Fallback for legacy broadcasts without index
-          nextTrack();
         }
       });
 
@@ -969,20 +859,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         userTracksStore.updateTrack(payload.trackId, payload.updates);
       });
 
-      realtime.on('usertrack:settings', (data) => {
-        const payload = data as { trackId: string; settings: Partial<UserTrack['audioSettings']>; userId: string };
-        if (payload.userId === user.id) return;
-        const userTracksStore = useUserTracksStore.getState();
-        userTracksStore.updateTrackSettings(payload.trackId, payload.settings);
-      });
-
-      realtime.on('usertrack:effects', (data) => {
-        const payload = data as { trackId: string; effects: Partial<UserTrack['audioSettings']['effects']>; userId: string };
-        if (payload.userId === user.id) return;
-        const userTracksStore = useUserTracksStore.getState();
-        userTracksStore.updateTrackEffects(payload.trackId, payload.effects);
-      });
-
       // Loop track broadcast handlers
       realtime.on('looptrack:add', (data) => {
         const payload = data as { track: LoopTrackState; userId: string };
@@ -1017,13 +893,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         if (payload.userId === user.id) return;
         const loopTracksStore = useLoopTracksStore.getState();
         loopTracksStore.setTrackPlaying(payload.trackId, false);
-      });
-
-      realtime.on('looptrack:sync', (data) => {
-        const payload = data as { tracks: LoopTrackState[]; userId: string };
-        if (payload.userId === user.id) return;
-        const loopTracksStore = useLoopTracksStore.getState();
-        loopTracksStore.loadTracks(payload.tracks);
       });
 
       // Stem toggle sync handler - sync stem mute/unmute across all clients
@@ -1178,20 +1047,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         usePermissionsStore.getState().removeMember(payload.targetUserId);
       });
 
-      realtime.on('permissions:sync', (data) => {
-        const payload = data as { members: RoomMember[]; defaultRole: RoomRole; userId: string };
-        if (payload.userId === user.id) return;
-        const permissionsStore = usePermissionsStore.getState();
-        permissionsStore.setMembers(payload.members);
-        permissionsStore.setDefaultRole(payload.defaultRole);
-
-        // Update our own permissions if we're in the member list
-        const myMember = payload.members.find(m => m.oduserId === user.id);
-        if (myMember) {
-          permissionsStore.setMyPermissions(myMember.role, myMember.customPermissions);
-        }
-      });
-
       // WS2: State request/response protocol
       // When a new user joins (or reconnects), they send state:request
       // The master responds with the full room state via state:sync
@@ -1310,24 +1165,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         console.log('[useRoom] Disconnected from room, waiting for reconnection...');
       });
 
-      // WS6: Periodic transport position sync — correct drift over long sessions
-      realtime.on('track:position', (data) => {
-        const payload = data as { trackId: string; currentTime: number; syncTimestamp: number; isPlaying: boolean; userId: string };
-        if (payload.userId === user.id) return;
-
-        // Only non-masters apply position corrections (master is authoritative)
-        if (useRoomStore.getState().isMaster) return;
-
-        const localTime = useAudioStore.getState().currentTime || 0;
-        const drift = Math.abs(localTime - payload.currentTime);
-
-        // Correct if drift exceeds 200ms
-        if (drift > 0.2 && payload.isPlaying) {
-          console.log(`[useRoom] Position drift detected: ${(drift * 1000).toFixed(0)}ms, correcting to ${payload.currentTime.toFixed(2)}s`);
-          seekTo(payload.currentTime, Date.now() + 50);
-        }
-      });
-
       realtime.on('song:position', (data) => {
         const payload = data as { songId: string; currentTime: number; syncTimestamp: number; isPlaying: boolean; userId: string };
         if (payload.userId === user.id) return;
@@ -1401,17 +1238,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       });
 
       // Songs CRUD sync handlers
-      realtime.on('songs:sync', (data) => {
-        const payload = data as { songs: unknown[]; currentSongId: string | null; userId: string };
-        if (payload.userId === user.id) return;
-        const { useSongsStore } = require('@/stores/songs-store');
-        const songsStore = useSongsStore.getState();
-        songsStore.setSongs(payload.songs);
-        if (payload.currentSongId) {
-          songsStore.selectSong(payload.currentSongId);
-        }
-      });
-
       realtime.on('songs:create', (data) => {
         const payload = data as { song: unknown; userId: string };
         if (payload.userId === user.id) return;
@@ -1518,7 +1344,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // This prevents the user from being stuck in "Joining..." forever
       setJoining(false);
     }
-  }, [roomId, initialize, startCapture, addRemoteStream, removeRemoteStream, updateFromStats, loadBackingTrack, playBackingTrack, pauseBackingTrack, seekTo, options, getOrCreateTrackProcessor, setTrackMediaStreamInput, updateTrackState]);
+  }, [roomId, initialize, addRemoteStream, removeRemoteStream, updateFromStats, loadBackingTrack, playBackingTrack, seekTo, options, getOrCreateTrackProcessor, setTrackMediaStreamInput, updateTrackState]);
 
   // Leave room
   const leave = useCallback(async () => {
@@ -1548,12 +1374,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         trackId: track.id,
         isActive: false,
       }).catch(err => console.error('Failed to mark track as inactive:', err));
-    }
-
-    // WS6: Stop periodic position sync
-    if (positionSyncIntervalRef.current) {
-      clearInterval(positionSyncIntervalRef.current);
-      positionSyncIntervalRef.current = null;
     }
 
     await realtimeRef.current?.disconnect();
@@ -1592,122 +1412,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     usePermissionsStore.getState().reset();
   }, [roomId, destroyEngine, statsEndSession]);
 
-  // Master controls - BULLETPROOF with fresh state
-  const play = useCallback(async () => {
-    // Get ALL fresh state to avoid stale closure issues
-    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack, queue: freshQueue, setQueuePlaying } = useRoomStore.getState();
-
-    console.log('Play called:', {
-      isMaster: freshIsMaster,
-      currentTrackId: freshCurrentTrack?.id,
-      currentTrackName: freshCurrentTrack?.name,
-    });
-
-    if (!freshIsMaster) {
-      console.log('Play aborted: not master');
-      return;
-    }
-
-    if (!freshCurrentTrack) {
-      console.log('Play aborted: no current track');
-      return;
-    }
-
-    // Skip audio engine for YouTube tracks - they use the YouTube player
-    if (freshCurrentTrack.youtubeId) {
-      console.log('YouTube track, delegating to YouTube player');
-      // YouTube playback is handled by YouTubePlayer component
-      // Just update state and broadcast
-      realtimeRef.current?.broadcastPlay(freshCurrentTrack.id, freshQueue.currentTime, Date.now() + 100);
-      setQueuePlaying(true);
-      return;
-    }
-
-    console.log('Playing uploaded track:', freshCurrentTrack.name, 'URL:', freshCurrentTrack.url);
-
-    // Ensure audio engine is initialized before attempting playback
-    try {
-      await initialize();
-    } catch (err) {
-      console.error('Failed to initialize audio engine:', err);
-      return;
-    }
-
-    const syncTime = Date.now() + 100; // 100ms in future for sync
-    console.log('Loading backing track...');
-    const loadSuccess = await loadBackingTrack(freshCurrentTrack);
-
-    if (!loadSuccess) {
-      console.error('Failed to load backing track, cannot play');
-      return;
-    }
-
-    console.log('Playing backing track at offset:', freshQueue.currentTime);
-    playBackingTrack(syncTime, freshQueue.currentTime);
-
-    realtimeRef.current?.broadcastPlay(freshCurrentTrack.id, freshQueue.currentTime, syncTime);
-    setQueuePlaying(true);
-
-    // WS6: Start periodic position sync (every 5 seconds during playback)
-    if (positionSyncIntervalRef.current) {
-      clearInterval(positionSyncIntervalRef.current);
-    }
-    positionSyncIntervalRef.current = setInterval(() => {
-      const audioState = useAudioStore.getState();
-      const roomState = useRoomStore.getState();
-      if (roomState.isMaster && audioState.isPlaying && roomState.currentTrack) {
-        realtimeRef.current?.broadcastTrackPosition(
-          roomState.currentTrack.id,
-          audioState.currentTime || 0,
-          Date.now(),
-          true
-        );
-      }
-    }, 5000);
-  }, [initialize, loadBackingTrack, playBackingTrack]);
-
-  const pause = useCallback(async () => {
-    // Get ALL fresh state to avoid stale closure issues
-    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack, setQueueTime, setQueuePlaying } = useRoomStore.getState();
-
-    if (!freshIsMaster || !freshCurrentTrack) {
-      console.log('Pause aborted: not master or no current track');
-      return;
-    }
-
-    // Get the current playback time before pausing
-    const { currentTime } = useAudioStore.getState();
-
-    pauseBackingTrack();
-
-    // Save the current time so we can resume from this position
-    setQueueTime(currentTime);
-
-    realtimeRef.current?.broadcastPause(freshCurrentTrack.id, currentTime);
-    setQueuePlaying(false);
-
-    // WS6: Stop periodic position sync during pause
-    if (positionSyncIntervalRef.current) {
-      clearInterval(positionSyncIntervalRef.current);
-      positionSyncIntervalRef.current = null;
-    }
-  }, [pauseBackingTrack]);
-
-  const seek = useCallback(async (time: number) => {
-    // Get ALL fresh state to avoid stale closure issues
-    const { isMaster: freshIsMaster, currentTrack: freshCurrentTrack } = useRoomStore.getState();
-
-    if (!freshIsMaster || !freshCurrentTrack) {
-      console.log('Seek aborted: not master or no current track');
-      return;
-    }
-
-    const syncTime = Date.now() + 100;
-    seekTo(time, syncTime);
-    realtimeRef.current?.broadcastSeek(freshCurrentTrack.id, time, syncTime);
-  }, [seekTo]);
-
-  // Queue management
+  // Queue management (track library - not playback)
   const addTrack = useCallback(async (track: BackingTrack) => {
     console.log('addTrack called with:', { id: track.id, name: track.name, url: track.url, youtubeId: track.youtubeId });
 
@@ -1768,206 +1473,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       console.error('Failed to delete track:', err);
     }
   }, [roomId]);
-
-  const skipToNext = useCallback(async () => {
-    // Get ALL fresh state to avoid stale closure issues
-    const { queue: freshQueue, isMaster: freshIsMaster, nextTrack, setQueuePlaying } = useRoomStore.getState();
-
-    console.log('skipToNext called:', { isMaster: freshIsMaster, currentIndex: freshQueue.currentIndex });
-
-    if (!freshIsMaster) {
-      console.log('skipToNext: Not master, ignoring');
-      return;
-    }
-
-    const nextIndex = freshQueue.currentIndex + 1;
-
-    // Check if there's a next track
-    if (nextIndex >= freshQueue.tracks.length) {
-      console.log('skipToNext: Already at last track');
-      return;
-    }
-
-    // Get the target track DIRECTLY
-    const targetTrack = freshQueue.tracks[nextIndex];
-    if (!targetTrack) {
-      console.error('skipToNext: Target track is null');
-      return;
-    }
-
-    const wasPlaying = useAudioStore.getState().isPlaying;
-
-    console.log('skipToNext: Moving to', targetTrack.name, 'at index', nextIndex);
-
-    // Stop current playback and reset audio state
-    pauseBackingTrack();
-    useAudioStore.getState().setCurrentTime(0);
-    useAudioStore.getState().setDuration(targetTrack.duration || 0);
-    useRoomStore.getState().setWaveformData(null);
-
-    nextTrack();
-    realtimeRef.current?.broadcastNextTrack(nextIndex);
-
-    // Auto-play if was playing before
-    if (wasPlaying) {
-      if (targetTrack.youtubeId) {
-        realtimeRef.current?.broadcastPlay(targetTrack.id, 0, Date.now() + 100);
-        setQueuePlaying(true);
-        return;
-      }
-
-      try {
-        await initialize();
-        const loadSuccess = await loadBackingTrack(targetTrack);
-        if (loadSuccess) {
-          const syncTime = Date.now() + 100;
-          playBackingTrack(syncTime, 0);
-          realtimeRef.current?.broadcastPlay(targetTrack.id, 0, syncTime);
-          setQueuePlaying(true);
-        }
-      } catch (err) {
-        console.error('skipToNext: Error during playback:', err);
-      }
-    }
-  }, [pauseBackingTrack, initialize, loadBackingTrack, playBackingTrack]);
-
-  const skipToPrevious = useCallback(async () => {
-    // Get ALL fresh state to avoid stale closure issues
-    const { queue: freshQueue, isMaster: freshIsMaster, previousTrack, setQueuePlaying } = useRoomStore.getState();
-
-    console.log('skipToPrevious called:', { isMaster: freshIsMaster, currentIndex: freshQueue.currentIndex });
-
-    if (!freshIsMaster) {
-      console.log('skipToPrevious: Not master, ignoring');
-      return;
-    }
-
-    const prevIndex = freshQueue.currentIndex - 1;
-
-    // Check if there's a previous track
-    if (prevIndex < 0) {
-      console.log('skipToPrevious: Already at first track');
-      return;
-    }
-
-    // Get the target track DIRECTLY
-    const targetTrack = freshQueue.tracks[prevIndex];
-    if (!targetTrack) {
-      console.error('skipToPrevious: Target track is null');
-      return;
-    }
-
-    const wasPlaying = useAudioStore.getState().isPlaying;
-
-    console.log('skipToPrevious: Moving to', targetTrack.name, 'at index', prevIndex);
-
-    // Stop current playback and reset audio state
-    pauseBackingTrack();
-    useAudioStore.getState().setCurrentTime(0);
-    useAudioStore.getState().setDuration(targetTrack.duration || 0);
-    useRoomStore.getState().setWaveformData(null);
-
-    previousTrack();
-    realtimeRef.current?.broadcastNextTrack(prevIndex);
-
-    // Auto-play if was playing before
-    if (wasPlaying) {
-      if (targetTrack.youtubeId) {
-        realtimeRef.current?.broadcastPlay(targetTrack.id, 0, Date.now() + 100);
-        setQueuePlaying(true);
-        return;
-      }
-
-      try {
-        await initialize();
-        const loadSuccess = await loadBackingTrack(targetTrack);
-        if (loadSuccess) {
-          const syncTime = Date.now() + 100;
-          playBackingTrack(syncTime, 0);
-          realtimeRef.current?.broadcastPlay(targetTrack.id, 0, syncTime);
-          setQueuePlaying(true);
-        }
-      } catch (err) {
-        console.error('skipToPrevious: Error during playback:', err);
-      }
-    }
-  }, [pauseBackingTrack, initialize, loadBackingTrack, playBackingTrack]);
-
-  const skipToTrack = useCallback(async (trackIndex: number) => {
-    // Get ALL fresh state to avoid stale closure issues
-    const { queue: freshQueue, isMaster: freshIsMaster, jumpToTrack, setQueuePlaying } = useRoomStore.getState();
-
-    console.log('skipToTrack called:', {
-      requestedIndex: trackIndex,
-      currentIndex: freshQueue.currentIndex,
-      isMaster: freshIsMaster,
-      queueLength: freshQueue.tracks.length,
-    });
-
-    if (!freshIsMaster) {
-      console.log('skipToTrack: Not master, ignoring');
-      return;
-    }
-
-    // Validate track index
-    if (trackIndex < 0 || trackIndex >= freshQueue.tracks.length) {
-      console.warn('skipToTrack: Invalid track index', trackIndex);
-      return;
-    }
-
-    // Get the ACTUAL track we're switching to - don't rely on store state later
-    const targetTrack = freshQueue.tracks[trackIndex];
-    if (!targetTrack) {
-      console.error('skipToTrack: Target track is null at index', trackIndex);
-      return;
-    }
-
-    const isSameTrack = trackIndex === freshQueue.currentIndex;
-    const wasPlaying = useAudioStore.getState().isPlaying;
-
-    console.log('skipToTrack: Switching to', targetTrack.name, 'at index', trackIndex, 'isSameTrack:', isSameTrack);
-
-    // 1. Stop current playback completely
-    pauseBackingTrack();
-    useAudioStore.getState().setCurrentTime(0);
-    useAudioStore.getState().setDuration(targetTrack.duration || 0);
-    useRoomStore.getState().setWaveformData(null);
-
-    // 2. Update store state
-    jumpToTrack(trackIndex);
-    realtimeRef.current?.broadcastNextTrack(trackIndex);
-
-    // 3. Auto-play if needed - DO THIS DIRECTLY, not via setTimeout
-    if (wasPlaying || !isSameTrack) {
-      // For YouTube tracks, just update state - the player handles it
-      if (targetTrack.youtubeId) {
-        console.log('skipToTrack: YouTube track, broadcasting play');
-        realtimeRef.current?.broadcastPlay(targetTrack.id, 0, Date.now() + 100);
-        setQueuePlaying(true);
-        return;
-      }
-
-      // For regular tracks, load and play directly with the target track
-      console.log('skipToTrack: Loading and playing track directly:', targetTrack.name, targetTrack.url);
-
-      try {
-        await initialize();
-        const loadSuccess = await loadBackingTrack(targetTrack);
-        if (!loadSuccess) {
-          console.error('skipToTrack: Failed to load track');
-          return;
-        }
-
-        const syncTime = Date.now() + 100;
-        playBackingTrack(syncTime, 0);
-        realtimeRef.current?.broadcastPlay(targetTrack.id, 0, syncTime);
-        setQueuePlaying(true);
-        console.log('skipToTrack: Playback started for', targetTrack.name);
-      } catch (err) {
-        console.error('skipToTrack: Error during playback setup:', err);
-      }
-    }
-  }, [pauseBackingTrack, initialize, loadBackingTrack, playBackingTrack]);
 
   // Chat
   const sendMessage = useCallback((message: string) => {
@@ -2225,6 +1730,15 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     realtimeRef.current?.broadcastSongTrackStates(songId, trackStates);
   }, []);
 
+  const broadcastSongPosition = useCallback((
+    songId: string,
+    currentTime: number,
+    syncTimestamp: number,
+    isPlaying: boolean
+  ) => {
+    realtimeRef.current?.broadcastSongPosition(songId, currentTime, syncTimestamp, isPlaying);
+  }, []);
+
   // Broadcast stem toggle - syncs stem mute/unmute to all room members
   const broadcastStemToggle = useCallback((trackId: string, stem: string, enabled: boolean) => {
     // Apply to local audio engine
@@ -2276,21 +1790,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     users: Array.from(users.values()),
     currentUser,
     isMaster,
-    queue,
-    currentTrack,
     isConnected,
     isJoining,
     error,
     join,
     leave,
-    play,
-    pause,
-    seek,
     addTrack,
     removeTrack,
-    skipToNext,
-    skipToPrevious,
-    skipToTrack,
     sendMessage,
     muteUser,
     setUserVolume,
@@ -2321,6 +1827,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     broadcastSongSeek,
     broadcastSongSelect,
     broadcastSongTrackStates,
+    broadcastSongPosition,
     // Stem control
     broadcastStemToggle,
     broadcastStemVolume,

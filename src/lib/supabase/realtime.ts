@@ -1,8 +1,7 @@
 import { supabase, getRealtimeChannel, RealtimeChannel } from './client';
-import type { User, BackingTrack, RoomMessage, TrackQueue, TrackAudioSettings, TrackEffectsChain, UserTrack } from '@/types';
+import type { User, BackingTrack, RoomMessage, TrackQueue, UserTrack } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
-import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
-import type { SongTrackReference } from '@/types/songs';
+import type { RoomRole, RoomPermissions } from '@/types/permissions';
 
 export interface RoomState {
   users: Record<string, User>;
@@ -42,7 +41,6 @@ export class RealtimeRoomManager {
   private userId: string;
   private listeners: Map<string, Set<(data: unknown) => void>> = new Map();
   private connectionState: 'connected' | 'disconnected' | 'reconnecting' = 'disconnected';
-  private seekDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private songSeekDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(roomId: string, userId: string) {
@@ -113,24 +111,8 @@ export class RealtimeRoomManager {
     });
 
     // Broadcast events
-    this.channel.on('broadcast', { event: 'track:play' }, ({ payload }) => {
-      this.emit('track:play', payload);
-    });
-
-    this.channel.on('broadcast', { event: 'track:pause' }, ({ payload }) => {
-      this.emit('track:pause', payload);
-    });
-
-    this.channel.on('broadcast', { event: 'track:seek' }, ({ payload }) => {
-      this.emit('track:seek', payload);
-    });
-
     this.channel.on('broadcast', { event: 'track:queue' }, ({ payload }) => {
       this.emit('track:queue', payload);
-    });
-
-    this.channel.on('broadcast', { event: 'track:next' }, ({ payload }) => {
-      this.emit('track:next', payload);
     });
 
     this.channel.on('broadcast', { event: 'user:mute' }, ({ payload }) => {
@@ -153,10 +135,6 @@ export class RealtimeRoomManager {
       this.emit('stem:volume', payload);
     });
 
-    this.channel.on('broadcast', { event: 'ai:generate' }, ({ payload }) => {
-      this.emit('ai:generate', payload);
-    });
-
     // User track events
     this.channel.on('broadcast', { event: 'usertrack:add' }, ({ payload }) => {
       this.emit('usertrack:add', payload);
@@ -168,14 +146,6 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'usertrack:update' }, ({ payload }) => {
       this.emit('usertrack:update', payload);
-    });
-
-    this.channel.on('broadcast', { event: 'usertrack:effects' }, ({ payload }) => {
-      this.emit('usertrack:effects', payload);
-    });
-
-    this.channel.on('broadcast', { event: 'usertrack:settings' }, ({ payload }) => {
-      this.emit('usertrack:settings', payload);
     });
 
     // Loop track events
@@ -197,10 +167,6 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'looptrack:stop' }, ({ payload }) => {
       this.emit('looptrack:stop', payload);
-    });
-
-    this.channel.on('broadcast', { event: 'looptrack:sync' }, ({ payload }) => {
-      this.emit('looptrack:sync', payload);
     });
 
     // Tempo/Session state events
@@ -225,10 +191,6 @@ export class RealtimeRoomManager {
       this.emit('world:position', payload);
     });
 
-    this.channel.on('broadcast', { event: 'world:scene' }, ({ payload }) => {
-      this.emit('world:scene', payload);
-    });
-
     // Permission events
     this.channel.on('broadcast', { event: 'permissions:role_update' }, ({ payload }) => {
       this.emit('permissions:role_update', payload);
@@ -244,10 +206,6 @@ export class RealtimeRoomManager {
 
     this.channel.on('broadcast', { event: 'permissions:member_ban' }, ({ payload }) => {
       this.emit('permissions:member_ban', payload);
-    });
-
-    this.channel.on('broadcast', { event: 'permissions:sync' }, ({ payload }) => {
-      this.emit('permissions:sync', payload);
     });
 
     // Song playback events (multi-track timeline sync)
@@ -268,10 +226,6 @@ export class RealtimeRoomManager {
     });
 
     // Songs CRUD sync events
-    this.channel.on('broadcast', { event: 'songs:sync' }, ({ payload }) => {
-      this.emit('songs:sync', payload);
-    });
-
     this.channel.on('broadcast', { event: 'songs:create' }, ({ payload }) => {
       this.emit('songs:create', payload);
     });
@@ -299,10 +253,6 @@ export class RealtimeRoomManager {
     });
 
     // Transport position sync events (WS6)
-    this.channel.on('broadcast', { event: 'track:position' }, ({ payload }) => {
-      this.emit('track:position', payload);
-    });
-
     this.channel.on('broadcast', { event: 'song:position' }, ({ payload }) => {
       this.emit('song:position', payload);
     });
@@ -421,10 +371,6 @@ export class RealtimeRoomManager {
 
   async disconnect(): Promise<void> {
     // Clear debounce timers to prevent stale broadcasts after disconnect
-    if (this.seekDebounceTimer !== null) {
-      clearTimeout(this.seekDebounceTimer);
-      this.seekDebounceTimer = null;
-    }
     if (this.songSeekDebounceTimer !== null) {
       clearTimeout(this.songSeekDebounceTimer);
       this.songSeekDebounceTimer = null;
@@ -527,38 +473,11 @@ export class RealtimeRoomManager {
   }
 
   // Broadcast events to all users
-  async broadcastPlay(trackId: string, timestamp: number, syncTime: number): Promise<void> {
-    await this.reliableBroadcast('track:play', { trackId, timestamp, syncTime, userId: this.userId });
-  }
-
-  async broadcastPause(trackId: string, timestamp: number): Promise<void> {
-    await this.reliableBroadcast('track:pause', { trackId, timestamp, userId: this.userId });
-  }
-
-  async broadcastSeek(trackId: string, timestamp: number, syncTime: number): Promise<void> {
-    // Debounce seek broadcasts (WS6) - only the final seek position gets sent
-    if (this.seekDebounceTimer !== null) {
-      clearTimeout(this.seekDebounceTimer);
-    }
-    this.seekDebounceTimer = setTimeout(() => {
-      this.seekDebounceTimer = null;
-      this.reliableBroadcast('track:seek', { trackId, timestamp, syncTime, userId: this.userId });
-    }, 100);
-  }
-
   async broadcastQueueUpdate(queue: TrackQueue): Promise<void> {
     await this.channel?.send({
       type: 'broadcast',
       event: 'track:queue',
       payload: { queue, userId: this.userId },
-    });
-  }
-
-  async broadcastNextTrack(index: number): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'track:next',
-      payload: { index, userId: this.userId },
     });
   }
 
@@ -598,14 +517,6 @@ export class RealtimeRoomManager {
     await this.reliableBroadcast('stem:volume', { trackId, stem, volume, userId: this.userId });
   }
 
-  async broadcastAIGeneration(request: { prompt: string; status: string; trackId?: string }): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'ai:generate',
-      payload: { ...request, userId: this.userId },
-    });
-  }
-
   // User track broadcasts
   async broadcastUserTrackAdd(track: UserTrack): Promise<void> {
     await this.channel?.send({
@@ -628,22 +539,6 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'usertrack:update',
       payload: { trackId, updates, userId: this.userId },
-    });
-  }
-
-  async broadcastUserTrackEffects(trackId: string, effects: Partial<TrackEffectsChain>): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'usertrack:effects',
-      payload: { trackId, effects, userId: this.userId },
-    });
-  }
-
-  async broadcastUserTrackSettings(trackId: string, settings: Partial<TrackAudioSettings>): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'usertrack:settings',
-      payload: { trackId, settings, userId: this.userId },
     });
   }
 
@@ -685,14 +580,6 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'looptrack:stop',
       payload: { trackId, userId: this.userId },
-    });
-  }
-
-  async broadcastLoopTrackSync(tracks: LoopTrackState[]): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'looptrack:sync',
-      payload: { tracks, userId: this.userId },
     });
   }
 
@@ -753,14 +640,6 @@ export class RealtimeRoomManager {
     });
   }
 
-  async broadcastPermissionsSync(members: RoomMember[], defaultRole: RoomRole): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'permissions:sync',
-      payload: { members, defaultRole, userId: this.userId },
-    });
-  }
-
   // World position broadcasts (for synced avatar movement)
   async broadcastWorldPosition(position: {
     x: number;
@@ -774,14 +653,6 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'world:position',
       payload: { ...position, userId: this.userId, timestamp: Date.now() },
-    });
-  }
-
-  async broadcastWorldScene(scene: string): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'world:scene',
-      payload: { scene, userId: this.userId },
     });
   }
 
@@ -819,14 +690,6 @@ export class RealtimeRoomManager {
   }
 
   // Songs CRUD broadcasts
-  async broadcastSongsSync(songs: Array<{ id: string; name: string; [key: string]: unknown }>, currentSongId: string | null): Promise<void> {
-    await this.channel?.send({
-      type: 'broadcast',
-      event: 'songs:sync',
-      payload: { songs, currentSongId, userId: this.userId },
-    });
-  }
-
   async broadcastSongCreate(song: { id: string; name: string; [key: string]: unknown }): Promise<void> {
     await this.channel?.send({
       type: 'broadcast',
@@ -873,24 +736,6 @@ export class RealtimeRoomManager {
   }
 
   // Transport position sync broadcasts (WS6: periodic position updates)
-  async broadcastTrackPosition(
-    trackId: string,
-    currentTime: number,
-    syncTimestamp: number,
-    isPlaying: boolean
-  ): Promise<void> {
-    try {
-      await this.channel?.send({
-        type: 'broadcast',
-        event: 'track:position',
-        payload: { trackId, currentTime, syncTimestamp, isPlaying, userId: this.userId },
-      });
-    } catch (err) {
-      // Position syncs are periodic and non-critical; log but do not retry
-      console.warn('[Realtime] Failed to broadcast track position:', err);
-    }
-  }
-
   async broadcastSongPosition(
     songId: string,
     currentTime: number,
