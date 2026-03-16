@@ -44,15 +44,9 @@ pub enum AppEvent {
         buffer_size: u32,
     },
     /// Effect enabled/disabled
-    EffectToggled {
-        name: String,
-        enabled: bool,
-    },
+    EffectToggled { name: String, enabled: bool },
     /// Log message
-    Log {
-        level: LogLevel,
-        message: String,
-    },
+    Log { level: LogLevel, message: String },
     /// Connection event
     ConnectionEvent {
         event_type: ConnectionEventType,
@@ -63,12 +57,10 @@ pub enum AppEvent {
         levels: Vec<(String, f32)>, // (user_id, level_db)
     },
     /// Backing track audio level
-    BackingLevel {
-        level: f32,
-    },
+    BackingLevel { level: f32 },
     /// Browser stream health metrics
     StreamHealth {
-        buffer_occupancy: f32,  // 0.0-1.0
+        buffer_occupancy: f32, // 0.0-1.0
         overflow_count: u64,
         is_healthy: bool,
     },
@@ -178,7 +170,6 @@ pub struct App {
     pub active_panel: ActivePanel,
     pub show_help: bool,
     pub effects_scroll: usize,
-    pub logs_scroll: usize,
 
     // Audio state
     pub input_level_l: f32,
@@ -254,7 +245,6 @@ impl App {
             active_panel: ActivePanel::Audio,
             show_help: false,
             effects_scroll: 0,
-            logs_scroll: 0,
 
             input_level_l: -60.0,
             input_level_r: -60.0,
@@ -313,57 +303,197 @@ impl App {
     fn init_effects() -> Vec<EffectStatus> {
         vec![
             // Guitar effects
-            EffectStatus { name: "Wah".into(), enabled: false, category: EffectCategory::Guitar },
-            EffectStatus { name: "Overdrive".into(), enabled: false, category: EffectCategory::Guitar },
-            EffectStatus { name: "Distortion".into(), enabled: false, category: EffectCategory::Guitar },
-            EffectStatus { name: "Amp Sim".into(), enabled: false, category: EffectCategory::Guitar },
-            EffectStatus { name: "Cabinet".into(), enabled: false, category: EffectCategory::Guitar },
-
+            EffectStatus {
+                name: "Wah".into(),
+                enabled: false,
+                category: EffectCategory::Guitar,
+            },
+            EffectStatus {
+                name: "Overdrive".into(),
+                enabled: false,
+                category: EffectCategory::Guitar,
+            },
+            EffectStatus {
+                name: "Distortion".into(),
+                enabled: false,
+                category: EffectCategory::Guitar,
+            },
+            EffectStatus {
+                name: "Amp Sim".into(),
+                enabled: false,
+                category: EffectCategory::Guitar,
+            },
+            EffectStatus {
+                name: "Cabinet".into(),
+                enabled: false,
+                category: EffectCategory::Guitar,
+            },
             // Dynamics
-            EffectStatus { name: "Noise Gate".into(), enabled: false, category: EffectCategory::Dynamics },
-            EffectStatus { name: "Compressor".into(), enabled: false, category: EffectCategory::Dynamics },
-            EffectStatus { name: "De-Esser".into(), enabled: false, category: EffectCategory::Dynamics },
-            EffectStatus { name: "Transient".into(), enabled: false, category: EffectCategory::Dynamics },
-            EffectStatus { name: "Multiband".into(), enabled: false, category: EffectCategory::Dynamics },
-            EffectStatus { name: "Exciter".into(), enabled: false, category: EffectCategory::Dynamics },
-            EffectStatus { name: "Limiter".into(), enabled: false, category: EffectCategory::Dynamics },
-
+            EffectStatus {
+                name: "Noise Gate".into(),
+                enabled: false,
+                category: EffectCategory::Dynamics,
+            },
+            EffectStatus {
+                name: "Compressor".into(),
+                enabled: false,
+                category: EffectCategory::Dynamics,
+            },
+            EffectStatus {
+                name: "De-Esser".into(),
+                enabled: false,
+                category: EffectCategory::Dynamics,
+            },
+            EffectStatus {
+                name: "Transient".into(),
+                enabled: false,
+                category: EffectCategory::Dynamics,
+            },
+            EffectStatus {
+                name: "Multiband".into(),
+                enabled: false,
+                category: EffectCategory::Dynamics,
+            },
+            EffectStatus {
+                name: "Exciter".into(),
+                enabled: false,
+                category: EffectCategory::Dynamics,
+            },
+            EffectStatus {
+                name: "Limiter".into(),
+                enabled: false,
+                category: EffectCategory::Dynamics,
+            },
             // Modulation
-            EffectStatus { name: "Chorus".into(), enabled: false, category: EffectCategory::Modulation },
-            EffectStatus { name: "Flanger".into(), enabled: false, category: EffectCategory::Modulation },
-            EffectStatus { name: "Phaser".into(), enabled: false, category: EffectCategory::Modulation },
-            EffectStatus { name: "Tremolo".into(), enabled: false, category: EffectCategory::Modulation },
-            EffectStatus { name: "Vibrato".into(), enabled: false, category: EffectCategory::Modulation },
-            EffectStatus { name: "Auto Pan".into(), enabled: false, category: EffectCategory::Modulation },
-            EffectStatus { name: "Rotary".into(), enabled: false, category: EffectCategory::Modulation },
-            EffectStatus { name: "Ring Mod".into(), enabled: false, category: EffectCategory::Modulation },
-
+            EffectStatus {
+                name: "Chorus".into(),
+                enabled: false,
+                category: EffectCategory::Modulation,
+            },
+            EffectStatus {
+                name: "Flanger".into(),
+                enabled: false,
+                category: EffectCategory::Modulation,
+            },
+            EffectStatus {
+                name: "Phaser".into(),
+                enabled: false,
+                category: EffectCategory::Modulation,
+            },
+            EffectStatus {
+                name: "Tremolo".into(),
+                enabled: false,
+                category: EffectCategory::Modulation,
+            },
+            EffectStatus {
+                name: "Vibrato".into(),
+                enabled: false,
+                category: EffectCategory::Modulation,
+            },
+            EffectStatus {
+                name: "Auto Pan".into(),
+                enabled: false,
+                category: EffectCategory::Modulation,
+            },
+            EffectStatus {
+                name: "Rotary".into(),
+                enabled: false,
+                category: EffectCategory::Modulation,
+            },
+            EffectStatus {
+                name: "Ring Mod".into(),
+                enabled: false,
+                category: EffectCategory::Modulation,
+            },
             // Time-based
-            EffectStatus { name: "Delay".into(), enabled: false, category: EffectCategory::TimeBased },
-            EffectStatus { name: "Stereo Delay".into(), enabled: false, category: EffectCategory::TimeBased },
-            EffectStatus { name: "Granular".into(), enabled: false, category: EffectCategory::TimeBased },
-
+            EffectStatus {
+                name: "Delay".into(),
+                enabled: false,
+                category: EffectCategory::TimeBased,
+            },
+            EffectStatus {
+                name: "Stereo Delay".into(),
+                enabled: false,
+                category: EffectCategory::TimeBased,
+            },
+            EffectStatus {
+                name: "Granular".into(),
+                enabled: false,
+                category: EffectCategory::TimeBased,
+            },
             // Pitch
-            EffectStatus { name: "Pitch Correct".into(), enabled: false, category: EffectCategory::Pitch },
-            EffectStatus { name: "Harmonizer".into(), enabled: false, category: EffectCategory::Pitch },
-            EffectStatus { name: "Formant".into(), enabled: false, category: EffectCategory::Pitch },
-            EffectStatus { name: "Freq Shift".into(), enabled: false, category: EffectCategory::Pitch },
-            EffectStatus { name: "Vocal Double".into(), enabled: false, category: EffectCategory::Pitch },
-
+            EffectStatus {
+                name: "Pitch Correct".into(),
+                enabled: false,
+                category: EffectCategory::Pitch,
+            },
+            EffectStatus {
+                name: "Harmonizer".into(),
+                enabled: false,
+                category: EffectCategory::Pitch,
+            },
+            EffectStatus {
+                name: "Formant".into(),
+                enabled: false,
+                category: EffectCategory::Pitch,
+            },
+            EffectStatus {
+                name: "Freq Shift".into(),
+                enabled: false,
+                category: EffectCategory::Pitch,
+            },
+            EffectStatus {
+                name: "Vocal Double".into(),
+                enabled: false,
+                category: EffectCategory::Pitch,
+            },
             // Spatial
-            EffectStatus { name: "EQ".into(), enabled: false, category: EffectCategory::Spatial },
-            EffectStatus { name: "Reverb".into(), enabled: false, category: EffectCategory::Spatial },
-            EffectStatus { name: "Room Sim".into(), enabled: false, category: EffectCategory::Spatial },
-            EffectStatus { name: "Shimmer".into(), enabled: false, category: EffectCategory::Spatial },
-            EffectStatus { name: "Stereo Img".into(), enabled: false, category: EffectCategory::Spatial },
-            EffectStatus { name: "Multi Filter".into(), enabled: false, category: EffectCategory::Spatial },
-            EffectStatus { name: "Bitcrusher".into(), enabled: false, category: EffectCategory::Spatial },
+            EffectStatus {
+                name: "EQ".into(),
+                enabled: false,
+                category: EffectCategory::Spatial,
+            },
+            EffectStatus {
+                name: "Reverb".into(),
+                enabled: false,
+                category: EffectCategory::Spatial,
+            },
+            EffectStatus {
+                name: "Room Sim".into(),
+                enabled: false,
+                category: EffectCategory::Spatial,
+            },
+            EffectStatus {
+                name: "Shimmer".into(),
+                enabled: false,
+                category: EffectCategory::Spatial,
+            },
+            EffectStatus {
+                name: "Stereo Img".into(),
+                enabled: false,
+                category: EffectCategory::Spatial,
+            },
+            EffectStatus {
+                name: "Multi Filter".into(),
+                enabled: false,
+                category: EffectCategory::Spatial,
+            },
+            EffectStatus {
+                name: "Bitcrusher".into(),
+                enabled: false,
+                category: EffectCategory::Spatial,
+            },
         ]
     }
 
     pub fn handle_event(&mut self, event: AppEvent) {
         match event {
-            AppEvent::AudioLevels { input_l, input_r, output_l, output_r } => {
+            AppEvent::AudioLevels {
+                input_l,
+                input_r,
+                output_l,
+                output_r,
+            } => {
                 self.input_level_l = input_l;
                 self.input_level_r = input_r;
                 self.output_level_l = output_l;
@@ -387,13 +517,24 @@ impl App {
 
                 self.frames_processed += 1;
             }
-            AppEvent::EffectsMetering { noise_gate_open, compressor_reduction, de_esser_reduction, limiter_reduction } => {
+            AppEvent::EffectsMetering {
+                noise_gate_open,
+                compressor_reduction,
+                de_esser_reduction,
+                limiter_reduction,
+            } => {
                 self.noise_gate_open = noise_gate_open;
                 self.compressor_reduction = compressor_reduction;
                 self.de_esser_reduction = de_esser_reduction;
                 self.limiter_reduction = limiter_reduction;
             }
-            AppEvent::NetworkState { connected, mode, peer_count, latency_ms, packet_loss } => {
+            AppEvent::NetworkState {
+                connected,
+                mode,
+                peer_count,
+                latency_ms,
+                packet_loss,
+            } => {
                 self.network_connected = connected;
                 self.network_mode = mode;
                 self.peer_count = peer_count;
@@ -406,14 +547,25 @@ impl App {
                     self.latency_history.pop_front();
                 }
             }
-            AppEvent::RoomContext { room_id, user_count, key, scale, bpm } => {
+            AppEvent::RoomContext {
+                room_id,
+                user_count,
+                key,
+                scale,
+                bpm,
+            } => {
                 self.room_id = room_id;
                 self.user_count = user_count;
                 self.room_key = key;
                 self.room_scale = scale;
                 self.room_bpm = bpm;
             }
-            AppEvent::DeviceInfo { input_device, output_device, sample_rate, buffer_size } => {
+            AppEvent::DeviceInfo {
+                input_device,
+                output_device,
+                sample_rate,
+                buffer_size,
+            } => {
                 self.input_device = input_device;
                 self.output_device = output_device;
                 self.sample_rate = sample_rate;
@@ -434,14 +586,21 @@ impl App {
                     self.logs.pop_front();
                 }
             }
-            AppEvent::ConnectionEvent { event_type, peer_id } => {
+            AppEvent::ConnectionEvent {
+                event_type,
+                peer_id,
+            } => {
                 let msg = match event_type {
                     ConnectionEventType::BrowserConnected => "Browser connected".to_string(),
                     ConnectionEventType::BrowserDisconnected => "Browser disconnected".to_string(),
                     ConnectionEventType::RoomJoined => "Joined room".to_string(),
                     ConnectionEventType::RoomLeft => "Left room".to_string(),
-                    ConnectionEventType::PeerJoined => format!("Peer joined: {}", peer_id.unwrap_or_default()),
-                    ConnectionEventType::PeerLeft => format!("Peer left: {}", peer_id.unwrap_or_default()),
+                    ConnectionEventType::PeerJoined => {
+                        format!("Peer joined: {}", peer_id.unwrap_or_default())
+                    }
+                    ConnectionEventType::PeerLeft => {
+                        format!("Peer left: {}", peer_id.unwrap_or_default())
+                    }
                     ConnectionEventType::RelayConnected => "Relay connected".to_string(),
                     ConnectionEventType::RelayDisconnected => "Relay disconnected".to_string(),
                 };
@@ -457,12 +616,21 @@ impl App {
             AppEvent::BackingLevel { level } => {
                 self.backing_level = level;
             }
-            AppEvent::StreamHealth { buffer_occupancy, overflow_count, is_healthy } => {
+            AppEvent::StreamHealth {
+                buffer_occupancy,
+                overflow_count,
+                is_healthy,
+            } => {
                 self.stream_buffer_occupancy = buffer_occupancy;
                 self.stream_overflow_count = overflow_count;
                 self.stream_healthy = is_healthy;
             }
-            AppEvent::NetworkStats { jitter_ms, clock_offset_ms, bytes_sent_per_sec, bytes_recv_per_sec } => {
+            AppEvent::NetworkStats {
+                jitter_ms,
+                clock_offset_ms,
+                bytes_sent_per_sec,
+                bytes_recv_per_sec,
+            } => {
                 self.jitter_ms = jitter_ms;
                 self.clock_offset_ms = clock_offset_ms;
                 self.bytes_sent_per_sec = bytes_sent_per_sec;
@@ -481,10 +649,6 @@ impl App {
 
     pub fn should_quit(&self) -> bool {
         self.should_quit
-    }
-
-    pub fn quit(&mut self) {
-        self.should_quit = true;
     }
 
     pub fn set_panel(&mut self, panel: ActivePanel) {

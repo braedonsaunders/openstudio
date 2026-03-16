@@ -60,6 +60,7 @@ export async function GET(
       isMuted: track.is_muted,
       isSolo: track.is_solo,
       volume: track.volume,
+      pan: track.pan ?? 0,
       isArmed: track.is_armed,
       isRecording: track.is_recording,
       createdAt: new Date(track.created_at).getTime(),
@@ -136,6 +137,7 @@ export async function POST(
         is_muted: track.isMuted ?? false,
         is_solo: track.isSolo ?? false,
         volume: track.volume ?? 1,
+        pan: track.pan ?? 0,
         is_armed: track.isArmed ?? false,
         is_recording: track.isRecording ?? false,
         // Note: owner_user_id, owner_user_name, is_active require migration
@@ -163,6 +165,7 @@ export async function POST(
             is_muted: track.isMuted ?? false,
             is_solo: track.isSolo ?? false,
             volume: track.volume ?? 1,
+            pan: track.pan ?? 0,
             is_armed: track.isArmed ?? false,
             is_recording: track.isRecording ?? false,
           }, { onConflict: 'id' })
@@ -191,6 +194,7 @@ export async function POST(
           isMuted: fallbackData.is_muted,
           isSolo: fallbackData.is_solo,
           volume: fallbackData.volume,
+          pan: fallbackData.pan ?? 0,
           isArmed: fallbackData.is_armed,
           isRecording: fallbackData.is_recording,
           createdAt: new Date(fallbackData.created_at).getTime(),
@@ -222,6 +226,7 @@ export async function POST(
       isMuted: data.is_muted,
       isSolo: data.is_solo,
       volume: data.volume,
+      pan: data.pan ?? 0,
       isArmed: data.is_armed,
       isRecording: data.is_recording,
       createdAt: new Date(data.created_at).getTime(),
@@ -310,6 +315,7 @@ export async function PATCH(
     if (updates.isMuted !== undefined) coreUpdates.is_muted = updates.isMuted;
     if (updates.isSolo !== undefined) coreUpdates.is_solo = updates.isSolo;
     if (updates.volume !== undefined) coreUpdates.volume = updates.volume;
+    if (updates.pan !== undefined) coreUpdates.pan = updates.pan;
     if (updates.isArmed !== undefined) coreUpdates.is_armed = updates.isArmed;
     if (updates.isRecording !== undefined) coreUpdates.is_recording = updates.isRecording;
     if (updates.userId !== undefined) coreUpdates.user_id = updates.userId;

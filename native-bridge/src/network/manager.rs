@@ -135,10 +135,7 @@ pub enum OutgoingMessage {
     },
     /// Audio for relay only. Used by the bridge for dual-path operation
     /// where P2P audio is sent separately via P2PEncodedAudio.
-    RelayAudio {
-        track_id: u8,
-        samples: Vec<f32>,
-    },
+    RelayAudio { track_id: u8, samples: Vec<f32> },
 }
 
 /// Network manager state
@@ -170,8 +167,6 @@ pub struct NetworkManager {
     event_tx: RwLock<Option<broadcast::Sender<NetworkEvent>>>,
     /// Outgoing message queue
     outgoing_tx: RwLock<Option<mpsc::UnboundedSender<OutgoingMessage>>>,
-    /// Stats
-    stats: RwLock<NetworkStats>,
     /// Codec
     codec: Arc<OpusCodec>,
     /// Self-reference for spawning async tasks (set after Arc creation)
@@ -208,7 +203,6 @@ impl NetworkManager {
             clock,
             event_tx: RwLock::new(None),
             outgoing_tx: RwLock::new(None),
-            stats: RwLock::new(NetworkStats::default()),
             codec,
             self_ref: RwLock::new(None),
         })
@@ -286,43 +280,47 @@ impl NetworkManager {
         let _ = event_tx.send(NetworkEvent::StateChanged { mode: initial_mode });
 
         // Start outgoing message processor
-        let manager = self.clone_for_task();
-        tokio::spawn(async move {
-            while let Some(msg) = outgoing_rx.recv().await {
-                if let Err(e) = manager.send_message(msg).await {
-                    warn!("Failed to send message: {}", e);
-                }
-            }
-        });
-
-        // Start stats update loop
-        let manager = self.clone_for_task();
-        let stats_tx = event_tx.clone();
-        tokio::spawn(async move {
-            let mut interval = tokio::time::interval(Duration::from_millis(1000));
-            loop {
-                interval.tick().await;
-                if manager.mode() == NetworkMode::Disconnected {
-                    break;
-                }
-                let stats = manager.stats();
-                let _ = stats_tx.send(NetworkEvent::StatsUpdate { stats });
-            }
-        });
-
-        // Start auto-switch monitor
-        if self.config.auto_switch {
-            let manager = self.clone_for_task();
+        if let Some(manager) = self.clone_for_task() {
             tokio::spawn(async move {
-                manager.auto_switch_loop().await;
+                while let Some(msg) = outgoing_rx.recv().await {
+                    if let Err(e) = manager.send_message(msg).await {
+                        warn!("Failed to send message: {}", e);
+                    }
+                }
             });
         }
 
+        // Start stats update loop
+        if let Some(manager) = self.clone_for_task() {
+            let stats_tx = event_tx.clone();
+            tokio::spawn(async move {
+                let mut interval = tokio::time::interval(Duration::from_millis(1000));
+                loop {
+                    interval.tick().await;
+                    if manager.mode() == NetworkMode::Disconnected {
+                        break;
+                    }
+                    let stats = manager.stats();
+                    let _ = stats_tx.send(NetworkEvent::StatsUpdate { stats });
+                }
+            });
+        }
+
+        // Start auto-switch monitor
+        if self.config.auto_switch {
+            if let Some(manager) = self.clone_for_task() {
+                tokio::spawn(async move {
+                    manager.auto_switch_loop().await;
+                });
+            }
+        }
+
         // Start connection health monitor (handles reconnection and error recovery)
-        let manager = self.clone_for_task();
-        tokio::spawn(async move {
-            manager.connection_health_loop().await;
-        });
+        if let Some(manager) = self.clone_for_task() {
+            tokio::spawn(async move {
+                manager.connection_health_loop().await;
+            });
+        }
 
         Ok(event_rx)
     }
@@ -410,10 +408,7 @@ impl NetworkManager {
     /// is sent separately via send_p2p_encoded_audio.
     pub fn send_relay_audio(&self, track_id: u8, samples: Vec<f32>) {
         if let Some(tx) = self.outgoing_tx.read().as_ref() {
-            let _ = tx.send(OutgoingMessage::RelayAudio {
-                track_id,
-                samples,
-            });
+            let _ = tx.send(OutgoingMessage::RelayAudio { track_id, samples });
         }
     }
 
@@ -538,7 +533,6 @@ impl NetworkManager {
         user_id: &str,
         user_name: &str,
     ) -> Result<()> {
-        let mut rx = self.p2p.start().await?;
         self.p2p
             .join_room(
                 room_config.clone(),
@@ -546,6 +540,7 @@ impl NetworkManager {
                 user_name.to_string(),
             )
             .await?;
+        let mut rx = self.p2p.start().await?;
 
         // Forward P2P events to our event channel
         let event_tx = self.event_tx.read().clone();
@@ -582,11 +577,15 @@ impl NetworkManager {
                                 samples,
                             });
                         }
-                        P2PEvent::ClockSync { beat_position, bpm } => {
+                        P2PEvent::ClockSync {
+                            beat_position,
+                            bpm,
+                            time_sig,
+                        } => {
                             let _ = tx.send(NetworkEvent::ClockSync {
                                 beat_position,
                                 bpm,
-                                time_sig: (4, 4), // TODO: Include in P2PEvent
+                                time_sig,
                             });
                         }
                         P2PEvent::RoomState { state } => {
@@ -693,7 +692,9 @@ impl NetworkManager {
                         let payload = bincode::serialize(&msg)
                             .map_err(|e| NetworkError::Serialization(e.to_string()))?;
                         // Broadcast clock sync to all peers
-                        self.p2p.broadcast_control(OspMessageType::ClockSync, payload).await?;
+                        self.p2p
+                            .broadcast_control(OspMessageType::ClockSync, payload)
+                            .await?;
                     }
                     // P2PEncodedAudio and RelayAudio are handled in send_message
                     _ => {}
@@ -846,10 +847,8 @@ impl NetworkManager {
                 );
 
                 // Calculate backoff with exponential increase
-                let backoff_secs = std::cmp::min(
-                    2u64.saturating_pow(consecutive_failures),
-                    max_backoff_secs,
-                );
+                let backoff_secs =
+                    std::cmp::min(2u64.saturating_pow(consecutive_failures), max_backoff_secs);
 
                 if consecutive_failures > 0 {
                     info!("Waiting {}s before reconnect attempt...", backoff_secs);
@@ -902,12 +901,11 @@ impl NetworkManager {
 
                 // If packet loss is too high, notify
                 if stats.packet_loss_pct > 10.0 {
-                    warn!(
-                        "High packet loss detected: {:.1}%",
-                        stats.packet_loss_pct
-                    );
+                    warn!("High packet loss detected: {:.1}%", stats.packet_loss_pct);
                     if let Some(tx) = self.event_tx.read().as_ref() {
-                        let _ = tx.send(NetworkEvent::StatsUpdate { stats: stats.clone() });
+                        let _ = tx.send(NetworkEvent::StatsUpdate {
+                            stats: stats.clone(),
+                        });
                     }
                 }
 
@@ -924,14 +922,8 @@ impl NetworkManager {
 
     /// Clone reference for async tasks.
     ///
-    /// This upgrades the weak self-reference to a strong Arc.
-    /// Panics if the self-reference was not initialized (use `new_shared()` or `init_self_ref()`).
-    fn clone_for_task(&self) -> Arc<Self> {
-        self.self_ref
-            .read()
-            .as_ref()
-            .expect("NetworkManager self_ref not initialized. Use new_shared() or init_self_ref().")
-            .upgrade()
-            .expect("NetworkManager was dropped while async task was being spawned")
+    /// This upgrades the weak self-reference to a strong Arc when the manager is still alive.
+    fn clone_for_task(&self) -> Option<Arc<Self>> {
+        self.self_ref.read().as_ref()?.upgrade()
     }
 }

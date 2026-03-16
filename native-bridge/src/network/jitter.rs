@@ -87,6 +87,7 @@ pub struct JitterStats {
 
 /// A single audio frame in the buffer
 #[derive(Debug, Clone)]
+#[allow(dead_code)]
 struct BufferedFrame {
     /// Sequence number
     sequence: u16,

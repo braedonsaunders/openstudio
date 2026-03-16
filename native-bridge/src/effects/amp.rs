@@ -1,6 +1,6 @@
 //! Amp - guitar/bass amplifier simulation with preamp, tonestack, and power amp
 
-use super::dsp::{Biquad, BiquadType, soft_clip};
+use super::dsp::{soft_clip, Biquad, BiquadType};
 use super::types::{AmpSettings, AmpType};
 use super::AudioEffect;
 
@@ -50,13 +50,8 @@ impl Amp {
         let (bass_freq, mid_freq, treble_freq) = self.get_tonestack_freqs();
 
         // Input highpass (remove subsonic)
-        self.input_hp.configure(
-            BiquadType::Highpass,
-            40.0,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
+        self.input_hp
+            .configure(BiquadType::Highpass, 40.0, 0.707, 0.0, self.sample_rate);
 
         // Bass control (low shelf)
         let bass_gain = (self.settings.bass - 0.5) * 24.0; // -12 to +12 dB
@@ -70,13 +65,8 @@ impl Amp {
 
         // Mid control (peak)
         let mid_gain = (self.settings.mid - 0.5) * 24.0;
-        self.mid_filter.configure(
-            BiquadType::Peak,
-            mid_freq,
-            1.0,
-            mid_gain,
-            self.sample_rate,
-        );
+        self.mid_filter
+            .configure(BiquadType::Peak, mid_freq, 1.0, mid_gain, self.sample_rate);
 
         // Treble control (high shelf)
         let treble_gain = (self.settings.treble - 0.5) * 24.0;
@@ -99,13 +89,8 @@ impl Amp {
         );
 
         // Power amp lowpass (speaker simulation)
-        self.power_lp.configure(
-            BiquadType::Lowpass,
-            6000.0,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
+        self.power_lp
+            .configure(BiquadType::Lowpass, 6000.0, 0.707, 0.0, self.sample_rate);
     }
 
     fn get_tonestack_freqs(&self) -> (f32, f32, f32) {

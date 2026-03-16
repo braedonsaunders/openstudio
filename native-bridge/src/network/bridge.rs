@@ -12,6 +12,7 @@ use crate::audio::AudioBridgeHandle;
 use crate::network::codec::{OpusCodec, OpusConfig};
 use crate::network::osp::{OspMessageType, TrackStateMessage, TransportAction};
 use parking_lot::RwLock;
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::broadcast;
@@ -32,9 +33,7 @@ pub enum TransportEvent {
         position: f64,
     },
     /// Tempo changed
-    TempoChanged {
-        bpm: f32,
-    },
+    TempoChanged { bpm: f32 },
 }
 
 /// Audio-Network Bridge configuration
@@ -108,7 +107,13 @@ impl AudioNetworkBridge {
             let (tx, _) = broadcast::channel(100);
             *tx_guard = Some(tx);
         }
-        tx_guard.as_ref().unwrap().subscribe()
+        if let Some(tx) = tx_guard.as_ref() {
+            tx.subscribe()
+        } else {
+            let (tx, rx) = broadcast::channel(100);
+            *tx_guard = Some(tx);
+            rx
+        }
     }
 
     /// Get a clone of the transport sender for internal use
@@ -142,16 +147,25 @@ impl AudioNetworkBridge {
         let audio = self.audio.clone();
         let running = self.running.clone();
         let transport_tx = self.get_transport_tx();
-        std::thread::Builder::new()
+        if let Err(err) = std::thread::Builder::new()
             .name("audio-bridge-events".to_string())
             .spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
+                let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
-                    .build()
-                    .expect("Failed to create runtime");
-                rt.block_on(Self::event_loop(audio, event_rx, running, transport_tx));
+                    .build();
+
+                match runtime {
+                    Ok(rt) => {
+                        rt.block_on(Self::event_loop(audio, event_rx, running, transport_tx));
+                    }
+                    Err(build_err) => {
+                        error!("Failed to create event loop runtime: {}", build_err);
+                    }
+                }
             })
-            .expect("Failed to spawn event processor thread");
+        {
+            error!("Failed to spawn event processor thread: {}", err);
+        }
 
         // Spawn outgoing audio sender on dedicated thread
         let audio = self.audio.clone();
@@ -159,16 +173,27 @@ impl AudioNetworkBridge {
         let codec = self.codec.clone();
         let config = self.config.clone();
         let running = self.running.clone();
-        std::thread::Builder::new()
+        if let Err(err) = std::thread::Builder::new()
             .name("audio-bridge-sender".to_string())
             .spawn(move || {
-                let rt = tokio::runtime::Builder::new_current_thread()
+                let runtime = tokio::runtime::Builder::new_current_thread()
                     .enable_all()
-                    .build()
-                    .expect("Failed to create runtime");
-                rt.block_on(Self::audio_send_loop(audio, network, codec, config, running));
+                    .build();
+
+                match runtime {
+                    Ok(rt) => {
+                        rt.block_on(Self::audio_send_loop(
+                            audio, network, codec, config, running,
+                        ));
+                    }
+                    Err(build_err) => {
+                        error!("Failed to create audio sender runtime: {}", build_err);
+                    }
+                }
             })
-            .expect("Failed to spawn audio sender thread");
+        {
+            error!("Failed to spawn audio sender thread: {}", err);
+        }
 
         info!("Audio-network bridge started");
     }
@@ -215,16 +240,13 @@ impl AudioNetworkBridge {
                 track_id,
                 samples,
             } => {
-                // Feed received P2P/relay audio into the AudioEngine's remote user buffer.
-                // This handles both P2P-decoded and relay-decoded audio uniformly.
-                // The P2P layer has already Opus-decoded the audio; we receive PCM here.
                 debug!(
                     "Routing {} audio samples from user {} track {} to audio engine",
                     samples.len(),
                     user_id,
                     track_id,
                 );
-                audio.push_remote_audio(&user_id, &samples);
+                audio.push_remote_track_audio(&user_id, track_id, &samples);
             }
 
             NetworkEvent::PeerConnected {
@@ -246,7 +268,8 @@ impl AudioNetworkBridge {
                 message,
                 payload,
             } => {
-                Self::handle_control_message(audio, &from_user_id, message, &payload, transport_tx).await;
+                Self::handle_control_message(audio, &from_user_id, message, &payload, transport_tx)
+                    .await;
             }
 
             NetworkEvent::StateChanged { mode } => {
@@ -313,11 +336,19 @@ impl AudioNetworkBridge {
         match message_type {
             OspMessageType::TrackState => {
                 if let Ok(msg) = bincode::deserialize::<TrackStateMessage>(payload) {
-                    // Update remote user settings based on their track state
                     let volume = msg.volume.unwrap_or(1.0);
                     let pan = msg.pan.unwrap_or(0.0);
                     let muted = msg.is_muted.unwrap_or(false);
-                    audio.update_remote_user(from_user_id, volume, pan, muted, 0.0);
+                    let solo = msg.is_solo.unwrap_or(false);
+                    audio.update_remote_track(
+                        from_user_id,
+                        msg.track_id,
+                        volume,
+                        pan,
+                        muted,
+                        solo,
+                        0.0,
+                    );
                 }
             }
 
@@ -327,8 +358,13 @@ impl AudioNetworkBridge {
 
             OspMessageType::Transport => {
                 // Parse transport message and forward to transport system
-                if let Ok(msg) = bincode::deserialize::<crate::network::osp::TransportMessage>(payload) {
-                    debug!("Received transport command from {}: {:?}", from_user_id, msg.action);
+                if let Ok(msg) =
+                    bincode::deserialize::<crate::network::osp::TransportMessage>(payload)
+                {
+                    debug!(
+                        "Received transport command from {}: {:?}",
+                        from_user_id, msg.action
+                    );
                     if let Some(tx) = transport_tx {
                         let _ = tx.send(TransportEvent::TransportStateChanged {
                             action: msg.action,
@@ -340,12 +376,15 @@ impl AudioNetworkBridge {
 
             OspMessageType::TempoChange => {
                 // Parse tempo change and forward to metronome
-                if let Ok(msg) = bincode::deserialize::<crate::network::osp::TempoChangeMessage>(payload) {
-                    debug!("Received tempo change from {}: {} bpm", from_user_id, msg.bpm);
+                if let Ok(msg) =
+                    bincode::deserialize::<crate::network::osp::TempoChangeMessage>(payload)
+                {
+                    debug!(
+                        "Received tempo change from {}: {} bpm",
+                        from_user_id, msg.bpm
+                    );
                     if let Some(tx) = transport_tx {
-                        let _ = tx.send(TransportEvent::TempoChanged {
-                            bpm: msg.bpm,
-                        });
+                        let _ = tx.send(TransportEvent::TempoChanged { bpm: msg.bpm });
                     }
                 }
             }
@@ -377,7 +416,7 @@ impl AudioNetworkBridge {
     ) {
         let mut interval = tokio::time::interval(Duration::from_millis(config.send_interval_ms));
         let samples_per_frame = config.frame_size * config.channels as usize;
-        let mut frame_buffer = Vec::with_capacity(samples_per_frame);
+        let mut frame_buffers: HashMap<String, Vec<f32>> = HashMap::new();
 
         while running.load(std::sync::atomic::Ordering::SeqCst) {
             interval.tick().await;
@@ -387,47 +426,83 @@ impl AudioNetworkBridge {
                 continue;
             }
 
-            // Get audio from the engine's browser stream buffer
-            // This is the processed audio that would normally go to WebRTC
-            let samples = audio.get_browser_stream_audio(samples_per_frame);
+            let local_tracks = audio.get_local_track_descriptors();
 
-            if samples.is_empty() {
-                continue;
-            }
+            if local_tracks.is_empty() {
+                let samples = audio.get_browser_stream_audio(samples_per_frame);
+                if samples.is_empty() {
+                    continue;
+                }
 
-            // Accumulate until we have a full frame
-            frame_buffer.extend_from_slice(&samples);
+                let frame_buffer = frame_buffers
+                    .entry("__legacy__".to_string())
+                    .or_insert_with(|| Vec::with_capacity(samples_per_frame));
+                frame_buffer.extend_from_slice(&samples);
 
-            // Send complete frames via both P2P and relay paths
-            while frame_buffer.len() >= samples_per_frame {
-                let frame: Vec<f32> = frame_buffer.drain(..samples_per_frame).collect();
-                let sample_count =
-                    (frame.len() / config.channels as usize) as u16;
+                while frame_buffer.len() >= samples_per_frame {
+                    let frame: Vec<f32> = frame_buffer.drain(..samples_per_frame).collect();
+                    let sample_count = (frame.len() / config.channels as usize) as u16;
 
-                // Opus-encode once at the bridge level for P2P transmission.
-                // The encoded data goes directly to P2P peers without re-encoding.
-                match codec.encoder.encode(&frame) {
-                    Ok(opus_data) => {
-                        // Send pre-encoded audio to P2P peers (unreliable UDP).
-                        // This uses the P2PEncodedAudio message type which bypasses
-                        // the mode-based routing and goes directly to P2P.
-                        network.send_p2p_encoded_audio(
-                            config.local_track_id,
-                            opus_data,
-                            config.channels,
-                            sample_count,
-                        );
+                    match codec.encoder.encode(&frame) {
+                        Ok(opus_data) => {
+                            network.send_p2p_encoded_audio(
+                                config.local_track_id,
+                                opus_data,
+                                config.channels,
+                                sample_count,
+                            );
+                        }
+                        Err(e) => {
+                            debug!("Opus encode failed in bridge send loop: {}", e);
+                        }
                     }
-                    Err(e) => {
-                        debug!("Opus encode failed in bridge send loop: {}", e);
+
+                    let mode = network.mode();
+                    if mode == NetworkMode::Relay || mode == NetworkMode::Hybrid {
+                        network.send_relay_audio(config.local_track_id, frame);
                     }
                 }
 
-                // Also send raw PCM to relay for Relay and Hybrid modes.
-                // In P2P-only mode, relay is not running so this is a no-op.
-                let mode = network.mode();
-                if mode == NetworkMode::Relay || mode == NetworkMode::Hybrid {
-                    network.send_relay_audio(config.local_track_id, frame);
+                continue;
+            }
+
+            for local_track in local_tracks {
+                let samples = audio.get_local_track_network_audio(
+                    &local_track.browser_track_id,
+                    samples_per_frame,
+                );
+
+                if samples.is_empty() {
+                    continue;
+                }
+
+                let frame_buffer = frame_buffers
+                    .entry(local_track.browser_track_id.clone())
+                    .or_insert_with(|| Vec::with_capacity(samples_per_frame));
+                frame_buffer.extend_from_slice(&samples);
+
+                while frame_buffer.len() >= samples_per_frame {
+                    let frame: Vec<f32> = frame_buffer.drain(..samples_per_frame).collect();
+                    let sample_count = (frame.len() / config.channels as usize) as u16;
+
+                    match codec.encoder.encode(&frame) {
+                        Ok(opus_data) => {
+                            network.send_p2p_encoded_audio(
+                                local_track.bridge_track_id,
+                                opus_data,
+                                config.channels,
+                                sample_count,
+                            );
+                        }
+                        Err(e) => {
+                            debug!("Opus encode failed in bridge send loop: {}", e);
+                        }
+                    }
+
+                    let mode = network.mode();
+                    if mode == NetworkMode::Relay || mode == NetworkMode::Hybrid {
+                        network.send_relay_audio(local_track.bridge_track_id, frame);
+                    }
                 }
             }
         }

@@ -1,6 +1,6 @@
 //! Distortion - various hard clipping and waveshaping algorithms
 
-use super::dsp::{Biquad, BiquadType, hard_clip, soft_clip};
+use super::dsp::{hard_clip, soft_clip, Biquad, BiquadType};
 use super::types::{DistortionSettings, DistortionType};
 use super::AudioEffect;
 
@@ -41,37 +41,17 @@ impl Distortion {
 
     fn update_filters(&mut self) {
         // Pre highpass
-        self.hp_filter_l.configure(
-            BiquadType::Highpass,
-            60.0,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
-        self.hp_filter_r.configure(
-            BiquadType::Highpass,
-            60.0,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
+        self.hp_filter_l
+            .configure(BiquadType::Highpass, 60.0, 0.707, 0.0, self.sample_rate);
+        self.hp_filter_r
+            .configure(BiquadType::Highpass, 60.0, 0.707, 0.0, self.sample_rate);
 
         // Tone control
         let tone_freq = 800.0 + self.settings.tone * 6000.0;
-        self.tone_filter_l.configure(
-            BiquadType::Lowpass,
-            tone_freq,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
-        self.tone_filter_r.configure(
-            BiquadType::Lowpass,
-            tone_freq,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
+        self.tone_filter_l
+            .configure(BiquadType::Lowpass, tone_freq, 0.707, 0.0, self.sample_rate);
+        self.tone_filter_r
+            .configure(BiquadType::Lowpass, tone_freq, 0.707, 0.0, self.sample_rate);
     }
 
     /// Apply distortion waveshaping based on type

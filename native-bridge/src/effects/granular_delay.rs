@@ -13,12 +13,12 @@ const MAX_DELAY_MS: f32 = 2000.0;
 /// A single grain
 struct Grain {
     active: bool,
-    start_pos: usize,      // Position in delay buffer
-    read_pos: f32,         // Current playback position (can be fractional for pitch shift)
-    length: usize,         // Grain length in samples
-    env_pos: usize,        // Position in envelope
-    pitch_ratio: f32,      // Playback speed (1.0 = normal, 2.0 = octave up)
-    pan: f32,              // Stereo pan (-1 to 1)
+    start_pos: usize, // Position in delay buffer
+    read_pos: f32,    // Current playback position (can be fractional for pitch shift)
+    length: usize,    // Grain length in samples
+    env_pos: usize,   // Position in envelope
+    pitch_ratio: f32, // Playback speed (1.0 = normal, 2.0 = octave up)
+    pan: f32,         // Stereo pan (-1 to 1)
 }
 
 impl Grain {
@@ -67,8 +67,8 @@ impl GranularDelay {
 
         // Create Hann window
         let mut window = vec![0.0f32; grain_size];
-        for i in 0..grain_size {
-            window[i] = 0.5 * (1.0 - (2.0 * PI * i as f32 / grain_size as f32).cos());
+        for (i, value) in window.iter_mut().enumerate().take(grain_size) {
+            *value = 0.5 * (1.0 - (2.0 * PI * i as f32 / grain_size as f32).cos());
         }
 
         let mut feedback_lp = Biquad::new();
@@ -96,7 +96,8 @@ impl GranularDelay {
         self.buffer.resize(buffer_size, 0.0);
         self.buffer_size = buffer_size;
         self.feedback_lp = Biquad::new();
-        self.feedback_lp.configure(BiquadType::Lowpass, 8000.0, 0.7, 0.0, rate as f32);
+        self.feedback_lp
+            .configure(BiquadType::Lowpass, 8000.0, 0.7, 0.0, rate as f32);
         self.update_grain_params();
     }
 
@@ -133,7 +134,8 @@ impl GranularDelay {
         // Find inactive grain slot index
         let slot_idx = self.grains.iter().position(|g| !g.active);
         if let Some(idx) = slot_idx {
-            let delay_samples = (self.sample_rate as f32 * self.settings.position / 1000.0) as usize;
+            let delay_samples =
+                (self.sample_rate as f32 * self.settings.position / 1000.0) as usize;
             let grain_size = self.window.len();
 
             // Add texture randomization (generate randoms before borrowing grain)

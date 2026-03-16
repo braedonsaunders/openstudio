@@ -22,7 +22,6 @@ pub struct RoomSimulator {
     late_feedback: Vec<f32>,
     // Filters
     lp_filter: Biquad,
-    diffusion_allpass: Vec<Biquad>,
     // Modulation
     lfo: Lfo,
     // Pre-delay
@@ -52,21 +51,14 @@ impl RoomSimulator {
 
         // Prime number delays for late reverb
         let late_times = [37.0, 47.0, 61.0, 79.0];
-        for i in 0..Self::NUM_LATE {
-            late_delays.push(DelayLine::new(late_times[i] * 3.0 / 1000.0, sample_rate));
+        for delay_ms in late_times.iter().take(Self::NUM_LATE) {
+            late_delays.push(DelayLine::new(*delay_ms * 3.0 / 1000.0, sample_rate));
             late_feedback.push(0.7);
         }
 
-        let mut diffusion_allpass = Vec::with_capacity(4);
-        for _ in 0..4 {
-            diffusion_allpass.push(Biquad::new());
-        }
-
         // Initialize cached delay samples with default (Small) room size
-        let cached_early_delay_samples: Vec<f32> = EARLY_DELAYS_SMALL
-            .iter()
-            .map(|d| d * 0.001 * sr)
-            .collect();
+        let cached_early_delay_samples: Vec<f32> =
+            EARLY_DELAYS_SMALL.iter().map(|d| d * 0.001 * sr).collect();
 
         Self {
             settings: RoomSimulatorSettings::default(),
@@ -76,7 +68,6 @@ impl RoomSimulator {
             late_delays,
             late_feedback,
             lp_filter: Biquad::new(),
-            diffusion_allpass,
             lfo: Lfo::new(LfoWaveform::Sine),
             predelay: DelayLine::new(0.1, sample_rate),
             sample_rate: sr,
@@ -110,13 +101,8 @@ impl RoomSimulator {
 
         // Damping filter
         let damp_freq = 20000.0 - settings.damping * 150.0;
-        self.lp_filter.configure(
-            BiquadType::Lowpass,
-            damp_freq,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
+        self.lp_filter
+            .configure(BiquadType::Lowpass, damp_freq, 0.707, 0.0, self.sample_rate);
 
         self.settings = settings;
     }
@@ -158,7 +144,8 @@ impl AudioEffect for RoomSimulator {
             for i in 0..Self::NUM_EARLY {
                 let delay_samples = self.get_early_delay_samples(i);
                 self.early_delays[i].write(predelayed);
-                early_out += self.early_delays[i].read_interpolated(delay_samples) * self.early_gains[i];
+                early_out +=
+                    self.early_delays[i].read_interpolated(delay_samples) * self.early_gains[i];
             }
             early_out /= Self::NUM_EARLY as f32;
 

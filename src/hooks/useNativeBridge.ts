@@ -447,6 +447,15 @@ export function useNativeBridge() {
         const engine = (window as any).__openStudioAudioEngine;
         engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 
+        if (track.type === 'audio' && Number.isInteger(track.audioSettings.bridgeTrackId)) {
+          nativeBridge.syncLocalTrack({
+            trackId: track.id,
+            bridgeTrackId: track.audioSettings.bridgeTrackId as number,
+            trackName: track.name,
+            channelConfig: track.audioSettings.channelConfig,
+          });
+        }
+
         // Set track state BEFORE enabling audio input
         const directMonitoring = track.audioSettings.directMonitoring ?? true;
         engine.updateTrackState(track.id, {
@@ -488,25 +497,24 @@ export function useNativeBridge() {
     nativeBridge.forceSetChannelConfig(channelConfigToUse);
     console.log('[useNativeBridge] Channel config sent:', channelConfigToUse);
 
-    // Send track state AND effects to native bridge for direct monitoring
-    if (currentUserId && primaryTrack) {
-      const panValue = primaryTrack.pan ?? 0;
-      console.log('[useNativeBridge] Sending track state with pan:', panValue);
-      nativeBridge.updateTrackState(primaryTrack.id, {
-        isArmed: primaryTrack.isArmed,
-        isMuted: primaryTrack.isMuted,
-        isSolo: primaryTrack.isSolo,
-        volume: primaryTrack.volume,
-        pan: panValue,
-        inputGainDb: primaryTrack.audioSettings.inputGain || 0,
-        monitoringEnabled: primaryTrack.audioSettings.directMonitoring ?? true,
-        monitoringVolume: primaryTrack.audioSettings.monitoringVolume ?? 1,
-      });
+    // Send track state AND effects to native bridge for direct monitoring and network send
+    if (currentUserId && userTracks.length > 0) {
+      for (const track of userTracks) {
+        const panValue = track.pan ?? 0;
+        nativeBridge.updateTrackState(track.id, {
+          isArmed: track.isArmed,
+          isMuted: track.isMuted,
+          isSolo: track.isSolo,
+          volume: track.volume,
+          pan: panValue,
+          inputGainDb: track.audioSettings.inputGain || 0,
+          monitoringEnabled: track.audioSettings.directMonitoring ?? true,
+          monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
+        });
 
-      // Send effects to native bridge on startup
-      if (primaryTrack.audioSettings.effects) {
-        console.log('[useNativeBridge] Sending initial effects to native bridge');
-        nativeBridge.updateEffects(primaryTrack.id, primaryTrack.audioSettings.effects);
+        if (track.audioSettings.effects) {
+          nativeBridge.updateEffects(track.id, track.audioSettings.effects);
+        }
       }
     }
 
@@ -682,8 +690,14 @@ export function useNativeBridge() {
               monitoringVolume: track.audioSettings.monitoringVolume ?? 1,
             });
 
-            // Note: Channel config is handled globally via setChannelConfig() for native bridge
-            // Multi-track routing is done in the browser, not the native bridge
+            if (track.type === 'audio' && Number.isInteger(track.audioSettings.bridgeTrackId)) {
+              nativeBridge.syncLocalTrack({
+                trackId: track.id,
+                bridgeTrackId: track.audioSettings.bridgeTrackId as number,
+                trackName: track.name,
+                channelConfig: track.audioSettings.channelConfig,
+              });
+            }
 
             const engine = (window as any).__openStudioAudioEngine;
             if (engine) {

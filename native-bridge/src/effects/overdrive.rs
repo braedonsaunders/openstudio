@@ -1,6 +1,6 @@
 //! Overdrive - soft clipping tube-style saturation
 
-use super::dsp::{Biquad, BiquadType, soft_clip};
+use super::dsp::{soft_clip, Biquad, BiquadType};
 use super::types::OverdriveSettings;
 use super::AudioEffect;
 
@@ -41,38 +41,18 @@ impl Overdrive {
 
     fn update_filters(&mut self) {
         // Highpass to remove low-end mud before clipping
-        self.hp_filter_l.configure(
-            BiquadType::Highpass,
-            80.0,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
-        self.hp_filter_r.configure(
-            BiquadType::Highpass,
-            80.0,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
+        self.hp_filter_l
+            .configure(BiquadType::Highpass, 80.0, 0.707, 0.0, self.sample_rate);
+        self.hp_filter_r
+            .configure(BiquadType::Highpass, 80.0, 0.707, 0.0, self.sample_rate);
 
         // Tone control - lowpass/highshelf hybrid
         // tone 0 = dark (1kHz), tone 1 = bright (8kHz)
         let tone_freq = 1000.0 + self.settings.tone * 7000.0;
-        self.tone_filter_l.configure(
-            BiquadType::Lowpass,
-            tone_freq,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
-        self.tone_filter_r.configure(
-            BiquadType::Lowpass,
-            tone_freq,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
+        self.tone_filter_l
+            .configure(BiquadType::Lowpass, tone_freq, 0.707, 0.0, self.sample_rate);
+        self.tone_filter_r
+            .configure(BiquadType::Lowpass, tone_freq, 0.707, 0.0, self.sample_rate);
     }
 }
 

@@ -142,8 +142,14 @@ impl OpusEncoder {
             )));
         }
 
-        let mut encoder = self.encoder.lock().unwrap();
-        let mut buffer = self.encode_buffer.lock().unwrap();
+        let mut encoder = self
+            .encoder
+            .lock()
+            .map_err(|_| NetworkError::CodecError("Encoder mutex poisoned".to_string()))?;
+        let mut buffer = self
+            .encode_buffer
+            .lock()
+            .map_err(|_| NetworkError::CodecError("Encode buffer mutex poisoned".to_string()))?;
 
         // opus crate's encode_float takes f32 directly
         let len = encoder
@@ -164,8 +170,14 @@ impl OpusEncoder {
             )));
         }
 
-        let mut encoder = self.encoder.lock().unwrap();
-        let mut buffer = self.encode_buffer.lock().unwrap();
+        let mut encoder = self
+            .encoder
+            .lock()
+            .map_err(|_| NetworkError::CodecError("Encoder mutex poisoned".to_string()))?;
+        let mut buffer = self
+            .encode_buffer
+            .lock()
+            .map_err(|_| NetworkError::CodecError("Encode buffer mutex poisoned".to_string()))?;
 
         let len = encoder
             .encode(pcm, &mut buffer)
@@ -218,8 +230,14 @@ impl OpusDecoder {
     /// Input: Opus-encoded bytes
     /// Output: interleaved f32 samples
     pub fn decode(&self, opus_data: &[u8]) -> Result<Vec<f32>> {
-        let mut decoder = self.decoder.lock().unwrap();
-        let mut buffer = self.decode_buffer.lock().unwrap();
+        let mut decoder = self
+            .decoder
+            .lock()
+            .map_err(|_| NetworkError::CodecError("Decoder mutex poisoned".to_string()))?;
+        let mut buffer = self
+            .decode_buffer
+            .lock()
+            .map_err(|_| NetworkError::CodecError("Decode buffer mutex poisoned".to_string()))?;
 
         let samples = decoder
             .decode_float(opus_data, &mut buffer, false)
@@ -232,7 +250,10 @@ impl OpusDecoder {
 
     /// Decode to i16 samples
     pub fn decode_i16(&self, opus_data: &[u8]) -> Result<Vec<i16>> {
-        let mut decoder = self.decoder.lock().unwrap();
+        let mut decoder = self
+            .decoder
+            .lock()
+            .map_err(|_| NetworkError::CodecError("Decoder mutex poisoned".to_string()))?;
         let mut buffer = vec![0i16; 5760 * self.config.channels as usize];
 
         let samples = decoder
@@ -246,7 +267,10 @@ impl OpusDecoder {
 
     /// Decode with packet loss concealment (when packet is lost)
     pub fn decode_plc(&self, frame_size: usize) -> Result<Vec<f32>> {
-        let mut decoder = self.decoder.lock().unwrap();
+        let mut decoder = self
+            .decoder
+            .lock()
+            .map_err(|_| NetworkError::CodecError("Decoder mutex poisoned".to_string()))?;
         let output_size = frame_size * self.config.channels as usize;
         let mut buffer = vec![0f32; output_size];
 
@@ -309,34 +333,114 @@ impl OpusCodec {
 mod tests {
     use super::*;
 
+    fn rms(samples: &[f32]) -> f32 {
+        (samples.iter().map(|sample| sample * sample).sum::<f32>() / samples.len() as f32).sqrt()
+    }
+
+    fn correlation(a: &[f32], b: &[f32]) -> f32 {
+        let mean_a = a.iter().copied().sum::<f32>() / a.len() as f32;
+        let mean_b = b.iter().copied().sum::<f32>() / b.len() as f32;
+
+        let mut numerator = 0.0;
+        let mut denom_a = 0.0;
+        let mut denom_b = 0.0;
+
+        for (sample_a, sample_b) in a.iter().zip(b.iter()) {
+            let centered_a = *sample_a - mean_a;
+            let centered_b = *sample_b - mean_b;
+            numerator += centered_a * centered_b;
+            denom_a += centered_a * centered_a;
+            denom_b += centered_b * centered_b;
+        }
+
+        if denom_a == 0.0 || denom_b == 0.0 {
+            return 0.0;
+        }
+
+        numerator / (denom_a.sqrt() * denom_b.sqrt())
+    }
+
+    fn best_alignment_correlation(
+        reference: &[f32],
+        decoded: &[f32],
+        max_lag: usize,
+    ) -> (isize, f32) {
+        let mut best_lag = 0isize;
+        let mut best_corr = f32::NEG_INFINITY;
+
+        for lag in -(max_lag as isize)..=(max_lag as isize) {
+            let (reference_slice, decoded_slice) = if lag >= 0 {
+                let lag = lag as usize;
+                let overlap = reference.len().saturating_sub(lag);
+                if overlap < 64 {
+                    continue;
+                }
+                (&reference[..overlap], &decoded[lag..lag + overlap])
+            } else {
+                let lag = (-lag) as usize;
+                let overlap = decoded.len().saturating_sub(lag);
+                if overlap < 64 {
+                    continue;
+                }
+                (&reference[lag..lag + overlap], &decoded[..overlap])
+            };
+
+            let corr = correlation(reference_slice, decoded_slice);
+            if corr > best_corr {
+                best_corr = corr;
+                best_lag = lag;
+            }
+        }
+
+        (best_lag, best_corr)
+    }
+
     #[test]
     fn test_encode_decode_roundtrip() {
         let config = OpusConfig::low_latency();
         let codec = OpusCodec::new(config.clone()).unwrap();
 
-        // Create test signal (sine wave)
+        // Create a continuous test signal and validate that the decoded stream
+        // preserves energy and correlation after alignment. Opus is lossy and
+        // introduces codec delay, so sample-perfect roundtrips are not expected.
         let frame_size = config.frame_size * config.channels as usize;
-        let pcm: Vec<f32> = (0..frame_size)
-            .map(|i| (i as f32 * 0.1).sin() * 0.5)
+        let frame_count = 8usize;
+        let pcm: Vec<f32> = (0..frame_size * frame_count)
+            .map(|i| {
+                let phase = i as f32 * 0.07;
+                (phase.sin() * 0.35) + ((phase * 0.37).sin() * 0.15)
+            })
             .collect();
 
-        // Encode
-        let encoded = codec.encoder.encode(&pcm).unwrap();
-        assert!(encoded.len() < pcm.len() * 4); // Should be compressed
+        let mut decoded = Vec::with_capacity(pcm.len());
+        for frame in pcm.chunks(frame_size) {
+            let encoded = codec.encoder.encode(frame).unwrap();
+            assert!(encoded.len() < frame.len() * 4);
 
-        // Decode
-        let decoded = codec.decoder.decode(&encoded).unwrap();
+            let decoded_frame = codec.decoder.decode(&encoded).unwrap();
+            assert_eq!(decoded_frame.len(), frame.len());
+            decoded.extend(decoded_frame);
+        }
+
         assert_eq!(decoded.len(), pcm.len());
 
-        // Verify approximate match (lossy codec)
-        let mse: f32 = pcm
-            .iter()
-            .zip(decoded.iter())
-            .map(|(a, b)| (a - b).powi(2))
-            .sum::<f32>()
-            / pcm.len() as f32;
+        let (best_lag, best_corr) = best_alignment_correlation(&pcm, &decoded, config.frame_size);
+        let input_rms = rms(&pcm);
+        let output_rms = rms(&decoded);
+        let rms_ratio = if input_rms > 0.0 {
+            output_rms / input_rms
+        } else {
+            0.0
+        };
 
-        assert!(mse < 0.01, "MSE too high: {}", mse);
+        assert!(
+            best_corr > 0.7,
+            "Decoded stream correlation too low: corr={best_corr}, lag={best_lag}"
+        );
+        assert!(
+            (0.35..=1.6).contains(&rms_ratio),
+            "Decoded stream RMS drifted too far: input={input_rms}, output={output_rms}, ratio={rms_ratio}"
+        );
     }
 
     #[test]

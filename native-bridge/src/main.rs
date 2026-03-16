@@ -12,7 +12,7 @@ mod network;
 mod protocol;
 mod tui;
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use network::{NetworkConfig, NetworkManager};
 use protocol::LaunchParams;
 use std::sync::Arc;
@@ -103,6 +103,7 @@ async fn main() -> Result<()> {
     };
 
     // Create shared state
+    #[allow(clippy::arc_with_non_send_sync)]
     let state = Arc::new(Mutex::new(AppState {
         audio_engine,
         mixer,
@@ -120,24 +121,29 @@ async fn main() -> Result<()> {
         // The TUI now uses async event handling, so it cooperates with the runtime
         info!("Starting TUI interface...");
 
-        let tui_rx = tui_rx.unwrap();
+        let tui_rx =
+            tui_rx.ok_or_else(|| anyhow!("TUI receiver missing while TUI mode is enabled"))?;
 
         // Create TUI app
         let app = tui::App::new();
 
         // Send initial device info
         if let Some(tx) = &tui_tx {
-            let _ = tx.send(tui::AppEvent::DeviceInfo {
-                input_device,
-                output_device,
-                sample_rate,
-                buffer_size,
-            }).await;
+            let _ = tx
+                .send(tui::AppEvent::DeviceInfo {
+                    input_device,
+                    output_device,
+                    sample_rate,
+                    buffer_size,
+                })
+                .await;
 
-            let _ = tx.send(tui::AppEvent::Log {
-                level: tui::LogLevel::Info,
-                message: format!("OpenStudio Bridge v{} started", env!("CARGO_PKG_VERSION")),
-            }).await;
+            let _ = tx
+                .send(tui::AppEvent::Log {
+                    level: tui::LogLevel::Info,
+                    message: format!("OpenStudio Bridge v{} started", env!("CARGO_PKG_VERSION")),
+                })
+                .await;
         }
 
         // Use LocalSet to run non-Send futures on the current thread

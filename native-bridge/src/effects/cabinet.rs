@@ -59,8 +59,7 @@ impl Cabinet {
     }
 
     fn update_filters(&mut self) {
-        let (low_cut_freq, high_cut_freq, resonance_freq, resonance_q) =
-            self.get_cabinet_params();
+        let (low_cut_freq, high_cut_freq, resonance_freq, resonance_q) = self.get_cabinet_params();
 
         // Low cut (remove subsonic)
         self.low_cut_l.configure(
@@ -135,8 +134,8 @@ impl Cabinet {
         match self.settings.mic_position {
             MicPosition::Center => (6000.0, 0.707), // Bright, focused
             MicPosition::Edge => (4000.0, 0.5),     // Darker, smoother
-            MicPosition::Room => (3500.0, 0.4),    // Distant, ambient
-            MicPosition::Blend => (5000.0, 0.6),   // Mix of center and edge
+            MicPosition::Room => (3500.0, 0.4),     // Distant, ambient
+            MicPosition::Blend => (5000.0, 0.6),    // Mix of center and edge
         }
     }
 }

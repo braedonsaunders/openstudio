@@ -139,19 +139,45 @@ impl MultibandCompressor {
         let high_freq = self.settings.high_crossover;
 
         // Low crossover (cascaded for steeper slope)
-        for filter in [&mut self.low_lp_l, &mut self.low_lp_r, &mut self.low_lp2_l, &mut self.low_lp2_r] {
+        for filter in [
+            &mut self.low_lp_l,
+            &mut self.low_lp_r,
+            &mut self.low_lp2_l,
+            &mut self.low_lp2_r,
+        ] {
             filter.configure(BiquadType::Lowpass, low_freq, 0.707, 0.0, self.sample_rate);
         }
-        for filter in [&mut self.low_hp_l, &mut self.low_hp_r, &mut self.low_hp2_l, &mut self.low_hp2_r] {
+        for filter in [
+            &mut self.low_hp_l,
+            &mut self.low_hp_r,
+            &mut self.low_hp2_l,
+            &mut self.low_hp2_r,
+        ] {
             filter.configure(BiquadType::Highpass, low_freq, 0.707, 0.0, self.sample_rate);
         }
 
         // High crossover
-        for filter in [&mut self.high_lp_l, &mut self.high_lp_r, &mut self.high_lp2_l, &mut self.high_lp2_r] {
+        for filter in [
+            &mut self.high_lp_l,
+            &mut self.high_lp_r,
+            &mut self.high_lp2_l,
+            &mut self.high_lp2_r,
+        ] {
             filter.configure(BiquadType::Lowpass, high_freq, 0.707, 0.0, self.sample_rate);
         }
-        for filter in [&mut self.high_hp_l, &mut self.high_hp_r, &mut self.high_hp2_l, &mut self.high_hp2_r] {
-            filter.configure(BiquadType::Highpass, high_freq, 0.707, 0.0, self.sample_rate);
+        for filter in [
+            &mut self.high_hp_l,
+            &mut self.high_hp_r,
+            &mut self.high_hp2_l,
+            &mut self.high_hp2_r,
+        ] {
+            filter.configure(
+                BiquadType::Highpass,
+                high_freq,
+                0.707,
+                0.0,
+                self.sample_rate,
+            );
         }
     }
 
@@ -160,12 +186,18 @@ impl MultibandCompressor {
         let mid = &self.settings.mid_band;
         let high = &self.settings.high_band;
 
-        self.low_comp_l.set_times(low.attack, low.release, self.sample_rate);
-        self.low_comp_r.set_times(low.attack, low.release, self.sample_rate);
-        self.mid_comp_l.set_times(mid.attack, mid.release, self.sample_rate);
-        self.mid_comp_r.set_times(mid.attack, mid.release, self.sample_rate);
-        self.high_comp_l.set_times(high.attack, high.release, self.sample_rate);
-        self.high_comp_r.set_times(high.attack, high.release, self.sample_rate);
+        self.low_comp_l
+            .set_times(low.attack, low.release, self.sample_rate);
+        self.low_comp_r
+            .set_times(low.attack, low.release, self.sample_rate);
+        self.mid_comp_l
+            .set_times(mid.attack, mid.release, self.sample_rate);
+        self.mid_comp_r
+            .set_times(mid.attack, mid.release, self.sample_rate);
+        self.high_comp_l
+            .set_times(high.attack, high.release, self.sample_rate);
+        self.high_comp_r
+            .set_times(high.attack, high.release, self.sample_rate);
     }
 }
 
@@ -205,16 +237,28 @@ impl AudioEffect for MultibandCompressor {
             let mut out_high_r = high_r;
 
             if low.enabled && !low.mute {
-                out_low_l = self.low_comp_l.process(low_l, low.threshold, low.ratio, low.makeup);
-                out_low_r = self.low_comp_r.process(low_r, low.threshold, low.ratio, low.makeup);
+                out_low_l = self
+                    .low_comp_l
+                    .process(low_l, low.threshold, low.ratio, low.makeup);
+                out_low_r = self
+                    .low_comp_r
+                    .process(low_r, low.threshold, low.ratio, low.makeup);
             }
             if mid.enabled && !mid.mute {
-                out_mid_l = self.mid_comp_l.process(mid_l, mid.threshold, mid.ratio, mid.makeup);
-                out_mid_r = self.mid_comp_r.process(mid_r, mid.threshold, mid.ratio, mid.makeup);
+                out_mid_l = self
+                    .mid_comp_l
+                    .process(mid_l, mid.threshold, mid.ratio, mid.makeup);
+                out_mid_r = self
+                    .mid_comp_r
+                    .process(mid_r, mid.threshold, mid.ratio, mid.makeup);
             }
             if high.enabled && !high.mute {
-                out_high_l = self.high_comp_l.process(high_l, high.threshold, high.ratio, high.makeup);
-                out_high_r = self.high_comp_r.process(high_r, high.threshold, high.ratio, high.makeup);
+                out_high_l =
+                    self.high_comp_l
+                        .process(high_l, high.threshold, high.ratio, high.makeup);
+                out_high_r =
+                    self.high_comp_r
+                        .process(high_r, high.threshold, high.ratio, high.makeup);
             }
 
             // Handle solo

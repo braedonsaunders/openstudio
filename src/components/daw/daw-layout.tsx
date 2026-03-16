@@ -1,7 +1,6 @@
 'use client';
 
 import { useState, useCallback, useEffect, useRef, useMemo } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import { useRoom, type SongPlayPayload, type SongPausePayload, type SongSeekPayload, type SongSelectPayload } from '@/hooks/useRoom';
 import { useAudioEngine } from '@/hooks/useAudioEngine';
 import { useAudioAnalysis } from '@/hooks/useAudioAnalysis';
@@ -32,14 +31,13 @@ import { UploadModal } from '../tracks/upload-modal';
 import { YouTubeSearchModal } from '../tracks/youtube-search-modal';
 import { OutputSettingsModal } from '../settings/output-settings-modal';
 import { InviteMemberModal } from '@/components/room/invite-member-modal';
-import { MainViewSwitcher, type MainViewType } from './main-view-switcher';
+import type { MainViewType } from './main-view-switcher';
 import { MixerView } from './mixer-view';
 import { AvatarWorldView } from './avatar-world-view';
 import { SharedCanvasView } from './shared-canvas-view';
 import { NotationView } from './notation-view';
 import { TeleprompterView } from './teleprompter-view';
 import { useTheme } from '@/components/theme/ThemeProvider';
-import { Sun, Moon } from 'lucide-react';
 import { toast } from 'sonner';
 import { authFetch, authFetchJson } from '@/lib/auth-fetch';
 import type { BackingTrack, StemType, QualityPresetName, OpusEncodingSettings } from '@/types';
@@ -47,6 +45,7 @@ import type { SongTrackReference } from '@/types/songs';
 import type { LoopTrackState } from '@/types/loops';
 import { usePerformanceSyncStore } from '@/stores/performance-sync-store';
 import { useAuthStore } from '@/stores/auth-store';
+import type { RoomLayoutState } from '@/lib/supabase/realtime';
 
 interface DAWLayoutProps {
   roomId: string;
@@ -57,9 +56,12 @@ interface DAWLayoutProps {
 
 export type PanelType = 'users' | 'setlist' | 'mixer' | 'queue' | 'analysis' | 'chat' | 'ai' | 'permissions'; // Note: 'queue' kept for backwards compat
 
+const VALID_PANELS: PanelType[] = ['users', 'setlist', 'mixer', 'queue', 'analysis', 'chat', 'ai', 'permissions'];
+const VALID_MAIN_VIEWS: MainViewType[] = ['timeline', 'mixer', 'avatar-world', 'canvas', 'notation', 'teleprompter'];
+
 export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayoutProps) {
   // Theme
-  const { resolvedTheme, toggleTheme } = useTheme();
+  const { resolvedTheme } = useTheme();
   const isDark = resolvedTheme === 'dark';
 
   // Auth state for user ID
@@ -98,6 +100,36 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
   const MAX_LEFT_WIDTH = 400;
   const MIN_RIGHT_WIDTH = 280;
   const MAX_RIGHT_WIDTH = 500;
+
+  const normalizeLayoutState = useCallback((layoutState: Partial<RoomLayoutState>): RoomLayoutState => {
+    const activePanelValue = VALID_PANELS.includes(layoutState.activePanel as PanelType)
+      ? layoutState.activePanel as PanelType
+      : activePanel;
+    const mainViewValue = VALID_MAIN_VIEWS.includes(layoutState.mainView as MainViewType)
+      ? layoutState.mainView as MainViewType
+      : mainView;
+
+    return {
+      activePanel: activePanelValue,
+      isPanelDockVisible: layoutState.isPanelDockVisible ?? isPanelDockVisible,
+      isBottomDockVisible: layoutState.isBottomDockVisible ?? isBottomDockVisible,
+      mainView: mainViewValue,
+      leftPanelWidth: Math.min(MAX_LEFT_WIDTH, Math.max(MIN_LEFT_WIDTH, layoutState.leftPanelWidth ?? leftPanelWidth)),
+      rightPanelWidth: Math.min(MAX_RIGHT_WIDTH, Math.max(MIN_RIGHT_WIDTH, layoutState.rightPanelWidth ?? rightPanelWidth)),
+      sharedSplitPosition: Math.min(80, Math.max(20, layoutState.sharedSplitPosition ?? sharedSplitPosition)),
+      updatedBy: layoutState.updatedBy ?? userId,
+      timestamp: layoutState.timestamp ?? Date.now(),
+    };
+  }, [
+    activePanel,
+    isBottomDockVisible,
+    isPanelDockVisible,
+    leftPanelWidth,
+    mainView,
+    rightPanelWidth,
+    sharedSplitPosition,
+    userId,
+  ]);
 
   // Resize handlers
   const handleLeftResize = useCallback((delta: number) => {
@@ -164,8 +196,8 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
   }, [roomId, isRoomSaved, canSaveRoom]);
 
   // Separation state
-  const [isSeparating, setIsSeparating] = useState(false);
-  const [separationProgress, setSeparationProgress] = useState(0);
+  const [, setIsSeparating] = useState(false);
+  const [, setSeparationProgress] = useState(0);
   const [loopEnabled, setLoopEnabled] = useState(false);
   const [sessionStartTime] = useState(() => Date.now());
 
@@ -180,6 +212,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     users,
     currentUser,
     isMaster,
+    isConnected,
     addTrack,
     removeTrack,
     sendMessage,
@@ -191,9 +224,12 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     stopLoopTrack,
     // Quality/Latency settings
     setQualityPreset,
+    setCustomEncodingSettings,
     // WebRTC
     getCloudflareRef,
+    getRealtimeManager,
     // Real-time broadcast
+    broadcastLayoutState,
     broadcastUserTrackUpdate,
     broadcastTempoUpdate,
     broadcastTempoSource,
@@ -216,9 +252,90 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
     onSongSelect: (payload) => handleSongSelectRef.current(payload),
   });
 
-  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, loadBackingTrack, pauseBackingTrack, initialize, setBackingTrackVolume, addExternalAudioSource, removeExternalAudioSource, loadMultiTrack, playMultiTracks, stopMultiTracks, setMultiTrackVolume } = useAudioEngine();
+  const { toggleStem, setStemVolume, audioContext, backingTrackAnalyser, masterAnalyser, setOnTrackEnded, playBackingTrack, initialize, addExternalAudioSource, removeExternalAudioSource, loadMultiTrack, playMultiTracks, stopMultiTracks, setMultiTrackVolume } = useAudioEngine();
   const { audioLevels, toggleStem: storeToggleStem, setStemVolume: storeStemVolume, queue, currentTrack } = useRoomStore();
   const { isMuted, setMuted, isPlaying, setPlaying, setCurrentTime, setDuration, currentTime } = useAudioStore();
+  const syncedLayoutState = useRoomStore((state) => state.layoutState);
+  const setSyncedLayoutState = useRoomStore((state) => state.setLayoutState);
+  const remoteLayoutAppliedRef = useRef(false);
+  const layoutBroadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    if (!syncedLayoutState || syncedLayoutState.updatedBy === userId) {
+      return;
+    }
+
+    const normalized = normalizeLayoutState(syncedLayoutState);
+    remoteLayoutAppliedRef.current = true;
+    setActivePanel(normalized.activePanel as PanelType);
+    setIsPanelDockVisible(normalized.isPanelDockVisible);
+    setIsBottomDockVisible(normalized.isBottomDockVisible);
+    setMainView(normalized.mainView as MainViewType);
+    setLeftPanelWidth(normalized.leftPanelWidth);
+    setRightPanelWidth(normalized.rightPanelWidth);
+    setSharedSplitPosition(normalized.sharedSplitPosition);
+  }, [normalizeLayoutState, syncedLayoutState, userId]);
+
+  useEffect(() => {
+    const normalized = normalizeLayoutState({
+      activePanel,
+      isPanelDockVisible,
+      isBottomDockVisible,
+      mainView,
+      leftPanelWidth,
+      rightPanelWidth,
+      sharedSplitPosition,
+      updatedBy: userId,
+      timestamp: Date.now(),
+    });
+
+    setSyncedLayoutState(normalized);
+
+    if (!isConnected) {
+      return undefined;
+    }
+
+    if (remoteLayoutAppliedRef.current) {
+      remoteLayoutAppliedRef.current = false;
+      return undefined;
+    }
+
+    if (layoutBroadcastTimeoutRef.current) {
+      clearTimeout(layoutBroadcastTimeoutRef.current);
+    }
+
+    layoutBroadcastTimeoutRef.current = setTimeout(() => {
+      broadcastLayoutState({
+        activePanel: normalized.activePanel,
+        isPanelDockVisible: normalized.isPanelDockVisible,
+        isBottomDockVisible: normalized.isBottomDockVisible,
+        mainView: normalized.mainView,
+        leftPanelWidth: normalized.leftPanelWidth,
+        rightPanelWidth: normalized.rightPanelWidth,
+        sharedSplitPosition: normalized.sharedSplitPosition,
+      });
+    }, 80);
+
+    return () => {
+      if (layoutBroadcastTimeoutRef.current) {
+        clearTimeout(layoutBroadcastTimeoutRef.current);
+        layoutBroadcastTimeoutRef.current = null;
+      }
+    };
+  }, [
+    activePanel,
+    broadcastLayoutState,
+    isBottomDockVisible,
+    isConnected,
+    isPanelDockVisible,
+    leftPanelWidth,
+    mainView,
+    normalizeLayoutState,
+    rightPanelWidth,
+    setSyncedLayoutState,
+    sharedSplitPosition,
+    userId,
+  ]);
 
   // Stats tracking
   const { trackStemSeparation } = useStatsTracker();
@@ -325,7 +442,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
 
   // Loop playback - connects loop scheduler to sound engine
   // This is now BULLETPROOF - it automatically reacts to song changes during playback
-  const { initialize: initLoopPlayback, startLoop, stopLoop: stopLoopAudio, syncPlaybackWithSong } = useLoopPlayback();
+  const { initialize: initLoopPlayback } = useLoopPlayback();
 
   // ============================================================================
   // Song sync handlers - handle playback events from other users in the room
@@ -1000,7 +1117,11 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
         case ' ':
           e.preventDefault();
           if (isMaster) {
-            isPlaying ? handlePause() : handlePlay();
+            if (isPlaying) {
+              handlePause();
+            } else {
+              handlePlay();
+            }
           }
           break;
         case 'ArrowLeft':
@@ -1328,9 +1449,8 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
   }, [setQualityPreset]);
 
   const handleCustomSettingsChange = useCallback((settings: Partial<OpusEncodingSettings>) => {
-    // TODO: Apply custom encoding settings to WebRTC
-    console.log('Custom encoding settings:', settings);
-  }, []);
+    setCustomEncodingSettings(settings);
+  }, [setCustomEncodingSettings]);
 
   const handleJitterModeChange = useCallback((mode: 'live-jamming' | 'balanced' | 'stable') => {
     const perfStore = usePerformanceSyncStore.getState();
@@ -1503,6 +1623,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
                 users={users}
                 currentUser={currentUser}
                 audioLevels={audioLevels}
+                realtimeManager={getRealtimeManager() || undefined}
               />
             )}
 
@@ -1510,6 +1631,7 @@ export function DAWLayout({ roomId, onLeaveRoom, listenerMode = false }: DAWLayo
               <SharedCanvasView
                 isMaster={isMaster}
                 roomId={roomId}
+                realtimeManager={getRealtimeManager() || undefined}
               />
             )}
 

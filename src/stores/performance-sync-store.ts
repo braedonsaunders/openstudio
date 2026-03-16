@@ -7,9 +7,9 @@ import type {
   UserPerformanceInfo,
   JamCompatibility,
   QualityPresetName,
+  OpusEncodingSettings,
   OptimizationState,
   AutoOptimization,
-  LatencyBreakdown,
 } from '@/types';
 
 export interface PerformanceSyncState {
@@ -24,6 +24,7 @@ export interface PerformanceSyncState {
 
   // Quality preset
   activePreset: QualityPresetName;
+  customEncodingSettings: Partial<OpusEncodingSettings>;
 
   // Optimization state
   optimizationState: OptimizationState;
@@ -47,6 +48,7 @@ export interface PerformanceSyncState {
   removeParticipant: (userId: string) => void;
   setJamCompatibility: (compatibility: JamCompatibility) => void;
   setActivePreset: (preset: QualityPresetName) => void;
+  setCustomEncodingSettings: (settings: Partial<OpusEncodingSettings>) => void;
   setOptimizationState: (state: OptimizationState) => void;
   addPendingOptimization: (opt: AutoOptimization) => void;
   removePendingOptimization: (type: AutoOptimization['type']) => void;
@@ -76,12 +78,13 @@ const initialOptimizationState: OptimizationState = {
 };
 
 export const usePerformanceSyncStore = create<PerformanceSyncState>()(
-  subscribeWithSelector((set, get) => ({
+  subscribeWithSelector((set) => ({
     // Initial state
     localPerformance: null,
     participantPerformance: new Map(),
     jamCompatibility: initialJamCompatibility,
     activePreset: 'balanced',
+    customEncodingSettings: {},
     optimizationState: initialOptimizationState,
     isMaster: false,
     masterId: null,
@@ -111,6 +114,14 @@ export const usePerformanceSyncStore = create<PerformanceSyncState>()(
     setJamCompatibility: (compatibility) => set({ jamCompatibility: compatibility }),
 
     setActivePreset: (preset) => set({ activePreset: preset }),
+
+    setCustomEncodingSettings: (settings) =>
+      set((state) => ({
+        customEncodingSettings: {
+          ...state.customEncodingSettings,
+          ...settings,
+        },
+      })),
 
     setOptimizationState: (state) => set({ optimizationState: state }),
 
@@ -168,6 +179,7 @@ export const usePerformanceSyncStore = create<PerformanceSyncState>()(
         participantPerformance: new Map(),
         jamCompatibility: initialJamCompatibility,
         activePreset: 'balanced',
+        customEncodingSettings: {},
         optimizationState: initialOptimizationState,
         isMaster: false,
         masterId: null,

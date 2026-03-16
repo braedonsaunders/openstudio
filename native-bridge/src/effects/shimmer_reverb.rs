@@ -39,8 +39,8 @@ impl ShimmerReverb {
         let mut shimmer_delays = Vec::with_capacity(Self::NUM_DELAYS);
         let mut shimmer_lfos = Vec::with_capacity(Self::NUM_DELAYS);
 
-        for i in 0..Self::NUM_DELAYS {
-            reverb_delays.push(DelayLine::new(delay_times[i] * 4.0 / 1000.0, sample_rate));
+        for (i, delay_ms) in delay_times.iter().enumerate().take(Self::NUM_DELAYS) {
+            reverb_delays.push(DelayLine::new(*delay_ms * 4.0 / 1000.0, sample_rate));
             reverb_feedback.push(0.7);
             shimmer_delays.push(DelayLine::new(0.1, sample_rate));
 
@@ -73,13 +73,8 @@ impl ShimmerReverb {
 
         // Damping filter
         let damp_freq = 20000.0 - settings.damping * 180.0;
-        self.damping_filter.configure(
-            BiquadType::Lowpass,
-            damp_freq,
-            0.707,
-            0.0,
-            self.sample_rate,
-        );
+        self.damping_filter
+            .configure(BiquadType::Lowpass, damp_freq, 0.707, 0.0, self.sample_rate);
 
         // Tone filter
         let tone_freq = 500.0 + settings.tone * 150.0;

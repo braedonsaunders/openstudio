@@ -75,8 +75,7 @@ impl AudioEffect for Vibrato {
             // Calculate delay with modulation
             // depth controls how many cents of pitch variation (up to ~100 cents = 1 semitone)
             let delay_mod_ms = lfo_val * effective_depth * 2.0; // +/- 2ms max
-            let delay_samples =
-                (center_delay_ms + delay_mod_ms) * 0.001 * self.sample_rate;
+            let delay_samples = (center_delay_ms + delay_mod_ms) * 0.001 * self.sample_rate;
 
             // Write current samples
             self.delay_left.write(frame[0]);

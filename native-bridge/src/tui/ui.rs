@@ -7,8 +7,8 @@ use ratatui::{
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::{
-        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar,
-        ScrollbarOrientation, ScrollbarState, Tabs, Wrap,
+        Block, Borders, Clear, List, ListItem, Paragraph, Scrollbar, ScrollbarOrientation,
+        ScrollbarState, Tabs, Wrap,
     },
     Frame,
 };
@@ -19,9 +19,9 @@ pub fn draw(f: &mut Frame, app: &App) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(3),  // Header
-            Constraint::Min(10),    // Content
-            Constraint::Length(3),  // Footer
+            Constraint::Length(3), // Header
+            Constraint::Min(10),   // Content
+            Constraint::Length(3), // Footer
         ])
         .split(f.area());
 
@@ -98,13 +98,13 @@ fn draw_audio_panel(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .title(" Audio Levels ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(
-            if app.active_panel == ActivePanel::Audio {
+        .border_style(
+            Style::default().fg(if app.active_panel == ActivePanel::Audio {
                 Color::Cyan
             } else {
                 Color::DarkGray
-            },
-        ));
+            }),
+        );
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -136,12 +136,26 @@ fn draw_audio_panel(f: &mut Frame, app: &App, area: Rect) {
         .split(inner);
 
     // Input levels
-    draw_stereo_meter(f, "Input", app.input_level_l, app.input_level_r,
-                      app.input_peak_l, app.input_peak_r, chunks[0]);
+    draw_stereo_meter(
+        f,
+        "Input",
+        app.input_level_l,
+        app.input_level_r,
+        app.input_peak_l,
+        app.input_peak_r,
+        chunks[0],
+    );
 
     // Output levels
-    draw_stereo_meter(f, "Output", app.output_level_l, app.output_level_r,
-                      app.output_peak_l, app.output_peak_r, chunks[1]);
+    draw_stereo_meter(
+        f,
+        "Output",
+        app.output_level_l,
+        app.output_level_r,
+        app.output_peak_l,
+        app.output_peak_r,
+        chunks[1],
+    );
 
     // Device info
     let device_info = Paragraph::new(vec![
@@ -158,31 +172,37 @@ fn draw_audio_panel(f: &mut Frame, app: &App, area: Rect) {
     f.render_widget(device_info, chunks[2]);
 
     // Dynamics metering
-    let dynamics = Paragraph::new(vec![
-        Line::from(vec![
-            Span::raw("Gate: "),
-            if app.noise_gate_open {
-                Span::styled("OPEN", Style::default().fg(Color::Green))
+    let dynamics = Paragraph::new(vec![Line::from(vec![
+        Span::raw("Gate: "),
+        if app.noise_gate_open {
+            Span::styled("OPEN", Style::default().fg(Color::Green))
+        } else {
+            Span::styled("CLOSED", Style::default().fg(Color::Red))
+        },
+        Span::raw("  Comp: "),
+        Span::styled(
+            format!("-{:.1}dB", app.compressor_reduction),
+            Style::default().fg(Color::Yellow),
+        ),
+        Span::raw("  De-Ess: "),
+        Span::styled(
+            format!("-{:.1}dB", app.de_esser_reduction),
+            Style::default().fg(if app.de_esser_reduction > 6.0 {
+                Color::Red
             } else {
-                Span::styled("CLOSED", Style::default().fg(Color::Red))
-            },
-            Span::raw("  Comp: "),
-            Span::styled(
-                format!("-{:.1}dB", app.compressor_reduction),
-                Style::default().fg(Color::Yellow),
-            ),
-            Span::raw("  De-Ess: "),
-            Span::styled(
-                format!("-{:.1}dB", app.de_esser_reduction),
-                Style::default().fg(if app.de_esser_reduction > 6.0 { Color::Red } else { Color::Cyan }),
-            ),
-            Span::raw("  Limiter: "),
-            Span::styled(
-                format!("-{:.1}dB", app.limiter_reduction),
-                Style::default().fg(if app.limiter_reduction > 3.0 { Color::Red } else { Color::Green }),
-            ),
-        ]),
-    ])
+                Color::Cyan
+            }),
+        ),
+        Span::raw("  Limiter: "),
+        Span::styled(
+            format!("-{:.1}dB", app.limiter_reduction),
+            Style::default().fg(if app.limiter_reduction > 3.0 {
+                Color::Red
+            } else {
+                Color::Green
+            }),
+        ),
+    ])])
     .block(Block::default().title(" Dynamics ").borders(Borders::ALL));
     f.render_widget(dynamics, chunks[3]);
 
@@ -195,28 +215,48 @@ fn draw_audio_panel(f: &mut Frame, app: &App, area: Rect) {
             remote_lines.push(Line::from(vec![
                 Span::raw("♫ Track: "),
                 level_bar(app.backing_level, 15),
-                Span::styled(format!(" {:.0}dB", app.backing_level), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!(" {:.0}dB", app.backing_level),
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]));
         }
 
         // Remote users
         for (user_id, level) in &app.remote_levels {
-            let short_id = if user_id.len() > 8 { &user_id[..8] } else { user_id };
+            let short_id = if user_id.len() > 8 {
+                &user_id[..8]
+            } else {
+                user_id
+            };
             remote_lines.push(Line::from(vec![
                 Span::styled(format!("{}: ", short_id), Style::default().fg(Color::Cyan)),
                 level_bar(*level, 15),
-                Span::styled(format!(" {:.0}dB", level), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!(" {:.0}dB", level),
+                    Style::default().fg(Color::DarkGray),
+                ),
             ]));
         }
 
-        let remote_panel = Paragraph::new(remote_lines)
-            .block(Block::default().title(" Remote/Backing ").borders(Borders::ALL));
+        let remote_panel = Paragraph::new(remote_lines).block(
+            Block::default()
+                .title(" Remote/Backing ")
+                .borders(Borders::ALL),
+        );
         f.render_widget(remote_panel, chunks[4]);
     }
 }
 
-fn draw_stereo_meter(f: &mut Frame, label: &str, level_l: f32, level_r: f32,
-                     peak_l: f32, peak_r: f32, area: Rect) {
+fn draw_stereo_meter(
+    f: &mut Frame,
+    label: &str,
+    level_l: f32,
+    level_r: f32,
+    peak_l: f32,
+    peak_r: f32,
+    area: Rect,
+) {
     let block = Block::default()
         .title(format!(" {} ", label))
         .borders(Borders::ALL);
@@ -239,15 +279,18 @@ fn draw_stereo_meter(f: &mut Frame, label: &str, level_l: f32, level_r: f32,
 
 fn draw_effects_panel(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
-        .title(format!(" Effects Chain ({} active) ", app.enabled_effects_count()))
+        .title(format!(
+            " Effects Chain ({} active) ",
+            app.enabled_effects_count()
+        ))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(
-            if app.active_panel == ActivePanel::Effects {
+        .border_style(
+            Style::default().fg(if app.active_panel == ActivePanel::Effects {
                 Color::Cyan
             } else {
                 Color::DarkGray
-            },
-        ));
+            }),
+        );
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -284,13 +327,13 @@ fn draw_effects_panel(f: &mut Frame, app: &App, area: Rect) {
                 Style::default().fg(*color).add_modifier(Modifier::BOLD),
             ),
             Span::styled(
-                format!("({}) ", category_effects.iter().filter(|e| e.enabled).count()),
+                format!(
+                    "({}) ",
+                    category_effects.iter().filter(|e| e.enabled).count()
+                ),
                 Style::default().fg(Color::DarkGray),
             ),
-            Span::styled(
-                "──────────",
-                Style::default().fg(*color),
-            ),
+            Span::styled("──────────", Style::default().fg(*color)),
         ])));
 
         // Add effects in this category
@@ -329,11 +372,13 @@ fn draw_effects_panel(f: &mut Frame, app: &App, area: Rect) {
         let scrollbar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
             .begin_symbol(Some("▲"))
             .end_symbol(Some("▼"));
-        let mut scrollbar_state = ScrollbarState::new(total_items)
-            .position(app.effects_scroll);
+        let mut scrollbar_state = ScrollbarState::new(total_items).position(app.effects_scroll);
         f.render_stateful_widget(
             scrollbar,
-            area.inner(ratatui::layout::Margin { horizontal: 0, vertical: 1 }),
+            area.inner(ratatui::layout::Margin {
+                horizontal: 0,
+                vertical: 1,
+            }),
             &mut scrollbar_state,
         );
     }
@@ -343,13 +388,13 @@ fn draw_network_panel(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .title(" Network Status ")
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(
-            if app.active_panel == ActivePanel::Network {
+        .border_style(
+            Style::default().fg(if app.active_panel == ActivePanel::Network {
                 Color::Cyan
             } else {
                 Color::DarkGray
-            },
-        ));
+            }),
+        );
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -357,9 +402,9 @@ fn draw_network_panel(f: &mut Frame, app: &App, area: Rect) {
     let chunks = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(6),  // Connection info
-            Constraint::Length(4),  // Room info
-            Constraint::Min(5),     // Latency graph
+            Constraint::Length(6), // Connection info
+            Constraint::Length(4), // Room info
+            Constraint::Min(5),    // Latency graph
         ])
         .split(inner);
 
@@ -380,8 +425,18 @@ fn draw_network_panel(f: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::raw("Browser: "),
             Span::styled(
-                if app.network_connected { "Connected" } else { "Disconnected" },
-                Style::default().fg(if app.network_connected { Color::Green } else { Color::Red }).add_modifier(Modifier::BOLD),
+                if app.network_connected {
+                    "Connected"
+                } else {
+                    "Disconnected"
+                },
+                Style::default()
+                    .fg(if app.network_connected {
+                        Color::Green
+                    } else {
+                        Color::Red
+                    })
+                    .add_modifier(Modifier::BOLD),
             ),
         ]),
         Line::from(vec![
@@ -407,40 +462,48 @@ fn draw_network_panel(f: &mut Frame, app: &App, area: Rect) {
             Span::raw("Latency: "),
             Span::styled(
                 format!("{:.1}ms", app.latency_ms),
-                Style::default().fg(
-                    if app.latency_ms < 20.0 { Color::Green }
-                    else if app.latency_ms < 50.0 { Color::Yellow }
-                    else { Color::Red }
-                ),
+                Style::default().fg(if app.latency_ms < 20.0 {
+                    Color::Green
+                } else if app.latency_ms < 50.0 {
+                    Color::Yellow
+                } else {
+                    Color::Red
+                }),
             ),
             Span::raw("   Jitter: "),
             Span::styled(
                 format!("{:.1}ms", app.jitter_ms),
-                Style::default().fg(
-                    if app.jitter_ms < 5.0 { Color::Green }
-                    else if app.jitter_ms < 15.0 { Color::Yellow }
-                    else { Color::Red }
-                ),
+                Style::default().fg(if app.jitter_ms < 5.0 {
+                    Color::Green
+                } else if app.jitter_ms < 15.0 {
+                    Color::Yellow
+                } else {
+                    Color::Red
+                }),
             ),
         ]),
         Line::from(vec![
             Span::raw("Loss:    "),
             Span::styled(
                 format!("{:.2}%", app.packet_loss),
-                Style::default().fg(
-                    if app.packet_loss < 1.0 { Color::Green }
-                    else if app.packet_loss < 5.0 { Color::Yellow }
-                    else { Color::Red }
-                ),
+                Style::default().fg(if app.packet_loss < 1.0 {
+                    Color::Green
+                } else if app.packet_loss < 5.0 {
+                    Color::Yellow
+                } else {
+                    Color::Red
+                }),
             ),
             Span::raw("   Sync: "),
             Span::styled(
                 format!("{:+.1}ms", app.clock_offset_ms),
-                Style::default().fg(
-                    if app.clock_offset_ms.abs() < 5.0 { Color::Green }
-                    else if app.clock_offset_ms.abs() < 20.0 { Color::Yellow }
-                    else { Color::Red }
-                ),
+                Style::default().fg(if app.clock_offset_ms.abs() < 5.0 {
+                    Color::Green
+                } else if app.clock_offset_ms.abs() < 20.0 {
+                    Color::Yellow
+                } else {
+                    Color::Red
+                }),
             ),
         ]),
     ])
@@ -468,12 +531,18 @@ fn draw_network_panel(f: &mut Frame, app: &App, area: Rect) {
             ),
             Span::raw("  BPM: "),
             Span::styled(
-                app.room_bpm.map(|b| format!("{:.0}", b)).unwrap_or("-".into()),
+                app.room_bpm
+                    .map(|b| format!("{:.0}", b))
+                    .unwrap_or("-".into()),
                 Style::default().fg(Color::Yellow),
             ),
         ]),
     ])
-    .block(Block::default().title(" Room Context ").borders(Borders::ALL));
+    .block(
+        Block::default()
+            .title(" Room Context ")
+            .borders(Borders::ALL),
+    );
     f.render_widget(room_info, chunks[1]);
 
     // Latency sparkline
@@ -485,13 +554,13 @@ fn draw_logs_panel(f: &mut Frame, app: &App, area: Rect) {
     let block = Block::default()
         .title(format!(" Logs ({}) ", app.logs.len()))
         .borders(Borders::ALL)
-        .border_style(Style::default().fg(
-            if app.active_panel == ActivePanel::Logs {
+        .border_style(
+            Style::default().fg(if app.active_panel == ActivePanel::Logs {
                 Color::Cyan
             } else {
                 Color::DarkGray
-            },
-        ));
+            }),
+        );
 
     let inner = block.inner(area);
     f.render_widget(block, area);
@@ -517,7 +586,10 @@ fn draw_logs_panel(f: &mut Frame, app: &App, area: Rect) {
             };
 
             ListItem::new(Line::from(vec![
-                Span::styled(format!("{:>3} ", time_str), Style::default().fg(Color::DarkGray)),
+                Span::styled(
+                    format!("{:>3} ", time_str),
+                    Style::default().fg(Color::DarkGray),
+                ),
                 Span::styled(format!("[{}] ", prefix), Style::default().fg(color)),
                 Span::raw(&entry.message),
             ]))
@@ -572,15 +644,16 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
             Span::raw("Out: "),
             level_bar(app.output_level_l.max(app.output_level_r), 10),
         ]),
-        Line::from(vec![
-            Span::raw("Buf: "),
-            stream_bar,
-        ]),
+        Line::from(vec![Span::raw("Buf: "), stream_bar]),
         Line::from(vec![
             Span::raw("Ovf: "),
             Span::styled(
                 format!("{}", app.stream_overflow_count),
-                Style::default().fg(if app.stream_overflow_count == 0 { Color::Green } else { Color::Red }),
+                Style::default().fg(if app.stream_overflow_count == 0 {
+                    Color::Green
+                } else {
+                    Color::Red
+                }),
             ),
         ]),
     ])
@@ -590,20 +663,23 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
     // Mini network - show clearer status
     let (net_status, net_color) = if app.network_connected {
         match app.network_mode {
-            NetworkMode::Disconnected => ("Standby".to_string(), Color::Yellow),  // Browser connected, no room
-            _ => (format!("{} ({})", app.network_mode, app.peer_count), Color::Green),
+            NetworkMode::Disconnected => ("Standby".to_string(), Color::Yellow), // Browser connected, no room
+            _ => (
+                format!("{} ({})", app.network_mode, app.peer_count),
+                Color::Green,
+            ),
         }
     } else {
         ("Offline".to_string(), Color::Red)
     };
     let network = Paragraph::new(vec![
-        Line::from(Span::styled(
-            net_status,
-            Style::default().fg(net_color),
-        )),
+        Line::from(Span::styled(net_status, Style::default().fg(net_color))),
         Line::from(vec![
             Span::raw("RTT: "),
-            Span::styled(format!("{:.0}ms", app.latency_ms), Style::default().fg(Color::Yellow)),
+            Span::styled(
+                format!("{:.0}ms", app.latency_ms),
+                Style::default().fg(Color::Yellow),
+            ),
         ]),
     ])
     .block(Block::default().title("Network").borders(Borders::TOP));
@@ -614,17 +690,17 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
         Line::from(vec![
             Span::styled(
                 app.room_key.as_deref().unwrap_or("-"),
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
             Span::raw(" "),
             Span::raw(app.room_scale.as_deref().unwrap_or("")),
         ]),
-        Line::from(vec![
-            Span::styled(
-                format!("{:.0} BPM", app.room_bpm.unwrap_or(0.0)),
-                Style::default().fg(Color::Yellow),
-            ),
-        ]),
+        Line::from(vec![Span::styled(
+            format!("{:.0} BPM", app.room_bpm.unwrap_or(0.0)),
+            Style::default().fg(Color::Yellow),
+        )]),
     ])
     .block(Block::default().title("Room").borders(Borders::TOP));
     f.render_widget(room, chunks[2]);
@@ -639,27 +715,32 @@ fn draw_sidebar(f: &mut Frame, app: &App, area: Rect) {
         .collect();
 
     let effects_text = if active.is_empty() {
-        vec![Line::from(Span::styled("None", Style::default().fg(Color::DarkGray)))]
+        vec![Line::from(Span::styled(
+            "None",
+            Style::default().fg(Color::DarkGray),
+        ))]
     } else {
         active
             .iter()
-            .map(|name| {
-                Line::from(Span::styled(*name, Style::default().fg(Color::Green)))
-            })
+            .map(|name| Line::from(Span::styled(*name, Style::default().fg(Color::Green))))
             .collect()
     };
 
-    let effects = Paragraph::new(effects_text)
-        .block(Block::default().title(format!("Effects ({})", app.enabled_effects_count())).borders(Borders::TOP));
+    let effects = Paragraph::new(effects_text).block(
+        Block::default()
+            .title(format!("Effects ({})", app.enabled_effects_count()))
+            .borders(Borders::TOP),
+    );
     f.render_widget(effects, chunks[3]);
 }
 
 fn draw_footer(f: &mut Frame, _app: &App, area: Rect) {
     let help = " [Q]uit │ [E]ffects │ [N]etwork │ [?]Help │ [Tab] Switch │ [↑↓] Scroll ";
 
-    let footer = Paragraph::new(Line::from(vec![
-        Span::styled(help, Style::default().fg(Color::DarkGray)),
-    ]))
+    let footer = Paragraph::new(Line::from(vec![Span::styled(
+        help,
+        Style::default().fg(Color::DarkGray),
+    )]))
     .block(
         Block::default()
             .borders(Borders::ALL)

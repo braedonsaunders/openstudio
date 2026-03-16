@@ -4,6 +4,7 @@
 //! Essential for tight jam sessions where everyone plays to the same beat.
 
 use parking_lot::RwLock;
+use std::cmp::Ordering;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Clock sync configuration
@@ -144,7 +145,7 @@ impl ClockSync {
 
             // Sort by RTT and take best half (filter outliers)
             let mut sorted: Vec<_> = samples.iter().cloned().collect();
-            sorted.sort_by(|a, b| a.rtt().partial_cmp(&b.rtt()).unwrap());
+            sorted.sort_by(|a, b| a.rtt().partial_cmp(&b.rtt()).unwrap_or(Ordering::Equal));
             let best = &sorted[..sorted.len() / 2 + 1];
 
             // Weighted average offset
@@ -273,70 +274,6 @@ impl ClockSync {
     }
 }
 
-/// Beat scheduler for synchronized playback
-pub struct BeatScheduler {
-    clock: std::sync::Arc<ClockSync>,
-    /// Callback schedule: (beat_position, callback_id)
-    scheduled: RwLock<Vec<(f64, u64)>>,
-    next_callback_id: RwLock<u64>,
-}
-
-impl BeatScheduler {
-    pub fn new(clock: std::sync::Arc<ClockSync>) -> Self {
-        Self {
-            clock,
-            scheduled: RwLock::new(Vec::new()),
-            next_callback_id: RwLock::new(0),
-        }
-    }
-
-    /// Schedule a callback at a specific beat position
-    pub fn schedule_at_beat(&self, beat: f64) -> u64 {
-        let mut scheduled = self.scheduled.write();
-        let mut next_id = self.next_callback_id.write();
-
-        let id = *next_id;
-        *next_id += 1;
-
-        scheduled.push((beat, id));
-        scheduled.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-
-        id
-    }
-
-    /// Schedule a callback at the next bar
-    pub fn schedule_next_bar(&self) -> u64 {
-        let current_bar = self.clock.current_bar();
-        let (num, _) = self.clock.time_signature();
-        let next_bar_beat = ((current_bar + 1) * num as u64) as f64;
-        self.schedule_at_beat(next_bar_beat)
-    }
-
-    /// Check for callbacks that should fire
-    pub fn check_callbacks(&self) -> Vec<u64> {
-        let current_beat = self.clock.current_beat_position();
-        let mut scheduled = self.scheduled.write();
-
-        let mut fired = Vec::new();
-        scheduled.retain(|(beat, id)| {
-            if *beat <= current_beat {
-                fired.push(*id);
-                false
-            } else {
-                true
-            }
-        });
-
-        fired
-    }
-
-    /// Cancel a scheduled callback
-    pub fn cancel(&self, id: u64) {
-        let mut scheduled = self.scheduled.write();
-        scheduled.retain(|(_, callback_id)| *callback_id != id);
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -349,7 +286,7 @@ mod tests {
             t1: 1000,
             t2: 1015, // Remote received 15ms after we sent (including 5ms network delay)
             t3: 1016, // Remote sent 1ms later
-            t4: 1021, // We received 5ms later (5ms network delay back)
+            t4: 1011, // We received 5ms later on the local clock
         };
 
         // RTT should be ~10ms (5ms each way, minus 1ms processing)

@@ -51,10 +51,20 @@ impl StereoImager {
             .configure(BiquadType::Lowpass, crossover, 0.707, 0.0, self.sample_rate);
         self.lp_filter_r
             .configure(BiquadType::Lowpass, crossover, 0.707, 0.0, self.sample_rate);
-        self.hp_filter_l
-            .configure(BiquadType::Highpass, crossover, 0.707, 0.0, self.sample_rate);
-        self.hp_filter_r
-            .configure(BiquadType::Highpass, crossover, 0.707, 0.0, self.sample_rate);
+        self.hp_filter_l.configure(
+            BiquadType::Highpass,
+            crossover,
+            0.707,
+            0.0,
+            self.sample_rate,
+        );
+        self.hp_filter_r.configure(
+            BiquadType::Highpass,
+            crossover,
+            0.707,
+            0.0,
+            self.sample_rate,
+        );
 
         // Mono bass filter
         self.mono_bass_lp_l.configure(

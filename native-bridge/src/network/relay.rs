@@ -3,6 +3,8 @@
 //! Connects to a Media over QUIC relay for scalable audio distribution.
 //! Used when P2P mesh would have too many connections (5+ users).
 
+#![allow(dead_code)]
+
 use super::{clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, Result};
 use parking_lot::RwLock;
 use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, TransportConfig, VarInt};
@@ -251,9 +253,9 @@ impl MoqRelay {
         // Add webpki roots for production (rustls 0.21 compatible)
         roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
             rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-                ta.subject.as_ref(),
-                ta.spki.as_ref(),
-                ta.name_constraints.as_ref().map(|nc| nc.as_ref() as &[u8]),
+                ta.subject,
+                ta.spki,
+                ta.name_constraints.as_ref().map(|nc| nc as &[u8]),
             )
         }));
 
@@ -309,7 +311,7 @@ impl MoqRelay {
             .map_err(|e| NetworkError::ConnectionFailed(format!("Invalid relay URL: {}", e)))?;
 
         // Create QUIC endpoint
-        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap())
+        let mut endpoint = Endpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         let client_config = self.build_client_config()?;
@@ -603,7 +605,7 @@ impl MoqRelay {
             leave_msg.extend_from_slice(user_id.as_bytes());
 
             let _ = control.write_all(&leave_msg).await;
-            let _ = control.finish();
+            let _ = control.finish().await;
         }
 
         // Close connection
@@ -701,10 +703,11 @@ impl MoqRelay {
         }
 
         // Close and remove the track
-        if let Some(track) = self.published_tracks.write().remove(&track_path) {
+        let track = { self.published_tracks.write().remove(&track_path) };
+        if let Some(track) = track {
             // Lock and finish the stream
             let mut stream = track.send_stream.lock().await;
-            let _ = stream.finish();
+            let _ = stream.finish().await;
         }
 
         Ok(())
@@ -1019,16 +1022,16 @@ impl WebTransportListener {
             .map_err(|e| NetworkError::ConnectionFailed(format!("Invalid relay URL: {}", e)))?;
 
         // Create QUIC endpoint
-        let mut endpoint = Endpoint::client("0.0.0.0:0".parse().unwrap())
+        let mut endpoint = Endpoint::client(SocketAddr::from(([0, 0, 0, 0], 0)))
             .map_err(|e| NetworkError::ConnectionFailed(e.to_string()))?;
 
         // Build client config (rustls 0.21 compatible)
         let mut roots = rustls::RootCertStore::empty();
         roots.add_trust_anchors(webpki_roots::TLS_SERVER_ROOTS.iter().map(|ta| {
             rustls::OwnedTrustAnchor::from_subject_spki_name_constraints(
-                ta.subject.as_ref(),
-                ta.spki.as_ref(),
-                ta.name_constraints.as_ref().map(|nc| nc.as_ref() as &[u8]),
+                ta.subject,
+                ta.spki,
+                ta.name_constraints.as_ref().map(|nc| nc as &[u8]),
             )
         }));
 

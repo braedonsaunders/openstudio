@@ -1,14 +1,16 @@
 'use client';
 
+import Image from 'next/image';
 import { useRef, useState, useCallback, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/lib/utils';
-import { useCanvasStore, type CanvasElement, type CanvasElementType } from '@/stores/canvas-store';
+import { useCanvasStore, type CanvasElement } from '@/stores/canvas-store';
 import { useRoomStore } from '@/stores/room-store';
+import { useAuthStore } from '@/stores/auth-store';
+import type { CanvasSyncPayload } from '@/lib/supabase/realtime';
 import {
   Image as ImageIcon,
   Type,
-  Pencil,
   MousePointer2,
   Move,
   Square,
@@ -25,15 +27,9 @@ import {
   RotateCcw,
   Grid3X3,
   Magnet,
-  Upload,
-  X,
   ChevronDown,
   Layers,
   Eye,
-  EyeOff,
-  Palette,
-  Settings2,
-  Download,
 } from 'lucide-react';
 
 // ============================================
@@ -43,6 +39,10 @@ import {
 interface SharedCanvasViewProps {
   isMaster: boolean;
   roomId: string;
+  realtimeManager?: {
+    broadcastCanvasSync: (canvas: import('@/stores/canvas-store').CanvasData) => Promise<void>;
+    on: (event: string, callback: (data: unknown) => void) => () => void;
+  };
 }
 
 // ============================================
@@ -226,11 +226,6 @@ function CanvasElementRenderer({
   const [elementStart, setElementStart] = useState({ x: 0, y: 0, w: 0, h: 0 });
   const textInputRef = useRef<HTMLTextAreaElement>(null);
 
-  // Update local text when element changes
-  useEffect(() => {
-    setEditText(element.data.content || '');
-  }, [element.data.content]);
-
   // Focus text input when editing
   useEffect(() => {
     if (isEditingText && textInputRef.current) {
@@ -252,6 +247,7 @@ function CanvasElementRenderer({
     if (!isEditable || element.locked) return;
     e.stopPropagation();
     if (element.type === 'text') {
+      setEditText(element.data.content || '');
       setIsEditingText(true);
     }
   };
@@ -312,11 +308,17 @@ function CanvasElementRenderer({
   const renderContent = () => {
     switch (element.type) {
       case 'image':
+        if (!element.data.src) {
+          return null;
+        }
         return (
-          <img
+          <Image
             src={element.data.src}
             alt={element.data.alt || 'Canvas image'}
-            className="w-full h-full object-contain pointer-events-none"
+            fill
+            unoptimized
+            sizes={`${Math.max(1, Math.round(element.width))}px`}
+            className="object-contain pointer-events-none"
             draggable={false}
           />
         );
@@ -464,6 +466,7 @@ function CanvasElementRenderer({
     <div
       className={cn(
         'absolute transition-shadow',
+        'relative',
         isEditingText ? 'cursor-text' : 'cursor-move',
         isSelected && 'ring-2 ring-indigo-500 ring-offset-1 ring-offset-transparent',
         element.locked && 'cursor-not-allowed opacity-70'
@@ -568,8 +571,10 @@ function ColorPicker({
 // Main Component
 // ============================================
 
-export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
+export function SharedCanvasView({ isMaster, roomId, realtimeManager }: SharedCanvasViewProps) {
   const canvasRef = useRef<HTMLDivElement>(null);
+  const canvasBroadcastTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suppressRemoteCanvasBroadcastRef = useRef(false);
   const [isPanning, setIsPanning] = useState(false);
   const [panStart, setPanStart] = useState({ x: 0, y: 0 });
   const [showColorPicker, setShowColorPicker] = useState(false);
@@ -594,7 +599,6 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
     moveElement,
     resizeElement,
     bringToFront,
-    sendToBack,
     lockElement,
     duplicateElement,
     setZoom,
@@ -606,11 +610,17 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
     setDrawingColor,
     setEditable,
     getElementsArray,
-    clearCanvas,
+    getCanvasData,
+    syncFromRemote,
+    isDirty,
+    isLoading,
   } = useCanvasStore();
 
   const elementsArray = getElementsArray();
   const selectedElement = selectedElementId ? elements.get(selectedElementId) : null;
+  const authUser = useAuthStore((state) => state.user);
+  const currentRoomUser = useRoomStore((state) => state.currentUser);
+  const currentUserId = currentRoomUser?.id || authUser?.id || 'anonymous';
 
   // Set editability based on master status
   useEffect(() => {
@@ -626,6 +636,50 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
       loadFromRoom(roomId);
     }
   }, [roomId, setRoomContext, loadFromRoom]);
+
+  useEffect(() => {
+    if (!realtimeManager) {
+      return undefined;
+    }
+
+    return realtimeManager.on('canvas:sync', (data) => {
+      const payload = data as CanvasSyncPayload;
+      if (payload.updatedBy === currentUserId) {
+        return;
+      }
+
+      suppressRemoteCanvasBroadcastRef.current = true;
+      syncFromRemote(payload.canvas.elements);
+    });
+  }, [currentUserId, realtimeManager, syncFromRemote]);
+
+  useEffect(() => {
+    if (!realtimeManager || !roomId || !isDirty || isLoading) {
+      return undefined;
+    }
+
+    if (suppressRemoteCanvasBroadcastRef.current) {
+      suppressRemoteCanvasBroadcastRef.current = false;
+      return undefined;
+    }
+
+    if (canvasBroadcastTimeoutRef.current) {
+      clearTimeout(canvasBroadcastTimeoutRef.current);
+    }
+
+    canvasBroadcastTimeoutRef.current = setTimeout(() => {
+      realtimeManager.broadcastCanvasSync(getCanvasData()).catch((err) => {
+        console.warn('[SharedCanvasView] Failed to broadcast canvas sync:', err);
+      });
+    }, 120);
+
+    return () => {
+      if (canvasBroadcastTimeoutRef.current) {
+        clearTimeout(canvasBroadcastTimeoutRef.current);
+        canvasBroadcastTimeoutRef.current = null;
+      }
+    };
+  }, [elementsArray, getCanvasData, isDirty, isLoading, realtimeManager, roomId]);
 
   // Handle canvas click (deselect)
   const handleCanvasClick = () => {
@@ -686,13 +740,13 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
         height: 150,
         rotation: 0,
         locked: false,
-        createdBy: 'current-user', // TODO: Get from auth
+        createdBy: currentUserId,
         data: { src, alt: file.name },
       });
     };
     reader.readAsDataURL(file);
     e.target.value = ''; // Reset input
-  }, [addElement]);
+  }, [addElement, currentUserId]);
 
   // Add text element
   const handleAddText = useCallback(() => {
@@ -704,7 +758,7 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
       height: 50,
       rotation: 0,
       locked: false,
-      createdBy: 'current-user',
+      createdBy: currentUserId,
       data: {
         content: 'Text',
         fontSize: 18,
@@ -713,7 +767,7 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
         italic: false,
       },
     });
-  }, [addElement, drawingColor]);
+  }, [addElement, currentUserId, drawingColor]);
 
   // Add chord diagram
   const handleAddChord = useCallback((chordName: string, frets: number[], fingers: number[]) => {
@@ -725,7 +779,7 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
       height: 150,
       rotation: 0,
       locked: false,
-      createdBy: 'current-user',
+      createdBy: currentUserId,
       data: {
         chordName,
         chordFrets: frets,
@@ -735,7 +789,7 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
       },
     });
     setShowChordPicker(false);
-  }, [addElement, drawingColor]);
+  }, [addElement, currentUserId, drawingColor]);
 
   // Add shape
   const handleAddShape = useCallback((shapeType: 'rectangle' | 'circle' | 'arrow' | 'line') => {
@@ -747,7 +801,7 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
       height: shapeType === 'line' || shapeType === 'arrow' ? 4 : 100,
       rotation: 0,
       locked: false,
-      createdBy: 'current-user',
+      createdBy: currentUserId,
       data: {
         shapeType,
         strokeColor: drawingColor,
@@ -755,7 +809,7 @@ export function SharedCanvasView({ isMaster, roomId }: SharedCanvasViewProps) {
         strokeWidth: 2,
       },
     });
-  }, [addElement, drawingColor]);
+  }, [addElement, currentUserId, drawingColor]);
 
   // Common chord shapes
   const commonChords = [

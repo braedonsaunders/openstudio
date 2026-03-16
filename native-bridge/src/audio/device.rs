@@ -125,11 +125,8 @@ impl AudioDevice {
         let driver_type = Self::detect_driver_type(&host);
 
         // Get default devices
-        let default_input = host.default_input_device().map(|d| d.name().ok()).flatten();
-        let default_output = host
-            .default_output_device()
-            .map(|d| d.name().ok())
-            .flatten();
+        let default_input = host.default_input_device().and_then(|d| d.name().ok());
+        let default_output = host.default_output_device().and_then(|d| d.name().ok());
 
         for device in host.devices()? {
             if let Some(mut info) = Self::get_device_info(&device, driver_type) {

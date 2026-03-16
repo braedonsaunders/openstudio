@@ -37,6 +37,12 @@ const LOCAL_RING_BUFFER_SIZE: usize = 8192;
 /// Ring buffer size for remote user audio
 const REMOTE_RING_BUFFER_SIZE: usize = 16384;
 
+/// Ring buffer size for per-track local audio sent to the network.
+const LOCAL_TRACK_NETWORK_RING_BUFFER_SIZE: usize = 16384;
+
+/// Ring buffer size for per-track local audio streamed to the browser.
+const LOCAL_TRACK_BROWSER_RING_BUFFER_SIZE: usize = 16384;
+
 /// Ring buffer size for backing track
 const BACKING_RING_BUFFER_SIZE: usize = 32768;
 
@@ -111,13 +117,25 @@ pub struct EffectsMetering {
 }
 
 /// Backing track state
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub struct BackingTrackState {
     pub is_loaded: bool,
     pub is_playing: bool,
     pub current_time: f32,
     pub duration: f32,
     pub volume: f32,
+}
+
+impl Default for BackingTrackState {
+    fn default() -> Self {
+        Self {
+            is_loaded: false,
+            is_playing: false,
+            current_time: 0.0,
+            duration: 0.0,
+            volume: 1.0,
+        }
+    }
 }
 
 /// Remote user audio buffer
@@ -130,14 +148,55 @@ struct RemoteUserBuffer {
     compensation_delay_samples: usize,
 }
 
+#[derive(Debug, Clone, Hash, PartialEq, Eq)]
+struct RemoteTrackKey {
+    user_id: String,
+    bridge_track_id: u8,
+}
+
+struct RemoteTrackBuffer {
+    consumer: Arc<std::sync::Mutex<HeapCons<f32>>>,
+    producer: Arc<std::sync::Mutex<HeapProd<f32>>>,
+    volume: f32,
+    pan: f32,
+    is_muted: bool,
+    is_solo: bool,
+    compensation_delay_samples: usize,
+    track_name: String,
+    browser_track_id: String,
+}
+
+struct LocalTrackIo {
+    network_producer: Arc<std::sync::Mutex<HeapProd<f32>>>,
+    network_consumer: Arc<std::sync::Mutex<HeapCons<f32>>>,
+    browser_producer: Arc<std::sync::Mutex<HeapProd<f32>>>,
+    browser_consumer: Arc<std::sync::Mutex<HeapCons<f32>>>,
+}
+
+struct LocalTrackState {
+    bridge_track_id: u8,
+    track_name: String,
+    channel_config: ChannelConfig,
+    track_state: TrackState,
+    effects_chain: EffectsChain,
+    scratch_buffer: Vec<f32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct LocalTrackDescriptor {
+    pub browser_track_id: String,
+    pub bridge_track_id: u8,
+    pub track_name: String,
+}
+
 /// Shared state for audio processing
 struct AudioProcessingState {
-    /// Effects chain for local track
-    effects_chain: EffectsChain,
-    /// Track state for local track
-    track_state: TrackState,
-    /// Channel configuration
-    channel_config: ChannelConfig,
+    /// Effects chain for the master bus
+    master_effects_chain: EffectsChain,
+    /// Whether master effects are currently enabled
+    master_effects_enabled: bool,
+    /// Local native tracks keyed by browser track ID
+    local_tracks: HashMap<String, LocalTrackState>,
     /// Sample rate
     sample_rate: u32,
     /// Master volume
@@ -175,6 +234,12 @@ pub struct AudioEngine {
     // Remote user audio buffers
     remote_buffers: Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
 
+    // Remote native track audio buffers
+    remote_track_buffers: Arc<RwLock<HashMap<RemoteTrackKey, RemoteTrackBuffer>>>,
+
+    // Per-track local browser/network buffers
+    local_track_io: Arc<RwLock<HashMap<String, LocalTrackIo>>>,
+
     // Backing track ring buffer
     backing_producer: Option<Arc<std::sync::Mutex<HeapProd<f32>>>>,
     backing_consumer: Option<Arc<std::sync::Mutex<HeapCons<f32>>>>,
@@ -209,10 +274,6 @@ pub struct AudioEngine {
 
     // Connection health tracking
     last_browser_read_time: Arc<AtomicU64>,
-
-    // Diagnostic counters for effects processing
-    effects_applied_count: Arc<AtomicU64>,
-    effects_skipped_count: Arc<AtomicU64>,
 }
 
 impl AudioEngine {
@@ -220,9 +281,9 @@ impl AudioEngine {
         let config = EngineConfig::default();
 
         let processing_state = AudioProcessingState {
-            effects_chain: EffectsChain::new(),
-            track_state: TrackState::new(), // Use new() not default() - default() sets volume to 0!
-            channel_config: ChannelConfig::default(),
+            master_effects_chain: EffectsChain::new(),
+            master_effects_enabled: true,
+            local_tracks: HashMap::new(),
             sample_rate: 48000,
             master_volume: 1.0,
             remote_users: HashMap::new(),
@@ -238,6 +299,8 @@ impl AudioEngine {
             local_producer: None,
             local_consumer: None,
             remote_buffers: Arc::new(RwLock::new(HashMap::new())),
+            remote_track_buffers: Arc::new(RwLock::new(HashMap::new())),
+            local_track_io: Arc::new(RwLock::new(HashMap::new())),
             backing_producer: None,
             backing_consumer: None,
             browser_stream_producer: None,
@@ -253,9 +316,6 @@ impl AudioEngine {
             browser_stream_overflow_count: Arc::new(AtomicU64::new(0)),
             browser_stream_overflow_samples: Arc::new(AtomicU64::new(0)),
             last_browser_read_time: Arc::new(AtomicU64::new(0)),
-            // Diagnostic counters for effects processing
-            effects_applied_count: Arc::new(AtomicU64::new(0)),
-            effects_skipped_count: Arc::new(AtomicU64::new(0)),
         })
     }
 
@@ -277,10 +337,9 @@ impl AudioEngine {
 
         self.input_device = Some(AudioDevice::get_by_id(device_id)?);
         self.config.input_device_id = Some(device_id.to_string());
-        info!(
-            "Input device set: {}",
-            self.input_device.as_ref().unwrap().info.name
-        );
+        if let Some(device) = self.input_device.as_ref() {
+            info!("Input device set: {}", device.info.name);
+        }
 
         if was_running {
             self.start()?;
@@ -296,10 +355,9 @@ impl AudioEngine {
 
         self.output_device = Some(AudioDevice::get_by_id(device_id)?);
         self.config.output_device_id = Some(device_id.to_string());
-        info!(
-            "Output device set: {}",
-            self.output_device.as_ref().unwrap().info.name
-        );
+        if let Some(device) = self.output_device.as_ref() {
+            info!("Output device set: {}", device.info.name);
+        }
 
         if was_running {
             self.start()?;
@@ -321,8 +379,10 @@ impl AudioEngine {
         // Use blocking write to ensure the config is applied
         match self.processing_state.write() {
             Ok(mut state) => {
-                state.channel_config = config;
-                info!("Channel config updated in processing_state");
+                if let Some((_track_id, track)) = state.local_tracks.iter_mut().next() {
+                    track.channel_config = config;
+                    info!("Channel config updated on primary local track");
+                }
             }
             Err(e) => {
                 // This should never happen in practice, but log if it does
@@ -350,7 +410,10 @@ impl AudioEngine {
         self.config.sample_rate = rate;
         if let Ok(mut state) = self.processing_state.write() {
             state.sample_rate = rate as u32;
-            state.effects_chain.set_sample_rate(rate as u32);
+            for track in state.local_tracks.values_mut() {
+                track.effects_chain.set_sample_rate(rate as u32);
+            }
+            state.master_effects_chain.set_sample_rate(rate as u32);
         }
         if self.is_running.load(Ordering::SeqCst) {
             self.stop()?;
@@ -376,8 +439,66 @@ impl AudioEngine {
 
     // === Track State ===
 
+    /// Register or update a local track used by the native bridge.
+    pub fn sync_local_track(
+        &self,
+        track_id: &str,
+        bridge_track_id: u8,
+        track_name: &str,
+        channel_config: ChannelConfig,
+    ) {
+        if let Ok(mut state) = self.processing_state.write() {
+            let sample_rate = state.sample_rate;
+            let local_track = state
+                .local_tracks
+                .entry(track_id.to_string())
+                .or_insert_with(|| {
+                    let mut effects_chain = EffectsChain::new();
+                    effects_chain.set_sample_rate(sample_rate);
+                    LocalTrackState {
+                        bridge_track_id,
+                        track_name: track_name.to_string(),
+                        channel_config: channel_config.clone(),
+                        track_state: TrackState::new(),
+                        effects_chain,
+                        scratch_buffer: Vec::with_capacity(65536),
+                    }
+                });
+            local_track.bridge_track_id = bridge_track_id;
+            local_track.track_name = track_name.to_string();
+            local_track.channel_config = channel_config;
+        }
+
+        if let Ok(mut local_track_io) = self.local_track_io.write() {
+            local_track_io
+                .entry(track_id.to_string())
+                .or_insert_with(|| {
+                    let network_ring = HeapRb::<f32>::new(LOCAL_TRACK_NETWORK_RING_BUFFER_SIZE);
+                    let (network_producer, network_consumer) = network_ring.split();
+                    let browser_ring = HeapRb::<f32>::new(LOCAL_TRACK_BROWSER_RING_BUFFER_SIZE);
+                    let (browser_producer, browser_consumer) = browser_ring.split();
+
+                    LocalTrackIo {
+                        network_producer: Arc::new(std::sync::Mutex::new(network_producer)),
+                        network_consumer: Arc::new(std::sync::Mutex::new(network_consumer)),
+                        browser_producer: Arc::new(std::sync::Mutex::new(browser_producer)),
+                        browser_consumer: Arc::new(std::sync::Mutex::new(browser_consumer)),
+                    }
+                });
+        }
+    }
+
+    pub fn remove_local_track(&self, track_id: &str) {
+        if let Ok(mut state) = self.processing_state.write() {
+            state.local_tracks.remove(track_id);
+        }
+        if let Ok(mut local_track_io) = self.local_track_io.write() {
+            local_track_io.remove(track_id);
+        }
+    }
+
     /// Update track state with partial update - only fields that are Some will be changed
-    pub fn update_track_state(&self, partial: PartialTrackState) {
+    pub fn update_track_state(&self, track_id: &str, partial: PartialTrackState) {
         // CRITICAL: Sync atomic is_monitoring FIRST - this is read in audio callback
         // The atomic never fails, ensuring monitoring state is always current
         if let Some(monitoring) = partial.monitoring_enabled {
@@ -385,11 +506,28 @@ impl AudioEngine {
         }
         // Then update the full state in RwLock (for state queries)
         if let Ok(mut proc_state) = self.processing_state.write() {
-            proc_state.track_state.merge(&partial);
+            let sample_rate = proc_state.sample_rate;
+            let default_channel = self.config.channel_config.clone();
+            let track = proc_state
+                .local_tracks
+                .entry(track_id.to_string())
+                .or_insert_with(|| {
+                    let mut effects_chain = EffectsChain::new();
+                    effects_chain.set_sample_rate(sample_rate);
+                    LocalTrackState {
+                        bridge_track_id: 0,
+                        track_name: track_id.to_string(),
+                        channel_config: default_channel,
+                        track_state: TrackState::new(),
+                        effects_chain,
+                        scratch_buffer: Vec::with_capacity(65536),
+                    }
+                });
+            track.track_state.merge(&partial);
         }
     }
 
-    pub fn update_effects(&self, effects: crate::effects::EffectsSettings) {
+    pub fn update_effects(&self, track_id: &str, effects: crate::effects::EffectsSettings) {
         // Log which effects are enabled for debugging
         let enabled_effects: Vec<&str> = [
             ("wah", effects.wah.enabled),
@@ -411,7 +549,24 @@ impl AudioEngine {
 
         match self.processing_state.write() {
             Ok(mut state) => {
-                state.effects_chain.update_settings(effects);
+                let sample_rate = state.sample_rate;
+                let default_channel = self.config.channel_config.clone();
+                let track = state
+                    .local_tracks
+                    .entry(track_id.to_string())
+                    .or_insert_with(|| {
+                        let mut effects_chain = EffectsChain::new();
+                        effects_chain.set_sample_rate(sample_rate);
+                        LocalTrackState {
+                            bridge_track_id: 0,
+                            track_name: track_id.to_string(),
+                            channel_config: default_channel,
+                            track_state: TrackState::new(),
+                            effects_chain,
+                            scratch_buffer: Vec::with_capacity(65536),
+                        }
+                    });
+                track.effects_chain.update_settings(effects);
                 info!("Effects chain updated successfully");
             }
             Err(e) => {
@@ -430,15 +585,52 @@ impl AudioEngine {
         time_sig_denom: Option<u8>,
     ) {
         if let Ok(mut state) = self.processing_state.write() {
-            state
-                .effects_chain
-                .set_room_context(key, scale, bpm, time_sig_num, time_sig_denom);
+            for track in state.local_tracks.values_mut() {
+                track.effects_chain.set_room_context(
+                    key.clone(),
+                    scale.clone(),
+                    bpm,
+                    time_sig_num,
+                    time_sig_denom,
+                );
+            }
         }
     }
 
     pub fn set_master_volume(&self, volume: f32) {
         if let Ok(mut state) = self.processing_state.write() {
             state.master_volume = volume;
+        }
+    }
+
+    pub fn set_master_effects_enabled(&self, enabled: bool) {
+        if let Ok(mut state) = self.processing_state.write() {
+            state.master_effects_enabled = enabled;
+        }
+    }
+
+    pub fn update_master_effects(
+        &self,
+        eq: Option<crate::effects::EqSettings>,
+        compressor: Option<crate::effects::CompressorSettings>,
+        reverb: Option<crate::effects::ReverbSettings>,
+        limiter: Option<crate::effects::LimiterSettings>,
+    ) {
+        if let Ok(mut state) = self.processing_state.write() {
+            let mut settings = state.master_effects_chain.get_settings().clone();
+            if let Some(eq_settings) = eq {
+                settings.eq = eq_settings;
+            }
+            if let Some(compressor_settings) = compressor {
+                settings.compressor = compressor_settings;
+            }
+            if let Some(reverb_settings) = reverb {
+                settings.reverb = reverb_settings;
+            }
+            if let Some(limiter_settings) = limiter {
+                settings.limiter = limiter_settings;
+            }
+            state.master_effects_chain.update_settings(settings);
         }
     }
 
@@ -516,6 +708,122 @@ impl AudioEngine {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn sync_remote_track(
+        &self,
+        user_id: &str,
+        browser_track_id: &str,
+        bridge_track_id: u8,
+        track_name: &str,
+        volume: f32,
+        pan: f32,
+        muted: bool,
+        solo: bool,
+    ) {
+        let key = RemoteTrackKey {
+            user_id: user_id.to_string(),
+            bridge_track_id,
+        };
+
+        if let Ok(mut buffers) = self.remote_track_buffers.write() {
+            buffers.entry(key).or_insert_with(|| {
+                let ring_buffer = HeapRb::<f32>::new(REMOTE_RING_BUFFER_SIZE);
+                let (producer, consumer) = ring_buffer.split();
+
+                RemoteTrackBuffer {
+                    producer: Arc::new(std::sync::Mutex::new(producer)),
+                    consumer: Arc::new(std::sync::Mutex::new(consumer)),
+                    volume,
+                    pan,
+                    is_muted: muted,
+                    is_solo: solo,
+                    compensation_delay_samples: 0,
+                    track_name: track_name.to_string(),
+                    browser_track_id: browser_track_id.to_string(),
+                }
+            });
+
+            if let Some(buffer) = buffers.get_mut(&RemoteTrackKey {
+                user_id: user_id.to_string(),
+                bridge_track_id,
+            }) {
+                buffer.volume = volume;
+                buffer.pan = pan;
+                buffer.is_muted = muted;
+                buffer.is_solo = solo;
+                buffer.track_name = track_name.to_string();
+                buffer.browser_track_id = browser_track_id.to_string();
+            }
+        }
+    }
+
+    pub fn remove_remote_track(&self, user_id: &str, bridge_track_id: u8) {
+        if let Ok(mut buffers) = self.remote_track_buffers.write() {
+            buffers.remove(&RemoteTrackKey {
+                user_id: user_id.to_string(),
+                bridge_track_id,
+            });
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_remote_track(
+        &self,
+        user_id: &str,
+        bridge_track_id: u8,
+        volume: f32,
+        pan: f32,
+        muted: bool,
+        solo: bool,
+        delay_ms: f32,
+    ) {
+        if let Ok(mut buffers) = self.remote_track_buffers.write() {
+            if let Some(buffer) = buffers.get_mut(&RemoteTrackKey {
+                user_id: user_id.to_string(),
+                bridge_track_id,
+            }) {
+                buffer.volume = volume;
+                buffer.pan = pan;
+                buffer.is_muted = muted;
+                buffer.is_solo = solo;
+                buffer.compensation_delay_samples =
+                    (delay_ms * self.config.sample_rate as u32 as f32 / 1000.0) as usize;
+            }
+        }
+    }
+
+    pub fn push_remote_track_audio(&self, user_id: &str, bridge_track_id: u8, samples: &[f32]) {
+        let key = RemoteTrackKey {
+            user_id: user_id.to_string(),
+            bridge_track_id,
+        };
+
+        if let Ok(mut buffers) = self.remote_track_buffers.write() {
+            let buffer = buffers.entry(key).or_insert_with(|| {
+                let ring_buffer = HeapRb::<f32>::new(REMOTE_RING_BUFFER_SIZE);
+                let (producer, consumer) = ring_buffer.split();
+
+                RemoteTrackBuffer {
+                    producer: Arc::new(std::sync::Mutex::new(producer)),
+                    consumer: Arc::new(std::sync::Mutex::new(consumer)),
+                    volume: 1.0,
+                    pan: 0.0,
+                    is_muted: false,
+                    is_solo: false,
+                    compensation_delay_samples: 0,
+                    track_name: format!("Track {}", bridge_track_id),
+                    browser_track_id: format!("bridge-{}", bridge_track_id),
+                }
+            });
+
+            if let Ok(mut prod) = buffer.producer.try_lock() {
+                for &sample in samples {
+                    let _ = prod.try_push(sample);
+                }
+            }
+        }
+    }
+
     /// Push audio data for a remote user (called when WebRTC audio arrives)
     pub fn push_remote_audio(&self, user_id: &str, samples: &[f32]) {
         if let Ok(buffers) = self.remote_buffers.read() {
@@ -531,8 +839,18 @@ impl AudioEngine {
 
     // === Backing Track ===
 
+    pub fn load_backing_track(&self, duration: f32) {
+        if let Ok(mut state) = self.processing_state.write() {
+            state.backing_track.is_loaded = true;
+            state.backing_track.is_playing = false;
+            state.backing_track.current_time = 0.0;
+            state.backing_track.duration = duration.max(0.0);
+        }
+    }
+
     pub fn set_backing_track_state(&self, is_playing: bool, current_time: f32) {
         if let Ok(mut state) = self.processing_state.write() {
+            state.backing_track.is_loaded = true;
             state.backing_track.is_playing = is_playing;
             state.backing_track.current_time = current_time;
         }
@@ -612,10 +930,77 @@ impl AudioEngine {
     /// Get current channel configuration
     pub fn get_channel_config(&self) -> ChannelConfig {
         if let Ok(state) = self.processing_state.try_read() {
-            state.channel_config.clone()
+            state
+                .local_tracks
+                .values()
+                .next()
+                .map(|track| track.channel_config.clone())
+                .unwrap_or_else(|| self.config.channel_config.clone())
         } else {
             self.config.channel_config.clone()
         }
+    }
+
+    pub fn get_local_track_descriptors(&self) -> Vec<LocalTrackDescriptor> {
+        if let Ok(state) = self.processing_state.try_read() {
+            return state
+                .local_tracks
+                .iter()
+                .map(|(browser_track_id, track)| LocalTrackDescriptor {
+                    browser_track_id: browser_track_id.clone(),
+                    bridge_track_id: track.bridge_track_id,
+                    track_name: track.track_name.clone(),
+                })
+                .collect();
+        }
+
+        Vec::new()
+    }
+
+    pub fn get_local_track_browser_audio(
+        &self,
+        browser_track_id: &str,
+        max_samples: usize,
+    ) -> Vec<f32> {
+        if let Ok(local_track_io) = self.local_track_io.read() {
+            if let Some(track_io) = local_track_io.get(browser_track_id) {
+                if let Ok(mut consumer) = track_io.browser_consumer.try_lock() {
+                    let available = consumer.occupied_len();
+                    let to_read = available.min(max_samples);
+                    if to_read > 0 {
+                        let mut buffer = vec![0.0f32; to_read];
+                        let read = consumer.pop_slice(&mut buffer);
+                        buffer.truncate(read);
+                        return buffer;
+                    }
+                }
+            }
+        }
+
+        Vec::new()
+    }
+
+    pub fn get_local_track_network_audio(
+        &self,
+        browser_track_id: &str,
+        max_samples: usize,
+    ) -> Vec<f32> {
+        if let Ok(local_track_io) = self.local_track_io.read() {
+            if let Some(track_io) = local_track_io.get(browser_track_id) {
+                if let Ok(mut consumer) = track_io.network_consumer.try_lock() {
+                    let available = consumer.occupied_len();
+                    let to_read = available.min(max_samples);
+                    if to_read > 0 {
+                        let mut buffer = vec![0.0f32; to_read];
+                        let read = consumer.pop_slice(&mut buffer);
+                        buffer.truncate(read);
+                        return buffer;
+                    }
+                }
+            }
+        }
+
+        Vec::new()
     }
 
     /// Get raw audio samples for streaming to browser (for WebRTC broadcast)
@@ -638,6 +1023,18 @@ impl AudioEngine {
 
     /// Check if there's audio available for browser streaming
     pub fn has_browser_stream_audio(&self) -> bool {
+        if let Ok(local_track_io) = self.local_track_io.read() {
+            if !local_track_io.is_empty() {
+                return local_track_io.values().any(|track_io| {
+                    track_io
+                        .browser_consumer
+                        .try_lock()
+                        .map(|cons| cons.occupied_len() > 0)
+                        .unwrap_or(false)
+                });
+            }
+        }
+
         if let Some(ref consumer) = self.browser_stream_consumer {
             if let Ok(cons) = consumer.try_lock() {
                 return cons.occupied_len() > 0;
@@ -653,15 +1050,12 @@ impl AudioEngine {
             return Ok(());
         }
 
-        // CRITICAL: Sync channel config from self.config to processing_state before starting
-        // This ensures the audio callback uses the correct config from the first frame
         if let Ok(mut state) = self.processing_state.write() {
-            if state.channel_config != self.config.channel_config {
-                info!(
-                    "Syncing channel config at start: {:?} -> {:?}",
-                    state.channel_config, self.config.channel_config
-                );
-                state.channel_config = self.config.channel_config.clone();
+            for track in state.local_tracks.values_mut() {
+                if track.channel_config != self.config.channel_config && track.bridge_track_id == 0
+                {
+                    track.channel_config = self.config.channel_config.clone();
+                }
             }
         }
 
@@ -709,8 +1103,14 @@ impl AudioEngine {
             self.output_device = Some(AudioDevice::default_output()?);
         }
 
-        let input_device = self.input_device.as_ref().unwrap();
-        let output_device = self.output_device.as_ref().unwrap();
+        let input_device = self
+            .input_device
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No input device available"))?;
+        let output_device = self
+            .output_device
+            .as_ref()
+            .ok_or_else(|| anyhow::anyhow!("No output device available"))?;
 
         let input_default_config = input_device
             .device
@@ -775,7 +1175,11 @@ impl AudioEngine {
         config: &cpal::StreamConfig,
         sample_format: SampleFormat,
     ) -> Result<cpal::Stream> {
-        let producer = self.local_producer.clone().unwrap();
+        let producer = self
+            .local_producer
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Local input ring buffer not initialized"))?;
+        let local_track_io = self.local_track_io.clone();
         let browser_stream_producer = self.browser_stream_producer.clone();
         let levels = self.levels.clone();
         let is_monitoring = self.is_monitoring.clone();
@@ -800,6 +1204,7 @@ impl AudioEngine {
                         input_channels,
                         &mut stereo_buf,
                         &producer,
+                        &local_track_io,
                         browser_stream_producer.as_ref(),
                         &levels,
                         &is_monitoring,
@@ -815,6 +1220,7 @@ impl AudioEngine {
             )?,
             SampleFormat::I32 => {
                 let browser_stream_producer = self.browser_stream_producer.clone();
+                let local_track_io = self.local_track_io.clone();
                 let overflow_count = self.browser_stream_overflow_count.clone();
                 let overflow_samples = self.browser_stream_overflow_samples.clone();
                 // Pre-allocate both conversion buffer and stereo buffer
@@ -837,6 +1243,7 @@ impl AudioEngine {
                             input_channels,
                             &mut stereo_buf,
                             &producer,
+                            &local_track_io,
                             browser_stream_producer.as_ref(),
                             &levels,
                             &is_monitoring,
@@ -853,6 +1260,7 @@ impl AudioEngine {
             }
             SampleFormat::I16 => {
                 let browser_stream_producer = self.browser_stream_producer.clone();
+                let local_track_io = self.local_track_io.clone();
                 let overflow_count = self.browser_stream_overflow_count.clone();
                 let overflow_samples = self.browser_stream_overflow_samples.clone();
                 // Pre-allocate both conversion buffer and stereo buffer
@@ -875,6 +1283,7 @@ impl AudioEngine {
                             input_channels,
                             &mut stereo_buf,
                             &producer,
+                            &local_track_io,
                             browser_stream_producer.as_ref(),
                             &levels,
                             &is_monitoring,
@@ -906,9 +1315,16 @@ impl AudioEngine {
         config: &cpal::StreamConfig,
         sample_format: SampleFormat,
     ) -> Result<cpal::Stream> {
-        let local_consumer = self.local_consumer.clone().unwrap();
+        let local_consumer = self
+            .local_consumer
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Local output ring buffer not initialized"))?;
         let remote_buffers = self.remote_buffers.clone();
-        let backing_consumer = self.backing_consumer.clone().unwrap();
+        let remote_track_buffers = self.remote_track_buffers.clone();
+        let backing_consumer = self
+            .backing_consumer
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Backing track ring buffer not initialized"))?;
         let levels = self.levels.clone();
         let processing_state = self.processing_state.clone();
 
@@ -920,6 +1336,7 @@ impl AudioEngine {
                         data,
                         &local_consumer,
                         &remote_buffers,
+                        &remote_track_buffers,
                         &backing_consumer,
                         &levels,
                         &processing_state,
@@ -942,6 +1359,7 @@ impl AudioEngine {
                             &mut float_buf,
                             &local_consumer,
                             &remote_buffers,
+                            &remote_track_buffers,
                             &backing_consumer,
                             &levels,
                             &processing_state,
@@ -965,6 +1383,7 @@ impl AudioEngine {
                             &mut float_buf,
                             &local_consumer,
                             &remote_buffers,
+                            &remote_track_buffers,
                             &backing_consumer,
                             &levels,
                             &processing_state,
@@ -987,11 +1406,13 @@ impl AudioEngine {
 
     /// Process input audio
     /// stereo_buffer: Pre-allocated buffer for stereo extraction. MUST be allocated before ASIO starts!
+    #[allow(clippy::too_many_arguments)]
     fn process_input(
         data: &[f32],
         input_channels: usize,
         stereo_buffer: &mut Vec<f32>,
         producer: &Arc<std::sync::Mutex<HeapProd<f32>>>,
+        local_track_io: &Arc<RwLock<HashMap<String, LocalTrackIo>>>,
         browser_stream_producer: Option<&Arc<std::sync::Mutex<HeapProd<f32>>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         is_monitoring: &Arc<AtomicBool>,
@@ -1003,60 +1424,124 @@ impl AudioEngine {
     ) {
         // NO LOGGING IN THIS FUNCTION - logging allocates memory which kills ASIO
 
-        // Get channel config
-        // CRITICAL: Default to mono (is_stereo=false) if config cannot be read
-        // This ensures mono input sounds centered rather than panned left/right
-        let (left_ch, right_ch, is_stereo) = if let Ok(state) = processing_state.try_read() {
-            let left = state.channel_config.left_channel as usize;
-            let right = state.channel_config.right_channel.unwrap_or(1) as usize;
-            let stereo = state.channel_config.channel_count == 2;
-            (left, right, stereo)
-        } else {
-            // Default to mono mode (channel 0 duplicated to both L/R = centered)
-            // This is safer than stereo which could cause panning issues
-            (0, 0, false)
-        };
+        if let Ok(mut state) = processing_state.try_write() {
+            if !state.local_tracks.is_empty() {
+                let frame_count = data.len() / input_channels.max(1);
+                stereo_buffer.clear();
+                stereo_buffer.resize(frame_count * 2, 0.0);
 
-        // Clear and reuse the pre-allocated stereo buffer (no allocation!)
-        stereo_buffer.clear();
+                let mut level_l = 0.0_f32;
+                let mut level_r = 0.0_f32;
+                let monitoring_enabled = is_monitoring.load(Ordering::Relaxed);
+                let global_monitoring_volume =
+                    f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
+                let any_solo = state
+                    .local_tracks
+                    .values()
+                    .any(|track| track.track_state.is_solo);
+                let local_track_io_guard = local_track_io.try_read().ok();
+                let mut metering_updated = false;
 
-        // Extract selected channels to stereo
-        for frame in data.chunks(input_channels) {
-            let left_sample = frame.get(left_ch).copied().unwrap_or(0.0);
-            let right_sample = if is_stereo {
-                frame.get(right_ch).copied().unwrap_or(left_sample)
-            } else {
-                left_sample
-            };
-            stereo_buffer.push(left_sample);
-            stereo_buffer.push(right_sample);
+                for (track_id, track) in state.local_tracks.iter_mut() {
+                    track.scratch_buffer.clear();
+
+                    let left_channel = track.channel_config.left_channel as usize;
+                    let right_channel = track.channel_config.right_channel.unwrap_or(1) as usize;
+                    let is_stereo = track.channel_config.channel_count == 2;
+
+                    for frame in data.chunks(input_channels) {
+                        let left_sample = frame.get(left_channel).copied().unwrap_or(0.0);
+                        let right_sample = if is_stereo {
+                            frame.get(right_channel).copied().unwrap_or(left_sample)
+                        } else {
+                            left_sample
+                        };
+                        track.scratch_buffer.push(left_sample);
+                        track.scratch_buffer.push(right_sample);
+                    }
+
+                    let gain = track.track_state.input_gain_linear();
+                    for sample in track.scratch_buffer.iter_mut() {
+                        *sample *= gain;
+                    }
+
+                    track.effects_chain.process(&mut track.scratch_buffer);
+
+                    if !metering_updated {
+                        if let Ok(mut metering) = effects_metering.try_write() {
+                            let chain_metering = track.effects_chain.get_metering();
+                            metering.noise_gate_open = chain_metering.noise_gate_open;
+                            metering.compressor_reduction = chain_metering.compressor_reduction;
+                            metering.de_esser_reduction = chain_metering.de_esser_reduction;
+                            metering.limiter_reduction = chain_metering.limiter_reduction;
+                        }
+                        metering_updated = true;
+                    }
+
+                    for chunk in track.scratch_buffer.chunks_exact(2) {
+                        level_l = level_l.max(chunk[0].abs());
+                        level_r = level_r.max(chunk[1].abs());
+                    }
+
+                    if let Some(local_track_io_guard) = local_track_io_guard.as_ref() {
+                        if let Some(track_io) = local_track_io_guard.get(track_id) {
+                            if let Ok(mut network_prod) = track_io.network_producer.try_lock() {
+                                let _ = network_prod.push_slice(&track.scratch_buffer);
+                            }
+                            if let Ok(mut browser_prod) = track_io.browser_producer.try_lock() {
+                                let pushed = browser_prod.push_slice(&track.scratch_buffer);
+                                let dropped = track.scratch_buffer.len() - pushed;
+                                if dropped > 0 {
+                                    overflow_count.fetch_add(1, Ordering::Relaxed);
+                                    overflow_samples.fetch_add(dropped as u64, Ordering::Relaxed);
+                                }
+                            }
+                        }
+                    }
+
+                    if monitoring_enabled
+                        && track.track_state.monitoring_enabled
+                        && track.track_state.should_pass_audio(any_solo)
+                    {
+                        let (pan_left, pan_right) = track.track_state.pan_gains();
+                        let base_gain = track.track_state.volume
+                            * track.track_state.monitoring_volume
+                            * global_monitoring_volume;
+
+                        for (monitor_chunk, track_chunk) in stereo_buffer
+                            .chunks_exact_mut(2)
+                            .zip(track.scratch_buffer.chunks_exact(2))
+                        {
+                            monitor_chunk[0] += track_chunk[0] * base_gain * pan_left;
+                            monitor_chunk[1] += track_chunk[1] * base_gain * pan_right;
+                        }
+                    }
+                }
+
+                if let Ok(mut lvl) = levels.try_write() {
+                    lvl.input_level_l = level_l;
+                    lvl.input_level_r = level_r;
+                    lvl.input_peak_l = lvl.input_peak_l.max(level_l);
+                    lvl.input_peak_r = lvl.input_peak_r.max(level_r);
+                }
+
+                if let Ok(mut prod) = producer.try_lock() {
+                    let _ = prod.push_slice(stereo_buffer);
+                }
+
+                return;
+            }
         }
 
-        // Apply effects FIRST so they're included in both browser stream and local monitoring
-        // This ensures other users in the session hear the effects too
-        if let Ok(mut state) = processing_state.try_write() {
-            let gain = state.track_state.input_gain_linear();
-
-            // Apply input gain
-            for sample in stereo_buffer.iter_mut() {
-                *sample *= gain;
-            }
-
-            // Process through effects chain
-            state.effects_chain.process(stereo_buffer);
-
-            // Update effects metering for TUI display
-            if let Ok(mut metering) = effects_metering.try_write() {
-                let chain_metering = state.effects_chain.get_metering();
-                metering.noise_gate_open = chain_metering.noise_gate_open;
-                metering.compressor_reduction = chain_metering.compressor_reduction;
-                metering.de_esser_reduction = chain_metering.de_esser_reduction;
-                metering.limiter_reduction = chain_metering.limiter_reduction;
-            }
+        // Fallback single-stream path when no local tracks are configured yet.
+        stereo_buffer.clear();
+        for frame in data.chunks(input_channels) {
+            let left_sample = frame.first().copied().unwrap_or(0.0);
+            stereo_buffer.push(left_sample);
+            stereo_buffer.push(left_sample);
         }
 
         // Calculate input levels (stereo) - interleaved L/R samples
-        // Note: levels are post-effects now
         let (level_l, level_r) = stereo_buffer
             .chunks_exact(2)
             .fold((0.0_f32, 0.0_f32), |(max_l, max_r), chunk| {
@@ -1069,7 +1554,7 @@ impl AudioEngine {
             lvl.input_peak_r = lvl.input_peak_r.max(level_r);
         }
 
-        // Stream audio to browser (browser applies effects via Web Audio)
+        // Legacy browser stream path used before track registration completes.
         if let Some(browser_prod) = browser_stream_producer {
             if let Ok(mut prod) = browser_prod.try_lock() {
                 let pushed = prod.push_slice(stereo_buffer);
@@ -1082,39 +1567,16 @@ impl AudioEngine {
             }
         }
 
-        // Get monitoring state - use atomic flag for monitoring_enabled (never fails!)
         let mon_vol = f32::from_bits(monitoring_volume.load(Ordering::Relaxed));
         let monitoring_enabled = is_monitoring.load(Ordering::Relaxed);
-        let is_muted = if let Ok(state) = processing_state.try_read() {
-            state.track_state.is_muted
-        } else {
-            false // Default to not muted - let audio through
-        };
-
-        // Local monitoring: apply volume, pan, and push to output
-        // Note: Effects were already applied above (before browser stream)
-        let should_monitor = monitoring_enabled && !is_muted;
-
-        if should_monitor {
-            // Apply volume and pan for local monitoring
-            // Effects are already applied, just need volume/pan
-            if let Ok(state) = processing_state.try_read() {
-                let volume = state.track_state.volume;
-                let (pan_left, pan_right) = state.track_state.pan_gains();
-
-                // Apply volume, pan, and monitoring volume to stereo pairs
-                for chunk in stereo_buffer.chunks_exact_mut(2) {
-                    let base_gain = volume * mon_vol;
-                    chunk[0] *= base_gain * pan_left;
-                    chunk[1] *= base_gain * pan_right;
-                }
+        if monitoring_enabled {
+            for chunk in stereo_buffer.chunks_exact_mut(2) {
+                chunk[0] *= mon_vol;
+                chunk[1] *= mon_vol;
             }
-
             // Push to output ring buffer
             if let Ok(mut prod) = producer.try_lock() {
-                for sample in stereo_buffer.iter() {
-                    let _ = prod.try_push(*sample);
-                }
+                let _ = prod.push_slice(stereo_buffer);
             }
         }
     }
@@ -1125,6 +1587,7 @@ impl AudioEngine {
         data: &mut [f32],
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
+        remote_track_buffers: &Arc<RwLock<HashMap<RemoteTrackKey, RemoteTrackBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
@@ -1164,11 +1627,34 @@ impl AudioEngine {
             }
         }
 
+        if let Ok(buffers) = remote_track_buffers.try_read() {
+            let any_solo = buffers.values().any(|buffer| buffer.is_solo);
+
+            for buffer in buffers.values() {
+                if buffer.is_muted || (any_solo && !buffer.is_solo) {
+                    continue;
+                }
+
+                let pan_angle = (buffer.pan + 1.0) * 0.25 * std::f32::consts::PI;
+                let left_gain = pan_angle.cos() * buffer.volume;
+                let right_gain = pan_angle.sin() * buffer.volume;
+
+                if let Ok(mut cons) = buffer.consumer.try_lock() {
+                    for chunk in data.chunks_exact_mut(2) {
+                        let left_sample = cons.try_pop().unwrap_or(0.0);
+                        let right_sample = cons.try_pop().unwrap_or(0.0);
+                        chunk[0] += left_sample * left_gain;
+                        chunk[1] += right_sample * right_gain;
+                    }
+                }
+            }
+        }
+
         // Mix backing track
         let backing_volume = processing_state
             .try_read()
             .map(|s| {
-                if s.backing_track.is_playing {
+                if s.backing_track.is_loaded && s.backing_track.is_playing {
                     s.backing_track.volume
                 } else {
                     0.0
@@ -1187,11 +1673,16 @@ impl AudioEngine {
             }
         }
 
+        let master_vol = if let Ok(mut state) = processing_state.try_write() {
+            if state.master_effects_enabled {
+                state.master_effects_chain.process(data);
+            }
+            state.master_volume
+        } else {
+            1.0
+        };
+
         // Apply master volume
-        let master_vol = processing_state
-            .try_read()
-            .map(|s| s.master_volume)
-            .unwrap_or(1.0);
         for sample in data.iter_mut() {
             *sample *= master_vol;
         }
@@ -1218,11 +1709,13 @@ impl AudioEngine {
 
     /// Process I32 output - converts to F32, processes, converts back
     /// float_buffer: Pre-allocated buffer for F32 conversion. MUST be allocated before ASIO starts!
+    #[allow(clippy::too_many_arguments)]
     fn process_output_i32(
         data: &mut [i32],
         float_buffer: &mut Vec<f32>,
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
+        remote_track_buffers: &Arc<RwLock<HashMap<RemoteTrackKey, RemoteTrackBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
@@ -1234,6 +1727,7 @@ impl AudioEngine {
             float_buffer,
             local_consumer,
             remote_buffers,
+            remote_track_buffers,
             backing_consumer,
             levels,
             processing_state,
@@ -1247,11 +1741,13 @@ impl AudioEngine {
 
     /// Process I16 output - converts to F32, processes, converts back
     /// float_buffer: Pre-allocated buffer for F32 conversion. MUST be allocated before ASIO starts!
+    #[allow(clippy::too_many_arguments)]
     fn process_output_i16(
         data: &mut [i16],
         float_buffer: &mut Vec<f32>,
         local_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         remote_buffers: &Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
+        remote_track_buffers: &Arc<RwLock<HashMap<RemoteTrackKey, RemoteTrackBuffer>>>,
         backing_consumer: &Arc<std::sync::Mutex<HeapCons<f32>>>,
         levels: &Arc<RwLock<AudioLevels>>,
         processing_state: &Arc<RwLock<AudioProcessingState>>,
@@ -1263,6 +1759,7 @@ impl AudioEngine {
             float_buffer,
             local_consumer,
             remote_buffers,
+            remote_track_buffers,
             backing_consumer,
             levels,
             processing_state,
@@ -1355,7 +1852,11 @@ impl AudioEngine {
         );
 
         // Clone shared state for callbacks
-        let producer = self.local_producer.clone().unwrap();
+        let producer = self
+            .local_producer
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Local input ring buffer not initialized"))?;
+        let local_track_io = self.local_track_io.clone();
         let browser_stream_producer = self.browser_stream_producer.clone();
         let levels_in = self.levels.clone();
         let is_monitoring = self.is_monitoring.clone();
@@ -1383,6 +1884,7 @@ impl AudioEngine {
                             input_channels,
                             &mut stereo_buf,
                             &producer,
+                            &local_track_io,
                             browser_stream_producer.as_ref(),
                             &levels_in,
                             &is_monitoring,
@@ -1400,6 +1902,7 @@ impl AudioEngine {
             SampleFormat::I32 => {
                 let overflow_count = self.browser_stream_overflow_count.clone();
                 let overflow_samples = self.browser_stream_overflow_samples.clone();
+                let local_track_io = self.local_track_io.clone();
                 // Pre-allocate ALL buffers BEFORE building stream
                 let conversion_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
                 let stereo_buffer = RefCell::new(Vec::<f32>::with_capacity(65536));
@@ -1419,6 +1922,7 @@ impl AudioEngine {
                             input_channels,
                             &mut stereo_buf,
                             &producer,
+                            &local_track_io,
                             browser_stream_producer.as_ref(),
                             &levels_in,
                             &is_monitoring,
@@ -1442,9 +1946,16 @@ impl AudioEngine {
         };
 
         // Build output stream
-        let local_consumer = self.local_consumer.clone().unwrap();
+        let local_consumer = self
+            .local_consumer
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Local output ring buffer not initialized"))?;
         let remote_buffers = self.remote_buffers.clone();
-        let backing_consumer = self.backing_consumer.clone().unwrap();
+        let remote_track_buffers = self.remote_track_buffers.clone();
+        let backing_consumer = self
+            .backing_consumer
+            .clone()
+            .ok_or_else(|| anyhow::anyhow!("Backing track ring buffer not initialized"))?;
         let levels_out = self.levels.clone();
         let processing_state_out = self.processing_state.clone();
 
@@ -1457,6 +1968,7 @@ impl AudioEngine {
                             data,
                             &local_consumer,
                             &remote_buffers,
+                            &remote_track_buffers,
                             &backing_consumer,
                             &levels_out,
                             &processing_state_out,
@@ -1479,6 +1991,7 @@ impl AudioEngine {
                             &mut float_buf,
                             &local_consumer,
                             &remote_buffers,
+                            &remote_track_buffers,
                             &backing_consumer,
                             &levels_out,
                             &processing_state_out,
@@ -1509,7 +2022,10 @@ impl AudioEngine {
 
         if let Ok(mut state) = self.processing_state.write() {
             state.sample_rate = sample_rate;
-            state.effects_chain.set_sample_rate(sample_rate);
+            for track in state.local_tracks.values_mut() {
+                track.effects_chain.set_sample_rate(sample_rate);
+            }
+            state.master_effects_chain.set_sample_rate(sample_rate);
         }
 
         let latency_ms = (buffer_size_samples as f32 / sample_rate as f32) * 1000.0;
@@ -1573,8 +2089,8 @@ impl AudioEngine {
     pub fn mark_browser_read(&self) {
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(0);
         self.last_browser_read_time.store(now, Ordering::Relaxed);
     }
 
@@ -1586,8 +2102,8 @@ impl AudioEngine {
         }
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
-            .unwrap()
-            .as_millis() as u64;
+            .map(|duration| duration.as_millis() as u64)
+            .unwrap_or(last);
         now.saturating_sub(last)
     }
 
@@ -1600,6 +2116,22 @@ impl AudioEngine {
 
     /// Get browser stream buffer occupancy (samples available, capacity)
     pub fn get_browser_stream_occupancy(&self) -> (usize, usize) {
+        if let Ok(local_track_io) = self.local_track_io.read() {
+            if !local_track_io.is_empty() {
+                let mut used = 0usize;
+                let mut capacity = 0usize;
+
+                for track_io in local_track_io.values() {
+                    capacity += LOCAL_TRACK_BROWSER_RING_BUFFER_SIZE;
+                    if let Ok(cons) = track_io.browser_consumer.try_lock() {
+                        used += cons.occupied_len();
+                    }
+                }
+
+                return (used, capacity.max(LOCAL_TRACK_BROWSER_RING_BUFFER_SIZE));
+            }
+        }
+
         if let Some(ref consumer) = self.browser_stream_consumer {
             if let Ok(cons) = consumer.try_lock() {
                 return (cons.occupied_len(), BROWSER_STREAM_BUFFER_SIZE);
@@ -1613,6 +2145,8 @@ impl AudioEngine {
     pub fn create_bridge_handle(&self) -> AudioBridgeHandle {
         AudioBridgeHandle {
             remote_buffers: self.remote_buffers.clone(),
+            remote_track_buffers: self.remote_track_buffers.clone(),
+            local_track_io: self.local_track_io.clone(),
             browser_stream_consumer: self.browser_stream_consumer.clone(),
             processing_state: self.processing_state.clone(),
             sample_rate: self.config.sample_rate as u32,
@@ -1628,6 +2162,8 @@ impl AudioEngine {
 #[derive(Clone)]
 pub struct AudioBridgeHandle {
     remote_buffers: Arc<RwLock<HashMap<String, RemoteUserBuffer>>>,
+    remote_track_buffers: Arc<RwLock<HashMap<RemoteTrackKey, RemoteTrackBuffer>>>,
+    local_track_io: Arc<RwLock<HashMap<String, LocalTrackIo>>>,
     browser_stream_consumer: Option<Arc<std::sync::Mutex<HeapCons<f32>>>>,
     processing_state: Arc<RwLock<AudioProcessingState>>,
     sample_rate: u32,
@@ -1712,6 +2248,87 @@ impl AudioBridgeHandle {
         }
     }
 
+    #[allow(clippy::too_many_arguments)]
+    pub fn sync_remote_track(
+        &self,
+        user_id: &str,
+        browser_track_id: &str,
+        bridge_track_id: u8,
+        track_name: &str,
+        volume: f32,
+        pan: f32,
+        muted: bool,
+        solo: bool,
+    ) {
+        let key = RemoteTrackKey {
+            user_id: user_id.to_string(),
+            bridge_track_id,
+        };
+
+        if let Ok(mut buffers) = self.remote_track_buffers.write() {
+            buffers.entry(key.clone()).or_insert_with(|| {
+                let ring_buffer = HeapRb::<f32>::new(REMOTE_RING_BUFFER_SIZE);
+                let (producer, consumer) = ring_buffer.split();
+
+                RemoteTrackBuffer {
+                    producer: Arc::new(std::sync::Mutex::new(producer)),
+                    consumer: Arc::new(std::sync::Mutex::new(consumer)),
+                    volume,
+                    pan,
+                    is_muted: muted,
+                    is_solo: solo,
+                    compensation_delay_samples: 0,
+                    track_name: track_name.to_string(),
+                    browser_track_id: browser_track_id.to_string(),
+                }
+            });
+
+            if let Some(buffer) = buffers.get_mut(&key) {
+                buffer.volume = volume;
+                buffer.pan = pan;
+                buffer.is_muted = muted;
+                buffer.is_solo = solo;
+                buffer.track_name = track_name.to_string();
+                buffer.browser_track_id = browser_track_id.to_string();
+            }
+        }
+    }
+
+    pub fn remove_remote_track(&self, user_id: &str, bridge_track_id: u8) {
+        if let Ok(mut buffers) = self.remote_track_buffers.write() {
+            buffers.remove(&RemoteTrackKey {
+                user_id: user_id.to_string(),
+                bridge_track_id,
+            });
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn update_remote_track(
+        &self,
+        user_id: &str,
+        bridge_track_id: u8,
+        volume: f32,
+        pan: f32,
+        muted: bool,
+        solo: bool,
+        delay_ms: f32,
+    ) {
+        if let Ok(mut buffers) = self.remote_track_buffers.write() {
+            if let Some(buffer) = buffers.get_mut(&RemoteTrackKey {
+                user_id: user_id.to_string(),
+                bridge_track_id,
+            }) {
+                buffer.volume = volume;
+                buffer.pan = pan;
+                buffer.is_muted = muted;
+                buffer.is_solo = solo;
+                buffer.compensation_delay_samples =
+                    (delay_ms * self.sample_rate as f32 / 1000.0) as usize;
+            }
+        }
+    }
+
     /// Push audio data for a remote user
     pub fn push_remote_audio(&self, user_id: &str, samples: &[f32]) {
         if let Ok(buffers) = self.remote_buffers.read() {
@@ -1723,6 +2340,100 @@ impl AudioBridgeHandle {
                 }
             }
         }
+    }
+
+    pub fn push_remote_track_audio(&self, user_id: &str, bridge_track_id: u8, samples: &[f32]) {
+        let key = RemoteTrackKey {
+            user_id: user_id.to_string(),
+            bridge_track_id,
+        };
+
+        if let Ok(mut buffers) = self.remote_track_buffers.write() {
+            let buffer = buffers.entry(key).or_insert_with(|| {
+                let ring_buffer = HeapRb::<f32>::new(REMOTE_RING_BUFFER_SIZE);
+                let (producer, consumer) = ring_buffer.split();
+
+                RemoteTrackBuffer {
+                    producer: Arc::new(std::sync::Mutex::new(producer)),
+                    consumer: Arc::new(std::sync::Mutex::new(consumer)),
+                    volume: 1.0,
+                    pan: 0.0,
+                    is_muted: false,
+                    is_solo: false,
+                    compensation_delay_samples: 0,
+                    track_name: format!("Track {}", bridge_track_id),
+                    browser_track_id: format!("bridge-{}", bridge_track_id),
+                }
+            });
+
+            if let Ok(mut prod) = buffer.producer.try_lock() {
+                for &sample in samples {
+                    let _ = prod.try_push(sample);
+                }
+            }
+        }
+    }
+
+    pub fn get_local_track_descriptors(&self) -> Vec<LocalTrackDescriptor> {
+        if let Ok(state) = self.processing_state.try_read() {
+            return state
+                .local_tracks
+                .iter()
+                .map(|(browser_track_id, track)| LocalTrackDescriptor {
+                    browser_track_id: browser_track_id.clone(),
+                    bridge_track_id: track.bridge_track_id,
+                    track_name: track.track_name.clone(),
+                })
+                .collect();
+        }
+
+        Vec::new()
+    }
+
+    pub fn get_local_track_network_audio(
+        &self,
+        browser_track_id: &str,
+        max_samples: usize,
+    ) -> Vec<f32> {
+        if let Ok(local_track_io) = self.local_track_io.read() {
+            if let Some(track_io) = local_track_io.get(browser_track_id) {
+                if let Ok(mut consumer) = track_io.network_consumer.try_lock() {
+                    let available = consumer.occupied_len();
+                    let to_read = available.min(max_samples);
+                    if to_read > 0 {
+                        let mut buffer = vec![0.0f32; to_read];
+                        let read = consumer.pop_slice(&mut buffer);
+                        buffer.truncate(read);
+                        return buffer;
+                    }
+                }
+            }
+        }
+
+        Vec::new()
+    }
+
+    pub fn get_local_track_browser_audio(
+        &self,
+        browser_track_id: &str,
+        max_samples: usize,
+    ) -> Vec<f32> {
+        if let Ok(local_track_io) = self.local_track_io.read() {
+            if let Some(track_io) = local_track_io.get(browser_track_id) {
+                if let Ok(mut consumer) = track_io.browser_consumer.try_lock() {
+                    let available = consumer.occupied_len();
+                    let to_read = available.min(max_samples);
+                    if to_read > 0 {
+                        let mut buffer = vec![0.0f32; to_read];
+                        let read = consumer.pop_slice(&mut buffer);
+                        buffer.truncate(read);
+                        return buffer;
+                    }
+                }
+            }
+        }
+
+        Vec::new()
     }
 
     /// Get raw audio samples for streaming to browser
@@ -1740,5 +2451,49 @@ impl AudioBridgeHandle {
             }
         }
         Vec::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn empty_consumer() -> Arc<std::sync::Mutex<HeapCons<f32>>> {
+        let ring = HeapRb::<f32>::new(32);
+        let (_producer, consumer) = ring.split();
+        Arc::new(std::sync::Mutex::new(consumer))
+    }
+
+    #[test]
+    fn remote_track_mute_keeps_other_tracks_from_same_peer_audible() {
+        let engine = AudioEngine::new().expect("create audio engine for remote track mix test");
+
+        engine.sync_remote_track("peer-a", "guitar-track", 1, "Guitar", 1.0, 1.0, true, false);
+        engine.sync_remote_track("peer-a", "vocal-track", 2, "Vocal", 1.0, -1.0, false, false);
+
+        engine.push_remote_track_audio("peer-a", 1, &[0.9, 0.9, 0.9, 0.9]);
+        engine.push_remote_track_audio("peer-a", 2, &[0.25, 0.25, 0.25, 0.25]);
+
+        let local_consumer = empty_consumer();
+        let backing_consumer = empty_consumer();
+        let mut output = vec![0.0f32; 4];
+
+        AudioEngine::process_output_f32(
+            &mut output,
+            &local_consumer,
+            &engine.remote_buffers,
+            &engine.remote_track_buffers,
+            &backing_consumer,
+            &engine.levels,
+            &engine.processing_state,
+        );
+
+        for frame in output.chunks_exact(2) {
+            assert!(frame[0] > 0.20, "expected vocal track on the left channel");
+            assert!(
+                frame[1].abs() < 0.0001,
+                "expected muted guitar and hard-left vocal to leave right channel silent"
+            );
+        }
     }
 }

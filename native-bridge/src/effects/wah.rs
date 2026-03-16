@@ -102,10 +102,9 @@ impl AudioEffect for Wah {
             );
 
             // Process
-            let (left, right) = self.filter.process(
-                frame[0],
-                if frame.len() > 1 { frame[1] } else { frame[0] },
-            );
+            let (left, right) = self
+                .filter
+                .process(frame[0], if frame.len() > 1 { frame[1] } else { frame[0] });
 
             // Mix with dry signal for more natural sound
             frame[0] = frame[0] * 0.3 + left * 0.7;

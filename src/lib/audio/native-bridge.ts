@@ -101,6 +101,24 @@ export interface TrackChannelConfig {
   rightChannel?: number;
 }
 
+export interface NativeBridgeTrackDescriptor {
+  trackId: string;
+  bridgeTrackId: number;
+  trackName: string;
+  channelConfig: InputChannelConfig;
+}
+
+export interface NativeBridgeRemoteTrackDescriptor {
+  userId: string;
+  trackId: string;
+  bridgeTrackId: number;
+  trackName: string;
+  volume: number;
+  pan: number;
+  muted: boolean;
+  solo: boolean;
+}
+
 // === Event Types ===
 
 export type BridgeEventType =
@@ -143,6 +161,9 @@ type BridgeEventData = {
 };
 
 type BridgeEventCallback<T extends BridgeEventType> = (data: BridgeEventData[T]) => void;
+type AnyBridgeEventCallback = {
+  [K in BridgeEventType]: BridgeEventCallback<K>;
+}[BridgeEventType];
 
 // === Native Bridge Client ===
 
@@ -150,7 +171,7 @@ export class NativeBridge {
   private ws: WebSocket | null = null;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private connectingPromise: Promise<boolean> | null = null;
-  private listeners: Map<BridgeEventType, Set<BridgeEventCallback<any>>> = new Map();
+  private listeners: Map<BridgeEventType, Set<AnyBridgeEventCallback>> = new Map();
   private isConnected = false;
   private shouldReconnect = false;
   private reconnectAttempts = 0;
@@ -374,11 +395,13 @@ export class NativeBridge {
   // === Event Handling ===
 
   on<T extends BridgeEventType>(event: T, callback: BridgeEventCallback<T>): void {
-    this.listeners.get(event)?.add(callback);
+    const listeners = this.listeners.get(event) as Set<BridgeEventCallback<T>> | undefined;
+    listeners?.add(callback);
   }
 
   off<T extends BridgeEventType>(event: T, callback: BridgeEventCallback<T>): void {
-    this.listeners.get(event)?.delete(callback);
+    const listeners = this.listeners.get(event) as Set<BridgeEventCallback<T>> | undefined;
+    listeners?.delete(callback);
   }
 
   /**
@@ -398,7 +421,8 @@ export class NativeBridge {
   }
 
   private emit<T extends BridgeEventType>(event: T, data: BridgeEventData[T]): void {
-    this.listeners.get(event)?.forEach((callback) => callback(data));
+    const listeners = this.listeners.get(event) as Set<BridgeEventCallback<T>> | undefined;
+    listeners?.forEach((callback) => callback(data));
   }
 
   private handleMessage(data: string): void {
@@ -791,6 +815,30 @@ export class NativeBridge {
   }
 
   /**
+   * Register or update a local native bridge track.
+   * This keeps the Rust engine's track graph aligned with the browser DAW model.
+   */
+  syncLocalTrack(track: NativeBridgeTrackDescriptor): void {
+    this.send({
+      type: 'syncLocalTrack',
+      trackId: track.trackId,
+      bridgeTrackId: track.bridgeTrackId,
+      trackName: track.trackName,
+      channelConfig: track.channelConfig,
+    });
+  }
+
+  /**
+   * Remove a local native bridge track.
+   */
+  removeLocalTrack(trackId: string): void {
+    this.send({
+      type: 'removeLocalTrack',
+      trackId,
+    });
+  }
+
+  /**
    * Set master volume
    */
   setMasterVolume(volume: number): void {
@@ -826,6 +874,35 @@ export class NativeBridge {
       volume,
       muted,
       compensation_delay_ms: compensationDelayMs,
+    });
+  }
+
+  /**
+   * Register or update an individual remote native bridge track for local mixing.
+   */
+  syncRemoteTrack(track: NativeBridgeRemoteTrackDescriptor): void {
+    this.send({
+      type: 'syncRemoteTrack',
+      userId: track.userId,
+      trackId: track.trackId,
+      bridgeTrackId: track.bridgeTrackId,
+      trackName: track.trackName,
+      volume: track.volume,
+      pan: track.pan,
+      muted: track.muted,
+      solo: track.solo,
+    });
+  }
+
+  /**
+   * Remove an individual remote native bridge track.
+   */
+  removeRemoteTrack(userId: string, trackId: string, bridgeTrackId?: number): void {
+    this.send({
+      type: 'removeRemoteTrack',
+      userId,
+      trackId,
+      bridgeTrackId,
     });
   }
 
@@ -1010,6 +1087,15 @@ export class NativeBridge {
    * Used to route WebRTC audio through the native audio engine
    * Format: [msg_type: 0][sample_count: u32][timestamp: u64][user_id_len: u8][user_id: utf8][samples: f32 LE...]
    */
+  private writeFloat32Payload(buffer: ArrayBuffer, byteOffset: number, samples: Float32Array): void {
+    const view = new DataView(buffer);
+    let offset = byteOffset;
+    for (let i = 0; i < samples.length; i += 1) {
+      view.setFloat32(offset, samples[i], true);
+      offset += 4;
+    }
+  }
+
   sendRemoteAudio(userId: string, samples: Float32Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       return;
@@ -1032,8 +1118,7 @@ export class NativeBridge {
     new Uint8Array(buffer, headerSize + 1, userIdBytes.length).set(userIdBytes);
 
     // Samples as f32 little-endian
-    const samplesView = new Float32Array(buffer, headerSize + 1 + userIdBytes.length);
-    samplesView.set(samples);
+    this.writeFloat32Payload(buffer, headerSize + 1 + userIdBytes.length, samples);
 
     this.ws.send(buffer);
   }
@@ -1059,8 +1144,7 @@ export class NativeBridge {
     view.setBigUint64(5, BigInt(Date.now()), true); // little-endian
 
     // Samples as f32 little-endian
-    const samplesView = new Float32Array(buffer, headerSize);
-    samplesView.set(samples);
+    this.writeFloat32Payload(buffer, headerSize, samples);
 
     this.ws.send(buffer);
   }
@@ -1100,7 +1184,6 @@ const R2_PUBLIC_URL = process.env.NEXT_PUBLIC_R2_PUBLIC_URL || 'https://cdn.open
 export function getNativeBridgeDownloadUrl(): string {
   const baseUrl = `${R2_PUBLIC_URL}/bridge/latest`;
   const platform = navigator.platform.toLowerCase();
-  const userAgent = navigator.userAgent.toLowerCase();
 
   if (platform.includes('win')) {
     return `${baseUrl}/openstudio-bridge-windows.exe`;

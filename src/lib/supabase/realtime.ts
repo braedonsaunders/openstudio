@@ -2,11 +2,31 @@ import { supabase, getRealtimeChannel, RealtimeChannel } from './client';
 import type { User, BackingTrack, RoomMessage, TrackQueue, UserTrack } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
 import type { RoomRole, RoomPermissions } from '@/types/permissions';
+import type { Song } from '@/types/songs';
+import type { CanvasData } from '@/stores/canvas-store';
 
 export interface RoomState {
   users: Record<string, User>;
   queue: TrackQueue;
   messages: RoomMessage[];
+}
+
+export interface RoomLayoutState {
+  activePanel: string;
+  isPanelDockVisible: boolean;
+  isBottomDockVisible: boolean;
+  mainView: string;
+  leftPanelWidth: number;
+  rightPanelWidth: number;
+  sharedSplitPosition: number;
+  updatedBy: string;
+  timestamp: number;
+}
+
+export interface CanvasSyncPayload {
+  canvas: CanvasData;
+  updatedBy: string;
+  timestamp: number;
 }
 
 /** Full room state payload for state sync protocol (WS2) */
@@ -24,11 +44,12 @@ export interface StateSyncPayload {
   keySource: string;
   userTracks: UserTrack[];
   loopTracks: LoopTrackState[];
-  songs: Array<{ id: string; name: string; [key: string]: unknown }>;
+  songs: Song[];
   currentSongId: string | null;
   stemMixState: Record<string, { enabled: boolean; volume: number }>;
   permissions: Record<string, unknown>;
   songTrackStates: Record<string, { muted: boolean; solo: boolean; volume: number }>;
+  layoutState?: RoomLayoutState | null;
   currentSongIsPlaying?: boolean;  // Whether Song system is actively playing
   currentSongPosition?: number;    // Current playback position in the Song
   timestamp: number;
@@ -195,6 +216,14 @@ export class RealtimeRoomManager {
     // World position events (for synced avatar movement)
     this.channel.on('broadcast', { event: 'world:position' }, ({ payload }) => {
       this.emit('world:position', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'layout:update' }, ({ payload }) => {
+      this.emit('layout:update', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'canvas:sync' }, ({ payload }) => {
+      this.emit('canvas:sync', payload);
     });
 
     // Permission events
@@ -402,12 +431,12 @@ export class RealtimeRoomManager {
             (async () => {
               try {
                 await channelToRemove.untrack();
-              } catch (err) {
+              } catch {
                 // Expected if channel is already closed
               }
               try {
                 await supabase.removeChannel(channelToRemove);
-              } catch (err) {
+              } catch {
                 // Expected if channel is already removed or in bad state
               }
             })(),
@@ -415,7 +444,7 @@ export class RealtimeRoomManager {
               setTimeout(() => reject(new Error('Cleanup timeout')), CLEANUP_TIMEOUT)
             ),
           ]);
-        } catch (err) {
+        } catch {
           // Cleanup timed out or failed - this is fine, just log it
           console.log('[Realtime] Channel cleanup completed (may have timed out):', roomIdToCleanup);
         }
@@ -667,6 +696,32 @@ export class RealtimeRoomManager {
       type: 'broadcast',
       event: 'world:position',
       payload: { ...position, userId: this.userId, timestamp: Date.now() },
+    });
+  }
+
+  async broadcastLayoutState(
+    layoutState: Omit<RoomLayoutState, 'updatedBy' | 'timestamp'>
+  ): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'layout:update',
+      payload: {
+        ...layoutState,
+        updatedBy: this.userId,
+        timestamp: Date.now(),
+      },
+    });
+  }
+
+  async broadcastCanvasSync(canvas: CanvasData): Promise<void> {
+    await this.channel?.send({
+      type: 'broadcast',
+      event: 'canvas:sync',
+      payload: {
+        canvas,
+        updatedBy: this.userId,
+        timestamp: Date.now(),
+      } satisfies CanvasSyncPayload,
     });
   }
 

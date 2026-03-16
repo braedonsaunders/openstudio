@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { subscribeWithSelector } from 'zustand/middleware';
-import type { User, Room, RoomSettings, BackingTrack, TrackQueue, RoomMessage, StemMixState } from '@/types';
+import type { User, Room, BackingTrack, TrackQueue, RoomMessage, StemMixState } from '@/types';
+import type { RoomLayoutState } from '@/lib/supabase/realtime';
 
 // World position for synced avatar movement
 export interface WorldPosition {
@@ -58,6 +59,7 @@ interface RoomState {
   // World view positions (synced between clients)
   worldPositions: Map<string, WorldPosition>;
   worldScene: string | null;
+  layoutState: RoomLayoutState | null;
 
   // Actions
   setRoom: (room: Room) => void;
@@ -109,6 +111,7 @@ interface RoomState {
   updateWorldPosition: (userId: string, updates: Partial<WorldPosition>) => void;
   removeWorldPosition: (userId: string) => void;
   setWorldScene: (scene: string | null) => void;
+  setLayoutState: (layoutState: RoomLayoutState | null) => void;
 
   // Reset
   reset: () => void;
@@ -148,6 +151,7 @@ export const useRoomStore = create<RoomState>()(
     waveformData: null,
     worldPositions: new Map(),
     worldScene: null,
+    layoutState: null,
 
     setRoom: (room) => set({ room }),
     setCurrentUser: (user) => set({ currentUser: user }),
@@ -470,6 +474,8 @@ export const useRoomStore = create<RoomState>()(
 
     setWorldScene: (scene) => set({ worldScene: scene }),
 
+    setLayoutState: (layoutState) => set({ layoutState }),
+
     reset: () =>
       set({
         room: null,
@@ -489,6 +495,7 @@ export const useRoomStore = create<RoomState>()(
         waveformData: null,
         worldPositions: new Map(),
         worldScene: null,
+        layoutState: null,
       }),
   }))
 );

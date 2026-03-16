@@ -106,8 +106,6 @@ pub struct Peer {
     last_ack_sequence: RwLock<u16>,
     /// Sequence counter for sending
     send_sequence: RwLock<u16>,
-    /// Clock sync samples for this peer
-    clock_samples: RwLock<Vec<(u64, u64, u64, u64)>>,
     /// Compensation delay in samples
     compensation_delay: RwLock<usize>,
     /// Whether this peer is the master clock
@@ -150,7 +148,6 @@ impl Peer {
             pending_reliable: RwLock::new(HashMap::new()),
             last_ack_sequence: RwLock::new(0),
             send_sequence: RwLock::new(0),
-            clock_samples: RwLock::new(Vec::new()),
             compensation_delay: RwLock::new(0),
             is_master: RwLock::new(false),
             avatar_url: RwLock::new(None),
@@ -222,13 +219,11 @@ impl Peer {
 
     /// Get quality score (0-100)
     pub fn quality_score(&self) -> u8 {
-        let rtt_score = (100.0 - self.rtt_ms()).max(0.0).min(100.0);
+        let rtt_score = (100.0 - self.rtt_ms()).clamp(0.0, 100.0);
         let jitter_penalty = self.jitter_ms() * 2.0;
         let loss_penalty = self.packet_loss() * 5.0;
 
-        ((rtt_score - jitter_penalty - loss_penalty)
-            .max(0.0)
-            .min(100.0)) as u8
+        (rtt_score - jitter_penalty - loss_penalty).clamp(0.0, 100.0) as u8
     }
 
     /// Add a track

@@ -3,10 +3,9 @@
 
 import type {
   WebRTCStats,
-  UserPerformanceInfo,
-  LatencyBreakdown,
   JamCompatibility,
   QualityPresetName,
+  OpusEncodingSettings,
 } from '@/types';
 import { getAuthHeaders } from '@/lib/auth-fetch';
 
@@ -46,7 +45,6 @@ import {
   MasterClockSync,
   LatencyCompensator,
   NetworkTrendAnalyzer,
-  calculateLatencyBreakdown,
   calculateQualityScore,
   assessConnectionQuality,
 } from '@/lib/audio/latency-sync-engine';
@@ -201,16 +199,6 @@ interface OpusSdpSettings {
 }
 
 /**
- * SDP optimization options (legacy interface for backwards compatibility)
- */
-interface SdpOptimizationOptions {
-  /** Use 10ms Opus frames instead of 20ms (default: true) */
-  lowLatency?: boolean;
-  /** Enable stereo encoding for this track (default: false for mono) */
-  stereo?: boolean;
-}
-
-/**
  * Modify SDP to optimize Opus encoding for the given settings.
  * Applies frame size, FEC, DTX, and CBR settings from quality presets.
  *
@@ -239,7 +227,7 @@ function optimizeSdpForLowLatency(sdp: string, settings?: OpusSdpSettings): stri
       // Only modify Opus lines (identified by useinbandfec or minptime)
       if (params.includes('useinbandfec') || params.includes('minptime')) {
         // Remove existing parameters that we'll be setting
-        let cleanParams = params
+        const cleanParams = params
           .replace(/ptime=\d+;?/g, '')
           .replace(/maxptime=\d+;?/g, '')
           .replace(/minptime=\d+;?/g, '')
@@ -288,21 +276,6 @@ function optimizeSdpForLowLatency(sdp: string, settings?: OpusSdpSettings): stri
   return optimizedSdp;
 }
 
-/**
- * Modify SDP for optimal audio transmission.
- * Convenience wrapper that accepts simple options.
- */
-function optimizeSdpForAudio(sdp: string, options: SdpOptimizationOptions = {}): string {
-  const { lowLatency = true, stereo = false } = options;
-  return optimizeSdpForLowLatency(sdp, {
-    frameSize: lowLatency ? 10 : 20,
-    fec: true,
-    dtx: false,
-    cbr: true,
-    stereo,
-  });
-}
-
 export class CloudflareCalls {
   private peerConnection: RTCPeerConnection | null = null;
   private remoteStreams: Map<string, MediaStream> = new Map();
@@ -318,6 +291,7 @@ export class CloudflareCalls {
   private localTracks: Map<string, AudioTrackInfo> = new Map();
   private remoteTracks: Map<string, AudioTrackInfo> = new Map();
   private transceivers: Map<string, RTCRtpTransceiver> = new Map();
+  private receiveRemoteTracks: boolean = true;
 
   // Room clock sync for playback synchronization
   private roomClockOffset: number = 0;
@@ -339,6 +313,7 @@ export class CloudflareCalls {
 
   // Current quality preset
   private activePreset: QualityPresetName = 'low-latency';
+  private customEncodingSettings: Partial<OpusEncodingSettings> = {};
 
   // Reconnection state
   private reconnectionAttempts: number = 0;
@@ -410,6 +385,10 @@ export class CloudflareCalls {
 
     // Handle remote tracks
     this.peerConnection.ontrack = (event) => {
+      if (!this.receiveRemoteTracks) {
+        return;
+      }
+
       const stream = event.streams[0];
       if (stream) {
         // Extract userId from track metadata or stream id
@@ -494,9 +473,17 @@ export class CloudflareCalls {
    * @param stream Optional MediaStream containing an audio track
    * @param trackType Type identifier for the track (e.g., 'mic', 'guitar')
    * @param trackLabel Optional human-readable label for the track
+   * @param receiveRemoteTracks Whether to subscribe to other users' WebRTC audio
    * @returns Promise that resolves when connected
    */
-  async joinRoom(stream?: MediaStream, trackType: AudioTrackType = 'mic', trackLabel?: string): Promise<void> {
+  async joinRoom(
+    stream?: MediaStream,
+    trackType: AudioTrackType = 'mic',
+    trackLabel?: string,
+    receiveRemoteTracks: boolean = true
+  ): Promise<void> {
+    this.receiveRemoteTracks = receiveRemoteTracks;
+
     // Create a new Cloudflare Calls session
     const sessionResponse = await fetchWithTimeout('/api/cloudflare/session', {
       method: 'POST',
@@ -516,25 +503,26 @@ export class CloudflareCalls {
     // Initial clock sync
     await this.syncRoomClock();
 
-    // For listeners (no stream), we need to establish the session with a receive-only offer
-    // This ensures the WebRTC connection is properly initialized before pulling remote tracks
+    // For listeners or publish-only sessions without a local stream, establish the session
+    // with a media line so Cloudflare can complete negotiation.
     if (!stream) {
-      console.log('[CloudflareCalls] Listener mode - establishing receive-only session');
+      const direction = receiveRemoteTracks ? 'recvonly' : 'inactive';
+      console.log(`[CloudflareCalls] No local stream - establishing ${direction} session`);
 
-      // Add a recvonly transceiver to create a valid SDP with at least one media line
+      // Add a transceiver to create a valid SDP with at least one media line
       // This is required because bundlePolicy: 'max-bundle' needs a BUNDLE group
-      this.peerConnection!.addTransceiver('audio', { direction: 'recvonly' });
+      this.peerConnection!.addTransceiver('audio', { direction });
 
       // Create initial offer to establish the session
       const offer = await this.peerConnection!.createOffer();
 
       // Optimize SDP with current preset's Opus settings
-      const preset = QUALITY_PRESETS[this.activePreset];
+      const encoding = this.getActiveEncodingSettings();
       const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '', {
-        frameSize: preset.encoding.frameSize,
-        fec: preset.encoding.fec,
-        dtx: preset.encoding.dtx,
-        cbr: preset.encoding.cbr,
+        frameSize: encoding.frameSize,
+        fec: encoding.inbandFec,
+        dtx: encoding.dtx,
+        cbr: encoding.cbr,
       });
 
       await this.peerConnection!.setLocalDescription({
@@ -590,7 +578,7 @@ export class CloudflareCalls {
 
       // Add transceiver for sending audio with priority hints for low latency
       const transceiver = this.peerConnection!.addTransceiver(audioTrack, {
-        direction: 'sendrecv',
+        direction: receiveRemoteTracks ? 'sendrecv' : 'sendonly',
         streams: [stream],
         sendEncodings: [{ priority: 'high', networkPriority: 'high' as RTCPriorityType }],
       });
@@ -599,14 +587,14 @@ export class CloudflareCalls {
       const offer = await this.peerConnection!.createOffer();
 
       // Optimize SDP with current preset's Opus settings
-      const preset = QUALITY_PRESETS[this.activePreset];
+      const encoding = this.getActiveEncodingSettings();
       const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '', {
-        frameSize: preset.encoding.frameSize,
-        fec: preset.encoding.fec,
-        dtx: preset.encoding.dtx,
-        cbr: preset.encoding.cbr,
+        frameSize: encoding.frameSize,
+        fec: encoding.inbandFec,
+        dtx: encoding.dtx,
+        cbr: encoding.cbr,
       });
-      console.log(`[CloudflareCalls] Optimized SDP with preset '${this.activePreset}' (${preset.encoding.frameSize}ms frames, FEC=${preset.encoding.fec})`);
+      console.log(`[CloudflareCalls] Optimized SDP with preset '${this.activePreset}' (${encoding.frameSize}ms frames, FEC=${encoding.inbandFec})`);
 
       await this.peerConnection!.setLocalDescription({
         type: offer.type,
@@ -673,11 +661,17 @@ export class CloudflareCalls {
     // Set up data channel for sync messages
     this.setupDataChannel();
 
-    // Pull remote tracks from other users
-    await this.pullRemoteTracks();
+    // Pull remote tracks from other users when this client should receive them.
+    if (this.receiveRemoteTracks) {
+      await this.pullRemoteTracks();
+    }
   }
 
   private async pullRemoteTracks(): Promise<void> {
+    if (!this.receiveRemoteTracks) {
+      return;
+    }
+
     // Get list of remote tracks in the room
     const listResponse = await fetchWithTimeout('/api/cloudflare/session', {
       method: 'POST',
@@ -720,12 +714,12 @@ export class CloudflareCalls {
       const offer = await this.peerConnection!.createOffer();
 
       // Optimize SDP with current preset's Opus settings
-      const preset = QUALITY_PRESETS[this.activePreset];
+      const encoding = this.getActiveEncodingSettings();
       const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '', {
-        frameSize: preset.encoding.frameSize,
-        fec: preset.encoding.fec,
-        dtx: preset.encoding.dtx,
-        cbr: preset.encoding.cbr,
+        frameSize: encoding.frameSize,
+        fec: encoding.inbandFec,
+        dtx: encoding.dtx,
+        cbr: encoding.cbr,
       });
 
       await this.peerConnection!.setLocalDescription({
@@ -773,6 +767,10 @@ export class CloudflareCalls {
    * won't automatically discover new users without calling this.
    */
   async refreshRemoteTracks(): Promise<void> {
+    if (!this.receiveRemoteTracks) {
+      return;
+    }
+
     console.log('[CloudflareCalls] Refreshing remote tracks to discover new users...');
     await this.pullRemoteTracks();
   }
@@ -825,19 +823,19 @@ export class CloudflareCalls {
 
     // Add transceiver with priority hints
     const transceiver = this.peerConnection.addTransceiver(audioTrack, {
-      direction: 'sendrecv',
+      direction: this.receiveRemoteTracks ? 'sendrecv' : 'sendonly',
       streams: [stream],
       sendEncodings: [{ priority: 'high', networkPriority: 'high' as RTCPriorityType }],
     });
 
     // Create offer with the new track
     const offer = await this.peerConnection.createOffer();
-    const preset = QUALITY_PRESETS[this.activePreset];
+    const encoding = this.getActiveEncodingSettings();
     const optimizedSdp = optimizeSdpForLowLatency(offer.sdp || '', {
-      frameSize: preset.encoding.frameSize,
-      fec: preset.encoding.fec,
-      dtx: preset.encoding.dtx,
-      cbr: preset.encoding.cbr,
+      frameSize: encoding.frameSize,
+      fec: encoding.inbandFec,
+      dtx: encoding.dtx,
+      cbr: encoding.cbr,
       stereo: isStereo,
     });
 
@@ -1255,6 +1253,48 @@ export class CloudflareCalls {
     return this.latestStats;
   }
 
+  private getActiveEncodingSettings(): OpusEncodingSettings {
+    const baseSettings = this.activePreset === 'custom'
+      ? QUALITY_PRESETS.balanced.encoding
+      : QUALITY_PRESETS[this.activePreset].encoding;
+
+    return {
+      ...baseSettings,
+      ...this.customEncodingSettings,
+    };
+  }
+
+  private async applyEncodingSettingsToSenders(): Promise<void> {
+    if (!this.peerConnection) {
+      return;
+    }
+
+    const encoding = this.getActiveEncodingSettings();
+    const maxBitrate = Math.max(24_000, Math.round(encoding.bitrate * 1000));
+
+    await Promise.all(
+      this.peerConnection.getSenders()
+        .filter((sender) => sender.track?.kind === 'audio')
+        .map(async (sender) => {
+          try {
+            const parameters = sender.getParameters();
+            const encodings = parameters.encodings && parameters.encodings.length > 0
+              ? parameters.encodings
+              : [{}];
+
+            parameters.encodings = encodings.map((existing) => ({
+              ...existing,
+              maxBitrate,
+            }));
+
+            await sender.setParameters(parameters);
+          } catch (error) {
+            console.warn('[CloudflareCalls] Failed to apply sender encoding settings:', error);
+          }
+        })
+    );
+  }
+
   private sendDataChannelMessage(message: object): void {
     if (this.dataChannel?.readyState === 'open') {
       try {
@@ -1271,8 +1311,16 @@ export class CloudflareCalls {
   setQualityPreset(presetName: QualityPresetName): void {
     this.activePreset = presetName;
     console.log(`[CloudflareCalls] Quality preset changed to: ${presetName}`);
-    // Note: Changing preset requires renegotiation to take effect on existing tracks
-    // New tracks will automatically use the new preset
+    void this.applyEncodingSettingsToSenders();
+  }
+
+  setCustomEncodingSettings(settings: Partial<OpusEncodingSettings>): void {
+    this.customEncodingSettings = {
+      ...this.customEncodingSettings,
+      ...settings,
+    };
+    console.log('[CloudflareCalls] Custom encoding settings updated:', this.customEncodingSettings);
+    void this.applyEncodingSettingsToSenders();
   }
 
   /**
@@ -1330,7 +1378,7 @@ export class CloudflareCalls {
 
       try {
         const stats = await this.peerConnection.getStats();
-        let audioStats: ExtendedWebRTCStats = {
+        const audioStats: ExtendedWebRTCStats = {
           bytesReceived: 0,
           bytesSent: 0,
           packetsLost: 0,
@@ -1621,6 +1669,8 @@ export class CloudflareCalls {
         this.sessionId = sessionData.sessionId;
         console.log('[CloudflareCalls] New session created:', this.sessionId);
 
+        this.setupDataChannel();
+
         // Re-add local tracks from stored info
         for (const [trackId, trackInfo] of this.localTracks) {
           const transceiver = this.transceivers.get(trackId);
@@ -1630,8 +1680,9 @@ export class CloudflareCalls {
           }
         }
 
-        // Re-pull remote tracks
-        await this.pullRemoteTracks();
+        if (this.receiveRemoteTracks) {
+          await this.pullRemoteTracks();
+        }
 
         console.log('[CloudflareCalls] Reconnection successful');
         this.isReconnecting = false;
@@ -1680,7 +1731,7 @@ export class CloudflareCalls {
     }
 
     // Stop all local tracks
-    for (const [trackId, transceiver] of this.transceivers) {
+    for (const [, transceiver] of this.transceivers) {
       transceiver.sender.track?.stop();
     }
     this.localTracks.clear();

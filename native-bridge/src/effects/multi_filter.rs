@@ -96,10 +96,9 @@ impl AudioEffect for MultiFilter {
                 .configure(filter_type, self.current_freq, q, 0.0, self.sample_rate);
 
             // Process
-            let (left, right) = self.filter.process(
-                frame[0],
-                if frame.len() > 1 { frame[1] } else { frame[0] },
-            );
+            let (left, right) = self
+                .filter
+                .process(frame[0], if frame.len() > 1 { frame[1] } else { frame[0] });
 
             frame[0] = left;
             if frame.len() > 1 {

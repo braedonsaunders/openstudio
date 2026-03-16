@@ -21,88 +21,6 @@ function isWhitePixel(r: number, g: number, b: number, threshold: number): boole
 }
 
 /**
- * Flood fill from edges to mark background pixels
- * This ensures we only remove white that connects to the image edges
- */
-function floodFillFromEdges(
-  pixels: Uint8Array,
-  width: number,
-  height: number,
-  threshold: number
-): Set<number> {
-  const background = new Set<number>();
-  const queue: number[] = [];
-
-  // Helper to get pixel index
-  const getIdx = (x: number, y: number) => (y * width + x) * 4;
-
-  // Check if position is valid and pixel is white
-  const canVisit = (x: number, y: number): boolean => {
-    if (x < 0 || x >= width || y < 0 || y >= height) return false;
-    const idx = getIdx(x, y);
-    if (background.has(idx)) return false;
-    const r = pixels[idx];
-    const g = pixels[idx + 1];
-    const b = pixels[idx + 2];
-    return isWhitePixel(r, g, b, threshold);
-  };
-
-  // Seed from all edges
-  for (let x = 0; x < width; x++) {
-    // Top edge
-    if (canVisit(x, 0)) {
-      const idx = getIdx(x, 0);
-      background.add(idx);
-      queue.push(x, 0);
-    }
-    // Bottom edge
-    if (canVisit(x, height - 1)) {
-      const idx = getIdx(x, height - 1);
-      background.add(idx);
-      queue.push(x, height - 1);
-    }
-  }
-  for (let y = 0; y < height; y++) {
-    // Left edge
-    if (canVisit(0, y)) {
-      const idx = getIdx(0, y);
-      background.add(idx);
-      queue.push(0, y);
-    }
-    // Right edge
-    if (canVisit(width - 1, y)) {
-      const idx = getIdx(width - 1, y);
-      background.add(idx);
-      queue.push(width - 1, y);
-    }
-  }
-
-  // Flood fill
-  while (queue.length > 0) {
-    const y = queue.pop()!;
-    const x = queue.pop()!;
-
-    // Check 4-connected neighbors
-    const neighbors = [
-      [x - 1, y],
-      [x + 1, y],
-      [x, y - 1],
-      [x, y + 1],
-    ];
-
-    for (const [nx, ny] of neighbors) {
-      if (canVisit(nx, ny)) {
-        const idx = getIdx(nx, ny);
-        background.add(idx);
-        queue.push(nx, ny);
-      }
-    }
-  }
-
-  return background;
-}
-
-/**
  * Check if a pixel matches the target color within tolerance
  */
 function isMatchingColor(
@@ -408,7 +326,6 @@ export async function removeBackgroundAdvanced(
   const {
     targetColor = { r: 255, g: 255, b: 255 },
     tolerance = 30,
-    edgeFeathering = 1,
   } = options;
 
   const image = sharp(input).ensureAlpha();
@@ -552,7 +469,7 @@ export async function validateAvatarImage(
     }
 
     return { valid: true, metadata };
-  } catch (error) {
+  } catch {
     return { valid: false, error: 'Failed to read image' };
   }
 }

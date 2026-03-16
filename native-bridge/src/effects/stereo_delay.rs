@@ -103,7 +103,12 @@ impl AudioEffect for StereoDelay {
         let right_delay_samples = right_time_secs * self.sample_rate;
         let left_feedback = self.settings.left_feedback / 100.0;
         let right_feedback = self.settings.right_feedback / 100.0;
-        let cross_feedback = self.settings.cross_feedback / 100.0;
+        let cross_feedback_setting = if self.settings.cross_feed != 0.0 {
+            self.settings.cross_feed
+        } else {
+            self.settings.cross_feedback
+        };
+        let cross_feedback = cross_feedback_setting / 100.0;
         let mix = self.settings.mix / 100.0;
 
         for frame in samples.chunks_mut(2) {
@@ -115,8 +120,12 @@ impl AudioEffect for StereoDelay {
             let delayed_r = self.delay_right.read_interpolated(right_delay_samples);
 
             // Apply filters
-            let filtered_l = self.lp_filter_l.process(self.hp_filter_l.process(delayed_l));
-            let filtered_r = self.lp_filter_r.process(self.hp_filter_r.process(delayed_r));
+            let filtered_l = self
+                .lp_filter_l
+                .process(self.hp_filter_l.process(delayed_l));
+            let filtered_r = self
+                .lp_filter_r
+                .process(self.hp_filter_r.process(delayed_r));
 
             // Write with feedback (including cross-feedback)
             let fb_l = filtered_l * left_feedback + filtered_r * cross_feedback;

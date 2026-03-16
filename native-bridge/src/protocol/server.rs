@@ -5,6 +5,7 @@ use crate::tui::AppEvent;
 use crate::AppState;
 use anyhow::Result;
 use futures_util::{SinkExt, StreamExt};
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 use tokio::net::{TcpListener, TcpStream};
@@ -100,7 +101,8 @@ impl BridgeServer {
 
         // Accumulate audio samples - allows batching multiple ring buffer reads per loop
         // but we send immediately (no artificial delay) for minimum latency
-        let mut audio_accumulator: Vec<f32> = Vec::with_capacity(2048);
+        let mut legacy_audio_accumulator: Vec<f32> = Vec::with_capacity(2048);
+        let mut track_audio_accumulators: HashMap<String, Vec<f32>> = HashMap::new();
         let mut loop_counter: u64 = 0;
         let mut empty_read_counter: u64 = 0;
         let mut last_diagnostic = Instant::now();
@@ -120,8 +122,11 @@ impl BridgeServer {
                         // Convert linear amplitude to dB for TUI display
                         // dB = 20 * log10(linear), clamped to -60dB minimum
                         let to_db = |linear: f32| -> f32 {
-                            if linear <= 0.000001 { -60.0 }
-                            else { (20.0 * linear.log10()).clamp(-60.0, 6.0) }
+                            if linear <= 0.000001 {
+                                -60.0
+                            } else {
+                                (20.0 * linear.log10()).clamp(-60.0, 6.0)
+                            }
                         };
 
                         // Audio levels (true stereo from audio engine)
@@ -153,15 +158,13 @@ impl BridgeServer {
                         });
                     }
 
-                    let msg = NativeMessage::Levels {
+                    NativeMessage::Levels {
                         input_level: audio_levels.input_level_l.max(audio_levels.input_level_r),
                         input_peak: audio_levels.input_peak_l.max(audio_levels.input_peak_r),
                         output_level: audio_levels.output_level_l.max(audio_levels.output_level_r),
                         output_peak: audio_levels.output_peak_l.max(audio_levels.output_peak_r),
                         remote_levels: audio_levels.remote_levels,
-                    };
-
-                    msg
+                    }
                 };
 
                 if let Ok(json) = serde_json::to_string(&levels) {
@@ -197,9 +200,15 @@ impl BridgeServer {
                             connected: true,
                             mode: match stats.mode {
                                 crate::network::NetworkMode::P2P => crate::tui::NetworkMode::P2P,
-                                crate::network::NetworkMode::Relay => crate::tui::NetworkMode::Relay,
-                                crate::network::NetworkMode::Hybrid => crate::tui::NetworkMode::Hybrid,
-                                crate::network::NetworkMode::Disconnected => crate::tui::NetworkMode::Disconnected,
+                                crate::network::NetworkMode::Relay => {
+                                    crate::tui::NetworkMode::Relay
+                                }
+                                crate::network::NetworkMode::Hybrid => {
+                                    crate::tui::NetworkMode::Hybrid
+                                }
+                                crate::network::NetworkMode::Disconnected => {
+                                    crate::tui::NetworkMode::Disconnected
+                                }
                             },
                             peer_count: stats.peer_count,
                             latency_ms: stats.rtt_ms,
@@ -239,15 +248,51 @@ impl BridgeServer {
                 let app = self.state.lock().await;
                 let is_running = app.audio_engine.is_running();
                 if is_running {
-                    // Read available samples into accumulator (up to 2048 at a time for lower latency)
-                    let samples = app.audio_engine.get_browser_stream_audio(2048);
-                    if !samples.is_empty() {
-                        audio_accumulator.extend_from_slice(&samples);
-                        empty_read_counter = 0;
-                        // Mark successful read for health tracking
-                        app.audio_engine.mark_browser_read();
+                    let local_tracks = app.audio_engine.get_local_track_descriptors();
+
+                    if local_tracks.is_empty() {
+                        // Read available samples into accumulator (up to 2048 at a time for lower latency)
+                        let samples = app.audio_engine.get_browser_stream_audio(2048);
+                        if !samples.is_empty() {
+                            legacy_audio_accumulator.extend_from_slice(&samples);
+                            empty_read_counter = 0;
+                            // Mark successful read for health tracking
+                            app.audio_engine.mark_browser_read();
+                        } else {
+                            empty_read_counter += 1;
+                        }
                     } else {
-                        empty_read_counter += 1;
+                        let mut read_any_samples = false;
+
+                        for local_track in &local_tracks {
+                            let samples = app
+                                .audio_engine
+                                .get_local_track_browser_audio(&local_track.browser_track_id, 2048);
+
+                            if samples.is_empty() {
+                                continue;
+                            }
+
+                            track_audio_accumulators
+                                .entry(local_track.browser_track_id.clone())
+                                .or_insert_with(|| Vec::with_capacity(2048))
+                                .extend_from_slice(&samples);
+                            read_any_samples = true;
+                        }
+
+                        track_audio_accumulators.retain(|track_id, accumulator| {
+                            !accumulator.is_empty()
+                                || local_tracks
+                                    .iter()
+                                    .any(|track| track.browser_track_id == *track_id)
+                        });
+
+                        if read_any_samples {
+                            empty_read_counter = 0;
+                            app.audio_engine.mark_browser_read();
+                        } else {
+                            empty_read_counter += 1;
+                        }
                     }
                 } else if loop_counter == 5000 {
                     // Only log once after ~5 seconds if audio hasn't started yet
@@ -291,45 +336,92 @@ impl BridgeServer {
             // Send accumulated audio immediately for low-latency
             // No artificial delay - send as soon as we have samples
             // The accumulator still helps batch multiple ring buffer reads per loop iteration
-            let should_send_audio = !audio_accumulator.is_empty();
+            let mut pending_audio_packets: Vec<(Option<String>, Vec<f32>)> = Vec::new();
 
-            if should_send_audio {
-                // Create binary message: [msg_type: u8][sample_count: u32][timestamp: u64][samples: f32...]
-                let header = AudioMessageHeader {
-                    msg_type: 1, // 1 = local capture to browser
-                    sample_count: audio_accumulator.len() as u32,
-                    timestamp: SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_millis() as u64,
-                };
+            if !legacy_audio_accumulator.is_empty() {
+                pending_audio_packets.push((None, std::mem::take(&mut legacy_audio_accumulator)));
+            }
 
-                let mut binary_data =
-                    Vec::with_capacity(AudioMessageHeader::SIZE + audio_accumulator.len() * 4);
-                binary_data.extend_from_slice(&header.to_bytes());
-                for sample in &audio_accumulator {
-                    binary_data.extend_from_slice(&sample.to_le_bytes());
+            for (track_id, accumulator) in track_audio_accumulators.iter_mut() {
+                if accumulator.is_empty() {
+                    continue;
                 }
 
-                // Don't break on send failure - just log and continue
-                // Audio will be lost but connection stays open
+                pending_audio_packets.push((Some(track_id.clone()), std::mem::take(accumulator)));
+            }
+
+            let mut socket_closed = false;
+            for (track_id, samples) in pending_audio_packets {
+                let timestamp = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .map(|duration| duration.as_millis() as u64)
+                    .unwrap_or(0);
+
+                let binary_data = if let Some(track_id) = track_id.as_ref() {
+                    let track_id_bytes = track_id.as_bytes();
+                    let track_id_len = match u8::try_from(track_id_bytes.len()) {
+                        Ok(len) => len,
+                        Err(_) => {
+                            warn!(
+                                "Skipping browser audio packet with oversized track id: {}",
+                                track_id
+                            );
+                            continue;
+                        }
+                    };
+                    let header = AudioMessageHeader {
+                        msg_type: 2, // 2 = local capture to browser with track id
+                        sample_count: samples.len() as u32,
+                        timestamp,
+                    };
+
+                    let mut packet = Vec::with_capacity(
+                        AudioMessageHeader::SIZE + 1 + track_id_bytes.len() + samples.len() * 4,
+                    );
+                    packet.extend_from_slice(&header.to_bytes());
+                    packet.push(track_id_len);
+                    packet.extend_from_slice(track_id_bytes);
+                    for sample in &samples {
+                        packet.extend_from_slice(&sample.to_le_bytes());
+                    }
+                    packet
+                } else {
+                    let header = AudioMessageHeader {
+                        msg_type: 1, // 1 = legacy local capture to browser
+                        sample_count: samples.len() as u32,
+                        timestamp,
+                    };
+
+                    let mut packet =
+                        Vec::with_capacity(AudioMessageHeader::SIZE + samples.len() * 4);
+                    packet.extend_from_slice(&header.to_bytes());
+                    for sample in &samples {
+                        packet.extend_from_slice(&sample.to_le_bytes());
+                    }
+                    packet
+                };
+
+                // Don't break on send failure - just log and continue.
+                // Audio will be lost but connection stays open unless the socket is gone.
                 match write.send(Message::Binary(binary_data)).await {
                     Ok(_) => {}
                     Err(e) => {
                         warn!(
                             "Failed to send audio data: {} (samples: {})",
                             e,
-                            audio_accumulator.len()
+                            samples.len()
                         );
-                        // Check if this is a fatal error (connection closed)
                         if e.to_string().contains("close") || e.to_string().contains("Connection") {
                             error!("WebSocket connection lost, stopping audio loop");
+                            socket_closed = true;
                             break;
                         }
                     }
                 }
+            }
 
-                audio_accumulator.clear();
+            if socket_closed {
+                break;
             }
 
             // Use short timeout to ensure audio is sent frequently
@@ -407,8 +499,8 @@ impl BridgeServer {
             BrowserMessage::Ping { timestamp } => {
                 let now = SystemTime::now()
                     .duration_since(UNIX_EPOCH)
-                    .unwrap()
-                    .as_millis() as u64;
+                    .map(|duration| duration.as_millis() as u64)
+                    .unwrap_or(timestamp);
 
                 Some(NativeMessage::Pong {
                     timestamp,
@@ -526,10 +618,21 @@ impl BridgeServer {
                         }
                         // Send DeviceConfig back to browser to confirm
                         Some(NativeMessage::DeviceConfig {
-                            input_device: app.audio_engine.get_input_devices().ok()
-                                .and_then(|devs| devs.into_iter().find(|d| Some(d.id.clone()) == app.audio_engine.get_input_device_id())),
-                            output_device: app.audio_engine.get_output_devices().ok()
-                                .and_then(|devs| devs.into_iter().find(|d| Some(d.id.clone()) == app.audio_engine.get_output_device_id())),
+                            input_device: app.audio_engine.get_input_devices().ok().and_then(
+                                |devs| {
+                                    devs.into_iter().find(|d| {
+                                        Some(d.id.clone()) == app.audio_engine.get_input_device_id()
+                                    })
+                                },
+                            ),
+                            output_device: app.audio_engine.get_output_devices().ok().and_then(
+                                |devs| {
+                                    devs.into_iter().find(|d| {
+                                        Some(d.id.clone())
+                                            == app.audio_engine.get_output_device_id()
+                                    })
+                                },
+                            ),
                             sample_rate: device_info.sample_rate,
                             buffer_size: device_info.buffer_size,
                             channel_config: app.audio_engine.get_channel_config(),
@@ -566,10 +669,21 @@ impl BridgeServer {
                         }
                         // Send DeviceConfig back to browser to confirm
                         Some(NativeMessage::DeviceConfig {
-                            input_device: app.audio_engine.get_input_devices().ok()
-                                .and_then(|devs| devs.into_iter().find(|d| Some(d.id.clone()) == app.audio_engine.get_input_device_id())),
-                            output_device: app.audio_engine.get_output_devices().ok()
-                                .and_then(|devs| devs.into_iter().find(|d| Some(d.id.clone()) == app.audio_engine.get_output_device_id())),
+                            input_device: app.audio_engine.get_input_devices().ok().and_then(
+                                |devs| {
+                                    devs.into_iter().find(|d| {
+                                        Some(d.id.clone()) == app.audio_engine.get_input_device_id()
+                                    })
+                                },
+                            ),
+                            output_device: app.audio_engine.get_output_devices().ok().and_then(
+                                |devs| {
+                                    devs.into_iter().find(|d| {
+                                        Some(d.id.clone())
+                                            == app.audio_engine.get_output_device_id()
+                                    })
+                                },
+                            ),
                             sample_rate: device_info.sample_rate,
                             buffer_size: device_info.buffer_size,
                             channel_config: app.audio_engine.get_channel_config(),
@@ -582,24 +696,60 @@ impl BridgeServer {
                 }
             }
 
+            BrowserMessage::SyncLocalTrack {
+                track_id,
+                bridge_track_id,
+                track_name,
+                channel_config,
+            } => {
+                let app = self.state.lock().await;
+                app.audio_engine.sync_local_track(
+                    &track_id,
+                    bridge_track_id,
+                    &track_name,
+                    channel_config,
+                );
+                None
+            }
+
+            BrowserMessage::RemoveLocalTrack { track_id } => {
+                let app = self.state.lock().await;
+                app.audio_engine.remove_local_track(&track_id);
+                None
+            }
+
             BrowserMessage::UpdateTrackState {
-                state: track_state, ..
+                track_id,
+                state: track_state,
             } => {
                 info!("UpdateTrackState received: is_armed={:?}, monitoring_enabled={:?}, is_muted={:?}, volume={:?}",
                       track_state.is_armed, track_state.monitoring_enabled, track_state.is_muted, track_state.volume);
                 let app = self.state.lock().await;
-                app.audio_engine.update_track_state(track_state);
+                app.audio_engine.update_track_state(&track_id, track_state);
                 None
             }
 
-            BrowserMessage::UpdateEffects { effects, .. } => {
-                info!("UpdateEffects received: {} effects configured",
-                      [effects.wah.enabled, effects.overdrive.enabled, effects.distortion.enabled,
-                       effects.amp.enabled, effects.compressor.enabled, effects.eq.enabled,
-                       effects.reverb.enabled, effects.delay.enabled, effects.chorus.enabled]
-                       .iter().filter(|&&e| e).count());
+            BrowserMessage::UpdateEffects { track_id, effects } => {
+                info!(
+                    "UpdateEffects received: {} effects configured",
+                    [
+                        effects.wah.enabled,
+                        effects.overdrive.enabled,
+                        effects.distortion.enabled,
+                        effects.amp.enabled,
+                        effects.compressor.enabled,
+                        effects.eq.enabled,
+                        effects.reverb.enabled,
+                        effects.delay.enabled,
+                        effects.chorus.enabled
+                    ]
+                    .iter()
+                    .filter(|&&e| e)
+                    .count()
+                );
                 let app = self.state.lock().await;
-                app.audio_engine.update_effects(effects.clone());
+                app.audio_engine
+                    .update_effects(&track_id, effects.as_ref().clone());
 
                 // Send EffectToggled events to TUI
                 if let Some(ref tx) = app.tui_tx {
@@ -743,14 +893,51 @@ impl BridgeServer {
                 None
             }
 
+            BrowserMessage::SyncRemoteTrack {
+                user_id,
+                track_id,
+                bridge_track_id,
+                track_name,
+                volume,
+                pan,
+                muted,
+                solo,
+            } => {
+                let app = self.state.lock().await;
+                app.audio_engine.sync_remote_track(
+                    &user_id,
+                    &track_id,
+                    bridge_track_id,
+                    &track_name,
+                    volume,
+                    pan,
+                    muted,
+                    solo,
+                );
+                None
+            }
+
+            BrowserMessage::RemoveRemoteTrack {
+                user_id,
+                track_id: _,
+                bridge_track_id,
+            } => {
+                let app = self.state.lock().await;
+                if let Some(bridge_track_id) = bridge_track_id {
+                    app.audio_engine
+                        .remove_remote_track(&user_id, bridge_track_id);
+                }
+                None
+            }
+
             // === Backing Track ===
             BrowserMessage::LoadBackingTrack { url, duration } => {
                 info!("LoadBackingTrack: {} ({:.1}s)", url, duration);
-                // Note: Actual audio fetching would be done here
-                // For now, acknowledge the load request
+                let app = self.state.lock().await;
+                app.audio_engine.load_backing_track(duration);
                 Some(NativeMessage::BackingTrackLoaded {
                     duration,
-                    waveform: vec![], // Would compute waveform from decoded audio
+                    waveform: vec![],
                 })
             }
 
@@ -802,6 +989,7 @@ impl BridgeServer {
             BrowserMessage::SetMasterEffectsEnabled { enabled } => {
                 let mut app = self.state.lock().await;
                 app.mixer.set_master_effects_enabled(enabled);
+                app.audio_engine.set_master_effects_enabled(enabled);
                 None
             }
 
@@ -812,8 +1000,23 @@ impl BridgeServer {
                 limiter,
             } => {
                 info!("UpdateMasterEffects");
-                // Would update master effects chain here
-                let _ = (eq, compressor, reverb, limiter);
+                let mut app = self.state.lock().await;
+                let mut settings = app.mixer.get_master_effects().clone();
+                if let Some(eq_settings) = eq.clone() {
+                    settings.eq = eq_settings;
+                }
+                if let Some(compressor_settings) = compressor.clone() {
+                    settings.compressor = compressor_settings;
+                }
+                if let Some(reverb_settings) = reverb.clone() {
+                    settings.reverb = reverb_settings;
+                }
+                if let Some(limiter_settings) = limiter.clone() {
+                    settings.limiter = limiter_settings;
+                }
+                app.mixer.update_master_effects(settings);
+                app.audio_engine
+                    .update_master_effects(eq, compressor, reverb, limiter);
                 None
             }
 
@@ -876,9 +1079,15 @@ impl BridgeServer {
                         if let Some(ref tx) = app.tui_tx {
                             let tui_mode = match mode {
                                 crate::network::NetworkMode::P2P => crate::tui::NetworkMode::P2P,
-                                crate::network::NetworkMode::Relay => crate::tui::NetworkMode::Relay,
-                                crate::network::NetworkMode::Hybrid => crate::tui::NetworkMode::Hybrid,
-                                crate::network::NetworkMode::Disconnected => crate::tui::NetworkMode::Disconnected,
+                                crate::network::NetworkMode::Relay => {
+                                    crate::tui::NetworkMode::Relay
+                                }
+                                crate::network::NetworkMode::Hybrid => {
+                                    crate::tui::NetworkMode::Hybrid
+                                }
+                                crate::network::NetworkMode::Disconnected => {
+                                    crate::tui::NetworkMode::Disconnected
+                                }
                             };
                             let _ = tx.try_send(AppEvent::ConnectionEvent {
                                 event_type: crate::tui::ConnectionEventType::RoomJoined,
@@ -1002,25 +1211,29 @@ impl BridgeServer {
 
                 // Update effects chain with room context
                 let app = self.state.lock().await;
-                app.audio_engine
-                    .set_room_context(key.clone(), scale.clone(), bpm, time_sig_num, time_sig_denom);
+                app.audio_engine.set_room_context(
+                    key.clone(),
+                    scale.clone(),
+                    bpm,
+                    time_sig_num,
+                    time_sig_denom,
+                );
 
                 // Send room context to TUI
                 if let Some(ref tx) = app.tui_tx {
                     let _ = tx.try_send(AppEvent::RoomContext {
                         room_id: app.connected_room.clone(),
-                        user_count: app.network.as_ref().map(|n| n.stats().peer_count + 1).unwrap_or(1),
+                        user_count: app
+                            .network
+                            .as_ref()
+                            .map(|n| n.stats().peer_count + 1)
+                            .unwrap_or(1),
                         key,
                         scale,
                         bpm,
                     });
                 }
 
-                None
-            }
-
-            other => {
-                warn!("Unhandled message type: {:?}", other);
                 None
             }
         }
@@ -1088,17 +1301,17 @@ fn detect_driver_type() -> String {
                 return "ASIO".to_string();
             }
         }
-        return "WASAPI".to_string();
+        "WASAPI".to_string()
     }
 
     #[cfg(target_os = "macos")]
     {
-        return "CoreAudio".to_string();
+        "CoreAudio".to_string()
     }
 
     #[cfg(target_os = "linux")]
     {
-        return "ALSA".to_string();
+        "ALSA".to_string()
     }
 
     #[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]

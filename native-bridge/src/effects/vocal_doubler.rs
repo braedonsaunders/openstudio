@@ -93,8 +93,7 @@ impl AudioEffect for VocalDoubler {
                 let lfo_val = self.lfos[voice].tick(lfo_rate, self.sample_rate);
                 let mod_depth = detune_depth_ms * depth * lfo_val;
 
-                let delay_samples =
-                    (voice_delay_ms + mod_depth) * 0.001 * self.sample_rate;
+                let delay_samples = (voice_delay_ms + mod_depth) * 0.001 * self.sample_rate;
 
                 // Write to delay lines
                 self.delays_left[voice].write(dry_l);

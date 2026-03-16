@@ -95,7 +95,12 @@ impl<'a> Widget for LevelMeter<'a> {
         } else {
             Color::Green
         };
-        buf.set_string(value_start, area.y, level_str, Style::default().fg(value_color));
+        buf.set_string(
+            value_start,
+            area.y,
+            level_str,
+            Style::default().fg(value_color),
+        );
     }
 }
 
@@ -164,71 +169,8 @@ impl<'a> Widget for SparklineWidget<'a> {
     }
 }
 
-/// Vertical bar widget for compact level display
-pub struct VerticalBar {
-    pub value: f32,      // 0.0 to 1.0
-    pub height: u16,
-    pub color: Color,
-}
-
-impl Widget for VerticalBar {
-    fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
-        if area.height == 0 || area.width == 0 {
-            return;
-        }
-
-        let bar_chars = ['▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
-        let total_steps = (area.height as f32 * 8.0) as usize;
-        let filled_steps = (self.value.clamp(0.0, 1.0) * total_steps as f32) as usize;
-
-        for row in 0..area.height {
-            let row_y = area.y + area.height - 1 - row;
-            let row_bottom_step = row as usize * 8;
-            let row_top_step = row_bottom_step + 8;
-
-            let ch = if filled_steps >= row_top_step {
-                // Fully filled
-                '█'
-            } else if filled_steps > row_bottom_step {
-                // Partially filled
-                bar_chars[filled_steps - row_bottom_step - 1]
-            } else {
-                // Empty
-                ' '
-            };
-
-            buf.set_string(area.x, row_y, ch.to_string(), Style::default().fg(self.color));
-        }
-    }
-}
-
-/// Status indicator dot with optional blinking
-pub struct StatusDot {
-    pub active: bool,
-    pub color_active: Color,
-    pub color_inactive: Color,
-}
-
-impl Widget for StatusDot {
-    fn render(self, area: Rect, buf: &mut ratatui::buffer::Buffer) {
-        if area.width == 0 || area.height == 0 {
-            return;
-        }
-
-        let (ch, color) = if self.active {
-            ('●', self.color_active)
-        } else {
-            ('○', self.color_inactive)
-        };
-
-        buf.set_string(area.x, area.y, ch.to_string(), Style::default().fg(color));
-    }
-}
-
 #[cfg(test)]
 mod tests {
-    use super::*;
-
     #[test]
     fn test_level_meter_normalization() {
         // -60dB should be 0

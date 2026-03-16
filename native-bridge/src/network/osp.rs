@@ -3,6 +3,8 @@
 //! Binary protocol for ultra-low-latency audio and control message transport.
 //! Inspired by AOO but extended for DAW collaboration features.
 
+#![allow(dead_code)]
+
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -30,7 +32,7 @@ impl OspHeader {
         }
     }
 
-    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
         let mut bytes = [0u8; Self::SIZE];
         bytes[0..4].copy_from_slice(&self.magic);
         bytes[4..6].copy_from_slice(&self.sequence.to_le_bytes());
@@ -654,8 +656,10 @@ mod tests {
         let header = OspHeader::new(12345, 6789);
         let bytes = header.to_bytes();
         let parsed = OspHeader::from_bytes(&bytes).unwrap();
-        assert_eq!(parsed.sequence, 12345);
-        assert_eq!(parsed.timestamp, 6789);
+        let sequence = parsed.sequence;
+        let timestamp = parsed.timestamp;
+        assert_eq!(sequence, 12345);
+        assert_eq!(timestamp, 6789);
     }
 
     #[test]
@@ -664,7 +668,8 @@ mod tests {
         let packet = OspPacket::new(OspMessageType::Ping, payload.clone(), 100, 200);
         let bytes = packet.to_bytes();
         let parsed = OspPacket::from_bytes(&bytes).unwrap();
-        assert_eq!(parsed.header.sequence, 100);
+        let sequence = parsed.header.sequence;
+        assert_eq!(sequence, 100);
         assert_eq!(parsed.message_type, OspMessageType::Ping);
         assert_eq!(parsed.payload, payload);
     }

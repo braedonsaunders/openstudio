@@ -63,7 +63,7 @@ export class AudioEngine {
   // WebRTC broadcast support - mixes MIDI audio with mic for streaming
   private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
   private broadcastMixerGain: GainNode | null = null;
-  private broadcastSongGain: GainNode | null = null; // Routes song/backing track audio to broadcast
+  private broadcastSongGain: GainNode | null = null;
   private midiSourceNode: MediaStreamAudioSourceNode | null = null;
   private midiMixGain: GainNode | null = null;
   private broadcastActive: boolean = false; // Tracks whether broadcast was set up (survives AudioContext recreation)
@@ -1417,9 +1417,10 @@ export class AudioEngine {
   /**
    * Create a mixed broadcast stream for WebRTC that combines:
    * - All armed user tracks (after effects processing)
-   * - MIDI loop audio (optional)
+   * - Optional browser-generated performance audio (for example MIDI instruments)
    *
-   * This is the stream sent to other participants in a jam session.
+   * This stream is used only for listener publication. Backing/song audio is not
+   * included here because it is already synchronized and rendered locally.
    * @param midiStream Optional MediaStream from SoundEngine.enableBroadcast()
    * @param midiVolume Volume for MIDI audio (0-1)
    * @returns MediaStream containing the mixed audio for WebRTC
@@ -1458,17 +1459,6 @@ export class AudioEngine {
         processor.getBroadcastNode().connect(this.broadcastMixerGain);
       }
       console.log(`[AudioEngine] Connected ${this.trackProcessors.size} tracks to broadcast mix`);
-    }
-
-    // CRITICAL: Route song audio (backing tracks, stems, Lyria AI) to broadcast
-    // Without this, listeners only hear performer mic/instrument audio but NOT the backing track.
-    // Song signal chain: backingTrackGain/externalSources → songGain → broadcastSongGain → broadcastMixerGain
-    if (this.songGain && this.broadcastMixerGain && !this.broadcastSongGain) {
-      this.broadcastSongGain = this.audioContext.createGain();
-      this.broadcastSongGain.gain.value = 1.0;
-      this.songGain.connect(this.broadcastSongGain);
-      this.broadcastSongGain.connect(this.broadcastMixerGain);
-      console.log('[AudioEngine] Song audio (backing tracks/stems) connected to broadcast mix');
     }
 
     // Connect MIDI stream to broadcast mixer if provided
@@ -1521,29 +1511,13 @@ export class AudioEngine {
       }
     }
 
-    // Rebuild song -> broadcast connection unconditionally to handle stale references
-    // After AudioContext recreation, broadcastSongGain may reference nodes from the old context
-    if (this.songGain) {
-      if (this.broadcastSongGain) {
-        try {
-          this.broadcastSongGain.disconnect();
-        } catch {
-          // Node may already be disconnected from old context
-        }
-      }
-      this.broadcastSongGain = this.audioContext.createGain();
-      this.broadcastSongGain.gain.value = 1.0;
-      this.songGain.connect(this.broadcastSongGain);
-      this.broadcastSongGain.connect(this.broadcastMixerGain);
-      console.log('[AudioEngine] Song audio -> broadcast connection established');
-    }
+    this.broadcastSongGain = null;
   }
 
   /**
    * Verify the broadcast audio chain is intact.
-   * Traces the node graph: backingTrackGain -> songGain -> broadcastSongGain -> broadcastMixerGain
-   * Logs which connections are intact and which are broken.
-   * @returns true if the full broadcast chain is complete, false if any link is broken
+   * This validates only the listener publication path, which intentionally excludes
+   * song/backing playback to avoid duplicating shared accompaniment in the mix.
    */
   verifyBroadcastChain(): boolean {
     // If broadcast was never set up, chain is trivially "not needed"
@@ -1553,9 +1527,6 @@ export class AudioEngine {
 
     const links: Array<{ name: string; present: boolean }> = [
       { name: 'audioContext', present: this.audioContext !== null },
-      { name: 'backingTrackGain', present: this.backingTrackGain !== null },
-      { name: 'songGain', present: this.songGain !== null },
-      { name: 'broadcastSongGain', present: this.broadcastSongGain !== null },
       { name: 'broadcastMixerGain', present: this.broadcastMixerGain !== null },
       { name: 'broadcastDestination', present: this.broadcastDestination !== null },
     ];
@@ -1822,16 +1793,15 @@ export class AudioEngine {
       }
     }
 
-    // Guard: ensure broadcast chain is intact before playback
-    // broadcastSongGain can be null after AudioContext recreation or stem loading
-    if (this.broadcastActive && !this.broadcastSongGain) {
-      console.log('[AudioEngine] broadcastSongGain missing before playback, rebuilding broadcast connections');
+    // Guard: ensure listener publication path is intact before playback state changes.
+    if (this.broadcastActive && !this.broadcastMixerGain) {
+      console.log('[AudioEngine] Broadcast mixer missing before playback, rebuilding broadcast connections');
       this.updateBroadcastConnections();
     }
 
     // Verify broadcast chain and warn if broken
     if (this.broadcastActive && !this.verifyBroadcastChain()) {
-      console.warn('[AudioEngine] Broadcast chain broken before backing track playback - listeners may not hear audio');
+      console.warn('[AudioEngine] Broadcast chain broken before backing track playback');
     }
 
     this.stopBackingTrack();
@@ -1878,16 +1848,15 @@ export class AudioEngine {
       }
     }
 
-    // Guard: ensure broadcast chain is intact before stem playback
-    // broadcastSongGain can be null after AudioContext recreation or stem loading
-    if (this.broadcastActive && !this.broadcastSongGain) {
-      console.log('[AudioEngine] broadcastSongGain missing before stem playback, rebuilding broadcast connections');
+    // Guard: ensure listener publication path is intact before stem playback state changes.
+    if (this.broadcastActive && !this.broadcastMixerGain) {
+      console.log('[AudioEngine] Broadcast mixer missing before stem playback, rebuilding broadcast connections');
       this.updateBroadcastConnections();
     }
 
     // Verify broadcast chain and warn if broken
     if (this.broadcastActive && !this.verifyBroadcastChain()) {
-      console.warn('[AudioEngine] Broadcast chain broken before stem playback - listeners may not hear audio');
+      console.warn('[AudioEngine] Broadcast chain broken before stem playback');
     }
 
     this.stopStemmedTrack();
@@ -1932,9 +1901,6 @@ export class AudioEngine {
       this.stemSources.set(stemType, source);
     }
 
-    // After connecting stems through their gain nodes -> backingTrackGain,
-    // explicitly update broadcast connections so stem audio routes through
-    // to broadcastSongGain for WebRTC listeners
     if (this.broadcastActive) {
       this.updateBroadcastConnections();
     }

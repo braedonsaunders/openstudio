@@ -139,6 +139,53 @@ const getNextColor = () => {
   return color;
 };
 
+const MAX_NATIVE_BRIDGE_TRACKS = 255;
+
+const nextBridgeTrackId = (tracks: Iterable<UserTrack>, userId: string): number => {
+  const used = new Set<number>();
+
+  for (const track of tracks) {
+    if (track.userId !== userId || track.type !== 'audio') {
+      continue;
+    }
+
+    const bridgeTrackId = track.audioSettings.bridgeTrackId;
+    if (Number.isInteger(bridgeTrackId) && bridgeTrackId! >= 0 && bridgeTrackId! <= MAX_NATIVE_BRIDGE_TRACKS) {
+      used.add(bridgeTrackId!);
+    }
+  }
+
+  for (let candidate = 0; candidate <= MAX_NATIVE_BRIDGE_TRACKS; candidate += 1) {
+    if (!used.has(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error(`No native bridge track IDs remaining for user ${userId}`);
+};
+
+const ensureBridgeTrackId = (
+  track: UserTrack,
+  existingTracks: Iterable<UserTrack>
+): UserTrack => {
+  if (track.type !== 'audio') {
+    return track;
+  }
+
+  const bridgeTrackId = track.audioSettings.bridgeTrackId;
+  if (Number.isInteger(bridgeTrackId) && bridgeTrackId! >= 0 && bridgeTrackId! <= MAX_NATIVE_BRIDGE_TRACKS) {
+    return track;
+  }
+
+  return {
+    ...track,
+    audioSettings: {
+      ...track.audioSettings,
+      bridgeTrackId: nextBridgeTrackId(existingTracks, track.userId),
+    },
+  };
+};
+
 export const useUserTracksStore = create<UserTracksState>()(
   subscribeWithSelector((set, get) => ({
     tracks: new Map(),
@@ -160,7 +207,13 @@ export const useUserTracksStore = create<UserTracksState>()(
         name: name || `Track ${trackNumber}`,
         color: getNextColor(),
         type: trackType,
-        audioSettings: { ...DEFAULT_AUDIO_SETTINGS, ...settings },
+        audioSettings: {
+          ...DEFAULT_AUDIO_SETTINGS,
+          ...settings,
+          ...(trackType === 'audio' && {
+            bridgeTrackId: settings?.bridgeTrackId ?? nextBridgeTrackId(state.tracks.values(), userId),
+          }),
+        },
         midiSettings: trackType === 'midi' ? { ...DEFAULT_MIDI_SETTINGS, ...midiSettings } : undefined,
         isMuted: false,
         isSolo: false,
@@ -270,7 +323,11 @@ export const useUserTracksStore = create<UserTracksState>()(
         const tracks = new Map(state.tracks);
         tracks.set(trackId, {
           ...track,
-          audioSettings: { ...track.audioSettings, ...settings },
+          audioSettings: {
+            ...track.audioSettings,
+            ...settings,
+            bridgeTrackId: settings.bridgeTrackId ?? track.audioSettings.bridgeTrackId,
+          },
         });
         return { tracks };
       }),
@@ -696,28 +753,29 @@ export const useUserTracksStore = create<UserTracksState>()(
         const userTrackOrder = new Map(state.userTrackOrder);
 
         for (const track of persistedTracks) {
+          const normalizedTrack = ensureBridgeTrackId(track, tracks.values());
           const existingTrack = tracks.get(track.id);
 
           // Update existing track if it's inactive but incoming track is active
           // This handles the case where a user rejoins and their tracks are reactivated
           if (existingTrack) {
-            if (track.isActive && !existingTrack.isActive) {
+            if (normalizedTrack.isActive && !existingTrack.isActive) {
               // Reactivate the track - update userId and isActive
-              tracks.set(track.id, { ...existingTrack, ...track });
+              tracks.set(normalizedTrack.id, { ...existingTrack, ...normalizedTrack });
 
               // Update track order if userId changed
-              if (existingTrack.userId !== track.userId) {
+              if (existingTrack.userId !== normalizedTrack.userId) {
                 // Remove from old user's order
                 const oldOrder = userTrackOrder.get(existingTrack.userId) || [];
                 userTrackOrder.set(
                   existingTrack.userId,
-                  oldOrder.filter((id) => id !== track.id)
+                  oldOrder.filter((id) => id !== normalizedTrack.id)
                 );
 
                 // Add to new user's order
-                const newOrder = userTrackOrder.get(track.userId) || [];
-                if (!newOrder.includes(track.id)) {
-                  userTrackOrder.set(track.userId, [...newOrder, track.id]);
+                const newOrder = userTrackOrder.get(normalizedTrack.userId) || [];
+                if (!newOrder.includes(normalizedTrack.id)) {
+                  userTrackOrder.set(normalizedTrack.userId, [...newOrder, normalizedTrack.id]);
                 }
               }
             }
@@ -726,12 +784,12 @@ export const useUserTracksStore = create<UserTracksState>()(
           }
 
           // Add new track
-          tracks.set(track.id, track);
+          tracks.set(normalizedTrack.id, normalizedTrack);
 
           // Add to user track order
-          const order = userTrackOrder.get(track.userId) || [];
-          if (!order.includes(track.id)) {
-            userTrackOrder.set(track.userId, [...order, track.id]);
+          const order = userTrackOrder.get(normalizedTrack.userId) || [];
+          if (!order.includes(normalizedTrack.id)) {
+            userTrackOrder.set(normalizedTrack.userId, [...order, normalizedTrack.id]);
           }
         }
 

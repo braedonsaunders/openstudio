@@ -9,7 +9,10 @@ pub use app::{ActivePanel, App, AppEvent, ConnectionEventType, LogLevel, Network
 pub use ui::draw;
 
 use crossterm::{
-    event::{DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEventKind, KeyModifiers},
+    event::{
+        DisableMouseCapture, EnableMouseCapture, Event, EventStream, KeyCode, KeyEventKind,
+        KeyModifiers,
+    },
     execute,
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
@@ -23,10 +26,7 @@ use tokio::sync::mpsc;
 ///
 /// This function uses async event handling to cooperate with the tokio runtime,
 /// allowing other tasks (like the WebSocket server) to run without being starved.
-pub async fn run(
-    mut app: App,
-    mut event_rx: mpsc::Receiver<AppEvent>,
-) -> io::Result<()> {
+pub async fn run(mut app: App, mut event_rx: mpsc::Receiver<AppEvent>) -> io::Result<()> {
     // Setup terminal
     enable_raw_mode()?;
     let mut stdout = io::stdout();

@@ -8,11 +8,11 @@
 use super::types::*;
 use super::AudioEffect;
 use super::{
-    Amp, AutoPan, Bitcrusher, Cabinet, Chorus, Compressor, DeEsser, Delay, Distortion, Eq,
-    Exciter, Flanger, FormantShifter, FrequencyShifter, GranularDelay, Harmonizer, Limiter,
-    MultiFilter, MultibandCompressor, NoiseGate, Overdrive, Phaser, PitchCorrection, Reverb,
-    RingModulator, RoomSimulator, RotarySpeaker, ShimmerReverb, StereoDelay, StereoImager,
-    TransientShaper, Tremolo, Vibrato, VocalDoubler, Wah,
+    Amp, AutoPan, Bitcrusher, Cabinet, Chorus, Compressor, DeEsser, Delay, Distortion, Eq, Exciter,
+    Flanger, FormantShifter, FrequencyShifter, GranularDelay, Harmonizer, Limiter, MultiFilter,
+    MultibandCompressor, NoiseGate, Overdrive, Phaser, PitchCorrection, Reverb, RingModulator,
+    RoomSimulator, RotarySpeaker, ShimmerReverb, StereoDelay, StereoImager, TransientShaper,
+    Tremolo, Vibrato, VocalDoubler, Wah,
 };
 
 /// Room context for pitch/tempo-aware effects
@@ -140,7 +140,14 @@ impl EffectsChain {
     }
 
     /// Set room context for pitch and tempo-aware effects
-    pub fn set_room_context(&mut self, key: Option<String>, scale: Option<String>, bpm: Option<f32>, time_sig_num: Option<u8>, time_sig_denom: Option<u8>) {
+    pub fn set_room_context(
+        &mut self,
+        key: Option<String>,
+        scale: Option<String>,
+        bpm: Option<f32>,
+        time_sig_num: Option<u8>,
+        time_sig_denom: Option<u8>,
+    ) {
         if let Some(k) = key {
             self.room_context.key = k;
         }
@@ -158,8 +165,10 @@ impl EffectsChain {
         }
 
         // Update pitch-aware effects
-        self.pitch_correction.set_room_context(&self.room_context.key, &self.room_context.scale);
-        self.harmonizer.set_room_context(&self.room_context.key, &self.room_context.scale);
+        self.pitch_correction
+            .set_room_context(&self.room_context.key, &self.room_context.scale);
+        self.harmonizer
+            .set_room_context(&self.room_context.key, &self.room_context.scale);
 
         // Update tempo-sync effects with BPM
         if self.room_context.bpm > 0.0 {
@@ -167,10 +176,6 @@ impl EffectsChain {
             self.stereo_delay.set_bpm(self.room_context.bpm);
             self.auto_pan.set_bpm(self.room_context.bpm);
         }
-    }
-
-    pub fn get_room_context(&self) -> &RoomContext {
-        &self.room_context
     }
 
     pub fn set_sample_rate(&mut self, rate: u32) {
@@ -220,9 +225,11 @@ impl EffectsChain {
 
     pub fn update_settings(&mut self, settings: EffectsSettings) {
         // Pitch effects
-        self.pitch_correction.update_settings(settings.pitch_correction.clone());
+        self.pitch_correction
+            .update_settings(settings.pitch_correction.clone());
         self.harmonizer.update_settings(settings.harmonizer.clone());
-        self.formant_shifter.update_settings(settings.formant_shifter.clone());
+        self.formant_shifter
+            .update_settings(settings.formant_shifter.clone());
 
         // Base effects
         self.wah.update_settings(settings.wah.clone());
@@ -242,23 +249,35 @@ impl EffectsChain {
         self.limiter.update_settings(settings.limiter.clone());
 
         // Extended effects
-        self.vocal_doubler.update_settings(settings.vocal_doubler.clone());
+        self.vocal_doubler
+            .update_settings(settings.vocal_doubler.clone());
         self.de_esser.update_settings(settings.de_esser.clone());
         self.bitcrusher.update_settings(settings.bitcrusher.clone());
-        self.ring_modulator.update_settings(settings.ring_modulator.clone());
-        self.frequency_shifter.update_settings(settings.frequency_shifter.clone());
-        self.granular_delay.update_settings(settings.granular_delay.clone());
-        self.rotary_speaker.update_settings(settings.rotary_speaker.clone());
+        self.ring_modulator
+            .update_settings(settings.ring_modulator.clone());
+        self.frequency_shifter
+            .update_settings(settings.frequency_shifter.clone());
+        self.granular_delay
+            .update_settings(settings.granular_delay.clone());
+        self.rotary_speaker
+            .update_settings(settings.rotary_speaker.clone());
         self.auto_pan.update_settings(settings.auto_pan.clone());
-        self.multi_filter.update_settings(settings.multi_filter.clone());
+        self.multi_filter
+            .update_settings(settings.multi_filter.clone());
         self.vibrato.update_settings(settings.vibrato.clone());
-        self.transient_shaper.update_settings(settings.transient_shaper.clone());
-        self.stereo_imager.update_settings(settings.stereo_imager.clone());
+        self.transient_shaper
+            .update_settings(settings.transient_shaper.clone());
+        self.stereo_imager
+            .update_settings(settings.stereo_imager.clone());
         self.exciter.update_settings(settings.exciter.clone());
-        self.multiband_compressor.update_settings(settings.multiband_compressor.clone());
-        self.stereo_delay.update_settings(settings.stereo_delay.clone());
-        self.room_simulator.update_settings(settings.room_simulator.clone());
-        self.shimmer_reverb.update_settings(settings.shimmer_reverb.clone());
+        self.multiband_compressor
+            .update_settings(settings.multiband_compressor.clone());
+        self.stereo_delay
+            .update_settings(settings.stereo_delay.clone());
+        self.room_simulator
+            .update_settings(settings.room_simulator.clone());
+        self.shimmer_reverb
+            .update_settings(settings.shimmer_reverb.clone());
 
         self.settings = settings;
     }

@@ -147,7 +147,11 @@ impl AudioEffect for FormantShifter {
 
                 // Envelope follower
                 let amplitude = (band_l * band_l + band_r * band_r).sqrt();
-                let coef = if amplitude > self.envelopes[i] { attack } else { release };
+                let coef = if amplitude > self.envelopes[i] {
+                    attack
+                } else {
+                    release
+                };
                 self.envelopes[i] = self.envelopes[i] * coef + amplitude * (1.0 - coef);
 
                 // Synthesis: apply envelope to shifted bands

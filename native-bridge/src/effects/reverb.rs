@@ -120,12 +120,7 @@ impl Reverb {
 
         let combs_right: Vec<CombFilter> = COMB_DELAYS
             .iter()
-            .map(|&d| {
-                CombFilter::new(
-                    ((d + STEREO_SPREAD) as f32 * scale) as usize,
-                    sample_rate,
-                )
-            })
+            .map(|&d| CombFilter::new(((d + STEREO_SPREAD) as f32 * scale) as usize, sample_rate))
             .collect();
 
         // Create allpass filters
@@ -137,10 +132,7 @@ impl Reverb {
         let allpasses_right: Vec<AllpassFilter> = ALLPASS_DELAYS
             .iter()
             .map(|&d| {
-                AllpassFilter::new(
-                    ((d + STEREO_SPREAD) as f32 * scale) as usize,
-                    sample_rate,
-                )
+                AllpassFilter::new(((d + STEREO_SPREAD) as f32 * scale) as usize, sample_rate)
             })
             .collect();
 

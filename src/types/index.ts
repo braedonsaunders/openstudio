@@ -281,6 +281,10 @@ export interface TrackAudioSettings {
   // Monitoring
   directMonitoring: boolean;
   monitoringVolume: number; // 0 to 1
+  // Stable native bridge track number used on the Rust transport layer.
+  // This is persisted inside audio settings so every participant sees the
+  // same mapping for a user's local tracks.
+  bridgeTrackId?: number;
 }
 
 // MIDI Input Settings for MIDI tracks

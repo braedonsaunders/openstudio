@@ -8,14 +8,12 @@ import {
   Settings2,
   Activity,
   Shield,
-  ChevronDown,
-  Check,
   UserX,
   Ban,
   UserPlus,
   AlertTriangle,
 } from 'lucide-react';
-import type { User, UserPerformanceInfo, JamCompatibility, QualityPresetName, OpusEncodingSettings } from '@/types';
+import type { User, QualityPresetName, OpusEncodingSettings } from '@/types';
 import { UserPerformanceCard } from './user-performance-card';
 import { JamCompatibilityIndicator } from './jam-compatibility-indicator';
 import { QualitySettingsPanel } from './quality-settings-panel';
@@ -58,7 +56,6 @@ export function EnhancedRoomUsersPanel({
   audioLevels,
   roomId,
   onMuteUser,
-  onVolumeChange,
   onPresetChange,
   onCustomSettingsChange,
   onJitterModeChange,
@@ -83,6 +80,7 @@ export function EnhancedRoomUsersPanel({
     participantPerformance,
     jamCompatibility,
     activePreset,
+    customEncodingSettings,
     localPerformance,
   } = usePerformanceSyncStore();
 
@@ -412,6 +410,7 @@ export function EnhancedRoomUsersPanel({
           <div className="p-3">
             <QualitySettingsPanel
               activePreset={activePreset}
+              customSettings={customEncodingSettings}
               onPresetChange={(preset) => onPresetChange?.(preset)}
               onCustomSettingsChange={onCustomSettingsChange}
               jitterMode={currentJitterMode}

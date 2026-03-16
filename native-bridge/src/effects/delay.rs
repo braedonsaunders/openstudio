@@ -128,7 +128,8 @@ impl AudioEffect for Delay {
 
                     // Cross feedback with spread
                     self.delay_left.write(dry_l + delayed_r * feedback * spread);
-                    self.delay_right.write(dry_r + delayed_l * feedback * spread);
+                    self.delay_right
+                        .write(dry_r + delayed_l * feedback * spread);
 
                     frame[0] = dry_l * (1.0 - mix) + delayed_l * mix;
                     if frame.len() > 1 {

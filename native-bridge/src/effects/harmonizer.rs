@@ -10,8 +10,8 @@ use super::AudioEffect;
 struct HarmonyVoice {
     shifter_l: PitchShifter,
     shifter_r: PitchShifter,
-    interval: i8,  // Semitones
-    level: f32,    // 0-1
+    interval: i8, // Semitones
+    level: f32,   // 0-1
     enabled: bool,
 }
 

@@ -7,6 +7,8 @@
 //! - Envelope followers
 //! - Utility functions
 
+#![allow(dead_code)]
+
 use std::f32::consts::{PI, TAU};
 
 // ============================================================================
@@ -55,7 +57,14 @@ impl Biquad {
 
     /// Configure filter coefficients
     /// Based on Audio EQ Cookbook by Robert Bristow-Johnson
-    pub fn configure(&mut self, filter_type: BiquadType, freq: f32, q: f32, gain_db: f32, sample_rate: f32) {
+    pub fn configure(
+        &mut self,
+        filter_type: BiquadType,
+        freq: f32,
+        q: f32,
+        gain_db: f32,
+        sample_rate: f32,
+    ) {
         let freq = freq.clamp(20.0, sample_rate * 0.49);
         let q = q.max(0.1);
 
@@ -183,9 +192,18 @@ impl StereoBiquad {
         Self::default()
     }
 
-    pub fn configure(&mut self, filter_type: BiquadType, freq: f32, q: f32, gain_db: f32, sample_rate: f32) {
-        self.left.configure(filter_type, freq, q, gain_db, sample_rate);
-        self.right.configure(filter_type, freq, q, gain_db, sample_rate);
+    pub fn configure(
+        &mut self,
+        filter_type: BiquadType,
+        freq: f32,
+        q: f32,
+        gain_db: f32,
+        sample_rate: f32,
+    ) {
+        self.left
+            .configure(filter_type, freq, q, gain_db, sample_rate);
+        self.right
+            .configure(filter_type, freq, q, gain_db, sample_rate);
     }
 
     #[inline]
@@ -233,7 +251,8 @@ impl DelayLine {
     #[inline]
     pub fn read(&self, delay_samples: usize) -> f32 {
         let delay = delay_samples.min(self.max_delay_samples - 1);
-        let read_pos = (self.write_pos + self.max_delay_samples - delay - 1) % self.max_delay_samples;
+        let read_pos =
+            (self.write_pos + self.max_delay_samples - delay - 1) % self.max_delay_samples;
         self.buffer[read_pos]
     }
 
@@ -244,7 +263,8 @@ impl DelayLine {
         let delay_int = delay as usize;
         let frac = delay - delay_int as f32;
 
-        let pos1 = (self.write_pos + self.max_delay_samples - delay_int - 1) % self.max_delay_samples;
+        let pos1 =
+            (self.write_pos + self.max_delay_samples - delay_int - 1) % self.max_delay_samples;
         let pos2 = (pos1 + self.max_delay_samples - 1) % self.max_delay_samples;
 
         self.buffer[pos1] * (1.0 - frac) + self.buffer[pos2] * frac
@@ -280,7 +300,13 @@ impl StereoDelayLine {
     }
 
     #[inline]
-    pub fn process(&mut self, left: f32, right: f32, left_delay: f32, right_delay: f32) -> (f32, f32) {
+    pub fn process(
+        &mut self,
+        left: f32,
+        right: f32,
+        left_delay: f32,
+        right_delay: f32,
+    ) -> (f32, f32) {
         (
             self.left.process(left, left_delay),
             self.right.process(right, right_delay),
@@ -315,7 +341,10 @@ pub struct Lfo {
 
 impl Lfo {
     pub fn new(waveform: LfoWaveform) -> Self {
-        Self { phase: 0.0, waveform }
+        Self {
+            phase: 0.0,
+            waveform,
+        }
     }
 
     pub fn set_waveform(&mut self, waveform: LfoWaveform) {
@@ -346,7 +375,11 @@ impl Lfo {
                 }
             }
             LfoWaveform::Square => {
-                if self.phase < 0.5 { 1.0 } else { -1.0 }
+                if self.phase < 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
             }
             LfoWaveform::Sawtooth => 2.0 * self.phase - 1.0,
             LfoWaveform::SawtoothDown => 1.0 - 2.0 * self.phase,
@@ -444,7 +477,10 @@ pub struct OnePoleLowpass {
 
 impl OnePoleLowpass {
     pub fn new(cutoff_hz: f32, sample_rate: f32) -> Self {
-        let mut filter = Self { value: 0.0, coeff: 0.0 };
+        let mut filter = Self {
+            value: 0.0,
+            coeff: 0.0,
+        };
         filter.set_cutoff(cutoff_hz, sample_rate);
         filter
     }
@@ -674,7 +710,7 @@ mod tests {
         // Run for one cycle
         for _ in 0..48000 {
             let val = lfo.tick(1.0, 48000.0);
-            assert!(val >= -1.0 && val <= 1.0);
+            assert!((-1.0..=1.0).contains(&val));
         }
     }
 

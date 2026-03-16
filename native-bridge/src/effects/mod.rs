@@ -88,6 +88,7 @@ pub use vocal_doubler::VocalDoubler;
 pub use wah::Wah;
 
 /// Trait for all audio effects
+#[allow(dead_code)]
 pub trait AudioEffect: Send + Sync {
     /// Process a buffer of stereo samples in-place
     fn process(&mut self, samples: &mut [f32], sample_rate: u32);

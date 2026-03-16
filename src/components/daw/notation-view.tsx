@@ -1212,9 +1212,7 @@ export function NotationView({ isMaster, roomId, onCreateSong }: NotationViewPro
     setIsAddingChord(false);
   };
 
-  // Simulate chord detection (would call actual AI service)
   const handleDetectChords = async () => {
-    // TODO: Integrate with Essentia.js chord detection
     console.log('Detecting chords from audio...');
   };
 

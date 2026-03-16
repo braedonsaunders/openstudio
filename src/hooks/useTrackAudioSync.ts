@@ -5,9 +5,11 @@ import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import { useAudioEngine } from './useAudioEngine';
 import { nativeBridge } from '@/lib/audio/native-bridge';
-import type { ExtendedEffectsChain } from '@/types';
+import type { ExtendedEffectsChain, UserTrack } from '@/types';
 
 interface TrackSyncState {
+  trackName: string;
+  bridgeTrackId: number | null;
   isArmed: boolean;
   isMuted: boolean;
   isSolo: boolean;
@@ -18,6 +20,11 @@ interface TrackSyncState {
   monitoringVolume: number;
   effects: ExtendedEffectsChain | null;
   channelConfig: { channelCount: 1 | 2; leftChannel: number; rightChannel?: number };
+}
+
+interface RemoteTrackSyncState {
+  payloadHash: string;
+  bridgeTrackId: number;
 }
 
 /**
@@ -35,13 +42,86 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
   } = useAudioEngine();
 
   const lastSyncRef = useRef<Map<string, TrackSyncState>>(new Map());
+  const lastRemoteSyncRef = useRef<Map<string, RemoteTrackSyncState>>(new Map());
   const bridgeWasRunningRef = useRef<boolean>(false);
+
+  const syncRemoteTracks = (allTracks: UserTrack[], useBridge: boolean) => {
+    if (!currentUserId) {
+      return;
+    }
+
+    if (!useBridge) {
+      for (const [remoteKey, remoteState] of lastRemoteSyncRef.current.entries()) {
+        const [userId, trackId] = remoteKey.split(':', 2);
+        nativeBridge.removeRemoteTrack(userId, trackId, remoteState.bridgeTrackId);
+      }
+      lastRemoteSyncRef.current.clear();
+      return;
+    }
+
+    const activeRemoteTrackKeys = new Set<string>();
+
+    for (const track of allTracks) {
+      const bridgeTrackId = track.audioSettings.bridgeTrackId;
+      const isRemoteAudioTrack =
+        track.userId !== currentUserId &&
+        track.type === 'audio' &&
+        track.isActive !== false &&
+        Number.isInteger(bridgeTrackId);
+
+      if (!isRemoteAudioTrack) {
+        continue;
+      }
+
+      const remoteKey = `${track.userId}:${track.id}`;
+      activeRemoteTrackKeys.add(remoteKey);
+
+      const payloadHash = JSON.stringify({
+        bridgeTrackId,
+        trackName: track.name,
+        volume: track.volume,
+        pan: track.pan ?? 0,
+        muted: track.isMuted,
+        solo: track.isSolo,
+      });
+
+      const previousSync = lastRemoteSyncRef.current.get(remoteKey);
+      if (previousSync?.payloadHash === payloadHash) {
+        continue;
+      }
+
+      nativeBridge.syncRemoteTrack({
+        userId: track.userId,
+        trackId: track.id,
+        bridgeTrackId: bridgeTrackId as number,
+        trackName: track.name,
+        volume: track.volume,
+        pan: track.pan ?? 0,
+        muted: track.isMuted,
+        solo: track.isSolo,
+      });
+
+      lastRemoteSyncRef.current.set(remoteKey, {
+        payloadHash,
+        bridgeTrackId: bridgeTrackId as number,
+      });
+    }
+
+    for (const [remoteKey, remoteState] of Array.from(lastRemoteSyncRef.current.entries())) {
+      if (activeRemoteTrackKeys.has(remoteKey)) {
+        continue;
+      }
+
+      const [userId, trackId] = remoteKey.split(':', 2);
+      nativeBridge.removeRemoteTrack(userId, trackId, remoteState.bridgeTrackId);
+      lastRemoteSyncRef.current.delete(remoteKey);
+    }
+  };
 
   // Force sync function - applies current state to all track processors
   const forceSync = (currentUserId: string) => {
     const state = useUserTracksStore.getState();
     const userTracks = state.getTracksByUser(currentUserId);
-    if (userTracks.length === 0) return;
 
     const allTracks = state.getAllTracks();
     const hasSoloedTracks = allTracks.some(t => t.isSolo);
@@ -51,6 +131,7 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
 
     for (const track of userTracks) {
       if (!track) continue;
+      const bridgeTrackId = track.audioSettings.bridgeTrackId ?? null;
 
       const isEffectivelyMuted = track.isMuted || (hasSoloedTracks && !track.isSolo);
       const directMonitoring = track.audioSettings.directMonitoring ?? true;
@@ -59,6 +140,16 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       const jsMonitoringEnabled = useBridge ? false : directMonitoring;
 
       getOrCreateTrackProcessor(track.id, track.audioSettings);
+
+      if (useBridge && bridgeTrackId !== null) {
+        nativeBridge.syncLocalTrack({
+          trackId: track.id,
+          bridgeTrackId,
+          trackName: track.name,
+          channelConfig: track.audioSettings.channelConfig,
+        });
+      }
+
       updateTrackState(track.id, {
         isArmed: track.isArmed,
         isMuted: isEffectivelyMuted,
@@ -83,6 +174,8 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
 
       // Update lastSyncRef so subsequent subscriptions don't duplicate
       lastSyncRef.current.set(track.id, {
+        trackName: track.name,
+        bridgeTrackId,
         isArmed: track.isArmed,
         isMuted: isEffectivelyMuted,
         isSolo: track.isSolo,
@@ -95,6 +188,8 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         channelConfig: track.audioSettings.channelConfig || { channelCount: 2, leftChannel: 0, rightChannel: 1 },
       });
     }
+
+    syncRemoteTracks(state.getAllTracks(), useBridge);
   };
 
   useEffect(() => {
@@ -132,9 +227,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
 
     const unsubscribe = useUserTracksStore.subscribe((state) => {
       const userTracks = state.getTracksByUser(currentUserId);
-      if (userTracks.length === 0) return;
-
-      // Check if any track is soloed (affects mute logic for all tracks)
       const allTracks = state.getAllTracks();
       const hasSoloedTracks = allTracks.some(t => t.isSolo);
 
@@ -145,11 +237,14 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
       // Process each track
       for (const track of userTracks) {
         if (!track) continue;
+        const bridgeTrackId = track.audioSettings.bridgeTrackId ?? null;
 
         // Calculate effective mute state considering solo
         const isEffectivelyMuted = track.isMuted || (hasSoloedTracks && !track.isSolo);
 
         const currentState: TrackSyncState = {
+          trackName: track.name,
+          bridgeTrackId,
           isArmed: track.isArmed,
           isMuted: isEffectivelyMuted,
           isSolo: track.isSolo,
@@ -166,6 +261,24 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
 
         // Ensure track processor exists
         getOrCreateTrackProcessor(track.id, track.audioSettings);
+
+        if (useBridge && bridgeTrackId !== null) {
+          const needsTrackRegistration = !lastState ||
+            lastState.trackName !== currentState.trackName ||
+            lastState.bridgeTrackId !== currentState.bridgeTrackId ||
+            lastState.channelConfig.channelCount !== currentState.channelConfig.channelCount ||
+            lastState.channelConfig.leftChannel !== currentState.channelConfig.leftChannel ||
+            lastState.channelConfig.rightChannel !== currentState.channelConfig.rightChannel;
+
+          if (needsTrackRegistration) {
+            nativeBridge.syncLocalTrack({
+              trackId: track.id,
+              bridgeTrackId,
+              trackName: track.name,
+              channelConfig: currentState.channelConfig,
+            });
+          }
+        }
 
         // Sync state to audio engine's track processor
         const stateChanged = !lastState ||
@@ -228,9 +341,6 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
             });
           }
 
-          // Note: Channel config is now handled at the global level via setChannelConfig()
-          // Native bridge uses single-track audio capture; multi-track is handled in browser
-
           // Sync effects to native bridge when changed
           if (currentState.effects && (!lastState || lastState.effects !== currentState.effects)) {
             console.log('[useTrackAudioSync] Syncing effects to native bridge for track:', track.id);
@@ -241,12 +351,17 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
         lastSyncRef.current.set(track.id, currentState);
       }
 
+      syncRemoteTracks(state.getAllTracks(), useBridge);
+
       // Clean up removed tracks
       const currentTrackIds = new Set(userTracks.map(t => t.id));
       for (const trackId of lastSyncRef.current.keys()) {
         if (!currentTrackIds.has(trackId)) {
           lastSyncRef.current.delete(trackId);
           removeTrackProcessor(trackId);
+          if (useBridge) {
+            nativeBridge.removeLocalTrack(trackId);
+          }
         }
       }
     });
@@ -254,6 +369,14 @@ export function useTrackAudioSync(currentUserId: string | undefined) {
     return () => {
       unsubscribe();
       bridgeUnsubscribe();
+      for (const trackId of lastSyncRef.current.keys()) {
+        nativeBridge.removeLocalTrack(trackId);
+      }
+      for (const [remoteKey, remoteState] of lastRemoteSyncRef.current.entries()) {
+        const [userId, trackId] = remoteKey.split(':', 2);
+        nativeBridge.removeRemoteTrack(userId, trackId, remoteState.bridgeTrackId);
+      }
+      lastRemoteSyncRef.current.clear();
     };
   }, [currentUserId, getOrCreateTrackProcessor, updateTrackState, updateTrackEffects, removeTrackProcessor]);
 }

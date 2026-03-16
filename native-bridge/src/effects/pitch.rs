@@ -2,20 +2,22 @@
 //!
 //! Uses autocorrelation for pitch detection and PSOLA-style resampling for shifting.
 
+#![allow(dead_code)]
+
 use std::f32::consts::PI;
 
 /// Musical scale intervals (semitones from root)
 #[derive(Debug, Clone, Copy)]
 pub enum Scale {
-    Chromatic,    // All 12 notes
-    Major,        // [0, 2, 4, 5, 7, 9, 11]
-    Minor,        // [0, 2, 3, 5, 7, 8, 10]
+    Chromatic,       // All 12 notes
+    Major,           // [0, 2, 4, 5, 7, 9, 11]
+    Minor,           // [0, 2, 3, 5, 7, 8, 10]
     PentatonicMajor, // [0, 2, 4, 7, 9]
     PentatonicMinor, // [0, 3, 5, 7, 10]
-    Blues,        // [0, 3, 5, 6, 7, 10]
-    Dorian,       // [0, 2, 3, 5, 7, 9, 10]
-    Mixolydian,   // [0, 2, 4, 5, 7, 9, 10]
-    HarmonicMinor, // [0, 2, 3, 5, 7, 8, 11]
+    Blues,           // [0, 3, 5, 6, 7, 10]
+    Dorian,          // [0, 2, 3, 5, 7, 9, 10]
+    Mixolydian,      // [0, 2, 4, 5, 7, 9, 10]
+    HarmonicMinor,   // [0, 2, 3, 5, 7, 8, 11]
 }
 
 impl Scale {
@@ -89,7 +91,7 @@ impl PitchDetector {
             buffer: vec![0.0; window_size],
             buffer_pos: 0,
             window_size,
-            min_freq: 60.0,  // ~B1
+            min_freq: 60.0,   // ~B1
             max_freq: 1000.0, // ~B5
             threshold: 0.15,
             last_pitch: 0.0,
@@ -119,13 +121,18 @@ impl PitchDetector {
         // YIN-style difference function
         let mut diff = vec![0.0f32; max_period];
 
-        for tau in 1..max_period.min(self.window_size / 2) {
+        for (tau, diff_slot) in diff
+            .iter_mut()
+            .enumerate()
+            .take(max_period.min(self.window_size / 2))
+            .skip(1)
+        {
             let mut sum = 0.0;
             for i in 0..self.window_size - tau {
                 let d = self.buffer[i] - self.buffer[i + tau];
                 sum += d * d;
             }
-            diff[tau] = sum;
+            *diff_slot = sum;
         }
 
         // Cumulative mean normalized difference
@@ -145,12 +152,15 @@ impl PitchDetector {
         for tau in min_period..max_period.min(cmnd.len()) {
             if cmnd[tau] < self.threshold {
                 // Find local minimum
-                while tau + 1 < cmnd.len() && cmnd[tau + 1] < cmnd[tau] {
-                    // Skip to next
+                let mut candidate_tau = tau;
+                while candidate_tau + 1 < cmnd.len()
+                    && cmnd[candidate_tau + 1] < cmnd[candidate_tau]
+                {
+                    candidate_tau += 1;
                 }
-                if cmnd[tau] < best_val {
-                    best_val = cmnd[tau];
-                    best_tau = tau;
+                if cmnd[candidate_tau] < best_val {
+                    best_val = cmnd[candidate_tau];
+                    best_tau = candidate_tau;
                 }
                 break;
             }
@@ -214,8 +224,8 @@ impl PitchShifter {
 
         // Hann window for smooth grains
         let mut window = vec![0.0; grain_size];
-        for i in 0..grain_size {
-            window[i] = 0.5 * (1.0 - (2.0 * PI * i as f32 / grain_size as f32).cos());
+        for (i, value) in window.iter_mut().enumerate().take(grain_size) {
+            *value = 0.5 * (1.0 - (2.0 * PI * i as f32 / grain_size as f32).cos());
         }
 
         Self {

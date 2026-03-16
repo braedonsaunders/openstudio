@@ -10,13 +10,13 @@ use std::f32::consts::PI;
 
 /// Rotating element (horn or drum)
 struct Rotor {
-    phase: f32,           // Current rotation angle (0-1)
-    target_speed: f32,    // Target rotation speed (Hz)
-    current_speed: f32,   // Current speed (ramps to target)
-    acceleration: f32,    // Ramp rate
-    delay_l: DelayLine,   // Delay for doppler L
-    delay_r: DelayLine,   // Delay for doppler R
-    max_delay_ms: f32,    // Maximum doppler delay
+    phase: f32,         // Current rotation angle (0-1)
+    target_speed: f32,  // Target rotation speed (Hz)
+    current_speed: f32, // Current speed (ramps to target)
+    acceleration: f32,  // Ramp rate
+    delay_l: DelayLine, // Delay for doppler L
+    delay_r: DelayLine, // Delay for doppler R
+    max_delay_ms: f32,  // Maximum doppler delay
 }
 
 impl Rotor {
@@ -146,13 +146,16 @@ impl RotarySpeaker {
         self.sample_rate = rate;
         let sr = rate as f32;
         self.crossover_hp = Biquad::new();
-        self.crossover_hp.configure(BiquadType::Highpass, 800.0, 0.5, 0.0, sr);
+        self.crossover_hp
+            .configure(BiquadType::Highpass, 800.0, 0.5, 0.0, sr);
         self.crossover_lp = Biquad::new();
-        self.crossover_lp.configure(BiquadType::Lowpass, 800.0, 0.5, 0.0, sr);
+        self.crossover_lp
+            .configure(BiquadType::Lowpass, 800.0, 0.5, 0.0, sr);
         self.horn.set_sample_rate(rate);
         self.drum.set_sample_rate(rate);
         self.drive_hp = Biquad::new();
-        self.drive_hp.configure(BiquadType::Highpass, 200.0, 0.7, 0.0, sr);
+        self.drive_hp
+            .configure(BiquadType::Highpass, 200.0, 0.7, 0.0, sr);
     }
 
     pub fn update_settings(&mut self, settings: RotarySpeakerSettings) {

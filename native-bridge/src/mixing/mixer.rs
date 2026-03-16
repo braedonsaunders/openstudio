@@ -29,6 +29,7 @@ pub struct BackingTrackState {
 pub struct Mixer {
     // Local tracks
     local_tracks: HashMap<String, Track>,
+    local_track_effects: HashMap<String, EffectsChain>,
 
     // Remote users
     remote_users: HashMap<String, RemoteUser>,
@@ -53,6 +54,7 @@ impl Mixer {
     pub fn new() -> Self {
         Self {
             local_tracks: HashMap::new(),
+            local_track_effects: HashMap::new(),
             remote_users: HashMap::new(),
             backing_track: BackingTrackState::default(),
             master_volume: 1.0,
@@ -67,12 +69,17 @@ impl Mixer {
     // === Local Track Management ===
 
     pub fn add_local_track(&mut self, track: Track) {
+        let mut effects_chain = EffectsChain::new();
+        effects_chain.update_settings(track.effects.clone());
+        self.local_track_effects
+            .insert(track.id.clone(), effects_chain);
         self.local_tracks.insert(track.id.clone(), track);
         self.update_solo_state();
     }
 
     pub fn remove_local_track(&mut self, track_id: &str) {
         self.local_tracks.remove(track_id);
+        self.local_track_effects.remove(track_id);
         self.update_solo_state();
     }
 
@@ -184,9 +191,12 @@ impl Mixer {
                 return;
             }
 
-            // Apply track effects
-            // TODO: Use per-track effects chain
-            self.local_effects_chain.process(samples);
+            // Apply the track's configured chain when available.
+            if let Some(effects_chain) = self.local_track_effects.get_mut(track_id) {
+                effects_chain.process(samples);
+            } else {
+                self.local_effects_chain.process(samples);
+            }
 
             // Apply track volume
             for sample in samples.iter_mut() {

@@ -51,7 +51,10 @@ impl NoiseGate {
     }
 
     pub fn is_gate_open(&self) -> bool {
-        matches!(self.state, GateState::Open | GateState::Attack | GateState::Hold)
+        matches!(
+            self.state,
+            GateState::Open | GateState::Attack | GateState::Hold
+        )
     }
 }
 

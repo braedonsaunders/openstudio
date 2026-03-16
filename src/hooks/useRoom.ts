@@ -2,9 +2,10 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { RealtimeRoomManager } from '@/lib/supabase/realtime';
-import type { StateSyncPayload } from '@/lib/supabase/realtime';
+import type { RoomLayoutState, StateSyncPayload } from '@/lib/supabase/realtime';
 import { CloudflareCalls } from '@/lib/cloudflare/calls';
 import { authFetch, authFetchJson } from '@/lib/auth-fetch';
+import type { AudioEngine } from '@/lib/audio/audio-engine';
 import { useTempoRealtimeBroadcast } from './useTempoRealtimeBroadcast';
 
 // Storage key for persisted guest ID
@@ -64,8 +65,24 @@ import { useStatsTracker } from './useStatsTracker';
 import type { User, Room, BackingTrack, TrackQueue, UserTrack, StemMixState } from '@/types';
 import type { LoopTrackState } from '@/types/loops';
 import type { RoomRole, RoomPermissions, RoomMember } from '@/types/permissions';
-import type { SongTrackReference } from '@/types/songs';
-import { setSongBroadcastCallbacks } from '@/stores/songs-store';
+import type { Song, SongTrackReference } from '@/types/songs';
+import { setSongBroadcastCallbacks, useSongsStore } from '@/stores/songs-store';
+import { useSessionTempoStore } from '@/stores/session-tempo-store';
+
+type BridgeAwareAudioEngine = Pick<
+  AudioEngine,
+  'createBroadcastStream' | 'setNativeBridgeCallbacks' | 'updateBroadcastConnections'
+>;
+
+function getBrowserAudioEngine(): BridgeAwareAudioEngine | undefined {
+  if (typeof window === 'undefined') {
+    return undefined;
+  }
+
+  return (window as Window & typeof globalThis & {
+    __openStudioAudioEngine?: BridgeAwareAudioEngine;
+  }).__openStudioAudioEngine;
+}
 
 // Song playback event payloads
 export interface SongPlayPayload {
@@ -108,9 +125,6 @@ function broadcastFullStateSync(realtime: RealtimeRoomManager, requestId?: strin
   const loopTracksStore = useLoopTracksStore.getState();
   const permissionsStore = usePermissionsStore.getState();
 
-  // Lazy-load stores to avoid circular dependency
-  const { useSessionTempoStore } = require('@/stores/session-tempo-store');
-  const { useSongsStore } = require('@/stores/songs-store');
   const tempoState = useSessionTempoStore.getState();
   const songsState = useSongsStore.getState();
 
@@ -155,6 +169,7 @@ function broadcastFullStateSync(realtime: RealtimeRoomManager, requestId?: strin
       defaultRole: permissionsStore.defaultRole,
     },
     songTrackStates,
+    layoutState: roomState.layoutState,
     currentSongIsPlaying: audioState.isPlaying && !!songsState.currentSongId,
     currentSongPosition: audioState.currentTime || 0,
     timestamp: Date.now(),
@@ -218,7 +233,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     setStemVolume: audioSetStemVolume,
     // For connecting MediaStream to TrackAudioProcessor for monitoring
     getOrCreateTrackProcessor,
-    setTrackMediaStreamInput,
     updateTrackState,
     // WS5: Listener mode (receive-only, no microphone)
     initializeListenerAudio,
@@ -234,7 +248,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     endSession: statsEndSession,
     trackCollaborator,
     trackMessage,
-    trackRoomCreated,
   } = useStatsTracker();
 
   // Join room - returns true on success, false on failure
@@ -256,7 +269,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       removeUser,
       setQueue,
       setCurrentTrack,
-      setQueuePlaying,
       addMessage,
       setRoom,
     } = useRoomStore.getState();
@@ -469,20 +481,16 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
       }
 
-      // Use the first track's audio settings for capture
-      const firstTrack = userTracks[0];
-      const trackSettings = firstTrack?.audioSettings;
-
       // Start audio capture with track settings (device, channel config, etc.)
       // Skip audio capture in listener mode - listeners only receive, not send
       let stream: MediaStream | undefined;
       let broadcastStream: MediaStream | undefined;
+      const bridgeState = useBridgeAudioStore.getState();
+      const nativePerformerMode = !listenerMode && bridgeState.isConnected && bridgeState.preferNativeBridge;
+      const shouldReceiveRemoteWebRtc = listenerMode || !nativePerformerMode;
 
       if (!listenerMode) {
-        const bridgeState = useBridgeAudioStore.getState();
-        const useBridge = bridgeState.isConnected && bridgeState.preferNativeBridge;
-
-        if (useBridge) {
+        if (nativePerformerMode) {
           // NATIVE BRIDGE MODE: Audio flows through bridge -> TrackAudioProcessor -> WebRTC
           // Create track processors for each user track (bridge input will be connected by useNativeBridge)
           for (const track of userTracks) {
@@ -503,7 +511,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
           // CRITICAL: Create broadcast stream from AudioEngine's track processors
           // This mixes all armed tracks into a single MediaStream for WebRTC
-          const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+          const audioEngine = getBrowserAudioEngine();
           if (audioEngine) {
             broadcastStream = audioEngine.createBroadcastStream() || undefined;
             console.log('[useRoom] Created broadcast stream for native bridge WebRTC:', broadcastStream ? 'success' : 'failed');
@@ -521,18 +529,20 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       const cloudflare = new CloudflareCalls(roomId, user.id);
       await cloudflare.initialize();
 
-      cloudflare.setOnRemoteStream(async (userId, remoteStream) => {
-        // Await to ensure AudioContext is resumed on iOS Safari before proceeding
-        await addRemoteStream(userId, remoteStream);
-        // Use fresh store state instead of closure to avoid stale user data
-        const freshUser = useRoomStore.getState().users.get(userId);
-        options.onUserJoined?.(freshUser || { id: userId, name: 'Unknown', volume: 1, latency: 0, jitterBuffer: 256, connectionQuality: 'good' });
-      });
+      if (shouldReceiveRemoteWebRtc) {
+        cloudflare.setOnRemoteStream(async (userId, remoteStream) => {
+          // Await to ensure AudioContext is resumed on iOS Safari before proceeding
+          await addRemoteStream(userId, remoteStream);
+          // Use fresh store state instead of closure to avoid stale user data
+          const freshUser = useRoomStore.getState().users.get(userId);
+          options.onUserJoined?.(freshUser || { id: userId, name: 'Unknown', volume: 1, latency: 0, jitterBuffer: 256, connectionQuality: 'good' });
+        });
 
-      cloudflare.setOnRemoteStreamRemoved((userId) => {
-        removeRemoteStream(userId);
-        options.onUserLeft?.(userId);
-      });
+        cloudflare.setOnRemoteStreamRemoved((userId) => {
+          removeRemoteStream(userId);
+          options.onUserLeft?.(userId);
+        });
+      }
 
       cloudflare.setOnStatsUpdate((stats) => {
         useAudioStore.getState().setWebRTCStats(stats);
@@ -574,44 +584,24 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         setRemoteCompensationDelay(userId, delayMs);
       });
 
-      // Use broadcast stream (from track processors) for WebRTC, or raw stream as fallback
-      await cloudflare.joinRoom(broadcastStream || stream);
+      // Native performers publish a listener feed only. They do not subscribe to
+      // other performers' WebRTC audio; performer audio stays on the native bridge.
+      await cloudflare.joinRoom(broadcastStream || stream, 'mic', undefined, shouldReceiveRemoteWebRtc);
       cloudflareRef.current = cloudflare;
 
       // === NATIVE BRIDGE P2P NETWORKING ===
       // When native bridge is connected, join the room through the Rust P2P/Relay network.
       // This enables direct native-to-native audio routing (Rust → P2P → Rust) for performers
       // who both have the native bridge, bypassing WebRTC and Web Audio entirely.
-      // For mixed scenarios (one native, one web-only), the AudioEngine's remote capture
-      // worklet routes WebRTC audio to the native bridge for ASIO/CoreAudio output.
-      const bridgeState = useBridgeAudioStore.getState();
-      if (bridgeState.isConnected && bridgeState.preferNativeBridge && !listenerMode) {
+      // WebRTC remains listener-only in this mode.
+      if (nativePerformerMode) {
         // Join room through native bridge P2P network
         nativeBridge.joinRoom(roomId, roomId, user.name || 'Unknown');
         console.log('[useRoom] Native bridge joining P2P room:', roomId);
 
-        // Set up native bridge callbacks on the audio engine for hybrid mode
-        // (routing WebRTC audio from web-only performers to native ASIO output)
-        const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+        const audioEngine = getBrowserAudioEngine();
         if (audioEngine) {
-          audioEngine.setNativeBridgeCallbacks(
-            // onCapture: forward captured remote WebRTC audio to native bridge
-            (userId: string, samples: Float32Array) => {
-              nativeBridge.sendRemoteAudio(userId, samples);
-            },
-            // onAdded: register remote user with native bridge for mixing
-            (userId: string) => {
-              const remoteUser = useRoomStore.getState().users.get(userId);
-              nativeBridge.addRemoteUser(userId, remoteUser?.name || 'Unknown');
-              console.log('[useRoom] Registered remote user with native bridge:', userId);
-            },
-            // onRemoved: deregister remote user from native bridge
-            (userId: string) => {
-              nativeBridge.removeRemoteUser(userId);
-              console.log('[useRoom] Deregistered remote user from native bridge:', userId);
-            }
-          );
-          console.log('[useRoom] Native bridge audio callbacks registered');
+          audioEngine.setNativeBridgeCallbacks(null, null, null);
         }
 
         // Listen for peers connecting via native bridge P2P
@@ -723,13 +713,21 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         // CRITICAL: When new users join, we need to pull their WebRTC audio tracks
         // pullRemoteTracks only runs once during our initial join, so we need to
         // refresh to discover newly joined users' audio streams
-        if (hasNewUsers && cloudflareRef.current) {
+        if (hasNewUsers && shouldReceiveRemoteWebRtc && cloudflareRef.current) {
           console.log('[useRoom] New user joined, refreshing remote tracks...');
-          try {
-            await cloudflareRef.current.refreshRemoteTracks();
-          } catch (err) {
-            console.error('[useRoom] Failed to refresh remote tracks:', err);
-          }
+          const refreshDelays = [0, 300, 1000];
+          refreshDelays.forEach((delay) => {
+            setTimeout(async () => {
+              if (!cloudflareRef.current) {
+                return;
+              }
+              try {
+                await cloudflareRef.current.refreshRemoteTracks();
+              } catch (err) {
+                console.error('[useRoom] Failed to refresh remote tracks:', err);
+              }
+            }, delay);
+          });
         }
 
         // CRITICAL: Sync room state to new joiners via state:request/state:sync protocol (WS2)
@@ -801,6 +799,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             }
           }
         }
+      });
+
+      realtime.on('layout:update', (data) => {
+        const payload = data as RoomLayoutState;
+        useRoomStore.getState().setLayoutState(payload);
       });
 
       realtime.on('track:queue', (data) => {
@@ -950,7 +953,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('tempo:update', (data) => {
         const payload = data as { tempo: number; source: string; userId: string };
         if (payload.userId === user.id) return;
-        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
         const tempoStore = useSessionTempoStore.getState();
         // Only update if the remote user is setting manual tempo
         if (payload.source === 'manual' || payload.source === 'tap') {
@@ -961,7 +963,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('tempo:source', (data) => {
         const payload = data as { source: string; userId: string };
         if (payload.userId === user.id) return;
-        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
         const tempoStore = useSessionTempoStore.getState();
         tempoStore.setSource(payload.source as 'manual' | 'track' | 'analyzer' | 'tap');
       });
@@ -969,7 +970,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('tempo:timesig', (data) => {
         const payload = data as { beatsPerBar: number; beatUnit: number; userId: string };
         if (payload.userId === user.id) return;
-        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
         const tempoStore = useSessionTempoStore.getState();
         tempoStore.setTimeSignature(payload.beatsPerBar, payload.beatUnit);
       });
@@ -977,7 +977,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('key:update', (data) => {
         const payload = data as { key: string | null; keyScale: 'major' | 'minor' | null; keySource: string; userId: string };
         if (payload.userId === user.id) return;
-        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
         const tempoStore = useSessionTempoStore.getState();
         // Apply key value based on source type so all clients stay in sync
         if (payload.keySource === 'manual') {
@@ -1099,7 +1098,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         }
 
         // Apply tempo
-        const { useSessionTempoStore } = require('@/stores/session-tempo-store');
         const tempoStore = useSessionTempoStore.getState();
         if (payload.tempoSource === 'manual' || payload.tempoSource === 'tap') {
           tempoStore.setManualTempo(payload.tempo);
@@ -1122,7 +1120,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
         // Apply songs
         if (payload.songs.length > 0) {
-          const { useSongsStore } = require('@/stores/songs-store');
           useSongsStore.getState().setSongs(payload.songs);
           if (payload.currentSongId) {
             useSongsStore.getState().selectSong(payload.currentSongId);
@@ -1143,6 +1140,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           if (permData.defaultRole) {
             usePermissionsStore.getState().setDefaultRole(permData.defaultRole);
           }
+        }
+
+        if (payload.layoutState) {
+          useRoomStore.getState().setLayoutState(payload.layoutState);
         }
 
         // Sync Song playback state - trigger song:play for joining user
@@ -1246,7 +1247,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         };
         if (payload.userId === user.id) return;
 
-        const { useSongsStore } = require('@/stores/songs-store');
         const songsStore = useSongsStore.getState();
         const song = songsStore.songs.get(payload.songId);
         if (song) {
@@ -1291,11 +1291,10 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('songs:create', (data) => {
         const payload = data as { song: unknown; userId: string };
         if (payload.userId === user.id) return;
-        const { useSongsStore } = require('@/stores/songs-store');
         const songsStore = useSongsStore.getState();
         // Add the song directly without persisting (it's already on server)
         const songs = new Map(songsStore.songs);
-        const song = payload.song as { id: string; [key: string]: unknown };
+        const song = payload.song as Song;
         songs.set(song.id, song);
         useSongsStore.setState({ songs });
       });
@@ -1303,7 +1302,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('songs:update', (data) => {
         const payload = data as { songId: string; changes: Record<string, unknown>; userId: string };
         if (payload.userId === user.id) return;
-        const { useSongsStore } = require('@/stores/songs-store');
         const songsStore = useSongsStore.getState();
         const song = songsStore.songs.get(payload.songId);
         if (song) {
@@ -1316,7 +1314,6 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       realtime.on('songs:delete', (data) => {
         const payload = data as { songId: string; userId: string };
         if (payload.userId === user.id) return;
-        const { useSongsStore } = require('@/stores/songs-store');
         const songsStore = useSongsStore.getState();
         const songs = new Map(songsStore.songs);
         songs.delete(payload.songId);
@@ -1394,7 +1391,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // This prevents the user from being stuck in "Joining..." forever
       setJoining(false);
     }
-  }, [roomId, initialize, addRemoteStream, removeRemoteStream, updateFromStats, loadBackingTrack, playBackingTrack, seekTo, options, getOrCreateTrackProcessor, setTrackMediaStreamInput, updateTrackState]);
+  }, [roomId, initialize, addRemoteStream, removeRemoteStream, updateFromStats, loadBackingTrack, playBackingTrack, seekTo, options, getOrCreateTrackProcessor, updateTrackState, initializeListenerAudio, audioToggleStem, audioSetStemVolume, audioSetRemoteVolume, audioSetRemoteMuted, setRemoteCompensationDelay, setMultiTrackVolume, setBackingTrackVolume, statsStartSession, trackCollaborator]);
 
   // Leave room
   const leave = useCallback(async () => {
@@ -1437,7 +1434,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       nativeBridge.removeAllListeners('peerDisconnected');
 
       // Clear native bridge audio callbacks
-      const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+      const audioEngine = getBrowserAudioEngine();
       if (audioEngine) {
         audioEngine.setNativeBridgeCallbacks(null, null, null);
       }
@@ -1631,7 +1628,17 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     usePerformanceSyncStore.getState().setActivePreset(preset);
   }, []);
 
+  const setCustomEncodingSettings = useCallback((settings: Partial<OpusEncodingSettings>) => {
+    cloudflareRef.current?.setCustomEncodingSettings(settings);
+    usePerformanceSyncStore.getState().setCustomEncodingSettings(settings);
+    usePerformanceSyncStore.getState().setActivePreset('custom');
+  }, []);
+
   const getCloudflareRef = useCallback(() => cloudflareRef.current, []);
+  const getRealtimeManager = useCallback(() => realtimeRef.current, []);
+  const broadcastLayoutState = useCallback((layoutState: Omit<RoomLayoutState, 'updatedBy' | 'timestamp'>) => {
+    realtimeRef.current?.broadcastLayoutState(layoutState);
+  }, []);
 
   // Permission management
   const updateUserRole = useCallback(async (targetUserId: string, role: RoomRole) => {
@@ -1727,7 +1734,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
   const broadcastUserTrackAdd = useCallback((track: UserTrack) => {
     realtimeRef.current?.broadcastUserTrackAdd(track);
     // Update broadcast connections so the new track's audio is included in WebRTC stream
-    const audioEngine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+    const audioEngine = getBrowserAudioEngine();
     if (audioEngine?.updateBroadcastConnections) {
       audioEngine.updateBroadcastConnections();
       console.log('[useRoom] Updated broadcast connections after new track added');
@@ -1862,7 +1869,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     stopLoopTrack,
     // Quality/Latency settings
     setQualityPreset,
+    setCustomEncodingSettings,
     getCloudflareRef,
+    getRealtimeManager,
     // Permission management
     updateUserRole,
     updateUserPermissions,
@@ -1871,6 +1880,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
     // Real-time broadcast functions
     broadcastUserTrackAdd,
     broadcastUserTrackUpdate,
+    broadcastLayoutState,
     broadcastTempoUpdate,
     broadcastTempoSource,
     broadcastTimeSignature,

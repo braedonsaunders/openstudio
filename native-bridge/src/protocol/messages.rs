@@ -6,6 +6,7 @@ use crate::mixing::PartialTrackState;
 use serde::{Deserialize, Serialize};
 
 /// All messages from browser to native bridge
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum BrowserMessage {
@@ -75,11 +76,29 @@ pub enum BrowserMessage {
         state: PartialTrackState,
     },
 
+    /// Register or update a local native bridge track
+    SyncLocalTrack {
+        #[serde(rename = "trackId")]
+        track_id: String,
+        #[serde(rename = "bridgeTrackId")]
+        bridge_track_id: u8,
+        #[serde(rename = "trackName")]
+        track_name: String,
+        #[serde(rename = "channelConfig")]
+        channel_config: ChannelConfig,
+    },
+
+    /// Remove a local native bridge track
+    RemoveLocalTrack {
+        #[serde(rename = "trackId")]
+        track_id: String,
+    },
+
     /// Update track effects
     UpdateEffects {
         #[serde(rename = "trackId")]
         track_id: String,
-        effects: EffectsSettings,
+        effects: Box<EffectsSettings>,
     },
 
     /// Set monitoring
@@ -109,6 +128,32 @@ pub enum BrowserMessage {
         pan: f32,
         muted: bool,
         compensation_delay_ms: f32,
+    },
+
+    /// Register or update a remote native bridge track
+    SyncRemoteTrack {
+        #[serde(rename = "userId")]
+        user_id: String,
+        #[serde(rename = "trackId")]
+        track_id: String,
+        #[serde(rename = "bridgeTrackId")]
+        bridge_track_id: u8,
+        #[serde(rename = "trackName")]
+        track_name: String,
+        volume: f32,
+        pan: f32,
+        muted: bool,
+        solo: bool,
+    },
+
+    /// Remove a remote native bridge track
+    RemoveRemoteTrack {
+        #[serde(rename = "userId")]
+        user_id: String,
+        #[serde(rename = "trackId")]
+        track_id: String,
+        #[serde(rename = "bridgeTrackId")]
+        bridge_track_id: Option<u8>,
     },
 
     // === Backing Track ===
@@ -148,15 +193,10 @@ pub enum BrowserMessage {
         reverb: Option<crate::effects::ReverbSettings>,
         limiter: Option<crate::effects::LimiterSettings>,
     },
-
-    // === Audio Data ===
-    /// Audio data from WebRTC (remote users) - binary format
-    /// Not sent as JSON, handled separately
-    #[serde(skip)]
-    AudioData { user_id: String, samples: Vec<f32> },
 }
 
 /// All messages from native bridge to browser
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(tag = "type", rename_all = "camelCase")]
 pub enum NativeMessage {
@@ -339,19 +379,17 @@ pub enum NativeMessage {
         #[serde(rename = "peerCount")]
         peer_count: usize,
     },
-
-    // === Audio Data ===
-    /// Audio data for WebRTC (local capture after effects) - binary format
-    /// Not sent as JSON, handled separately
-    #[serde(skip)]
-    AudioData { samples: Vec<f32> },
 }
 
 /// Binary audio message header (for efficient audio streaming)
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 pub struct AudioMessageHeader {
-    /// Message type: 0 = from browser (remote audio), 1 = to browser (local capture)
+    /// Message type:
+    /// 0 = from browser (remote WebRTC audio)
+    /// 1 = to browser (legacy local capture)
+    /// 2 = to browser (local capture with track id)
+    /// 3 = to browser (decoded remote native peer audio)
     pub msg_type: u8,
     /// Number of samples (stereo frames * 2)
     pub sample_count: u32,
@@ -362,8 +400,8 @@ pub struct AudioMessageHeader {
 impl AudioMessageHeader {
     pub const SIZE: usize = std::mem::size_of::<Self>();
 
-    pub fn to_bytes(&self) -> [u8; Self::SIZE] {
-        unsafe { std::mem::transmute_copy(self) }
+    pub fn to_bytes(self) -> [u8; Self::SIZE] {
+        unsafe { std::mem::transmute_copy(&self) }
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Option<Self> {

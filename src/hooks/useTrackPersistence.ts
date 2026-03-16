@@ -34,18 +34,29 @@ export function useTrackPersistence(
   const persistTrack = useCallback(async (track: UserTrack) => {
     if (!roomId || !userId) return;
 
+    const isOwnedByCurrentUser = track.userId === userId || track.ownerUserId === userId;
+    if (!isOwnedByCurrentUser) {
+      return;
+    }
+
     // SECURITY: No longer send requesterId - server derives identity from JWT
     try {
       await authFetchJson(`/api/rooms/${roomId}/user-tracks`, 'PATCH', {
         trackId: track.id,
         name: track.name,
         color: track.color,
+        type: track.type,
         audioSettings: track.audioSettings,
+        midiSettings: track.midiSettings,
         isMuted: track.isMuted,
         isSolo: track.isSolo,
         volume: track.volume,
+        pan: track.pan,
         isArmed: track.isArmed,
         isRecording: track.isRecording,
+        ownerUserId: track.ownerUserId,
+        ownerUserName: track.ownerUserName,
+        isActive: track.isActive,
       });
     } catch (err) {
       console.error('Failed to persist track:', err);
@@ -66,12 +77,18 @@ export function useTrackPersistence(
     const stateHash = JSON.stringify({
       name: track.name,
       color: track.color,
+      type: track.type,
+      audioSettings: track.audioSettings,
+      midiSettings: track.midiSettings,
       isMuted: track.isMuted,
       isSolo: track.isSolo,
       volume: track.volume,
+      pan: track.pan,
       isArmed: track.isArmed,
       isRecording: track.isRecording,
       isActive: track.isActive,
+      ownerUserId: track.ownerUserId,
+      ownerUserName: track.ownerUserName,
     });
 
     // Skip if nothing changed
@@ -84,12 +101,18 @@ export function useTrackPersistence(
       onBroadcast(track.id, {
         name: track.name,
         color: track.color,
+        type: track.type,
+        audioSettings: track.audioSettings,
+        midiSettings: track.midiSettings,
         isMuted: track.isMuted,
         isSolo: track.isSolo,
         volume: track.volume,
+        pan: track.pan,
         isArmed: track.isArmed,
         isRecording: track.isRecording,
         isActive: track.isActive,
+        ownerUserId: track.ownerUserId,
+        ownerUserName: track.ownerUserName,
       });
       lastBroadcastState.current.set(track.id, stateHash);
       pendingBroadcasts.current.delete(track.id);
@@ -111,10 +134,14 @@ export function useTrackPersistence(
       name: track.name,
       color: track.color,
       audioSettings: track.audioSettings,
+      midiSettings: track.midiSettings,
       isMuted: track.isMuted,
       isSolo: track.isSolo,
       volume: track.volume,
+      pan: track.pan,
       isArmed: track.isArmed,
+      isRecording: track.isRecording,
+      isActive: track.isActive,
     });
 
     // Skip if nothing changed

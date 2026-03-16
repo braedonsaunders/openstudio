@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 /// Complete unified effects chain settings
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct EffectsSettings {
     // Base effects (15) - all have defaults so partial updates work
@@ -80,49 +80,6 @@ pub struct EffectsSettings {
     pub shimmer_reverb: ShimmerReverbSettings,
 }
 
-impl Default for EffectsSettings {
-    fn default() -> Self {
-        Self {
-            wah: WahSettings::default(),
-            overdrive: OverdriveSettings::default(),
-            distortion: DistortionSettings::default(),
-            amp: AmpSettings::default(),
-            cabinet: CabinetSettings::default(),
-            noise_gate: NoiseGateSettings::default(),
-            eq: EqSettings::default(),
-            compressor: CompressorSettings::default(),
-            chorus: ChorusSettings::default(),
-            flanger: FlangerSettings::default(),
-            phaser: PhaserSettings::default(),
-            delay: DelaySettings::default(),
-            tremolo: TremoloSettings::default(),
-            reverb: ReverbSettings::default(),
-            limiter: LimiterSettings::default(),
-            // Extended effects default to disabled
-            pitch_correction: PitchCorrectionSettings::default(),
-            vocal_doubler: VocalDoublerSettings::default(),
-            de_esser: DeEsserSettings::default(),
-            formant_shifter: FormantShifterSettings::default(),
-            harmonizer: HarmonizerSettings::default(),
-            bitcrusher: BitcrusherSettings::default(),
-            ring_modulator: RingModulatorSettings::default(),
-            frequency_shifter: FrequencyShifterSettings::default(),
-            granular_delay: GranularDelaySettings::default(),
-            rotary_speaker: RotarySpeakerSettings::default(),
-            auto_pan: AutoPanSettings::default(),
-            multi_filter: MultiFilterSettings::default(),
-            vibrato: VibratoSettings::default(),
-            transient_shaper: TransientShaperSettings::default(),
-            stereo_imager: StereoImagerSettings::default(),
-            exciter: ExciterSettings::default(),
-            multiband_compressor: MultibandCompressorSettings::default(),
-            stereo_delay: StereoDelaySettings::default(),
-            room_simulator: RoomSimulatorSettings::default(),
-            shimmer_reverb: ShimmerReverbSettings::default(),
-        }
-    }
-}
-
 // === WAH ===
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -134,34 +91,52 @@ pub struct WahSettings {
     #[serde(default = "default_wah_frequency")]
     pub frequency: f32, // 0-1 sweep position (manual mode)
     #[serde(default = "default_wah_rate")]
-    pub rate: f32,      // Hz, auto mode LFO rate
+    pub rate: f32, // Hz, auto mode LFO rate
     #[serde(default = "default_wah_depth")]
-    pub depth: f32,     // 0-1, sweep depth
+    pub depth: f32, // 0-1, sweep depth
     #[serde(default = "default_wah_base_freq")]
     pub base_frequency: f32, // Hz, minimum frequency
     #[serde(default = "default_wah_max_freq")]
-    pub max_frequency: f32,  // Hz, maximum frequency
+    pub max_frequency: f32, // Hz, maximum frequency
     #[serde(default = "default_wah_resonance", alias = "q")]
     pub resonance: f32, // Q factor (also accepts "q" from frontend)
     #[serde(default = "default_wah_sensitivity")]
     pub sensitivity: f32, // 0-1, envelope sensitivity
     #[serde(default = "default_wah_attack")]
-    pub attack: f32,    // seconds (for envelope mode)
+    pub attack: f32, // seconds (for envelope mode)
     #[serde(default = "default_wah_release")]
-    pub release: f32,   // seconds
+    pub release: f32, // seconds
     #[serde(default = "default_one")]
-    pub mix: f32,       // 0-1
+    pub mix: f32, // 0-1
 }
 
-fn default_wah_frequency() -> f32 { 0.5 }
-fn default_wah_rate() -> f32 { 1.0 }
-fn default_wah_depth() -> f32 { 0.7 }
-fn default_wah_base_freq() -> f32 { 400.0 }
-fn default_wah_max_freq() -> f32 { 2000.0 }
-fn default_wah_resonance() -> f32 { 2.0 }
-fn default_wah_sensitivity() -> f32 { 0.7 }
-fn default_wah_attack() -> f32 { 0.01 }
-fn default_wah_release() -> f32 { 0.05 }
+fn default_wah_frequency() -> f32 {
+    0.5
+}
+fn default_wah_rate() -> f32 {
+    1.0
+}
+fn default_wah_depth() -> f32 {
+    0.7
+}
+fn default_wah_base_freq() -> f32 {
+    400.0
+}
+fn default_wah_max_freq() -> f32 {
+    2000.0
+}
+fn default_wah_resonance() -> f32 {
+    2.0
+}
+fn default_wah_sensitivity() -> f32 {
+    0.7
+}
+fn default_wah_attack() -> f32 {
+    0.01
+}
+fn default_wah_release() -> f32 {
+    0.05
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -200,12 +175,14 @@ pub struct OverdriveSettings {
     #[serde(default = "default_half")]
     pub drive: f32, // 0-1
     #[serde(default = "default_half")]
-    pub tone: f32,  // 0-1
+    pub tone: f32, // 0-1
     #[serde(default = "default_half")]
     pub level: f32, // 0-1
 }
 
-fn default_half() -> f32 { 0.5 }
+fn default_half() -> f32 {
+    0.5
+}
 
 impl Default for OverdriveSettings {
     fn default() -> Self {
@@ -229,9 +206,9 @@ pub struct DistortionSettings {
     #[serde(default = "default_half")]
     pub amount: f32, // 0-1
     #[serde(default = "default_half")]
-    pub tone: f32,   // 0-1
+    pub tone: f32, // 0-1
     #[serde(default = "default_half")]
-    pub level: f32,  // 0-1
+    pub level: f32, // 0-1
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
@@ -266,17 +243,17 @@ pub struct AmpSettings {
     #[serde(default, alias = "type")]
     pub amp_type: AmpType,
     #[serde(default = "default_half")]
-    pub gain: f32,     // 0-1
+    pub gain: f32, // 0-1
     #[serde(default = "default_half")]
-    pub bass: f32,     // 0-1
+    pub bass: f32, // 0-1
     #[serde(default = "default_half")]
-    pub mid: f32,      // 0-1
+    pub mid: f32, // 0-1
     #[serde(default = "default_half")]
-    pub treble: f32,   // 0-1
+    pub treble: f32, // 0-1
     #[serde(default = "default_half")]
     pub presence: f32, // 0-1
     #[serde(default = "default_half")]
-    pub master: f32,   // 0-1
+    pub master: f32, // 0-1
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
@@ -320,7 +297,9 @@ pub struct CabinetSettings {
     pub room_level: f32, // 0-1
 }
 
-fn default_room_level() -> f32 { 0.3 }
+fn default_room_level() -> f32 {
+    0.3
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -369,20 +348,30 @@ pub struct NoiseGateSettings {
     #[serde(default = "default_ng_threshold")]
     pub threshold: f32, // dB (-96 to 0)
     #[serde(default = "default_ng_attack")]
-    pub attack: f32,    // ms
+    pub attack: f32, // ms
     #[serde(default = "default_ng_hold")]
-    pub hold: f32,      // ms
+    pub hold: f32, // ms
     #[serde(default = "default_ng_release")]
-    pub release: f32,   // ms
+    pub release: f32, // ms
     #[serde(default = "default_ng_range")]
-    pub range: f32,     // dB attenuation when closed
+    pub range: f32, // dB attenuation when closed
 }
 
-fn default_ng_threshold() -> f32 { -40.0 }
-fn default_ng_attack() -> f32 { 0.1 }
-fn default_ng_hold() -> f32 { 50.0 }
-fn default_ng_release() -> f32 { 100.0 }
-fn default_ng_range() -> f32 { -80.0 }
+fn default_ng_threshold() -> f32 {
+    -40.0
+}
+fn default_ng_attack() -> f32 {
+    0.1
+}
+fn default_ng_hold() -> f32 {
+    50.0
+}
+fn default_ng_release() -> f32 {
+    100.0
+}
+fn default_ng_range() -> f32 {
+    -80.0
+}
 
 impl Default for NoiseGateSettings {
     fn default() -> Self {
@@ -413,15 +402,19 @@ pub struct EqBand {
     #[serde(default = "default_eq_frequency")]
     pub frequency: f32, // Hz
     #[serde(default)]
-    pub gain: f32,      // dB (-24 to +24)
+    pub gain: f32, // dB (-24 to +24)
     #[serde(default = "default_eq_q")]
-    pub q: f32,         // 0.1 to 10
+    pub q: f32, // 0.1 to 10
     #[serde(default, alias = "type")]
     pub band_type: EqBandType,
 }
 
-fn default_eq_frequency() -> f32 { 1000.0 }
-fn default_eq_q() -> f32 { 1.0 }
+fn default_eq_frequency() -> f32 {
+    1000.0
+}
+fn default_eq_q() -> f32 {
+    1.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -481,24 +474,34 @@ pub struct CompressorSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_comp_threshold")]
-    pub threshold: f32,   // dB (-60 to 0)
+    pub threshold: f32, // dB (-60 to 0)
     #[serde(default = "default_comp_ratio")]
-    pub ratio: f32,       // 1:1 to 20:1
+    pub ratio: f32, // 1:1 to 20:1
     #[serde(default = "default_comp_attack")]
-    pub attack: f32,      // ms
+    pub attack: f32, // ms
     #[serde(default = "default_comp_release")]
-    pub release: f32,     // ms
+    pub release: f32, // ms
     #[serde(default = "default_comp_knee")]
-    pub knee: f32,        // dB (0-40)
+    pub knee: f32, // dB (0-40)
     #[serde(default)]
     pub makeup_gain: f32, // dB (-12 to +24)
 }
 
-fn default_comp_threshold() -> f32 { -24.0 }
-fn default_comp_ratio() -> f32 { 4.0 }
-fn default_comp_attack() -> f32 { 10.0 }
-fn default_comp_release() -> f32 { 100.0 }
-fn default_comp_knee() -> f32 { 6.0 }
+fn default_comp_threshold() -> f32 {
+    -24.0
+}
+fn default_comp_ratio() -> f32 {
+    4.0
+}
+fn default_comp_attack() -> f32 {
+    10.0
+}
+fn default_comp_release() -> f32 {
+    100.0
+}
+fn default_comp_knee() -> f32 {
+    6.0
+}
 
 impl Default for CompressorSettings {
     fn default() -> Self {
@@ -521,23 +524,31 @@ pub struct ChorusSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_one")]
-    pub rate: f32,     // Hz (0.1-10)
+    pub rate: f32, // Hz (0.1-10)
     #[serde(default = "default_half")]
-    pub depth: f32,    // 0-1
+    pub depth: f32, // 0-1
     #[serde(default = "default_chorus_delay")]
-    pub delay: f32,    // ms (2-20)
+    pub delay: f32, // ms (2-20)
     #[serde(default = "default_feedback")]
     pub feedback: f32, // 0-1
     #[serde(default = "default_spread")]
-    pub spread: f32,   // stereo spread (0-180 degrees)
+    pub spread: f32, // stereo spread (0-180 degrees)
     #[serde(default = "default_half")]
-    pub mix: f32,      // 0-1
+    pub mix: f32, // 0-1
 }
 
-fn default_one() -> f32 { 1.0 }
-fn default_feedback() -> f32 { 0.2 }
-fn default_spread() -> f32 { 90.0 }
-fn default_chorus_delay() -> f32 { 7.0 }
+fn default_one() -> f32 {
+    1.0
+}
+fn default_feedback() -> f32 {
+    0.2
+}
+fn default_spread() -> f32 {
+    90.0
+}
+fn default_chorus_delay() -> f32 {
+    7.0
+}
 
 impl Default for ChorusSettings {
     fn default() -> Self {
@@ -560,20 +571,22 @@ pub struct FlangerSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_half")]
-    pub rate: f32,      // Hz (0.05-5)
+    pub rate: f32, // Hz (0.05-5)
     #[serde(default = "default_half")]
-    pub depth: f32,     // 0-1
+    pub depth: f32, // 0-1
     #[serde(default = "default_flanger_delay")]
-    pub delay: f32,     // ms (0.5-10)
+    pub delay: f32, // ms (0.5-10)
     #[serde(default = "default_half")]
-    pub feedback: f32,  // -1 to 1
+    pub feedback: f32, // -1 to 1
     #[serde(default = "default_half")]
-    pub mix: f32,       // 0-1
+    pub mix: f32, // 0-1
     #[serde(default)]
     pub negative: bool, // invert feedback
 }
 
-fn default_flanger_delay() -> f32 { 2.0 }
+fn default_flanger_delay() -> f32 {
+    2.0
+}
 
 impl Default for FlangerSettings {
     fn default() -> Self {
@@ -596,27 +609,35 @@ pub struct PhaserSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_half")]
-    pub rate: f32,           // Hz
+    pub rate: f32, // Hz
     #[serde(default = "default_half")]
-    pub depth: f32,          // 0-1
+    pub depth: f32, // 0-1
     #[serde(default = "default_phaser_base_freq")]
     pub base_frequency: f32, // Hz
     #[serde(default = "default_phaser_octaves")]
-    pub octaves: f32,        // sweep range
+    pub octaves: f32, // sweep range
     #[serde(default = "default_phaser_stages")]
-    pub stages: u32,         // 2-12 (even numbers)
+    pub stages: u32, // 2-12 (even numbers)
     #[serde(default = "default_phaser_feedback")]
-    pub feedback: f32,       // -1 to 1
+    pub feedback: f32, // -1 to 1
     #[serde(default = "default_one")]
-    pub q: f32,              // resonance
+    pub q: f32, // resonance
     #[serde(default = "default_half")]
-    pub mix: f32,            // 0-1
+    pub mix: f32, // 0-1
 }
 
-fn default_phaser_base_freq() -> f32 { 400.0 }
-fn default_phaser_octaves() -> f32 { 2.0 }
-fn default_phaser_stages() -> u32 { 4 }
-fn default_phaser_feedback() -> f32 { 0.3 }
+fn default_phaser_base_freq() -> f32 {
+    400.0
+}
+fn default_phaser_octaves() -> f32 {
+    2.0
+}
+fn default_phaser_stages() -> u32 {
+    4
+}
+fn default_phaser_feedback() -> f32 {
+    0.3
+}
 
 impl Default for PhaserSettings {
     fn default() -> Self {
@@ -643,15 +664,15 @@ pub struct DelaySettings {
     #[serde(default, alias = "type")]
     pub delay_type: DelayType,
     #[serde(default = "default_delay_time")]
-    pub time: f32,             // seconds (0.01-2.0)
+    pub time: f32, // seconds (0.01-2.0)
     #[serde(default = "default_delay_feedback")]
-    pub feedback: f32,         // 0-1
+    pub feedback: f32, // 0-1
     #[serde(default = "default_delay_feedback")]
-    pub mix: f32,              // 0-1
+    pub mix: f32, // 0-1
     #[serde(default = "default_half")]
-    pub tone: f32,             // 0-1 (for analog/tape)
+    pub tone: f32, // 0-1 (for analog/tape)
     #[serde(default)]
-    pub modulation: f32,       // 0-1 (for analog/tape)
+    pub modulation: f32, // 0-1 (for analog/tape)
     #[serde(default = "default_one")]
     pub ping_pong_spread: f32, // stereo spread (0-1)
     #[serde(default)]
@@ -660,9 +681,15 @@ pub struct DelaySettings {
     pub subdivision: String, // "1/4", "1/8", etc.
 }
 
-fn default_delay_time() -> f32 { 0.25 }
-fn default_delay_feedback() -> f32 { 0.3 }
-fn default_subdivision() -> String { "1/4".to_string() }
+fn default_delay_time() -> f32 {
+    0.25
+}
+fn default_delay_feedback() -> f32 {
+    0.3
+}
+fn default_subdivision() -> String {
+    "1/4".to_string()
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -699,7 +726,7 @@ pub struct TremoloSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_tremolo_rate")]
-    pub rate: f32,  // Hz (0.1-20)
+    pub rate: f32, // Hz (0.1-20)
     #[serde(default = "default_half")]
     pub depth: f32, // 0-1
     #[serde(default)]
@@ -708,7 +735,9 @@ pub struct TremoloSettings {
     pub spread: f32, // stereo (0-1)
 }
 
-fn default_tremolo_rate() -> f32 { 5.0 }
+fn default_tremolo_rate() -> f32 {
+    5.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -741,21 +770,29 @@ pub struct ReverbSettings {
     #[serde(default, alias = "type")]
     pub reverb_type: ReverbType,
     #[serde(default = "default_reverb_decay")]
-    pub decay: f32,     // seconds (0.1-10)
+    pub decay: f32, // seconds (0.1-10)
     #[serde(default = "default_reverb_predelay")]
     pub pre_delay: f32, // ms (0-100)
     #[serde(default = "default_reverb_lowcut")]
-    pub low_cut: f32,   // Hz
+    pub low_cut: f32, // Hz
     #[serde(default = "default_reverb_highcut")]
-    pub high_cut: f32,  // Hz
+    pub high_cut: f32, // Hz
     #[serde(default = "default_delay_feedback")]
-    pub mix: f32,       // 0-1
+    pub mix: f32, // 0-1
 }
 
-fn default_reverb_decay() -> f32 { 1.5 }
-fn default_reverb_predelay() -> f32 { 20.0 }
-fn default_reverb_lowcut() -> f32 { 100.0 }
-fn default_reverb_highcut() -> f32 { 8000.0 }
+fn default_reverb_decay() -> f32 {
+    1.5
+}
+fn default_reverb_predelay() -> f32 {
+    20.0
+}
+fn default_reverb_lowcut() -> f32 {
+    100.0
+}
+fn default_reverb_highcut() -> f32 {
+    8000.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -791,15 +828,23 @@ pub struct LimiterSettings {
     #[serde(default = "default_limiter_threshold")]
     pub threshold: f32, // dB (-12 to 0)
     #[serde(default = "default_limiter_release")]
-    pub release: f32,   // ms
+    pub release: f32, // ms
     #[serde(default = "default_limiter_ceiling")]
-    pub ceiling: f32,   // dB (-3 to 0)
+    pub ceiling: f32, // dB (-3 to 0)
 }
 
-fn default_true() -> bool { true }
-fn default_limiter_threshold() -> f32 { -1.0 }
-fn default_limiter_release() -> f32 { 50.0 }
-fn default_limiter_ceiling() -> f32 { -0.3 }
+fn default_true() -> bool {
+    true
+}
+fn default_limiter_threshold() -> f32 {
+    -1.0
+}
+fn default_limiter_release() -> f32 {
+    50.0
+}
+fn default_limiter_ceiling() -> f32 {
+    -0.3
+}
 
 impl Default for LimiterSettings {
     fn default() -> Self {
@@ -837,7 +882,7 @@ pub struct PitchCorrectionSettings {
     #[serde(default)]
     pub scale: PitchCorrectionScale,
     #[serde(default = "default_fifty")]
-    pub speed: f32,    // 0-100 (correction speed)
+    pub speed: f32, // 0-100 (correction speed)
     #[serde(default = "default_thirty")]
     pub humanize: f32, // 0-100 (natural variation)
     #[serde(default = "default_true")]
@@ -845,13 +890,21 @@ pub struct PitchCorrectionSettings {
     #[serde(default)]
     pub detune: f32, // -100 to +100 cents
     #[serde(default = "default_hundred")]
-    pub mix: f32,    // 0-100
+    pub mix: f32, // 0-100
 }
 
-fn default_key() -> String { "C".to_string() }
-fn default_fifty() -> f32 { 50.0 }
-fn default_thirty() -> f32 { 30.0 }
-fn default_hundred() -> f32 { 100.0 }
+fn default_key() -> String {
+    "C".to_string()
+}
+fn default_fifty() -> f32 {
+    50.0
+}
+fn default_thirty() -> f32 {
+    30.0
+}
+fn default_hundred() -> f32 {
+    100.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -892,21 +945,29 @@ pub struct VocalDoublerSettings {
     #[serde(default = "default_vd_detune")]
     pub detune: f32, // 0-50 cents
     #[serde(default = "default_vd_delay")]
-    pub delay: f32,  // 0-50 ms
+    pub delay: f32, // 0-50 ms
     #[serde(default = "default_vd_spread")]
     pub spread: f32, // 0-100 (stereo width)
     #[serde(default = "default_thirty")]
-    pub depth: f32,  // 0-100 (modulation depth)
+    pub depth: f32, // 0-100 (modulation depth)
     #[serde(default = "default_fifty")]
-    pub mix: f32,    // 0-100
+    pub mix: f32, // 0-100
     #[serde(default = "default_vd_voices")]
-    pub voices: u8,  // 1-4
+    pub voices: u8, // 1-4
 }
 
-fn default_vd_detune() -> f32 { 15.0 }
-fn default_vd_delay() -> f32 { 20.0 }
-fn default_vd_spread() -> f32 { 80.0 }
-fn default_vd_voices() -> u8 { 2 }
+fn default_vd_detune() -> f32 {
+    15.0
+}
+fn default_vd_delay() -> f32 {
+    20.0
+}
+fn default_vd_spread() -> f32 {
+    80.0
+}
+fn default_vd_voices() -> u8 {
+    2
+}
 
 impl Default for VocalDoublerSettings {
     fn default() -> Self {
@@ -935,21 +996,29 @@ pub struct DeEsserSettings {
     #[serde(default = "default_deesser_reduction")]
     pub reduction: f32, // 0-24 dB
     #[serde(default = "default_deesser_range")]
-    pub range: f32,     // 0-24 dB
+    pub range: f32, // 0-24 dB
     #[serde(default = "default_half")]
-    pub attack: f32,    // 0.1-10 ms
+    pub attack: f32, // 0.1-10 ms
     #[serde(default = "default_fifty")]
-    pub release: f32,   // 10-500 ms
+    pub release: f32, // 10-500 ms
     #[serde(default)]
     pub mode: DeEsserMode,
     #[serde(default)]
     pub listen_mode: bool,
 }
 
-fn default_deesser_freq() -> f32 { 6000.0 }
-fn default_deesser_threshold() -> f32 { -30.0 }
-fn default_deesser_reduction() -> f32 { 6.0 }
-fn default_deesser_range() -> f32 { 12.0 }
+fn default_deesser_freq() -> f32 {
+    6000.0
+}
+fn default_deesser_threshold() -> f32 {
+    -30.0
+}
+fn default_deesser_reduction() -> f32 {
+    6.0
+}
+fn default_deesser_range() -> f32 {
+    12.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -982,7 +1051,7 @@ pub struct FormantShifterSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
-    pub shift: f32,  // -12 to +12 semitones
+    pub shift: f32, // -12 to +12 semitones
     #[serde(default)]
     pub gender: f32, // -100 to +100
     #[serde(default = "default_true")]
@@ -1018,20 +1087,20 @@ pub struct HarmonizerSettings {
     #[serde(default)]
     pub custom_intervals: Vec<i8>, // semitones for custom mode
     #[serde(default = "default_harmonizer_voices")]
-    pub voices: u8,  // 1-4
+    pub voices: u8, // 1-4
     #[serde(default = "default_fifty")]
     pub spread: f32, // 0-100 (stereo width)
     #[serde(default)]
-    pub shift: f32,  // -1200 to +1200 cents
+    pub shift: f32, // -1200 to +1200 cents
     #[serde(default = "default_fifty")]
-    pub mix: f32,    // 0-100
+    pub mix: f32, // 0-100
     #[serde(default = "default_true")]
     pub key_lock: bool,
     // Legacy fields for backwards compat
     #[serde(default = "default_voice1_interval")]
     pub voice1_interval: i8, // -24 to +24 semitones
     #[serde(default = "default_voice_level")]
-    pub voice1_level: f32,   // 0-100
+    pub voice1_level: f32, // 0-100
     #[serde(default)]
     pub voice2_interval: i8,
     #[serde(default)]
@@ -1044,9 +1113,15 @@ pub struct HarmonizerSettings {
     pub formant_preserve: bool,
 }
 
-fn default_voice1_interval() -> i8 { 4 }
-fn default_voice_level() -> f32 { 70.0 }
-fn default_harmonizer_voices() -> u8 { 1 }
+fn default_voice1_interval() -> i8 {
+    4
+}
+fn default_voice_level() -> f32 {
+    70.0
+}
+fn default_harmonizer_voices() -> u8 {
+    1
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "camelCase")]
@@ -1107,7 +1182,7 @@ pub struct BitcrusherSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_bc_bits", alias = "bits")]
-    pub bit_depth: f32,   // 1-16 bits
+    pub bit_depth: f32, // 1-16 bits
     #[serde(default = "default_bc_sr")]
     pub sample_rate: f32, // 500-48000 Hz (downsampling)
     #[serde(default)]
@@ -1116,8 +1191,12 @@ pub struct BitcrusherSettings {
     pub mix: f32, // 0-100
 }
 
-fn default_bc_bits() -> f32 { 8.0 }
-fn default_bc_sr() -> f32 { 8000.0 }
+fn default_bc_bits() -> f32 {
+    8.0
+}
+fn default_bc_sr() -> f32 {
+    8000.0
+}
 
 impl Default for BitcrusherSettings {
     fn default() -> Self {
@@ -1142,14 +1221,16 @@ pub struct RingModulatorSettings {
     #[serde(default)]
     pub waveform: RingModWaveform,
     #[serde(default)]
-    pub lfo_rate: f32,  // 0.1-10 Hz (modulation of carrier)
+    pub lfo_rate: f32, // 0.1-10 Hz (modulation of carrier)
     #[serde(default)]
     pub lfo_depth: f32, // 0-100
     #[serde(default = "default_hundred")]
-    pub mix: f32,       // 0-100
+    pub mix: f32, // 0-100
 }
 
-fn default_rm_freq() -> f32 { 440.0 }
+fn default_rm_freq() -> f32 {
+    440.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -1181,15 +1262,15 @@ pub struct FrequencyShifterSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
-    pub shift: f32,     // -2000 to +2000 Hz
+    pub shift: f32, // -2000 to +2000 Hz
     #[serde(default)]
-    pub lfo_rate: f32,  // 0.1-10 Hz
+    pub lfo_rate: f32, // 0.1-10 Hz
     #[serde(default)]
     pub lfo_depth: f32, // 0-100
     #[serde(default)]
-    pub feedback: f32,  // 0-100
+    pub feedback: f32, // 0-100
     #[serde(default = "default_hundred")]
-    pub mix: f32,       // 0-100
+    pub mix: f32, // 0-100
     #[serde(default)]
     pub direction: FrequencyShiftDirection, // up, down, both
 }
@@ -1226,32 +1307,36 @@ pub struct GranularDelaySettings {
     #[serde(default = "default_gd_grain")]
     pub grain_size: f32, // 10-500 ms
     #[serde(default = "default_fifty")]
-    pub density: f32,    // 0-100
+    pub density: f32, // 0-100
     #[serde(default)]
-    pub pitch: f32,      // -24 to +24 semitones
+    pub pitch: f32, // -24 to +24 semitones
     #[serde(default)]
     pub pitch_random: f32, // 0-100
     #[serde(default = "default_gd_position")]
-    pub position: f32,     // 0-2000 ms (delay time)
+    pub position: f32, // 0-2000 ms (delay time)
     #[serde(default)]
     pub position_random: f32, // 0-100
     #[serde(default = "default_thirty")]
-    pub feedback: f32,   // 0-100
+    pub feedback: f32, // 0-100
     #[serde(default = "default_fifty")]
-    pub spread: f32,     // stereo spread 0-100
+    pub spread: f32, // stereo spread 0-100
     #[serde(default)]
-    pub reverse: f32,    // 0-100 (probability)
+    pub reverse: f32, // 0-100 (probability)
     #[serde(default = "default_fifty")]
-    pub mix: f32,        // 0-100
+    pub mix: f32, // 0-100
     #[serde(default)]
     pub freeze: bool,
     // Legacy field for backwards compat
     #[serde(default = "default_thirty")]
-    pub texture: f32,    // randomness 0-100
+    pub texture: f32, // randomness 0-100
 }
 
-fn default_gd_grain() -> f32 { 100.0 }
-fn default_gd_position() -> f32 { 250.0 }
+fn default_gd_grain() -> f32 {
+    100.0
+}
+fn default_gd_position() -> f32 {
+    250.0
+}
 
 impl Default for GranularDelaySettings {
     fn default() -> Self {
@@ -1282,25 +1367,29 @@ pub struct RotarySpeakerSettings {
     #[serde(default)]
     pub speed: RotarySpeed,
     #[serde(default = "default_rs_slow")]
-    pub slow_rate: f32,    // 0.5-2 Hz
+    pub slow_rate: f32, // 0.5-2 Hz
     #[serde(default = "default_rs_fast")]
-    pub fast_rate: f32,    // 5-10 Hz
+    pub fast_rate: f32, // 5-10 Hz
     #[serde(default = "default_fifty")]
     pub acceleration: f32, // ramp time 0-100
     #[serde(default = "default_hundred")]
-    pub horn_level: f32,   // 0-100
+    pub horn_level: f32, // 0-100
     #[serde(default = "default_hundred")]
-    pub drum_level: f32,   // 0-100
+    pub drum_level: f32, // 0-100
     #[serde(default = "default_fifty")]
-    pub distance: f32,     // 0-100, mic distance
+    pub distance: f32, // 0-100, mic distance
     #[serde(default)]
-    pub drive: f32,        // 0-100
+    pub drive: f32, // 0-100
     #[serde(default = "default_hundred")]
-    pub mix: f32,          // 0-100
+    pub mix: f32, // 0-100
 }
 
-fn default_rs_slow() -> f32 { 0.8 }
-fn default_rs_fast() -> f32 { 6.0 }
+fn default_rs_slow() -> f32 {
+    0.8
+}
+fn default_rs_fast() -> f32 {
+    6.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -1336,7 +1425,7 @@ pub struct AutoPanSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_one")]
-    pub rate: f32,  // 0.1-10 Hz
+    pub rate: f32, // 0.1-10 Hz
     #[serde(default = "default_fifty")]
     pub depth: f32, // 0-100
     #[serde(default)]
@@ -1385,39 +1474,47 @@ pub struct MultiFilterSettings {
     #[serde(default, alias = "type")]
     pub filter_type: MultiFilterType,
     #[serde(default = "default_mf_frequency")]
-    pub frequency: f32,        // 20-20000 Hz
+    pub frequency: f32, // 20-20000 Hz
     #[serde(default = "default_mf_resonance")]
-    pub resonance: f32,        // 0-100
+    pub resonance: f32, // 0-100
     #[serde(default)]
-    pub drive: f32,            // 0-100
+    pub drive: f32, // 0-100
     #[serde(default)]
-    pub lfo_rate: f32,         // 0.1-10 Hz
+    pub lfo_rate: f32, // 0.1-10 Hz
     #[serde(default)]
-    pub lfo_depth: f32,        // 0-100
+    pub lfo_depth: f32, // 0-100
     #[serde(default)]
     pub lfo_waveform: MultiFilterWaveform,
     #[serde(default)]
-    pub envelope_amount: f32,  // -100 to +100
+    pub envelope_amount: f32, // -100 to +100
     #[serde(default = "default_fifty")]
     pub envelope_sensitivity: f32, // 0-100
     #[serde(default = "default_mf_attack")]
-    pub envelope_attack: f32,  // ms
+    pub envelope_attack: f32, // ms
     #[serde(default = "default_mf_release")]
     pub envelope_release: f32, // ms
     #[serde(default)]
-    pub key_track: f32,        // -100 to +100
+    pub key_track: f32, // -100 to +100
     #[serde(default)]
     pub tempo_sync: bool,
     #[serde(default = "default_subdivision")]
-    pub subdivision: String,   // "1/4", "1/8", etc.
+    pub subdivision: String, // "1/4", "1/8", etc.
     #[serde(default = "default_hundred")]
-    pub mix: f32,              // 0-100
+    pub mix: f32, // 0-100
 }
 
-fn default_mf_frequency() -> f32 { 1000.0 }
-fn default_mf_resonance() -> f32 { 1.0 }
-fn default_mf_attack() -> f32 { 10.0 }
-fn default_mf_release() -> f32 { 100.0 }
+fn default_mf_frequency() -> f32 {
+    1000.0
+}
+fn default_mf_resonance() -> f32 {
+    1.0
+}
+fn default_mf_attack() -> f32 {
+    10.0
+}
+fn default_mf_release() -> f32 {
+    100.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -1471,7 +1568,7 @@ pub struct VibratoSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_tremolo_rate")]
-    pub rate: f32,  // 0.1-10 Hz
+    pub rate: f32, // 0.1-10 Hz
     #[serde(default = "default_thirty")]
     pub depth: f32, // 0-100 (cents)
     #[serde(default)]
@@ -1518,15 +1615,15 @@ pub struct TransientShaperSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default)]
-    pub attack: f32,       // -100 to +100
+    pub attack: f32, // -100 to +100
     #[serde(default)]
-    pub sustain: f32,      // -100 to +100
+    pub sustain: f32, // -100 to +100
     #[serde(default = "default_comp_attack")]
-    pub attack_time: f32,  // ms
+    pub attack_time: f32, // ms
     #[serde(default = "default_comp_release")]
     pub release_time: f32, // ms
     #[serde(default)]
-    pub output_gain: f32,  // dB
+    pub output_gain: f32, // dB
 }
 
 impl Default for TransientShaperSettings {
@@ -1549,9 +1646,9 @@ pub struct StereoImagerSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_hundred")]
-    pub width: f32,      // 0-200 (100 = normal)
+    pub width: f32, // 0-200 (100 = normal)
     #[serde(default)]
-    pub mid_level: f32,  // -12 to +12 dB
+    pub mid_level: f32, // -12 to +12 dB
     #[serde(default)]
     pub side_level: f32, // -12 to +12 dB
     #[serde(default = "default_si_bass_mono_freq")]
@@ -1559,24 +1656,28 @@ pub struct StereoImagerSettings {
     #[serde(default)]
     pub bass_mono_amount: f32, // 0-100
     #[serde(default)]
-    pub balance: f32,    // -100 to +100
+    pub balance: f32, // -100 to +100
     // Legacy fields for backwards compat
     #[serde(default)]
-    pub center: f32,     // pan center -100 to +100
+    pub center: f32, // pan center -100 to +100
     #[serde(default = "default_hundred")]
-    pub low_width: f32,  // bass width 0-200
+    pub low_width: f32, // bass width 0-200
     #[serde(default = "default_hundred")]
     pub high_width: f32, // treble width 0-200
     #[serde(default = "default_si_crossover")]
-    pub crossover: f32,  // Hz
+    pub crossover: f32, // Hz
     #[serde(default)]
     pub mono_bass: bool,
     #[serde(default = "default_si_bass_mono_freq")]
     pub mono_bass_freq: f32, // Hz (legacy)
 }
 
-fn default_si_crossover() -> f32 { 300.0 }
-fn default_si_bass_mono_freq() -> f32 { 100.0 }
+fn default_si_crossover() -> f32 {
+    300.0
+}
+fn default_si_bass_mono_freq() -> f32 {
+    100.0
+}
 
 impl Default for StereoImagerSettings {
     fn default() -> Self {
@@ -1607,18 +1708,20 @@ pub struct ExciterSettings {
     #[serde(default = "default_ex_freq")]
     pub frequency: f32, // crossover Hz
     #[serde(default = "default_fifty")]
-    pub amount: f32,    // 0-100
+    pub amount: f32, // 0-100
     #[serde(default)]
     pub harmonics: ExciterHarmonics, // odd, even, both
     #[serde(default = "default_fifty")]
-    pub color: f32,     // 0-100 (brightness)
+    pub color: f32, // 0-100 (brightness)
     #[serde(default = "default_fifty")]
-    pub dynamics: f32,  // 0-100 (legacy)
+    pub dynamics: f32, // 0-100 (legacy)
     #[serde(default = "default_fifty")]
-    pub mix: f32,       // 0-100
+    pub mix: f32, // 0-100
 }
 
-fn default_ex_freq() -> f32 { 3000.0 }
+fn default_ex_freq() -> f32 {
+    3000.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -1650,7 +1753,7 @@ pub struct MultibandCompressorSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_mb_low")]
-    pub low_crossover: f32,  // Hz
+    pub low_crossover: f32, // Hz
     #[serde(default = "default_mb_high")]
     pub high_crossover: f32, // Hz
     #[serde(default)]
@@ -1670,8 +1773,12 @@ pub struct MultibandCompressorSettings {
     pub high_band: CompressorBand,
 }
 
-fn default_mb_low() -> f32 { 200.0 }
-fn default_mb_high() -> f32 { 4000.0 }
+fn default_mb_low() -> f32 {
+    200.0
+}
+fn default_mb_high() -> f32 {
+    4000.0
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -1681,18 +1788,20 @@ pub struct MultibandBandSettings {
     #[serde(default = "default_mbb_ratio")]
     pub ratio: f32,
     #[serde(default = "default_comp_attack")]
-    pub attack: f32,  // ms
+    pub attack: f32, // ms
     #[serde(default = "default_comp_release")]
     pub release: f32, // ms
     #[serde(default)]
-    pub gain: f32,    // dB
+    pub gain: f32, // dB
     #[serde(default)]
     pub solo: bool,
     #[serde(default)]
     pub bypass: bool,
 }
 
-fn default_mbb_ratio() -> f32 { 3.0 }
+fn default_mbb_ratio() -> f32 {
+    3.0
+}
 
 impl Default for MultibandBandSettings {
     fn default() -> Self {
@@ -1718,18 +1827,20 @@ pub struct CompressorBand {
     #[serde(default = "default_comp_ratio")]
     pub ratio: f32,
     #[serde(default = "default_comp_attack")]
-    pub attack: f32,  // ms
+    pub attack: f32, // ms
     #[serde(default = "default_comp_release")]
     pub release: f32, // ms
     #[serde(default)]
-    pub makeup: f32,  // dB
+    pub makeup: f32, // dB
     #[serde(default)]
     pub solo: bool,
     #[serde(default)]
     pub mute: bool,
 }
 
-fn default_cb_threshold() -> f32 { -20.0 }
+fn default_cb_threshold() -> f32 {
+    -20.0
+}
 
 impl Default for CompressorBand {
     fn default() -> Self {
@@ -1770,17 +1881,17 @@ pub struct StereoDelaySettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_sd_left")]
-    pub left_time: f32,      // ms
+    pub left_time: f32, // ms
     #[serde(default = "default_sd_right")]
-    pub right_time: f32,     // ms
+    pub right_time: f32, // ms
     #[serde(default = "default_thirty")]
-    pub left_feedback: f32,  // 0-100
+    pub left_feedback: f32, // 0-100
     #[serde(default = "default_thirty")]
     pub right_feedback: f32, // 0-100
-    #[serde(default, alias = "crossFeedback")]
-    pub cross_feed: f32,     // 0-100
+    #[serde(default)]
+    pub cross_feed: f32, // 0-100
     #[serde(default = "default_sd_tone")]
-    pub tone: f32,           // 0-100 (highcut)
+    pub tone: f32, // 0-100 (highcut)
     #[serde(default)]
     pub tempo_sync: bool,
     #[serde(default = "default_subdivision")]
@@ -1795,15 +1906,23 @@ pub struct StereoDelaySettings {
     #[serde(default)]
     pub cross_feedback: f32, // legacy
     #[serde(default = "default_reverb_lowcut")]
-    pub low_cut: f32,        // Hz
+    pub low_cut: f32, // Hz
     #[serde(default = "default_reverb_highcut")]
-    pub high_cut: f32,       // Hz
+    pub high_cut: f32, // Hz
 }
 
-fn default_sd_left() -> f32 { 250.0 }
-fn default_sd_right() -> f32 { 375.0 }
-fn default_sd_tone() -> f32 { 80.0 }
-fn default_sd_right_sub() -> String { "1/4D".to_string() }
+fn default_sd_left() -> f32 {
+    250.0
+}
+fn default_sd_right() -> f32 {
+    375.0
+}
+fn default_sd_tone() -> f32 {
+    80.0
+}
+fn default_sd_right_sub() -> String {
+    "1/4D".to_string()
+}
 
 impl Default for StereoDelaySettings {
     fn default() -> Self {
@@ -1836,29 +1955,39 @@ pub struct RoomSimulatorSettings {
     #[serde(default)]
     pub size: RoomSize,
     #[serde(default = "default_fifty")]
-    pub damping: f32,     // 0-100
+    pub damping: f32, // 0-100
     #[serde(default = "default_room_early")]
     pub early_level: f32, // 0-100
     #[serde(default = "default_fifty")]
-    pub late_level: f32,  // 0-100
+    pub late_level: f32, // 0-100
     #[serde(default = "default_room_decay")]
-    pub decay: f32,       // 0.1-5 seconds
+    pub decay: f32, // 0.1-5 seconds
     #[serde(default = "default_room_predelay")]
-    pub pre_delay: f32,   // 0-100 ms
+    pub pre_delay: f32, // 0-100 ms
     #[serde(default = "default_room_diffusion")]
-    pub diffusion: f32,   // 0-100
+    pub diffusion: f32, // 0-100
     #[serde(default = "default_room_mod")]
-    pub modulation: f32,  // 0-100
+    pub modulation: f32, // 0-100
     #[serde(default = "default_thirty")]
-    pub mix: f32,         // 0-100
+    pub mix: f32, // 0-100
 }
 
-fn default_room_early() -> f32 { 70.0 }
-fn default_room_decay() -> f32 { 1.5 }
-fn default_room_predelay() -> f32 { 10.0 }
-fn default_room_diffusion() -> f32 { 70.0 }
+fn default_room_early() -> f32 {
+    70.0
+}
+fn default_room_decay() -> f32 {
+    1.5
+}
+fn default_room_predelay() -> f32 {
+    10.0
+}
+fn default_room_diffusion() -> f32 {
+    70.0
+}
 
-fn default_room_mod() -> f32 { 20.0 }
+fn default_room_mod() -> f32 {
+    20.0
+}
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Default)]
 #[serde(rename_all = "lowercase")]
@@ -1894,28 +2023,34 @@ pub struct ShimmerReverbSettings {
     #[serde(default)]
     pub enabled: bool,
     #[serde(default = "default_shimmer_decay")]
-    pub decay: f32,      // 0.5-10 seconds
+    pub decay: f32, // 0.5-10 seconds
     #[serde(default = "default_fifty")]
-    pub shimmer: f32,    // 0-100
+    pub shimmer: f32, // 0-100
     #[serde(default = "default_shimmer_pitch")]
-    pub pitch: i8,       // 0, 5, 7, 12, 19, 24 semitones
+    pub pitch: i8, // 0, 5, 7, 12, 19, 24 semitones
     #[serde(default = "default_fifty")]
-    pub damping: f32,    // 0-100
+    pub damping: f32, // 0-100
     #[serde(default = "default_fifty")]
-    pub tone: f32,       // 0-100
+    pub tone: f32, // 0-100
     #[serde(default = "default_thirty")]
     pub modulation: f32, // 0-100
     #[serde(default = "default_thirty")]
-    pub pre_delay: f32,  // 0-100 ms
+    pub pre_delay: f32, // 0-100 ms
     #[serde(default = "default_shimmer_diffusion")]
-    pub diffusion: f32,  // 0-100
+    pub diffusion: f32, // 0-100
     #[serde(default = "default_thirty")]
-    pub mix: f32,        // 0-100
+    pub mix: f32, // 0-100
 }
 
-fn default_shimmer_decay() -> f32 { 3.0 }
-fn default_shimmer_pitch() -> i8 { 12 }
-fn default_shimmer_diffusion() -> f32 { 80.0 }
+fn default_shimmer_decay() -> f32 {
+    3.0
+}
+fn default_shimmer_pitch() -> i8 {
+    12
+}
+fn default_shimmer_diffusion() -> f32 {
+    80.0
+}
 
 impl Default for ShimmerReverbSettings {
     fn default() -> Self {

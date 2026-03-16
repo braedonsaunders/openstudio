@@ -53,7 +53,11 @@ impl RingModulator {
                 }
             }
             RingModWaveform::Square => {
-                if phase % 1.0 < 0.5 { 1.0 } else { -1.0 }
+                if phase % 1.0 < 0.5 {
+                    1.0
+                } else {
+                    -1.0
+                }
             }
             RingModWaveform::Sawtooth => 2.0 * (phase % 1.0) - 1.0,
         }

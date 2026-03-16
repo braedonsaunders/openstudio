@@ -155,8 +155,6 @@ export function useRoomPermissions(roomId: string) {
   const setDefaultRole = useCallback(
     async (role: RoomRole) => {
       storeSetDefaultRole(role);
-
-      // TODO: Persist to database when rooms table is updated
     },
     [storeSetDefaultRole]
   );
@@ -164,8 +162,6 @@ export function useRoomPermissions(roomId: string) {
   const setRequireApproval = useCallback(
     async (require: boolean) => {
       storeSetRequireApproval(require);
-
-      // TODO: Persist to database when rooms table is updated
     },
     [storeSetRequireApproval]
   );
