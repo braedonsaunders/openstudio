@@ -329,7 +329,7 @@ function BeachScene({ isDark, keyColor, audioLevel }: SceneProps) {
         )), [isDark])}
 
         {/* Seagulls */}
-        {!isDark && useMemo(() => [
+        {!isDark && [
           { x: 20, y: -15, scale: 0.6 },
           { x: 70, y: -20, scale: 0.5 },
         ].map((bird, i) => (
@@ -343,7 +343,7 @@ function BeachScene({ isDark, keyColor, audioLevel }: SceneProps) {
           >
             <path d="M0 5 Q5 0 10 5 Q15 0 20 5" stroke="#64748b" strokeWidth="2" fill="none" />
           </motion.svg>
-        )), [])}
+        ))}
       </div>
 
       {/* Fireflies (night) */}
@@ -1572,7 +1572,7 @@ function ForestScene({ isDark, keyColor, audioLevel }: SceneProps) {
       <MagicalParticles isDark={isDark} />
 
       {/* Butterflies (day) */}
-      {!isDark && useMemo(() => Array.from({ length: 5 }, (_, i) => (
+      {!isDark && Array.from({ length: 5 }, (_, i) => (
         <motion.div
           key={`butterfly-${i}`}
           className="absolute pointer-events-none"
@@ -1602,7 +1602,7 @@ function ForestScene({ isDark, keyColor, audioLevel }: SceneProps) {
             <ellipse cx="10" cy="8" rx="1" ry="5" fill="#1c1917" />
           </svg>
         </motion.div>
-      )), [])}
+      ))}
 
       {/* Mystical fog near ground (night) */}
       {isDark && (
@@ -2166,7 +2166,7 @@ function StudioScene({ isDark, keyColor, audioLevel }: SceneProps) {
       </div>
 
       {/* Floating music notes (subtle) */}
-      {isDark && useMemo(() => Array.from({ length: 6 }).map((_, i) => (
+      {isDark && Array.from({ length: 6 }).map((_, i) => (
         <motion.div
           key={`note-${i}`}
           className="absolute text-lg pointer-events-none"
@@ -2190,7 +2190,7 @@ function StudioScene({ isDark, keyColor, audioLevel }: SceneProps) {
         >
           {['♪', '♫', '♬'][i % 3]}
         </motion.div>
-      )), [])}
+      ))}
     </div>
   );
 }
@@ -3255,7 +3255,7 @@ function RooftopScene({ isDark, keyColor, audioLevel }: SceneProps) {
       </div>
 
       {/* Neon signs in distance (night) */}
-      {isDark && useMemo(() => [
+      {isDark && [
         { x: 8, y: 15, text: 'LIVE', color: '#ec4899' },
         { x: 82, y: 18, text: '♫', color: '#22d3ee' },
       ].map((sign, i) => (
@@ -3273,7 +3273,7 @@ function RooftopScene({ isDark, keyColor, audioLevel }: SceneProps) {
         >
           {sign.text}
         </motion.div>
-      )), [])}
+      ))}
 
       {/* Ambient city sounds visualization - floating particles */}
       {isDark && <Particles color="#fbbf24" count={8} />}

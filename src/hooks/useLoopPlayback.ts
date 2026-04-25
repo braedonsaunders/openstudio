@@ -5,6 +5,7 @@ import { useLoopTracksStore } from '@/stores/loop-tracks-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useSongsStore } from '@/stores/songs-store';
 import { useSessionTempoStore } from '@/stores/session-tempo-store';
+import { useCustomLoopsStore } from '@/stores/custom-loops-store';
 import { LoopScheduler } from '@/lib/audio/loop-scheduler';
 import { SoundEngine } from '@/lib/audio/sound-engine';
 import { getLoopById } from '@/lib/audio/loop-library';
@@ -155,7 +156,6 @@ export function useLoopPlayback() {
     let loopDef = getCachedLoopById(loopId);
     if (!loopDef) {
       // Check custom loops store synchronously
-      const { useCustomLoopsStore } = require('@/stores/custom-loops-store');
       loopDef = useCustomLoopsStore.getState().getLoop(loopId);
     }
     if (!loopDef) return 0;

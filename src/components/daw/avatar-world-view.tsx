@@ -288,8 +288,8 @@ function DAWWalkingAvatar({
 
           const moveX = (dx / distance) * effectiveSpeed * deltaTime;
           const moveY = (dy / distance) * effectiveSpeed * deltaTime;
-          let newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
-          let newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
+          const newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
+          const newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
 
           // Collision check
           const otherPos = getOtherPositions?.(user.id) ?? [];
@@ -338,8 +338,8 @@ function DAWWalkingAvatar({
             for (let attempt = 0; attempt < 8; attempt++) {
               const offsetX = (Math.random() - 0.5) * 2 * maxStepX;
               const offsetY = (Math.random() - 0.3) * 2 * maxStepY;
-              let targetX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + offsetX));
-              let targetY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + offsetY));
+              const targetX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + offsetX));
+              const targetY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + offsetY));
 
               // Check collision at target
               const wouldCollide = otherPos.some(other => {

@@ -134,8 +134,7 @@ export function useVisibilityAwareThrottle<T extends (...args: Parameters<T>) =>
     callbackRef.current = callback;
   }, [callback]);
 
-  return useCallback(
-    ((...args: Parameters<T>) => {
+  return useCallback((...args: Parameters<T>) => {
       if (!isVisible) return; // Skip when not visible
 
       const now = Date.now();
@@ -143,9 +142,9 @@ export function useVisibilityAwareThrottle<T extends (...args: Parameters<T>) =>
         lastCallRef.current = now;
         callbackRef.current(...args);
       }
-    }) as T,
+    },
     [isVisible, throttleMs]
-  );
+  ) as T;
 }
 
 /**

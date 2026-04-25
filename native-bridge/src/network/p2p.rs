@@ -18,6 +18,24 @@ use tokio::net::UdpSocket as TokioUdpSocket;
 use tokio::sync::broadcast;
 use tracing::{info, warn};
 
+fn default_bind_addr() -> SocketAddr {
+    let fallback = SocketAddr::from(([0, 0, 0, 0], 0));
+
+    match std::env::var("OPENSTUDIO_P2P_BIND_ADDR") {
+        Ok(value) => match value.parse::<SocketAddr>() {
+            Ok(addr) => addr,
+            Err(error) => {
+                warn!(
+                    "Invalid OPENSTUDIO_P2P_BIND_ADDR '{}': {}. Falling back to {}",
+                    value, error, fallback
+                );
+                fallback
+            }
+        },
+        Err(_) => fallback,
+    }
+}
+
 /// P2P network configuration
 #[derive(Debug, Clone)]
 pub struct P2PConfig {
@@ -40,7 +58,7 @@ pub struct P2PConfig {
 impl Default for P2PConfig {
     fn default() -> Self {
         Self {
-            bind_addr: SocketAddr::from(([0, 0, 0, 0], 0)),
+            bind_addr: default_bind_addr(),
             stun_server: Some("stun:stun.l.google.com:19302".to_string()),
             max_peers: 8,
             heartbeat_interval_ms: 1000,
@@ -88,6 +106,7 @@ struct ReceiveContext<'a> {
     peers: &'a PeerRegistry,
     codec: &'a OpusCodec,
     clock: &'a ClockSync,
+    stats: &'a RwLock<NetworkStats>,
     sequence: &'a AtomicU16,
     session_start: Instant,
     event_tx: Option<&'a broadcast::Sender<P2PEvent>>,
@@ -120,7 +139,7 @@ pub struct P2PNetwork {
     /// Audio output buffer (peer_id, track_id) -> samples
     audio_output: DashMap<(u32, u8), Vec<f32>>,
     /// Stats
-    stats: RwLock<NetworkStats>,
+    stats: Arc<RwLock<NetworkStats>>,
     /// Pending outgoing audio
     outgoing_audio: RwLock<Vec<(u8, Vec<f32>)>>,
 }
@@ -145,7 +164,7 @@ impl P2PNetwork {
             public_addr: RwLock::new(None),
             running: Arc::new(std::sync::atomic::AtomicBool::new(false)),
             audio_output: DashMap::new(),
-            stats: RwLock::new(NetworkStats::default()),
+            stats: Arc::new(RwLock::new(NetworkStats::default())),
             outgoing_audio: RwLock::new(Vec::new()),
         })
     }
@@ -201,6 +220,7 @@ impl P2PNetwork {
         let codec = self.codec.clone();
         let clock = self.clock.clone();
         let sequence = self.sequence.clone();
+        let stats = self.stats.clone();
 
         tokio::spawn(async move {
             let mut buf = [0u8; 2048]; // Max OSP packet size
@@ -214,12 +234,14 @@ impl P2PNetwork {
 
                         // Parse OSP packet
                         if let Some(packet) = OspPacket::from_bytes(&buf[..len]) {
+                            stats.write().bytes_recv_per_sec += len as u64;
                             let context = ReceiveContext {
                                 socket: socket.as_ref(),
                                 room_config: &room_config,
                                 peers: &peers,
                                 codec: &codec,
                                 clock: &clock,
+                                stats: stats.as_ref(),
                                 sequence: sequence.as_ref(),
                                 session_start,
                                 event_tx: Some(&event_tx),
@@ -275,6 +297,12 @@ impl P2PNetwork {
                         })
                         .collect()
                 };
+
+                {
+                    let mut stats = context.stats.write();
+                    stats.audio_frames_recv += 1;
+                    stats.audio_samples_recv += samples.len() as u64;
+                }
 
                 // Find or create peer
                 if let Some(peer) = context.peers.get(frame.user_id) {
@@ -733,6 +761,9 @@ impl P2PNetwork {
         // Update stats
         let mut stats = self.stats.write();
         stats.bytes_sent_per_sec += bytes_len as u64;
+        if msg_type == OspMessageType::AudioFrame {
+            stats.audio_frames_sent += 1;
+        }
 
         Ok(())
     }
@@ -868,6 +899,7 @@ impl P2PNetwork {
             peers: &self.peers,
             codec: &self.codec,
             clock: &self.clock,
+            stats: self.stats.as_ref(),
             sequence: self.sequence.as_ref(),
             session_start,
             event_tx: event_tx.as_ref(),
@@ -904,6 +936,12 @@ impl P2PNetwork {
                 })
                 .collect()
         };
+
+        {
+            let mut stats = self.stats.write();
+            stats.audio_frames_recv += 1;
+            stats.audio_samples_recv += samples.len() as u64;
+        }
 
         // Find peer and push to jitter buffer
         if let Some(peer) = self.peers.get(frame.user_id) {
@@ -1281,6 +1319,11 @@ impl P2PNetwork {
                 NetworkError::ConnectionFailed("Socket not initialized".to_string())
             })?;
         socket.local_addr().map_err(NetworkError::Io)
+    }
+
+    /// Get the public UDP endpoint discovered through STUN, when available.
+    pub fn public_addr(&self) -> Option<SocketAddr> {
+        *self.public_addr.read()
     }
 
     /// Get clock

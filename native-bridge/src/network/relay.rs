@@ -795,13 +795,20 @@ impl MoqRelay {
         // Encode with Opus
         let encoded = self.codec.encoder.encode(samples)?;
 
+        if !self.published_tracks.read().contains_key(&track_path) {
+            self.publish_audio(track_num).await?;
+        }
+
         // Get the send_stream Arc and sequence while holding the RwLock briefly
         let (send_stream, sequence) = {
             let tracks = self.published_tracks.read();
             if let Some(track) = tracks.get(&track_path) {
                 (track.send_stream.clone(), track.sequence)
             } else {
-                return Ok(()); // Track not found
+                return Err(NetworkError::RelayError(format!(
+                    "Relay track was not published: {}",
+                    track_path
+                )));
             }
         }; // RwLock dropped here
 

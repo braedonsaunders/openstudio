@@ -574,7 +574,8 @@ function parseNote(
 
   // Note effects
   let harmonic = false, palmMute = false, letRing = false;
-  let hammer = false, pull = false, bend = 0;
+  let hammer = false, bend = 0;
+  const pull = false;
   let slide: 'up' | 'down' | undefined;
 
   if (hasEffect) {

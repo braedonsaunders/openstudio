@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useMemo, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
@@ -645,14 +646,14 @@ export default function LobbyPage() {
       {/* Header */}
       <header className={`flex-shrink-0 z-50 backdrop-blur-xl ${isDark ? 'bg-slate-900/80 border-b border-white/10' : 'bg-white/80 border-b border-gray-200'}`}>
         <div className="max-w-7xl mx-auto px-4 h-14 flex items-center justify-between">
-          <a href="/" className="flex items-center gap-2">
+          <Link href="/" className="flex items-center gap-2">
             <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 via-purple-500 to-pink-500 rounded-lg flex items-center justify-center">
               <Music className="w-4 h-4 text-white" />
             </div>
             <span className={`text-base font-bold ${isDark ? 'text-white' : 'text-gray-900'}`}>
               OpenStudio
             </span>
-          </a>
+          </Link>
 
           <div className="flex items-center gap-2">
             <ThemeToggle />

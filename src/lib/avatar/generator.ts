@@ -153,7 +153,7 @@ async function generateWithReplicate(
   }
 
   const seed = request.seed || Math.floor(Math.random() * 2147483647);
-  let fullPrompt = request.prompt;
+  const fullPrompt = request.prompt;
 
   // Build input based on model
   let input: Record<string, unknown>;

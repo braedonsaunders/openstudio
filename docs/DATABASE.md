@@ -329,7 +329,7 @@ Room chat history.
 
 ### `room_webrtc_sessions`
 
-WebRTC session tracking.
+WebRTC session tracking. Stores one row per published Cloudflare Calls track, allowing a user to publish multiple independently pullable tracks in the same room.
 
 | Column | Type | Nullable | Default | Description |
 |--------|------|----------|---------|-------------|
@@ -337,7 +337,7 @@ WebRTC session tracking.
 | `room_id` | text | NO | - | Room ID |
 | `user_id` | text | NO | - | User ID |
 | `session_id` | text | NO | - | WebRTC session ID |
-| `track_name` | text | NO | - | Track name |
+| `track_name` | text | NO | - | Unique track name within the room |
 | `created_at` | timestamptz | YES | `now()` | Created |
 | `updated_at` | timestamptz | YES | `now()` | Updated |
 
@@ -1321,7 +1321,7 @@ Key performance indexes:
 | `room_members` | `room_members_room_id_user_id_key` | room_id, user_id |
 | `room_bans` | `room_bans_room_id_user_id_key` | room_id, user_id |
 | `room_invitations` | `room_invitations_invite_code_key` | invite_code |
-| `room_webrtc_sessions` | `room_webrtc_sessions_room_id_user_id_key` | room_id, user_id |
+| `room_webrtc_sessions` | `room_webrtc_sessions_room_id_track_name_key` | room_id, track_name |
 | `saved_rooms` | `saved_rooms_code_key` | code |
 
 ---

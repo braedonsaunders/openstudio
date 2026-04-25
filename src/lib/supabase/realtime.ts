@@ -29,6 +29,14 @@ export interface CanvasSyncPayload {
   timestamp: number;
 }
 
+export interface NativeBridgeEndpointPayload {
+  userId: string;
+  userName: string;
+  localEndpoint: string | null;
+  publicEndpoint: string | null;
+  timestamp: number;
+}
+
 /** Full room state payload for state sync protocol (WS2) */
 export interface StateSyncPayload {
   requestId: string;
@@ -290,6 +298,10 @@ export class RealtimeRoomManager {
     // Transport position sync events (WS6)
     this.channel.on('broadcast', { event: 'song:position' }, ({ payload }) => {
       this.emit('song:position', payload);
+    });
+
+    this.channel.on('broadcast', { event: 'nativebridge:endpoint' }, ({ payload }) => {
+      this.emit('nativebridge:endpoint', payload);
     });
   }
 
@@ -821,6 +833,14 @@ export class RealtimeRoomManager {
       // Position syncs are periodic and non-critical; log but do not retry
       console.warn('[Realtime] Failed to broadcast song position:', err);
     }
+  }
+
+  async broadcastNativeBridgeEndpoint(endpoint: Omit<NativeBridgeEndpointPayload, 'userId' | 'timestamp'>): Promise<void> {
+    await this.reliableBroadcast('nativebridge:endpoint', {
+      ...endpoint,
+      userId: this.userId,
+      timestamp: Date.now(),
+    } satisfies NativeBridgeEndpointPayload);
   }
 
   async updatePresence(data: Partial<User>): Promise<void> {

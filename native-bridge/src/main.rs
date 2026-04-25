@@ -64,6 +64,9 @@ async fn main() -> Result<()> {
         info!("Auto-connecting to room: {}", room);
     }
 
+    let ws_addr =
+        std::env::var("OPENSTUDIO_BRIDGE_WS_ADDR").unwrap_or_else(|_| "127.0.0.1:9999".to_string());
+
     // Create TUI event channel if TUI mode is enabled
     let (tui_tx, tui_rx) = if enable_tui {
         let (tx, rx) = mpsc::channel::<tui::AppEvent>(256);
@@ -151,8 +154,9 @@ async fn main() -> Result<()> {
 
         // Spawn the WebSocket server as a local task (doesn't require Send)
         let server_state = state.clone();
+        let tui_ws_addr = ws_addr.clone();
         local.spawn_local(async move {
-            if let Err(e) = protocol::run_server("127.0.0.1:9999", server_state).await {
+            if let Err(e) = protocol::run_server(&tui_ws_addr, server_state).await {
                 tracing::error!("WebSocket server error: {}", e);
             }
         });
@@ -162,10 +166,10 @@ async fn main() -> Result<()> {
         local.run_until(tui::run(app, tui_rx)).await?;
     } else {
         // Run headless mode
-        info!("Bridge running on ws://localhost:9999 (headless mode)");
+        info!("Bridge running on ws://{} (headless mode)", ws_addr);
         info!("Press Ctrl+C to quit");
 
-        protocol::run_server("127.0.0.1:9999", state).await?;
+        protocol::run_server(&ws_addr, state).await?;
     }
 
     Ok(())

@@ -1331,7 +1331,7 @@ export function EffectsRack({ track, onClose }: EffectsRackProps) {
               ))
             ) : (
               GUITAR_PRESETS.map((preset) => (
-                <button key={preset.id} onClick={() => { loadGuitarPreset(track.id, preset.id); setShowPresets(false); }} className={cn('px-2 py-1.5 text-[10px] font-medium rounded transition-colors text-left', (track.audioSettings as any).guitarPreset === preset.id ? 'bg-orange-500/20 text-orange-400' : 'bg-white/5 text-zinc-400 hover:bg-white/10')}>{preset.name}</button>
+                <button key={preset.id} onClick={() => { loadGuitarPreset(track.id, preset.id); setShowPresets(false); }} className={cn('px-2 py-1.5 text-[10px] font-medium rounded transition-colors text-left', track.audioSettings.activePreset === preset.id ? 'bg-orange-500/20 text-orange-400' : 'bg-white/5 text-zinc-400 hover:bg-white/10')}>{preset.name}</button>
               ))
             )}
           </div>

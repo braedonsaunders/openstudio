@@ -139,7 +139,8 @@ const getNextColor = () => {
   return color;
 };
 
-const MAX_NATIVE_BRIDGE_TRACKS = 255;
+const ROOM_MEDIA_BRIDGE_TRACK_ID = 255;
+const MAX_NATIVE_BRIDGE_TRACKS = ROOM_MEDIA_BRIDGE_TRACK_ID - 1;
 
 const nextBridgeTrackId = (tracks: Iterable<UserTrack>, userId: string): number => {
   const used = new Set<number>();
@@ -711,6 +712,8 @@ export const useUserTracksStore = create<UserTracksState>()(
         tracks.set(trackId, {
           ...track,
           userId: newUserId,
+          ownerUserId: newUserId,
+          ownerUserName: newUserName ?? track.ownerUserName,
           isActive: true,
         });
 

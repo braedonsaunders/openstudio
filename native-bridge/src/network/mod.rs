@@ -70,6 +70,12 @@ pub struct NetworkStats {
     pub bytes_sent_per_sec: u64,
     /// Bytes received per second
     pub bytes_recv_per_sec: u64,
+    /// Audio frames sent
+    pub audio_frames_sent: u64,
+    /// Audio frames received
+    pub audio_frames_recv: u64,
+    /// Audio samples received after decode
+    pub audio_samples_recv: u64,
     /// Number of connected peers
     pub peer_count: usize,
     /// Current network mode

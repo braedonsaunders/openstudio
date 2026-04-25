@@ -3,18 +3,40 @@
 use super::{AudioMessageHeader, BrowserMessage, NativeMessage};
 use crate::tui::AppEvent;
 use crate::AppState;
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use futures_util::{SinkExt, StreamExt};
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::net::SocketAddr;
 use std::sync::Arc;
-use std::time::{Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::Mutex;
 use tokio_tungstenite::{accept_async, tungstenite::Message};
 use tracing::{debug, error, info, warn};
 
+const ROOM_MEDIA_TRACK_ID: u8 = 255;
+
 pub struct BridgeServer {
     state: Arc<Mutex<AppState>>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeBridgeVerifyRequest<'a> {
+    token: &'a str,
+    room_id: &'a str,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct NativeBridgeVerifyResponse {
+    valid: bool,
+    room_id: Option<String>,
+    user_id: Option<String>,
+    user_name: Option<String>,
+    network_secret: Option<String>,
+    error: Option<String>,
 }
 
 impl BridgeServer {
@@ -1025,8 +1047,53 @@ impl BridgeServer {
                 room_id,
                 room_secret,
                 user_name,
+                auth_endpoint,
             } => {
                 info!("JoinRoom: {} as {}", room_id, user_name);
+                let Some(auth_endpoint) = auth_endpoint else {
+                    return Some(NativeMessage::Error {
+                        code: "NATIVE_AUTH_REQUIRED".to_string(),
+                        message: "Native bridge room joins require a server verification endpoint"
+                            .to_string(),
+                    });
+                };
+
+                let verified_join =
+                    match Self::verify_native_bridge_join(&auth_endpoint, &room_id, &room_secret)
+                        .await
+                    {
+                        Ok(verified_join) => verified_join,
+                        Err(e) => {
+                            return Some(NativeMessage::Error {
+                                code: "NATIVE_AUTH_FAILED".to_string(),
+                                message: e.to_string(),
+                            });
+                        }
+                    };
+
+                let verified_user_id = match verified_join.user_id {
+                    Some(user_id) => user_id,
+                    None => {
+                        return Some(NativeMessage::Error {
+                            code: "NATIVE_AUTH_FAILED".to_string(),
+                            message: "Native bridge verification did not return a user ID"
+                                .to_string(),
+                        });
+                    }
+                };
+
+                let verified_user_name = verified_join.user_name.unwrap_or(user_name);
+                let network_secret = match verified_join.network_secret {
+                    Some(secret) => secret,
+                    None => {
+                        return Some(NativeMessage::Error {
+                            code: "NATIVE_AUTH_FAILED".to_string(),
+                            message: "Native bridge verification did not return a network secret"
+                                .to_string(),
+                        });
+                    }
+                };
+
                 let mut app = self.state.lock().await;
 
                 // Clone the network Arc to avoid holding a reference while mutating app
@@ -1042,17 +1109,15 @@ impl BridgeServer {
 
                 let room_config = crate::network::RoomConfig {
                     room_id: room_id.clone(),
-                    room_secret,
+                    room_secret: network_secret,
                     ..Default::default()
                 };
 
-                let user_id = app
-                    .user_id
-                    .clone()
-                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+                app.user_id = Some(verified_user_id.clone());
+                app.user_name = Some(verified_user_name.clone());
 
                 match network
-                    .connect(room_config, user_id.clone(), user_name)
+                    .connect(room_config, verified_user_id.clone(), verified_user_name)
                     .await
                 {
                     Ok(event_rx) => {
@@ -1073,6 +1138,7 @@ impl BridgeServer {
 
                         let mode = network.mode();
                         let is_master = network.is_master();
+                        let (local_endpoint, public_endpoint) = Self::network_endpoints(&network);
                         info!("Audio-network bridge started for room {}", room_id);
 
                         // Notify TUI of room join
@@ -1113,6 +1179,8 @@ impl BridgeServer {
                             room_id,
                             network_mode: format!("{:?}", mode),
                             is_master,
+                            local_endpoint,
+                            public_endpoint,
                         })
                     }
                     Err(e) => Some(NativeMessage::Error {
@@ -1197,6 +1265,82 @@ impl BridgeServer {
                 }
             }
 
+            BrowserMessage::GetNetworkEndpoint => {
+                let app = self.state.lock().await;
+                if let Some(ref network) = app.network {
+                    let (local_endpoint, public_endpoint) = Self::network_endpoints(network);
+                    Some(NativeMessage::NetworkEndpoint {
+                        local_endpoint,
+                        public_endpoint,
+                    })
+                } else {
+                    Some(NativeMessage::Error {
+                        code: "NETWORK_UNAVAILABLE".to_string(),
+                        message: "Network manager not initialized".to_string(),
+                    })
+                }
+            }
+
+            BrowserMessage::GetNetworkStats => {
+                let app = self.state.lock().await;
+                if let Some(ref network) = app.network {
+                    let stats = network.stats();
+                    Some(NativeMessage::NetworkStats {
+                        rtt_ms: stats.rtt_ms,
+                        jitter_ms: stats.jitter_ms,
+                        packet_loss_pct: stats.packet_loss_pct,
+                        peer_count: stats.peer_count,
+                        bytes_sent_per_sec: stats.bytes_sent_per_sec,
+                        bytes_recv_per_sec: stats.bytes_recv_per_sec,
+                        audio_frames_sent: stats.audio_frames_sent,
+                        audio_frames_recv: stats.audio_frames_recv,
+                        audio_samples_recv: stats.audio_samples_recv,
+                    })
+                } else {
+                    Some(NativeMessage::Error {
+                        code: "NETWORK_UNAVAILABLE".to_string(),
+                        message: "Network manager not initialized".to_string(),
+                    })
+                }
+            }
+
+            BrowserMessage::ConnectPeer {
+                user_id,
+                user_name,
+                address,
+            } => {
+                info!("ConnectPeer: {} ({}) at {}", user_name, user_id, address);
+                let network = {
+                    let app = self.state.lock().await;
+                    app.network.clone()
+                };
+
+                let Some(network) = network else {
+                    return Some(NativeMessage::Error {
+                        code: "NETWORK_UNAVAILABLE".to_string(),
+                        message: "Network manager not initialized".to_string(),
+                    });
+                };
+
+                let addr: SocketAddr = match address.parse() {
+                    Ok(addr) => addr,
+                    Err(_) => {
+                        return Some(NativeMessage::Error {
+                            code: "INVALID_PEER_ENDPOINT".to_string(),
+                            message: format!("Invalid peer endpoint: {}", address),
+                        });
+                    }
+                };
+
+                match network.connect_p2p_peer(addr, user_id, user_name).await {
+                    Ok(_) => None,
+                    Err(e) => Some(NativeMessage::Error {
+                        code: "PEER_CONNECT_ERROR".to_string(),
+                        message: e.to_string(),
+                    }),
+                }
+            }
+
             BrowserMessage::SetRoomContext {
                 key,
                 scale,
@@ -1237,6 +1381,58 @@ impl BridgeServer {
                 None
             }
         }
+    }
+
+    fn network_endpoints(
+        network: &crate::network::NetworkManager,
+    ) -> (Option<String>, Option<String>) {
+        let local_endpoint = network.p2p_local_addr().ok().map(|addr| addr.to_string());
+        let public_endpoint = network.p2p_public_addr().map(|addr| addr.to_string());
+        (local_endpoint, public_endpoint)
+    }
+
+    async fn verify_native_bridge_join(
+        auth_endpoint: &str,
+        room_id: &str,
+        token: &str,
+    ) -> Result<NativeBridgeVerifyResponse> {
+        let url = reqwest::Url::parse(auth_endpoint)
+            .map_err(|_| anyhow!("Invalid native bridge verification endpoint"))?;
+        if url.scheme() != "https" && url.scheme() != "http" {
+            return Err(anyhow!(
+                "Native bridge verification endpoint must use http or https"
+            ));
+        }
+
+        let client = reqwest::Client::builder()
+            .timeout(Duration::from_secs(5))
+            .build()?;
+
+        let response = client
+            .post(url)
+            .json(&NativeBridgeVerifyRequest { token, room_id })
+            .send()
+            .await?;
+
+        let status = response.status();
+        let verified = response.json::<NativeBridgeVerifyResponse>().await?;
+
+        if !status.is_success() || !verified.valid {
+            return Err(anyhow!(
+                "{}",
+                verified
+                    .error
+                    .unwrap_or_else(|| "Native bridge verification failed".to_string())
+            ));
+        }
+
+        if verified.room_id.as_deref() != Some(room_id) {
+            return Err(anyhow!(
+                "Native bridge verification returned a different room"
+            ));
+        }
+
+        Ok(verified)
     }
 
     /// Handle binary audio data from browser
@@ -1283,8 +1479,15 @@ impl BridgeServer {
                     .collect();
 
                 if !samples.is_empty() {
-                    let app = self.state.lock().await;
-                    app.audio_engine.push_backing_audio(&samples);
+                    let network = {
+                        let app = self.state.lock().await;
+                        app.audio_engine.push_backing_audio(&samples);
+                        app.network.clone()
+                    };
+
+                    if let Some(network) = network {
+                        network.send_audio(ROOM_MEDIA_TRACK_ID, samples);
+                    }
                 }
             }
         }

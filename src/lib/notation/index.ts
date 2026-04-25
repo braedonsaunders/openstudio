@@ -331,7 +331,7 @@ function parseGpifXml(xmlString: string): ParsedNotation {
 
         // Get rhythm/duration
         const rhythmRef = beat.querySelector('Rhythm')?.getAttribute('ref');
-        let duration = 1; // Default to quarter note
+        const duration = 1; // Default to quarter note
 
         // Parse note references
         const noteIds = beat.querySelector('Notes')?.textContent?.split(' ') || [];

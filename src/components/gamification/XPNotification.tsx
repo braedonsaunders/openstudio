@@ -116,9 +116,9 @@ function AchievementCard({ name }: { name: string }) {
 }
 
 // XP Notification Manager
-let notificationQueue: XPNotificationProps[] = [];
+const notificationQueue: XPNotificationProps[] = [];
 let isShowingNotification = false;
-let showNotification: ((props: XPNotificationProps) => void) | null = null;
+const showNotification: ((props: XPNotificationProps) => void) | null = null;
 
 export function queueXPNotification(props: XPNotificationProps) {
   notificationQueue.push(props);

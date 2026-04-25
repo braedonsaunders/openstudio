@@ -15,7 +15,13 @@ const CALLS_API_BASE = `https://rtc.live.cloudflare.com/v1/apps/${CLOUDFLARE_CAL
 // Now we use Supabase for persistent, shared storage across all server instances
 //
 // Fallback to in-memory ONLY for local development without Supabase
-const inMemoryFallback = new Map<string, Map<string, string>>();
+type RoomWebRtcSession = {
+  userId: string;
+  sessionId: string;
+  trackName: string;
+};
+
+const inMemoryFallback = new Map<string, Map<string, RoomWebRtcSession>>();
 
 async function storeRoomSession(roomId: string, userId: string, sessionId: string, trackName: string): Promise<void> {
   const supabase = getSupabase();
@@ -30,14 +36,14 @@ async function storeRoomSession(roomId: string, userId: string, sessionId: strin
           session_id: sessionId,
           track_name: trackName,
           updated_at: new Date().toISOString(),
-        }, { onConflict: 'room_id,user_id' });
+        }, { onConflict: 'room_id,track_name' });
     } catch (err) {
       console.error('[WebRTC Sessions] Failed to store session in Supabase:', err);
       // Fall back to in-memory
       if (!inMemoryFallback.has(roomId)) {
         inMemoryFallback.set(roomId, new Map());
       }
-      inMemoryFallback.get(roomId)!.set(userId, sessionId);
+      inMemoryFallback.get(roomId)!.set(trackName, { userId, sessionId, trackName });
     }
   } else {
     // No Supabase, use in-memory (local dev only)
@@ -45,19 +51,19 @@ async function storeRoomSession(roomId: string, userId: string, sessionId: strin
     if (!inMemoryFallback.has(roomId)) {
       inMemoryFallback.set(roomId, new Map());
     }
-    inMemoryFallback.get(roomId)!.set(userId, sessionId);
+    inMemoryFallback.get(roomId)!.set(trackName, { userId, sessionId, trackName });
   }
 }
 
-async function getRoomSessions(roomId: string): Promise<Map<string, string>> {
+async function getRoomSessions(roomId: string): Promise<Map<string, RoomWebRtcSession>> {
   const supabase = getSupabase();
-  const result = new Map<string, string>();
+  const result = new Map<string, RoomWebRtcSession>();
 
   if (supabase) {
     try {
       const { data, error } = await supabase
         .from('room_webrtc_sessions')
-        .select('user_id, session_id')
+        .select('user_id, session_id, track_name')
         .eq('room_id', roomId);
 
       if (error) {
@@ -71,7 +77,11 @@ async function getRoomSessions(roomId: string): Promise<Map<string, string>> {
 
       if (data) {
         for (const row of data) {
-          result.set(row.user_id, row.session_id);
+          result.set(row.track_name, {
+            userId: row.user_id,
+            sessionId: row.session_id,
+            trackName: row.track_name,
+          });
         }
       }
 
@@ -99,13 +109,13 @@ async function getSessionOwner(roomId: string, sessionId: string): Promise<strin
         .select('user_id')
         .eq('room_id', roomId)
         .eq('session_id', sessionId)
-        .single();
+        .limit(1);
 
-      if (error || !data) {
+      if (error || !data?.[0]) {
         return null;
       }
 
-      return data.user_id;
+      return data[0].user_id;
     } catch {
       return null;
     }
@@ -114,9 +124,9 @@ async function getSessionOwner(roomId: string, sessionId: string): Promise<strin
   // Fallback to in-memory
   const roomSessions = inMemoryFallback.get(roomId);
   if (roomSessions) {
-    for (const [uid, sid] of roomSessions.entries()) {
-      if (sid === sessionId) {
-        return uid;
+    for (const record of roomSessions.values()) {
+      if (record.sessionId === sessionId) {
+        return record.userId;
       }
     }
   }
@@ -141,10 +151,9 @@ async function removeRoomSession(roomId: string, sessionId: string): Promise<voi
   // Also clean in-memory fallback
   const roomSessions = inMemoryFallback.get(roomId);
   if (roomSessions) {
-    for (const [uid, sid] of roomSessions.entries()) {
-      if (sid === sessionId) {
-        roomSessions.delete(uid);
-        break;
+    for (const [trackName, record] of roomSessions.entries()) {
+      if (record.sessionId === sessionId) {
+        roomSessions.delete(trackName);
       }
     }
   }
@@ -309,11 +318,11 @@ export async function POST(request: NextRequest) {
         // Pull a remote track from another user
         // Query persistent storage to find the remote user's session
         const roomSessions = await getRoomSessions(roomId);
-        const remoteUserId = trackName.replace('audio-', '');
-        const remoteSessionId = roomSessions.get(remoteUserId);
+        const remoteTrack = roomSessions.get(trackName);
+        const remoteSessionId = remoteTrack?.sessionId;
 
         if (!remoteSessionId) {
-          console.error(`[WebRTC Sessions] No session found for user ${remoteUserId} in room ${roomId}. Available users:`, Array.from(roomSessions.keys()));
+          console.error(`[WebRTC Sessions] No session found for track ${trackName} in room ${roomId}. Available tracks:`, Array.from(roomSessions.keys()));
           return NextResponse.json(
             { error: 'Remote user session not found' },
             { status: 404 }
@@ -390,11 +399,11 @@ export async function POST(request: NextRequest) {
         const roomSessions = await getRoomSessions(roomId);
         const tracks: { userId: string; sessionId: string; trackName: string }[] = [];
 
-        for (const [uid, sid] of roomSessions.entries()) {
+        for (const record of roomSessions.values()) {
           tracks.push({
-            userId: uid,
-            sessionId: sid,
-            trackName: `audio-${uid}`,
+            userId: record.userId,
+            sessionId: record.sessionId,
+            trackName: record.trackName,
           });
         }
 

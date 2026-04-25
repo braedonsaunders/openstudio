@@ -4,7 +4,7 @@
 
 import { AdaptiveJitterBuffer } from './jitter-buffer';
 import { TrackAudioProcessor, type TrackAudioState, type TrackInputConfig } from './track-audio-processor';
-import type { AudioStream, JitterStats, StemMixState, BackingTrack, InputChannelConfig, ExtendedEffectsChain, TrackAudioSettings } from '@/types';
+import type { AudioStream, JitterStats, StemMixState, InputChannelConfig, ExtendedEffectsChain, TrackAudioSettings } from '@/types';
 
 export interface CaptureAudioOptions {
   deviceId?: string;
@@ -64,6 +64,7 @@ export class AudioEngine {
   private broadcastDestination: MediaStreamAudioDestinationNode | null = null;
   private broadcastMixerGain: GainNode | null = null;
   private broadcastSongGain: GainNode | null = null;
+  private broadcastIncludesSongPlayback: boolean = false;
   private midiSourceNode: MediaStreamAudioSourceNode | null = null;
   private midiMixGain: GainNode | null = null;
   private broadcastActive: boolean = false; // Tracks whether broadcast was set up (survives AudioContext recreation)
@@ -81,6 +82,9 @@ export class AudioEngine {
   private onRemoteAudioCaptured: ((userId: string, samples: Float32Array) => void) | null = null;
   private onRemoteUserAdded: ((userId: string) => void) | null = null;
   private onRemoteUserRemoved: ((userId: string) => void) | null = null;
+  private roomMediaCaptureNode: AudioWorkletNode | null = null;
+  private roomMediaCaptureSink: GainNode | null = null;
+  private onRoomMediaAudioCaptured: ((samples: Float32Array) => void) | null = null;
   private stemMixState: StemMixState = {
     vocals: { enabled: true, volume: 1 },
     drums: { enabled: true, volume: 1 },
@@ -595,7 +599,28 @@ export class AudioEngine {
     this.onRemoteAudioCaptured = onCapture;
     this.onRemoteUserAdded = onAdded;
     this.onRemoteUserRemoved = onRemoved;
+    if (onCapture) {
+      this.useBridgeAudio = true;
+    }
     console.log('[AudioEngine] Native bridge callbacks', onCapture ? 'registered' : 'cleared');
+  }
+
+  /**
+   * Set a callback that forwards the shared song/backing bus to the native bridge.
+   * This is active only for the elected room media publisher so native P2P peers
+   * receive the same accompaniment that listeners receive through WebRTC.
+   */
+  setNativeBridgeRoomMediaCallback(callback: ((samples: Float32Array) => void) | null): void {
+    this.onRoomMediaAudioCaptured = callback;
+
+    if (!callback) {
+      this.disconnectNativeBridgeRoomMediaCapture();
+      return;
+    }
+
+    if (this.broadcastIncludesSongPlayback) {
+      void this.connectNativeBridgeRoomMediaCapture();
+    }
   }
 
   /**
@@ -671,16 +696,20 @@ export class AudioEngine {
       // at the start of the signal chain to tap audio samples for forwarding to
       // the native bridge's Rust engine via ASIO/CoreAudio output.
       // This ensures performers hear ALL audio through their low-latency interface.
-      if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
-        // Chain: source -> captureNode -> delayNode -> gainNode -> analyser -> masterGain
-        await this.setupRemoteCapture(userId, source, delayNode);
+      const bridgeCaptureEnabled = this.useBridgeAudio && this.onRemoteAudioCaptured;
+      let routedToNativeBridge = false;
+      if (bridgeCaptureEnabled) {
+        // Chain: source -> captureNode -> delayNode -> gainNode -> analyser
+        routedToNativeBridge = await this.setupRemoteCapture(userId, source, delayNode);
       } else {
         // Standard chain: source -> delayNode -> gainNode -> analyser -> masterGain
         source.connect(delayNode);
       }
       delayNode.connect(gainNode);
       gainNode.connect(analyser);
-      gainNode.connect(this.masterGain);
+      if (!routedToNativeBridge) {
+        gainNode.connect(this.masterGain);
+      }
 
       this.remoteStreams.set(userId, {
         userId,
@@ -713,14 +742,18 @@ export class AudioEngine {
           analyser.fftSize = 256;
           const delayNode = this.audioContext.createDelay(0.2);
           delayNode.delayTime.value = 0;
-          if (this.useBridgeAudio && this.onRemoteAudioCaptured) {
-            await this.setupRemoteCapture(userId, source, delayNode);
+          const bridgeCaptureEnabled = this.useBridgeAudio && this.onRemoteAudioCaptured;
+          let routedToNativeBridge = false;
+          if (bridgeCaptureEnabled) {
+            routedToNativeBridge = await this.setupRemoteCapture(userId, source, delayNode);
           } else {
             source.connect(delayNode);
           }
           delayNode.connect(gainNode);
           gainNode.connect(analyser);
-          gainNode.connect(this.masterGain);
+          if (!routedToNativeBridge) {
+            gainNode.connect(this.masterGain);
+          }
           this.remoteStreams.set(userId, { userId, stream, source, analyser, gainNode, delayNode, level: 0 });
           this.onRemoteUserAdded?.(userId);
 
@@ -752,14 +785,18 @@ export class AudioEngine {
     userId: string,
     sourceNode: AudioNode,
     destinationNode: AudioNode
-  ): Promise<void> {
+  ): Promise<boolean> {
     if (!this.audioContext) {
       // No AudioContext available - connect directly so audio still flows
       sourceNode.connect(destinationNode);
-      return;
+      return false;
     }
 
     await this.loadRemoteCaptureWorklet();
+    if (!this.remoteCaptureWorkletLoaded) {
+      sourceNode.connect(destinationNode);
+      return false;
+    }
 
     try {
       const captureNode = new AudioWorkletNode(this.audioContext, 'remote-capture-processor', {
@@ -785,10 +822,12 @@ export class AudioEngine {
 
       this.remoteCaptureWorklets.set(userId, captureNode);
       console.log(`[AudioEngine] Remote capture enabled for user ${userId}`);
+      return true;
     } catch (err) {
       console.error(`[AudioEngine] Failed to set up remote capture for ${userId}:`, err);
       // Fall back to direct connection so audio still flows through the chain
       sourceNode.connect(destinationNode);
+      return false;
     }
   }
 
@@ -1076,6 +1115,7 @@ export class AudioEngine {
    * Effects are no longer processed in JS - native bridge handles all DSP
    */
   updateLocalEffects(_effects: Partial<ExtendedEffectsChain>): void {
+    void _effects;
     // Effects are sent to native bridge via useNativeBridge hook
     // This method is kept for API compatibility but does nothing
   }
@@ -1208,6 +1248,7 @@ export class AudioEngine {
     }
 
     await processor.setBridgeInput(config);
+    this.useBridgeAudio = true;
     console.log(`[AudioEngine] Set bridge input for track ${trackId}`);
   }
 
@@ -1419,17 +1460,26 @@ export class AudioEngine {
    * - All armed user tracks (after effects processing)
    * - Optional browser-generated performance audio (for example MIDI instruments)
    *
-   * This stream is used only for listener publication. Backing/song audio is not
-   * included here because it is already synchronized and rendered locally.
-   * @param midiStream Optional MediaStream from SoundEngine.enableBroadcast()
-   * @param midiVolume Volume for MIDI audio (0-1)
+   * The shared song/backing/stem bus must be included by exactly one room media
+   * publisher, normally the current room master, so listeners hear it without
+   * every performer duplicating the same accompaniment.
    * @returns MediaStream containing the mixed audio for WebRTC
    */
-  createBroadcastStream(midiStream?: MediaStream | null, midiVolume: number = 0.8): MediaStream | null {
+  createBroadcastStream(options: {
+    midiStream?: MediaStream | null;
+    midiVolume?: number;
+    includeSongPlayback?: boolean;
+  } = {}): MediaStream | null {
     if (!this.audioContext) {
       console.warn('[AudioEngine] Cannot create broadcast stream: audio context not initialized');
       return null;
     }
+
+    const {
+      midiStream = null,
+      midiVolume = 0.8,
+      includeSongPlayback = false,
+    } = options;
 
     // Idempotent: tear down existing broadcast nodes before rebuilding
     // This prevents duplicate connections and stale node references after AudioContext recreation
@@ -1441,6 +1491,8 @@ export class AudioEngine {
       this.midiMixGain = null;
       this.broadcastSongGain?.disconnect();
       this.broadcastSongGain = null;
+      this.disconnectNativeBridgeRoomMediaCapture();
+      this.broadcastIncludesSongPlayback = false;
       this.broadcastMixerGain?.disconnect();
       this.broadcastMixerGain = null;
       this.broadcastDestination = null;
@@ -1451,6 +1503,7 @@ export class AudioEngine {
     this.broadcastMixerGain = this.audioContext.createGain();
     this.broadcastMixerGain.connect(this.broadcastDestination);
     this.broadcastActive = true;
+    this.broadcastIncludesSongPlayback = includeSongPlayback;
 
     // Connect all track processor outputs to broadcast mixer
     // Each track's output goes through its own mute/solo logic
@@ -1480,8 +1533,92 @@ export class AudioEngine {
       console.log('[AudioEngine] MIDI stream connected to broadcast mix');
     }
 
+    this.connectBroadcastSongBus();
+
     console.log('[AudioEngine] Broadcast stream created');
     return this.broadcastDestination.stream;
+  }
+
+  setBroadcastSongPlaybackEnabled(enabled: boolean): void {
+    this.broadcastIncludesSongPlayback = enabled;
+    this.broadcastSongGain?.disconnect();
+    this.broadcastSongGain = null;
+    if (!enabled) {
+      this.disconnectNativeBridgeRoomMediaCapture();
+    }
+    this.connectBroadcastSongBus();
+  }
+
+  private connectBroadcastSongBus(): void {
+    if (
+      !this.broadcastIncludesSongPlayback ||
+      !this.audioContext ||
+      !this.songGain ||
+      !this.broadcastMixerGain
+    ) {
+      return;
+    }
+
+    this.broadcastSongGain = this.audioContext.createGain();
+    this.broadcastSongGain.gain.value = 1;
+    this.songGain.connect(this.broadcastSongGain);
+    this.broadcastSongGain.connect(this.broadcastMixerGain);
+    if (this.onRoomMediaAudioCaptured) {
+      void this.connectNativeBridgeRoomMediaCapture();
+    }
+    console.log('[AudioEngine] Song/backing bus connected to broadcast mix');
+  }
+
+  private disconnectNativeBridgeRoomMediaCapture(): void {
+    this.roomMediaCaptureNode?.port.postMessage({ type: 'stop' });
+    this.roomMediaCaptureNode?.disconnect();
+    this.roomMediaCaptureNode = null;
+    this.roomMediaCaptureSink?.disconnect();
+    this.roomMediaCaptureSink = null;
+  }
+
+  private async connectNativeBridgeRoomMediaCapture(): Promise<void> {
+    if (
+      this.roomMediaCaptureNode ||
+      !this.audioContext ||
+      !this.songGain ||
+      !this.onRoomMediaAudioCaptured
+    ) {
+      return;
+    }
+
+    await this.loadRemoteCaptureWorklet();
+    if (!this.remoteCaptureWorkletLoaded || !this.audioContext || !this.songGain) {
+      console.warn('[AudioEngine] Native bridge room media capture unavailable');
+      return;
+    }
+
+    try {
+      const captureNode = new AudioWorkletNode(this.audioContext, 'remote-capture-processor', {
+        numberOfInputs: 1,
+        numberOfOutputs: 1,
+        outputChannelCount: [2],
+      });
+      const silentSink = this.audioContext.createGain();
+      silentSink.gain.value = 0;
+
+      captureNode.port.onmessage = (event) => {
+        if (event.data.type === 'audio') {
+          this.onRoomMediaAudioCaptured?.(event.data.samples);
+        }
+      };
+
+      this.songGain.connect(captureNode);
+      captureNode.connect(silentSink);
+      silentSink.connect(this.audioContext.destination);
+
+      this.roomMediaCaptureNode = captureNode;
+      this.roomMediaCaptureSink = silentSink;
+      console.log('[AudioEngine] Native bridge room media capture enabled');
+    } catch (err) {
+      console.error('[AudioEngine] Failed to enable native bridge room media capture:', err);
+      this.disconnectNativeBridgeRoomMediaCapture();
+    }
   }
 
   /**
@@ -1511,13 +1648,15 @@ export class AudioEngine {
       }
     }
 
+    this.broadcastSongGain?.disconnect();
     this.broadcastSongGain = null;
+    this.connectBroadcastSongBus();
   }
 
   /**
    * Verify the broadcast audio chain is intact.
-   * This validates only the listener publication path, which intentionally excludes
-   * song/backing playback to avoid duplicating shared accompaniment in the mix.
+   * When this client is the room media publisher, the shared song/backing bus is
+   * also part of the listener publication path.
    */
   verifyBroadcastChain(): boolean {
     // If broadcast was never set up, chain is trivially "not needed"
@@ -1529,6 +1668,10 @@ export class AudioEngine {
       { name: 'audioContext', present: this.audioContext !== null },
       { name: 'broadcastMixerGain', present: this.broadcastMixerGain !== null },
       { name: 'broadcastDestination', present: this.broadcastDestination !== null },
+      {
+        name: 'broadcastSongGain',
+        present: !this.broadcastIncludesSongPlayback || this.broadcastSongGain !== null,
+      },
     ];
 
     const brokenLinks = links.filter(link => !link.present);
@@ -1914,7 +2057,7 @@ export class AudioEngine {
     if (this.backingTrackSource) {
       try {
         this.backingTrackSource.stop();
-      } catch (e) {
+      } catch {
         // Already stopped
       }
       this.backingTrackSource.disconnect();
@@ -1927,7 +2070,7 @@ export class AudioEngine {
     for (const source of this.stemSources.values()) {
       try {
         source.stop();
-      } catch (e) {
+      } catch {
         // Already stopped
       }
       source.disconnect();
@@ -2022,7 +2165,7 @@ export class AudioEngine {
     syncTimestamp: number,
     trackConfigs: Array<{ trackId: string; offset: number; volume: number; muted: boolean }>
   ): Promise<void> {
-    if (!this.audioContext || !this.masterGain) {
+    if (!this.audioContext || !this.songGain) {
       console.error('[AudioEngine] Cannot play multi-tracks: audio context not ready');
       return;
     }
@@ -2063,10 +2206,7 @@ export class AudioEngine {
       let gainNode = this.multiTrackGains.get(config.trackId);
       if (!gainNode) {
         gainNode = this.audioContext.createGain();
-        gainNode.connect(this.masterGain);
-        if (this.broadcastMixerGain) {
-          gainNode.connect(this.broadcastMixerGain);
-        }
+        gainNode.connect(this.songGain);
         this.multiTrackGains.set(config.trackId, gainNode);
       }
       gainNode.gain.value = config.muted ? 0 : config.volume;
@@ -2120,7 +2260,7 @@ export class AudioEngine {
     for (const source of this.multiTrackSources.values()) {
       try {
         source.stop();
-      } catch (e) {
+      } catch {
         // Already stopped
       }
       source.disconnect();
@@ -2332,34 +2472,33 @@ export class AudioEngine {
     this.originalConsoleWarn = console.warn.bind(console);
     // Keep a stable reference that won't be nulled out
     const savedOriginalWarn = this.originalConsoleWarn;
-    const self = this;
 
-    console.warn = function (...args: unknown[]) {
+    console.warn = (...args: unknown[]) => {
       // Check if this is a BiquadFilterNode error
       const message = args[0];
       if (typeof message === 'string' && message.includes('BiquadFilterNode') && message.includes('state is bad')) {
-        self.filterErrorCount++;
+        this.filterErrorCount++;
 
         // Debounce recovery - wait for errors to stop before recovering
-        if (self.filterErrorDebounceTimeout) {
-          clearTimeout(self.filterErrorDebounceTimeout);
+        if (this.filterErrorDebounceTimeout) {
+          clearTimeout(this.filterErrorDebounceTimeout);
         }
 
-        self.filterErrorDebounceTimeout = setTimeout(() => {
-          console.log(`[AudioEngine] Detected ${self.filterErrorCount} BiquadFilterNode errors, triggering recovery...`);
-          self.filterErrorCount = 0;
+        this.filterErrorDebounceTimeout = setTimeout(() => {
+          console.log(`[AudioEngine] Detected ${this.filterErrorCount} BiquadFilterNode errors, triggering recovery...`);
+          this.filterErrorCount = 0;
 
           const now = Date.now();
-          if (now - self.lastRecoveryTime > AudioEngine.RECOVERY_COOLDOWN_MS) {
-            self.recoverFromAudioError();
-            self.lastRecoveryTime = now;
+          if (now - this.lastRecoveryTime > AudioEngine.RECOVERY_COOLDOWN_MS) {
+            this.recoverFromAudioError();
+            this.lastRecoveryTime = now;
           }
         }, 100); // Wait 100ms for errors to stop
       }
 
       // Call original console.warn using the stable reference
       // This prevents "Cannot read properties of null" if uninstall races with this call
-      savedOriginalWarn.apply(console, args);
+      savedOriginalWarn(...args);
     };
 
     console.log('[AudioEngine] BiquadFilterNode error detection installed');
@@ -2411,7 +2550,7 @@ export class AudioEngine {
     this.externalSources.clear();
 
     // Clean up remote capture worklets for native bridge
-    for (const [userId, worklet] of this.remoteCaptureWorklets) {
+    for (const worklet of this.remoteCaptureWorklets.values()) {
       worklet.port.postMessage({ type: 'stop' });
       worklet.disconnect();
     }
@@ -2433,12 +2572,15 @@ export class AudioEngine {
 
     // Clean up broadcast resources
     this.disconnectMidiFromBroadcast();
+    this.disconnectNativeBridgeRoomMediaCapture();
     this.broadcastSongGain?.disconnect();
     this.broadcastSongGain = null;
     this.broadcastMixerGain?.disconnect();
     this.broadcastMixerGain = null;
     this.broadcastDestination = null;
     this.broadcastActive = false;
+    this.broadcastIncludesSongPlayback = false;
+    this.onRoomMediaAudioCaptured = null;
 
     this.localSourceNode?.disconnect();
     this.localSourceNode = null;

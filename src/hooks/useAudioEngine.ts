@@ -14,6 +14,12 @@ let globalEngine: AudioEngine | null = null;
 let globalEngineInitPromise: Promise<AudioEngine> | null = null;
 let isListenerModeActive = false;
 
+declare global {
+  interface Window {
+    __openStudioAudioEngine?: AudioEngine;
+  }
+}
+
 export function useAudioEngine() {
   const animationFrameRef = useRef<number | null>(null);
   const performanceIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -107,7 +113,7 @@ export function useAudioEngine() {
       // Expose engine globally for native bridge audio integration
       // This allows the native bridge to push audio samples directly
       if (typeof window !== 'undefined') {
-        (window as any).__openStudioAudioEngine = engine;
+        window.__openStudioAudioEngine = engine;
       }
 
       // Start performance monitoring
@@ -703,7 +709,7 @@ export function useAudioEngine() {
     settings?: TrackAudioSettings
   ) => {
     // Use globalEngine or fall back to window reference (for native bridge initialization)
-    const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+    const engine = globalEngine || (typeof window !== 'undefined' ? window.__openStudioAudioEngine : null);
     return engine?.getOrCreateTrackProcessor(trackId, settings) ?? null;
   }, []);
 
@@ -715,7 +721,7 @@ export function useAudioEngine() {
   // Remove a track processor
   const removeTrackProcessor = useCallback((trackId: string) => {
     // Use globalEngine or fall back to window reference (for native bridge initialization)
-    const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+    const engine = globalEngine || (typeof window !== 'undefined' ? window.__openStudioAudioEngine : null);
     engine?.removeTrackProcessor(trackId);
   }, []);
 
@@ -725,7 +731,7 @@ export function useAudioEngine() {
     state: Partial<import('@/lib/audio/track-audio-processor').TrackAudioState>
   ) => {
     // Use globalEngine or fall back to window reference (for native bridge initialization)
-    const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+    const engine = globalEngine || (typeof window !== 'undefined' ? window.__openStudioAudioEngine : null);
     engine?.updateTrackState(trackId, state);
   }, []);
 
@@ -735,7 +741,7 @@ export function useAudioEngine() {
     effects: Partial<import('@/types').ExtendedEffectsChain>
   ) => {
     // Use globalEngine or fall back to window reference (for native bridge initialization)
-    const engine = globalEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+    const engine = globalEngine || (typeof window !== 'undefined' ? window.__openStudioAudioEngine : null);
     engine?.updateTrackEffects(trackId, effects);
   }, []);
 

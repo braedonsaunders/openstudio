@@ -253,8 +253,8 @@ export default function RoomPage() {
           {isListenerMode && (
             <div className="p-4 bg-gray-100 dark:bg-gray-800/50 rounded-lg">
               <p className="text-sm text-gray-600 dark:text-gray-400">
-                You'll be able to hear all performers but won't be able to send audio.
-                Perfect for spectating or when you don't have the native bridge installed.
+                You&apos;ll be able to hear all performers but won&apos;t be able to send audio.
+                Perfect for spectating or when you don&apos;t have the native bridge installed.
               </p>
             </div>
           )}

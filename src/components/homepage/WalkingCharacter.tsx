@@ -279,8 +279,8 @@ export const WalkingCharacter = memo(function WalkingCharacter({
           const moveX = (dx / distance) * walkSpeed * deltaTime;
           const moveY = (dy / distance) * walkSpeed * deltaTime;
           const { walkableArea } = groundConfig;
-          let newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
-          let newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
+          const newX = Math.max(walkableArea.minX, Math.min(walkableArea.maxX, prev.x + moveX));
+          const newY = Math.max(walkableArea.minY, Math.min(walkableArea.maxY, prev.y + moveY));
 
           // Stop if about to enter the content card zone
           if (isInsideCardZone(newX, newY)) {

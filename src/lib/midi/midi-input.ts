@@ -202,7 +202,7 @@ export class MidiInputManager {
     switch (messageType) {
       case 0x90: // Note On
         if (data.length >= 3) {
-          let velocity = data[2];
+          const velocity = data[2];
           if (velocity === 0) {
             // Note On with velocity 0 is actually Note Off
             message = {

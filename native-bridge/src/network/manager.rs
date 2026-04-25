@@ -8,6 +8,7 @@ use super::{
     RoomConfig,
 };
 use parking_lot::RwLock;
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::sync::{broadcast, mpsc};
@@ -430,7 +431,6 @@ impl NetworkManager {
             NetworkMode::Disconnected => NetworkStats::default(),
         };
         stats.mode = self.mode();
-        stats.peer_count = self.peers.connected_count();
         stats
     }
 
@@ -442,6 +442,27 @@ impl NetworkManager {
     /// Get peers
     pub fn peers(&self) -> &PeerRegistry {
         &self.peers
+    }
+
+    /// Get the local P2P UDP endpoint, when the P2P socket is running.
+    pub fn p2p_local_addr(&self) -> Result<SocketAddr> {
+        self.p2p.local_addr()
+    }
+
+    /// Get the STUN-discovered public P2P endpoint, when available.
+    pub fn p2p_public_addr(&self) -> Option<SocketAddr> {
+        self.p2p.public_addr()
+    }
+
+    /// Connect the P2P transport to a peer discovered by the browser signaling layer.
+    pub async fn connect_p2p_peer(
+        &self,
+        addr: SocketAddr,
+        user_id: String,
+        user_name: String,
+    ) -> Result<()> {
+        self.p2p.connect_peer(addr, user_id, user_name).await?;
+        Ok(())
     }
 
     /// Check if we're the master
@@ -605,6 +626,8 @@ impl NetworkManager {
 
         // Forward relay events
         let event_tx = self.event_tx.read().clone();
+        let relay = self.relay.clone();
+        let local_user_id = user_id.to_string();
         if let Some(tx) = event_tx {
             tokio::spawn(async move {
                 while let Ok(event) = rx.recv().await {
@@ -615,8 +638,20 @@ impl NetworkManager {
                         MoqEvent::Disconnected { reason } => {
                             let _ = tx.send(NetworkEvent::Error { error: reason });
                         }
-                        MoqEvent::TrackAvailable { track: _ } => {
-                            // New user's track available - could trigger subscribe
+                        MoqEvent::TrackAvailable { track } => {
+                            if track.user_id != local_user_id {
+                                if let Err(e) =
+                                    relay.subscribe_audio(&track.user_id, track.track_num).await
+                                {
+                                    let _ = tx.send(NetworkEvent::Error {
+                                        error: format!(
+                                            "Failed to subscribe to relay track {}: {}",
+                                            track.to_path(),
+                                            e
+                                        ),
+                                    });
+                                }
+                            }
                         }
                         MoqEvent::AudioReceived {
                             track,
@@ -925,5 +960,93 @@ impl NetworkManager {
     /// This upgrades the weak self-reference to a strong Arc when the manager is still alive.
     fn clone_for_task(&self) -> Option<Arc<Self>> {
         self.self_ref.read().as_ref()?.upgrade()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::SocketAddr;
+    use tokio::time::{sleep, Duration, Instant};
+
+    fn p2p_test_config() -> NetworkConfig {
+        let mut config = NetworkConfig {
+            auto_switch: false,
+            preferred_mode: NetworkMode::P2P,
+            ..Default::default()
+        };
+        config.p2p.bind_addr = SocketAddr::from(([127, 0, 0, 1], 0));
+        config.p2p.stun_server = None;
+        config
+    }
+
+    #[tokio::test]
+    async fn stats_report_p2p_connected_peers() {
+        let alice = NetworkManager::new_shared(p2p_test_config())
+            .expect("alice network manager should initialize");
+        let bob = NetworkManager::new_shared(p2p_test_config())
+            .expect("bob network manager should initialize");
+
+        let room = RoomConfig {
+            room_id: "manager-stats-room".to_string(),
+            room_secret: "manager-stats-secret".to_string(),
+            ..Default::default()
+        };
+
+        let _alice_events = alice
+            .connect(room.clone(), "alice".to_string(), "Alice".to_string())
+            .await
+            .expect("alice should join the P2P room");
+        let _bob_events = bob
+            .connect(room, "bob".to_string(), "Bob".to_string())
+            .await
+            .expect("bob should join the P2P room");
+
+        let alice_endpoint = alice
+            .p2p_local_addr()
+            .expect("alice should expose a P2P endpoint");
+        let bob_endpoint = bob
+            .p2p_local_addr()
+            .expect("bob should expose a P2P endpoint");
+
+        alice
+            .connect_p2p_peer(bob_endpoint, "bob".to_string(), "Bob".to_string())
+            .await
+            .expect("alice should connect to bob");
+        bob.connect_p2p_peer(alice_endpoint, "alice".to_string(), "Alice".to_string())
+            .await
+            .expect("bob should connect to alice");
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            if alice.stats().peer_count == 1 && bob.stats().peer_count == 1 {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "P2P peer counts did not propagate to network manager stats"
+            );
+            sleep(Duration::from_millis(25)).await;
+        }
+
+        alice.send_audio(7, vec![0.25; 960]);
+
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let alice_stats = alice.stats();
+            let bob_stats = bob.stats();
+            if alice_stats.audio_frames_sent > 0 && bob_stats.audio_frames_recv > 0 {
+                assert!(bob_stats.audio_samples_recv > 0);
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "P2P audio frame stats did not propagate: alice={alice_stats:?}, bob={bob_stats:?}"
+            );
+            sleep(Duration::from_millis(25)).await;
+        }
+
+        alice.disconnect().await;
+        bob.disconnect().await;
     }
 }

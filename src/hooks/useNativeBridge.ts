@@ -11,15 +11,22 @@ import { useBridgeAudioStore } from '@/stores/bridge-audio-store';
 import { useUserTracksStore } from '@/stores/user-tracks-store';
 import { useAudioStore } from '@/stores/audio-store';
 import { useRoomStore } from '@/stores/room-store';
+import type { AudioEngine } from '@/lib/audio/audio-engine';
 
 // Import audio engine for bridge audio processing
 // We cache the engine reference for synchronous access in the hot audio path
-let cachedAudioEngine: any = null;
+let cachedAudioEngine: AudioEngine | null = null;
+
+declare global {
+  interface Window {
+    __openStudioAudioEngine?: AudioEngine;
+  }
+}
 
 // Pre-fetch the audio engine reference (call this before audio starts)
 const ensureAudioEngineReady = () => {
-  if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-    cachedAudioEngine = (window as any).__openStudioAudioEngine;
+  if (typeof window !== 'undefined' && window.__openStudioAudioEngine) {
+    cachedAudioEngine = window.__openStudioAudioEngine;
     return true;
   }
   return false;
@@ -36,7 +43,7 @@ const handleAudioDataStable = (data: BridgeAudioData) => {
 
   // Use cached engine reference for zero-overhead access
   // Falls back to window reference if cache is stale
-  const engine = cachedAudioEngine || (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine);
+  const engine = cachedAudioEngine || (typeof window !== 'undefined' ? window.__openStudioAudioEngine : null);
   if (!engine) {
     // Only warn once at start
     if (audioDataCounter === 1) {
@@ -279,13 +286,14 @@ export function useNativeBridge() {
 
   // Auto-start native bridge when room is connected and bridge is preferred
   // This ensures users don't have to manually start audio after joining a room
-  // DISABLED: This was causing issues by trying to start without an ASIO device selected
-  // Users must manually start audio from settings after selecting their device
-  /*
   useEffect(() => {
     // Subscribe to room store for connection changes
     const unsubscribeRoom = useRoomStore.subscribe((roomState) => {
       const bridgeState = useBridgeAudioStore.getState();
+      const currentUserId = roomState.currentUser?.id;
+      const userTracks = currentUserId
+        ? useUserTracksStore.getState().getTracksByUser(currentUserId)
+        : [];
 
       // Check if we should auto-start: room connected + bridge connected + bridge preferred + not already running + device selected
       if (
@@ -293,7 +301,8 @@ export function useNativeBridge() {
         bridgeState.isConnected &&
         bridgeState.preferNativeBridge &&
         !bridgeState.isRunning &&
-        bridgeState.inputDevice // Must have a device selected
+        bridgeState.selectedInputDeviceId &&
+        userTracks.some((track) => track.type === 'audio')
       ) {
         console.log('[useNativeBridge] Room connected with bridge preferred, auto-starting audio...');
         // Use a small delay to ensure all other initialization has completed
@@ -306,7 +315,10 @@ export function useNativeBridge() {
             latestBridge.isConnected &&
             latestBridge.preferNativeBridge &&
             !latestBridge.isRunning &&
-            latestBridge.inputDevice &&
+            latestBridge.selectedInputDeviceId &&
+            useUserTracksStore.getState()
+              .getTracksByUser(latestRoom.currentUser?.id || '')
+              .some((track) => track.type === 'audio') &&
             startAudioRef.current
           ) {
             console.log('[useNativeBridge] Executing auto-start via ref...');
@@ -324,7 +336,6 @@ export function useNativeBridge() {
       unsubscribeRoom();
     };
   }, []);
-  */
 
   // Connect to bridge
   const connect = useCallback(async () => {
@@ -387,7 +398,7 @@ export function useNativeBridge() {
 
         // Expose on window for the native bridge audio handler
         if (typeof window !== 'undefined') {
-          (window as any).__openStudioAudioEngine = engine;
+          window.__openStudioAudioEngine = engine;
         }
 
         console.log('[useNativeBridge] Audio engine initialized successfully');
@@ -398,12 +409,12 @@ export function useNativeBridge() {
       }
     }
 
-    // For ASIO, use same device for input and output
-    // If input not set or different from output, use output device for both
-    const deviceId = state.selectedOutputDeviceId;
+    const inputDeviceId = state.selectedInputDeviceId;
+    const outputDeviceId = state.selectedOutputDeviceId;
 
     console.log('[useNativeBridge] Starting audio with config:', {
-      device: deviceId,
+      inputDevice: inputDeviceId,
+      outputDevice: outputDeviceId,
       bufferSize: state.bufferSize,
       sampleRate: state.sampleRate,
       channelConfig: state.inputChannelConfig,
@@ -412,8 +423,8 @@ export function useNativeBridge() {
 
     // Ensure AudioContext sample rate matches the user's selection
     // If they differ, recreate the AudioContext with the correct rate
-    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-      const engine = (window as any).__openStudioAudioEngine;
+    if (typeof window !== 'undefined' && window.__openStudioAudioEngine) {
+      const engine = window.__openStudioAudioEngine;
       const audioCtx = engine.getAudioContext?.();
       if (audioCtx?.sampleRate && audioCtx.sampleRate !== state.sampleRate) {
         console.log(`[useNativeBridge] AudioContext rate (${audioCtx.sampleRate}) differs from UI (${state.sampleRate}). Changing to match.`);
@@ -443,8 +454,8 @@ export function useNativeBridge() {
 
     // Set up all track processors in the browser audio engine FIRST
     for (const track of userTracks) {
-      if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
-        const engine = (window as any).__openStudioAudioEngine;
+      if (typeof window !== 'undefined' && window.__openStudioAudioEngine) {
+        const engine = window.__openStudioAudioEngine;
         engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 
         if (track.type === 'audio' && Number.isInteger(track.audioSettings.bridgeTrackId)) {
@@ -485,9 +496,11 @@ export function useNativeBridge() {
     console.log('[useNativeBridge] All track processors ready, starting native audio...');
 
     // NOW configure and start native bridge (after processors are ready)
-    if (deviceId) {
-      nativeBridge.setInputDevice(deviceId);
-      nativeBridge.setOutputDevice(deviceId);
+    if (inputDeviceId) {
+      nativeBridge.setInputDevice(inputDeviceId);
+    }
+    if (outputDeviceId) {
+      nativeBridge.setOutputDevice(outputDeviceId);
     }
 
     nativeBridge.setBufferSize(state.bufferSize);
@@ -528,7 +541,7 @@ export function useNativeBridge() {
     if (currentUserId) {
       const latestTracksState = useUserTracksStore.getState();
       const latestUserTracks = latestTracksState.getTracksByUser(currentUserId);
-      const engine = typeof window !== 'undefined' && (window as any).__openStudioAudioEngine;
+      const engine = typeof window !== 'undefined' ? window.__openStudioAudioEngine : null;
 
       if (engine) {
         for (const track of latestUserTracks) {
@@ -575,9 +588,9 @@ export function useNativeBridge() {
     useBridgeAudioStore.getState().setRunning(false);
 
     // Disable bridge audio mode in the audio engine
-    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+    if (typeof window !== 'undefined' && window.__openStudioAudioEngine) {
       console.log('[useNativeBridge] Disabling bridge audio mode in audio engine');
-      (window as any).__openStudioAudioEngine.disableBridgeAudio();
+      window.__openStudioAudioEngine.disableBridgeAudio();
     }
   }, []);
 
@@ -642,9 +655,9 @@ export function useNativeBridge() {
     }
 
     // Change the AudioContext sample rate (recreates it)
-    if (typeof window !== 'undefined' && (window as any).__openStudioAudioEngine) {
+    if (typeof window !== 'undefined' && window.__openStudioAudioEngine) {
       console.log('[useNativeBridge] Changing AudioContext sample rate to', rate);
-      await (window as any).__openStudioAudioEngine.changeSampleRate(rate);
+      await window.__openStudioAudioEngine.changeSampleRate(rate);
       // Re-cache engine reference after context recreation
       ensureAudioEngineReady();
     }
@@ -699,7 +712,7 @@ export function useNativeBridge() {
               });
             }
 
-            const engine = (window as any).__openStudioAudioEngine;
+            const engine = window.__openStudioAudioEngine;
             if (engine) {
               engine.getOrCreateTrackProcessor(track.id, track.audioSettings);
 

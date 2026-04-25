@@ -116,7 +116,7 @@ export function MidiDeviceSelector({
           <span className="font-medium">Web MIDI not supported</span>
         </div>
         <p className="text-sm text-amber-700 mt-1">
-          Your browser doesn't support MIDI input. Try Chrome or Edge.
+          Your browser doesn&apos;t support MIDI input. Try Chrome or Edge.
         </p>
       </div>
     );

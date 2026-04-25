@@ -50,6 +50,11 @@ interface BridgeStreamHealth {
   msSinceLastRead: number;
 }
 
+export interface NativeNetworkEndpoint {
+  localEndpoint: string | null;
+  publicEndpoint: string | null;
+}
+
 interface BridgeDeviceConfig {
   inputDevice: BridgeDevice | null;
   outputDevice: BridgeDevice | null;
@@ -76,11 +81,24 @@ type NativeMessage =
   | { type: 'backingTrackLoaded'; duration: number; waveform: number[] }
   | { type: 'backingTrackPosition'; time: number }
   | { type: 'backingTrackEnded' }
-  | { type: 'roomJoined'; roomId: string; networkMode: string; isMaster: boolean }
+  | { type: 'roomJoined'; roomId: string; networkMode: string; isMaster: boolean; localEndpoint?: string | null; publicEndpoint?: string | null }
   | { type: 'roomLeft' }
+  | { type: 'networkEndpoint'; localEndpoint?: string | null; publicEndpoint?: string | null }
   | { type: 'peerConnected'; userId: string; userName: string; hasNativeBridge: boolean }
   | { type: 'peerDisconnected'; userId: string; reason: string }
   | { type: 'networkModeChanged'; mode: string }
+  | {
+      type: 'networkStats';
+      rttMs: number;
+      jitterMs: number;
+      packetLossPct: number;
+      peerCount: number;
+      bytesSentPerSec: number;
+      bytesRecvPerSec: number;
+      audioFramesSent: number;
+      audioFramesRecv: number;
+      audioSamplesRecv: number;
+    }
   | { type: 'p2pStats'; peerId: string; rtt: number; packetLoss: number; jitter: number };
 
 // === Audio Data Types ===
@@ -134,9 +152,11 @@ export type BridgeEventType =
   | 'error'
   | 'roomJoined'
   | 'roomLeft'
+  | 'networkEndpoint'
   | 'peerConnected'
   | 'peerDisconnected'
   | 'networkModeChanged'
+  | 'networkStats'
   | 'peerAudioReceived'
   | 'p2pStats';
 
@@ -151,11 +171,23 @@ type BridgeEventData = {
   effectsMetering: EffectsMetering;
   audioData: BridgeAudioData;
   error: { code: string; message: string };
-  roomJoined: { roomId: string; networkMode: string; isMaster: boolean };
+  roomJoined: { roomId: string; networkMode: string; isMaster: boolean; endpoint: NativeNetworkEndpoint };
   roomLeft: Record<string, never>;
+  networkEndpoint: NativeNetworkEndpoint;
   peerConnected: { userId: string; userName: string; hasNativeBridge: boolean };
   peerDisconnected: { userId: string; reason: string };
   networkModeChanged: { mode: string };
+  networkStats: {
+    rttMs: number;
+    jitterMs: number;
+    packetLossPct: number;
+    peerCount: number;
+    bytesSentPerSec: number;
+    bytesRecvPerSec: number;
+    audioFramesSent: number;
+    audioFramesRecv: number;
+    audioSamplesRecv: number;
+  };
   peerAudioReceived: { userId: string; samples: Float32Array };
   p2pStats: { peerId: string; rtt: number; packetLoss: number; jitter: number };
 };
@@ -217,6 +249,7 @@ export class NativeBridge {
       'error',
       'roomJoined',
       'roomLeft',
+      'networkEndpoint',
       'peerConnected',
       'peerDisconnected',
       'networkModeChanged',
@@ -515,7 +548,15 @@ export class NativeBridge {
 
         case 'roomJoined':
           console.log('[NativeBridge] Room joined:', msg.roomId, 'mode:', msg.networkMode, 'master:', msg.isMaster);
-          this.emit('roomJoined', { roomId: msg.roomId, networkMode: msg.networkMode, isMaster: msg.isMaster });
+          this.emit('roomJoined', {
+            roomId: msg.roomId,
+            networkMode: msg.networkMode,
+            isMaster: msg.isMaster,
+            endpoint: {
+              localEndpoint: msg.localEndpoint || null,
+              publicEndpoint: msg.publicEndpoint || null,
+            },
+          });
           break;
 
         case 'roomLeft':
@@ -524,6 +565,13 @@ export class NativeBridge {
           this.nativeBridgePeers.clear();
           this.currentNetworkMode = 'webrtc';
           this.emit('roomLeft', {});
+          break;
+
+        case 'networkEndpoint':
+          this.emit('networkEndpoint', {
+            localEndpoint: msg.localEndpoint || null,
+            publicEndpoint: msg.publicEndpoint || null,
+          });
           break;
 
         case 'peerConnected':
@@ -548,6 +596,20 @@ export class NativeBridge {
           console.log('[NativeBridge] Network mode changed:', msg.mode);
           this.currentNetworkMode = msg.mode as 'webrtc' | 'p2p' | 'hybrid';
           this.emit('networkModeChanged', { mode: msg.mode });
+          break;
+
+        case 'networkStats':
+          this.emit('networkStats', {
+            rttMs: msg.rttMs,
+            jitterMs: msg.jitterMs,
+            packetLossPct: msg.packetLossPct,
+            peerCount: msg.peerCount,
+            bytesSentPerSec: msg.bytesSentPerSec,
+            bytesRecvPerSec: msg.bytesRecvPerSec,
+            audioFramesSent: msg.audioFramesSent,
+            audioFramesRecv: msg.audioFramesRecv,
+            audioSamplesRecv: msg.audioSamplesRecv,
+          });
           break;
 
         case 'p2pStats':
@@ -849,14 +911,14 @@ export class NativeBridge {
    * Add remote user
    */
   addRemoteUser(userId: string, userName: string): void {
-    this.send({ type: 'addRemoteUser', user_id: userId, user_name: userName });
+    this.send({ type: 'addRemoteUser', userId, userName });
   }
 
   /**
    * Remove remote user
    */
   removeRemoteUser(userId: string): void {
-    this.send({ type: 'removeRemoteUser', user_id: userId });
+    this.send({ type: 'removeRemoteUser', userId });
   }
 
   /**
@@ -870,10 +932,11 @@ export class NativeBridge {
   ): void {
     this.send({
       type: 'updateRemoteUser',
-      user_id: userId,
+      userId,
       volume,
+      pan: 0,
       muted,
-      compensation_delay_ms: compensationDelayMs,
+      compensationDelayMs,
     });
   }
 
@@ -987,16 +1050,44 @@ export class NativeBridge {
    * When two performers both have native bridges, audio flows directly
    * Rust → P2P/Relay → Rust, bypassing WebRTC and Web Audio for minimum latency.
    * @param roomId The room to join
-   * @param roomSecret Secret for room authentication
+   * @param roomSecret Short-lived server-issued native bridge token
    * @param userName The user's display name
+   * @param authEndpoint Server endpoint the native bridge must call to verify the token
    */
-  joinRoom(roomId: string, roomSecret: string, userName: string): void {
+  joinRoom(roomId: string, roomSecret: string, userName: string, authEndpoint: string): void {
     console.log('[NativeBridge] Joining room:', roomId, 'as', userName);
     this.send({
       type: 'joinRoom',
       roomId,
       roomSecret,
       userName,
+      authEndpoint,
+    });
+  }
+
+  /**
+   * Ask the bridge to report its currently bound P2P endpoint.
+   */
+  requestNetworkEndpoint(): void {
+    this.send({ type: 'getNetworkEndpoint' });
+  }
+
+  /**
+   * Ask the bridge to report current P2P/relay transport stats.
+   */
+  requestNetworkStats(): void {
+    this.send({ type: 'getNetworkStats' });
+  }
+
+  /**
+   * Connect the native P2P transport to a peer endpoint discovered by room signaling.
+   */
+  connectPeer(userId: string, userName: string, address: string): void {
+    this.send({
+      type: 'connectPeer',
+      userId,
+      userName,
+      address,
     });
   }
 
@@ -1098,6 +1189,9 @@ export class NativeBridge {
 
   sendRemoteAudio(userId: string, samples: Float32Array): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    if (this.nativeBridgePeers.has(userId)) {
       return;
     }
 

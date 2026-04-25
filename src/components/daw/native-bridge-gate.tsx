@@ -204,7 +204,7 @@ export function NativeBridgeGate({
               {showDownloadInfo && (
                 <div className="p-3 bg-indigo-500/10 border border-indigo-500/30 rounded-lg">
                   <p className="text-xs text-indigo-300">
-                    After installing, run the Native Bridge app and click "Connect" above.
+                    After installing, run the Native Bridge app and click &quot;Connect&quot; above.
                     <a
                       href="https://github.com/openstudio/native-bridge#readme"
                       target="_blank"

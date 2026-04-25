@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { RealtimeRoomManager } from '@/lib/supabase/realtime';
-import type { RoomLayoutState, StateSyncPayload } from '@/lib/supabase/realtime';
+import type { NativeBridgeEndpointPayload, RoomLayoutState, StateSyncPayload } from '@/lib/supabase/realtime';
 import { CloudflareCalls } from '@/lib/cloudflare/calls';
 import { authFetch, authFetchJson } from '@/lib/auth-fetch';
 import type { AudioEngine } from '@/lib/audio/audio-engine';
@@ -71,7 +71,7 @@ import { useSessionTempoStore } from '@/stores/session-tempo-store';
 
 type BridgeAwareAudioEngine = Pick<
   AudioEngine,
-  'createBroadcastStream' | 'setNativeBridgeCallbacks' | 'updateBroadcastConnections'
+  'createBroadcastStream' | 'setBroadcastSongPlaybackEnabled' | 'setNativeBridgeCallbacks' | 'setNativeBridgeRoomMediaCallback' | 'updateBroadcastConnections'
 >;
 
 function getBrowserAudioEngine(): BridgeAwareAudioEngine | undefined {
@@ -82,6 +82,10 @@ function getBrowserAudioEngine(): BridgeAwareAudioEngine | undefined {
   return (window as Window & typeof globalThis & {
     __openStudioAudioEngine?: BridgeAwareAudioEngine;
   }).__openStudioAudioEngine;
+}
+
+function setRoomMediaPublisher(enabled: boolean): void {
+  getBrowserAudioEngine()?.setBroadcastSongPlaybackEnabled(enabled);
 }
 
 // Song playback event payloads
@@ -487,7 +491,23 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       let broadcastStream: MediaStream | undefined;
       const bridgeState = useBridgeAudioStore.getState();
       const nativePerformerMode = !listenerMode && bridgeState.isConnected && bridgeState.preferNativeBridge;
-      const shouldReceiveRemoteWebRtc = listenerMode || !nativePerformerMode;
+      const shouldReceiveRemoteWebRtc = true;
+      let nativeBridgeAuth: { token: string; verifyUrl: string } | null = null;
+
+      if (nativePerformerMode) {
+        const nativeAuthResponse = await authFetchJson('/api/native-bridge/token', 'POST', {
+          roomId,
+          userId: user.id,
+          userName: user.name || 'Unknown',
+        });
+
+        if (!nativeAuthResponse.ok) {
+          const body = await nativeAuthResponse.json().catch(() => null) as { error?: string } | null;
+          throw new Error(body?.error || 'Native bridge permission check failed');
+        }
+
+        nativeBridgeAuth = await nativeAuthResponse.json() as { token: string; verifyUrl: string };
+      }
 
       if (!listenerMode) {
         if (nativePerformerMode) {
@@ -513,7 +533,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           // This mixes all armed tracks into a single MediaStream for WebRTC
           const audioEngine = getBrowserAudioEngine();
           if (audioEngine) {
-            broadcastStream = audioEngine.createBroadcastStream() || undefined;
+            broadcastStream = audioEngine.createBroadcastStream({
+              includeSongPlayback: useRoomStore.getState().isMaster,
+            }) || undefined;
             console.log('[useRoom] Created broadcast stream for native bridge WebRTC:', broadcastStream ? 'success' : 'failed');
           }
         } else {
@@ -584,8 +606,23 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         setRemoteCompensationDelay(userId, delayMs);
       });
 
-      // Native performers publish a listener feed only. They do not subscribe to
-      // other performers' WebRTC audio; performer audio stays on the native bridge.
+      if (nativePerformerMode) {
+        const audioEngine = getBrowserAudioEngine();
+        if (audioEngine) {
+          audioEngine.setNativeBridgeCallbacks(
+            (remoteUserId, samples) => nativeBridge.sendRemoteAudio(remoteUserId, samples),
+            (remoteUserId) => {
+              const remoteUser = useRoomStore.getState().users.get(remoteUserId);
+              nativeBridge.addRemoteUser(remoteUserId, remoteUser?.name || remoteUserId);
+            },
+            (remoteUserId) => nativeBridge.removeRemoteUser(remoteUserId)
+          );
+          audioEngine.setNativeBridgeRoomMediaCallback((samples) => nativeBridge.sendBackingAudio(samples));
+        }
+      }
+
+      // Native performers publish a listener feed and also subscribe to WebRTC as
+      // a deterministic fallback while native P2P/relay endpoints are negotiated.
       await cloudflare.joinRoom(broadcastStream || stream, 'mic', undefined, shouldReceiveRemoteWebRtc);
       cloudflareRef.current = cloudflare;
 
@@ -596,13 +633,11 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // WebRTC remains listener-only in this mode.
       if (nativePerformerMode) {
         // Join room through native bridge P2P network
-        nativeBridge.joinRoom(roomId, roomId, user.name || 'Unknown');
-        console.log('[useRoom] Native bridge joining P2P room:', roomId);
-
-        const audioEngine = getBrowserAudioEngine();
-        if (audioEngine) {
-          audioEngine.setNativeBridgeCallbacks(null, null, null);
+        if (!nativeBridgeAuth) {
+          throw new Error('Native bridge authorization missing');
         }
+        nativeBridge.joinRoom(roomId, nativeBridgeAuth.token, user.name || 'Unknown', nativeBridgeAuth.verifyUrl);
+        console.log('[useRoom] Native bridge joining P2P room:', roomId);
 
         // Listen for peers connecting via native bridge P2P
         // (these are performers with native bridges on the other end)
@@ -618,6 +653,20 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       // Initialize realtime connection
       const realtime = new RealtimeRoomManager(roomId, user.id);
 
+      realtime.on('nativebridge:endpoint', (data) => {
+        if (!nativePerformerMode) return;
+        const payload = data as NativeBridgeEndpointPayload;
+        if (payload.userId === user.id) return;
+
+        const address = payload.publicEndpoint || payload.localEndpoint;
+        if (!address) {
+          console.warn('[useRoom] Native bridge peer did not provide a usable endpoint:', payload.userId);
+          return;
+        }
+
+        nativeBridge.connectPeer(payload.userId, payload.userName || payload.userId, address);
+      });
+
       realtime.on('connected', async () => {
         setConnected(true);
         setJoining(false);
@@ -631,11 +680,9 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
         setIsMaster(true);
         updateUser(user.id, { isMaster: true });
         cloudflare.setAsMaster(true);
+        setRoomMediaPublisher(nativePerformerMode);
         usePerformanceSyncStore.getState().setIsMaster(true);
         usePerformanceSyncStore.getState().setMasterId(user.id);
-
-        // First user becomes owner in permissions
-        usePermissionsStore.getState().setMyPermissions('owner');
 
         // Load existing tracks from database (includes both file uploads and YouTube tracks)
         // Always set queue to this room's tracks (even if empty) to clear any previous room data
@@ -683,16 +730,20 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
           }
         });
 
-        // First user becomes master
         const allUsers = Object.values(state).flat();
-        if (allUsers.length === 1 && allUsers[0].id === user.id) {
-          setIsMaster(true);
-          updateUser(user.id, { isMaster: true });
-          cloudflareRef.current?.setAsMaster(true);
-          usePerformanceSyncStore.getState().setIsMaster(true);
-          usePerformanceSyncStore.getState().setMasterId(user.id);
-          // Also set permissions to owner
-          usePermissionsStore.getState().setMyPermissions('owner');
+        if (allUsers.length > 0) {
+          const masterId = [...allUsers].sort((a, b) => a.id.localeCompare(b.id))[0].id;
+          const selfIsMaster = masterId === user.id;
+
+          for (const roomUser of allUsers) {
+            updateUser(roomUser.id, { isMaster: roomUser.id === masterId });
+          }
+
+          setIsMaster(selfIsMaster);
+          cloudflareRef.current?.setAsMaster(selfIsMaster);
+          setRoomMediaPublisher(nativePerformerMode && selfIsMaster);
+          usePerformanceSyncStore.getState().setIsMaster(selfIsMaster);
+          usePerformanceSyncStore.getState().setMasterId(masterId);
         }
       });
 
@@ -786,7 +837,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
             if (newMaster.id === user.id) {
               setIsMaster(true);
               cloudflareRef.current?.setAsMaster(true);
-              usePermissionsStore.getState().setMyPermissions('owner');
+              setRoomMediaPublisher(nativePerformerMode);
               console.log('[useRoom] We are now the room master');
 
               // WS2: Re-broadcast full room state as new master so all users have authoritative state
@@ -796,7 +847,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
                   broadcastFullStateSync(realtimeRef.current);
                 }
               }, 200);
+            } else {
+              setIsMaster(false);
+              cloudflareRef.current?.setAsMaster(false);
+              setRoomMediaPublisher(false);
             }
+          } else {
+            setRoomMediaPublisher(false);
           }
         }
       });
@@ -1323,6 +1380,22 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       await realtime.connect(user);
       realtimeRef.current = realtime;
 
+      if (nativePerformerMode) {
+        const publishEndpoint = (endpoint: { localEndpoint: string | null; publicEndpoint: string | null }) => {
+          realtime.broadcastNativeBridgeEndpoint({
+            userName: user.name || 'Unknown',
+            localEndpoint: endpoint.localEndpoint,
+            publicEndpoint: endpoint.publicEndpoint,
+          }).catch((err) => {
+            console.warn('[useRoom] Failed to broadcast native bridge endpoint:', err);
+          });
+        };
+
+        nativeBridge.removeAllListeners('networkEndpoint');
+        nativeBridge.on('networkEndpoint', publishEndpoint);
+        nativeBridge.requestNetworkEndpoint();
+      }
+
       // WS2: Request state sync from master after connecting
       // Small delay to ensure subscription is fully active before requesting state
       stateSyncReceivedRef.current = false;
@@ -1425,6 +1498,7 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
 
     await realtimeRef.current?.disconnect();
     await cloudflareRef.current?.leaveRoom();
+    setRoomMediaPublisher(false);
 
     // Leave native bridge P2P room and clean up callbacks
     const bridgeState = useBridgeAudioStore.getState();
@@ -1432,11 +1506,13 @@ export function useRoom(roomId: string, options: UseRoomOptions = {}) {
       nativeBridge.leaveRoom();
       nativeBridge.removeAllListeners('peerConnected');
       nativeBridge.removeAllListeners('peerDisconnected');
+      nativeBridge.removeAllListeners('networkEndpoint');
 
       // Clear native bridge audio callbacks
       const audioEngine = getBrowserAudioEngine();
       if (audioEngine) {
         audioEngine.setNativeBridgeCallbacks(null, null, null);
+        audioEngine.setNativeBridgeRoomMediaCallback(null);
       }
       console.log('[useRoom] Native bridge left room and cleaned up');
     }

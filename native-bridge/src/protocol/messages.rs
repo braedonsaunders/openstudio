@@ -30,6 +30,8 @@ pub enum BrowserMessage {
         room_secret: String,
         #[serde(rename = "userName")]
         user_name: String,
+        #[serde(rename = "authEndpoint")]
+        auth_endpoint: Option<String>,
     },
 
     /// Leave the current room
@@ -37,6 +39,21 @@ pub enum BrowserMessage {
 
     /// Switch network mode (P2P, Relay, Hybrid)
     SetNetworkMode { mode: String },
+
+    /// Request the current native UDP endpoint for room signaling
+    GetNetworkEndpoint,
+
+    /// Request current network transport statistics.
+    GetNetworkStats,
+
+    /// Connect the native P2P transport to a discovered peer endpoint
+    ConnectPeer {
+        #[serde(rename = "userId")]
+        user_id: String,
+        #[serde(rename = "userName")]
+        user_name: String,
+        address: String,
+    },
 
     // === Device Management ===
     /// Request list of audio devices
@@ -338,6 +355,19 @@ pub enum NativeMessage {
         network_mode: String,
         #[serde(rename = "isMaster")]
         is_master: bool,
+        #[serde(rename = "localEndpoint")]
+        local_endpoint: Option<String>,
+        #[serde(rename = "publicEndpoint")]
+        public_endpoint: Option<String>,
+    },
+
+    /// Native UDP endpoint used for browser-mediated peer discovery
+    #[serde(rename = "networkEndpoint")]
+    NetworkEndpoint {
+        #[serde(rename = "localEndpoint")]
+        local_endpoint: Option<String>,
+        #[serde(rename = "publicEndpoint")]
+        public_endpoint: Option<String>,
     },
 
     /// Room left
@@ -378,6 +408,16 @@ pub enum NativeMessage {
         packet_loss_pct: f32,
         #[serde(rename = "peerCount")]
         peer_count: usize,
+        #[serde(rename = "bytesSentPerSec")]
+        bytes_sent_per_sec: u64,
+        #[serde(rename = "bytesRecvPerSec")]
+        bytes_recv_per_sec: u64,
+        #[serde(rename = "audioFramesSent")]
+        audio_frames_sent: u64,
+        #[serde(rename = "audioFramesRecv")]
+        audio_frames_recv: u64,
+        #[serde(rename = "audioSamplesRecv")]
+        audio_samples_recv: u64,
     },
 }
 
@@ -410,5 +450,88 @@ impl AudioMessageHeader {
         } else {
             None
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{BrowserMessage, NativeMessage};
+    use serde_json::json;
+
+    #[test]
+    fn browser_network_messages_use_camel_case_contract() {
+        let endpoint_msg: BrowserMessage =
+            serde_json::from_value(json!({ "type": "getNetworkEndpoint" }))
+                .expect("getNetworkEndpoint must deserialize");
+        assert!(matches!(endpoint_msg, BrowserMessage::GetNetworkEndpoint));
+
+        let stats_msg: BrowserMessage =
+            serde_json::from_value(json!({ "type": "getNetworkStats" }))
+                .expect("getNetworkStats must deserialize");
+        assert!(matches!(stats_msg, BrowserMessage::GetNetworkStats));
+
+        let peer_msg: BrowserMessage = serde_json::from_value(json!({
+            "type": "connectPeer",
+            "userId": "user-2",
+            "userName": "Dana",
+            "address": "127.0.0.1:44000"
+        }))
+        .expect("connectPeer must deserialize");
+
+        match peer_msg {
+            BrowserMessage::ConnectPeer {
+                user_id,
+                user_name,
+                address,
+            } => {
+                assert_eq!(user_id, "user-2");
+                assert_eq!(user_name, "Dana");
+                assert_eq!(address, "127.0.0.1:44000");
+            }
+            other => panic!("unexpected message: {other:?}"),
+        }
+    }
+
+    #[test]
+    fn native_endpoint_messages_serialize_for_browser_contract() {
+        let room_joined = serde_json::to_value(NativeMessage::RoomJoined {
+            room_id: "room-1".to_string(),
+            network_mode: "hybrid".to_string(),
+            is_master: false,
+            local_endpoint: Some("127.0.0.1:44000".to_string()),
+            public_endpoint: Some("203.0.113.10:44000".to_string()),
+        })
+        .expect("roomJoined must serialize");
+
+        assert_eq!(room_joined["type"], "roomJoined");
+        assert_eq!(room_joined["localEndpoint"], "127.0.0.1:44000");
+        assert_eq!(room_joined["publicEndpoint"], "203.0.113.10:44000");
+
+        let endpoint = serde_json::to_value(NativeMessage::NetworkEndpoint {
+            local_endpoint: Some("127.0.0.1:44001".to_string()),
+            public_endpoint: None,
+        })
+        .expect("networkEndpoint must serialize");
+
+        assert_eq!(endpoint["type"], "networkEndpoint");
+        assert_eq!(endpoint["localEndpoint"], "127.0.0.1:44001");
+        assert!(endpoint["publicEndpoint"].is_null());
+
+        let stats = serde_json::to_value(NativeMessage::NetworkStats {
+            rtt_ms: 2.0,
+            jitter_ms: 0.5,
+            packet_loss_pct: 0.0,
+            peer_count: 1,
+            bytes_sent_per_sec: 1000,
+            bytes_recv_per_sec: 900,
+            audio_frames_sent: 4,
+            audio_frames_recv: 3,
+            audio_samples_recv: 2880,
+        })
+        .expect("networkStats must serialize");
+
+        assert_eq!(stats["type"], "networkStats");
+        assert_eq!(stats["peerCount"], 1);
+        assert_eq!(stats["audioFramesRecv"], 3);
     }
 }

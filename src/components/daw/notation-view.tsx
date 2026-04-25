@@ -367,7 +367,7 @@ function chordToNashville(chordName: string, key: string | null): string {
   if (!key) return chordName;
 
   // Parse chord root
-  let root = chordName[0].toUpperCase();
+  const root = chordName[0].toUpperCase();
   let modifier = '';
   let quality = '';
 
@@ -689,7 +689,7 @@ function TabDisplay({
           Import a Guitar Pro or MusicXML file to display tabs
         </p>
         <p className="text-xs mt-2 text-zinc-600">
-          Use the "Import Tab/Sheet" button below
+          Use the &quot;Import Tab/Sheet&quot; button below
         </p>
       </div>
     );
@@ -876,7 +876,7 @@ function SheetMusicDisplay({
           Import a MusicXML or Guitar Pro file to display notation
         </p>
         <p className="text-xs mt-2 text-zinc-600">
-          Use the "Import Tab/Sheet" button below
+          Use the &quot;Import Tab/Sheet&quot; button below
         </p>
       </div>
     );
