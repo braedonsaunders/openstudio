@@ -55,6 +55,44 @@ export interface NativeNetworkEndpoint {
   publicEndpoint: string | null;
 }
 
+export interface BridgePeerAudioTrackStats {
+  trackId: number;
+  trackName: string;
+  muted: boolean;
+  solo: boolean;
+  volume: number;
+  jitterBufferLevelSamples: number;
+  jitterBufferLevelMs: number;
+  jitterBufferFillRatio: number;
+  jitterBufferTargetRatio: number;
+  avgJitterMs: number;
+  maxJitterMs: number;
+  packetLossPct: number;
+  underruns: number;
+  overruns: number;
+  reordered: number;
+  plcFrames: number;
+}
+
+export interface BridgePeerAudioStats {
+  peerId: number;
+  userId: string;
+  userName: string;
+  hasNativeBridge: boolean;
+  audioActive: boolean;
+  rttMs: number;
+  jitterMs: number;
+  packetLossPct: number;
+  qualityScore: number;
+  audioPacketsReceived: number;
+  audioBytesReceived: number;
+  lastAudioSequence: number;
+  lastAudioSenderTimestampMs: number;
+  lastAudioArrivalTimestampMs: number;
+  msSinceLastAudio: number | null;
+  tracks: BridgePeerAudioTrackStats[];
+}
+
 interface BridgeDeviceConfig {
   inputDevice: BridgeDevice | null;
   outputDevice: BridgeDevice | null;
@@ -99,6 +137,7 @@ type NativeMessage =
       audioFramesRecv: number;
       audioSamplesRecv: number;
     }
+  | { type: 'peerAudioStats'; peers: BridgePeerAudioStats[] }
   | { type: 'p2pStats'; peerId: string; rtt: number; packetLoss: number; jitter: number };
 
 // === Audio Data Types ===
@@ -157,6 +196,7 @@ export type BridgeEventType =
   | 'peerDisconnected'
   | 'networkModeChanged'
   | 'networkStats'
+  | 'peerAudioStats'
   | 'peerAudioReceived'
   | 'p2pStats';
 
@@ -188,6 +228,7 @@ type BridgeEventData = {
     audioFramesRecv: number;
     audioSamplesRecv: number;
   };
+  peerAudioStats: { peers: BridgePeerAudioStats[] };
   peerAudioReceived: { userId: string; samples: Float32Array };
   p2pStats: { peerId: string; rtt: number; packetLoss: number; jitter: number };
 };
@@ -241,6 +282,7 @@ export class NativeBridge {
       'connected',
       'disconnected',
       'devices',
+      'deviceConfig',
       'levels',
       'audioStatus',
       'streamHealth',
@@ -253,6 +295,8 @@ export class NativeBridge {
       'peerConnected',
       'peerDisconnected',
       'networkModeChanged',
+      'networkStats',
+      'peerAudioStats',
       'peerAudioReceived',
       'p2pStats',
     ];
@@ -610,6 +654,10 @@ export class NativeBridge {
             audioFramesRecv: msg.audioFramesRecv,
             audioSamplesRecv: msg.audioSamplesRecv,
           });
+          break;
+
+        case 'peerAudioStats':
+          this.emit('peerAudioStats', { peers: msg.peers });
           break;
 
         case 'p2pStats':
@@ -1077,6 +1125,13 @@ export class NativeBridge {
    */
   requestNetworkStats(): void {
     this.send({ type: 'getNetworkStats' });
+  }
+
+  /**
+   * Ask the bridge to report receive-side per-peer audio and jitter-buffer stats.
+   */
+  requestPeerAudioStats(): void {
+    this.send({ type: 'getPeerAudioStats' });
   }
 
   /**

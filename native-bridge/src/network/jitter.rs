@@ -265,6 +265,24 @@ impl JitterBuffer {
         (samples as f32 / self.config.channels as f32 / self.config.sample_rate as f32) * 1000.0
     }
 
+    /// Get current fill ratio against the configured maximum buffer size.
+    pub fn fill_ratio(&self) -> f32 {
+        let max_samples = self.config.max_size * self.config.channels as usize;
+        if max_samples == 0 {
+            return 0.0;
+        }
+        (self.buffer_level() as f32 / max_samples as f32).clamp(0.0, 1.0)
+    }
+
+    /// Get current fill ratio against the adaptive playback target.
+    pub fn target_fill_ratio(&self) -> f32 {
+        let target_samples = *self.adaptive_target.lock() * self.config.channels as usize;
+        if target_samples == 0 {
+            return 0.0;
+        }
+        (self.buffer_level() as f32 / target_samples as f32).max(0.0)
+    }
+
     /// Get statistics
     pub fn stats(&self) -> JitterStats {
         self.stats.lock().clone()

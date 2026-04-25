@@ -22,6 +22,7 @@ pub mod relay;
 
 pub use manager::{NetworkConfig, NetworkEvent, NetworkManager, NetworkMode};
 
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Network-related errors
@@ -82,6 +83,82 @@ pub struct NetworkStats {
     pub mode: NetworkMode,
     /// Clock offset from master in ms
     pub clock_offset_ms: f32,
+}
+
+/// Per-track receive-side audio telemetry for a connected peer.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerAudioTrackStats {
+    /// Native bridge track number used on the wire
+    pub track_id: u8,
+    /// Human-readable track name
+    pub track_name: String,
+    /// Current mute state known by the native bridge
+    pub muted: bool,
+    /// Current solo state known by the native bridge
+    pub solo: bool,
+    /// Current track gain known by the native bridge
+    pub volume: f32,
+    /// Buffered PCM samples currently waiting for playback
+    pub jitter_buffer_level_samples: usize,
+    /// Buffered playback time currently waiting in the jitter buffer
+    pub jitter_buffer_level_ms: f32,
+    /// Current fill ratio against the configured maximum jitter buffer size
+    pub jitter_buffer_fill_ratio: f32,
+    /// Current fill ratio against the adaptive target jitter buffer size
+    pub jitter_buffer_target_ratio: f32,
+    /// Average inter-arrival jitter observed for this track
+    pub avg_jitter_ms: f32,
+    /// Maximum inter-arrival jitter observed for this track
+    pub max_jitter_ms: f32,
+    /// Receive-side packet loss estimate for this track
+    pub packet_loss_pct: f32,
+    /// Number of jitter buffer underruns
+    pub underruns: u64,
+    /// Number of jitter buffer overruns
+    pub overruns: u64,
+    /// Number of reordered packets observed
+    pub reordered: u64,
+    /// Number of generated packet-loss concealment frames
+    pub plc_frames: u64,
+}
+
+/// Per-peer receive-side audio telemetry exposed to browser clients.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PeerAudioStats {
+    /// Stable numeric peer identifier used by the OSP transport
+    pub peer_id: u32,
+    /// Application user identifier for the remote peer
+    pub user_id: String,
+    /// Display name for the remote peer
+    pub user_name: String,
+    /// Whether the remote peer has native bridge support
+    pub has_native_bridge: bool,
+    /// Whether audio has been received recently from this peer
+    pub audio_active: bool,
+    /// Round-trip time to this peer in ms
+    pub rtt_ms: f32,
+    /// Network jitter estimate for this peer in ms
+    pub jitter_ms: f32,
+    /// Packet loss percentage estimate for this peer
+    pub packet_loss_pct: f32,
+    /// Quality score derived from RTT, jitter, and packet loss
+    pub quality_score: u8,
+    /// Total encoded audio packets received from this peer
+    pub audio_packets_received: u64,
+    /// Total encoded audio payload bytes received from this peer
+    pub audio_bytes_received: u64,
+    /// Last OSP packet sequence number received from this peer
+    pub last_audio_sequence: u64,
+    /// Last sender-side OSP timestamp received from this peer
+    pub last_audio_sender_timestamp_ms: u64,
+    /// Local receive timestamp for the most recent audio packet
+    pub last_audio_arrival_timestamp_ms: u64,
+    /// Wall-clock freshness of the most recent received audio packet
+    pub ms_since_last_audio: Option<u64>,
+    /// Per-track receive jitter buffer state
+    pub tracks: Vec<PeerAudioTrackStats>,
 }
 
 /// Room configuration

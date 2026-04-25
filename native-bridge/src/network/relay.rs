@@ -5,7 +5,10 @@
 
 #![allow(dead_code)]
 
-use super::{clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, Result};
+use super::{
+    clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, PeerAudioStats,
+    Result,
+};
 use parking_lot::RwLock;
 use quinn::{ClientConfig, Connection, Endpoint, RecvStream, SendStream, TransportConfig, VarInt};
 use rustls::{Certificate, ServerName};
@@ -891,6 +894,11 @@ impl MoqRelay {
     /// Get peers
     pub fn peers(&self) -> &PeerRegistry {
         &self.peers
+    }
+
+    /// Get receive-side audio telemetry for connected relay peers.
+    pub fn peer_audio_stats(&self) -> Vec<PeerAudioStats> {
+        self.peers.audio_stats()
     }
 
     /// Get subscribed track count

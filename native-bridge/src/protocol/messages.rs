@@ -3,6 +3,7 @@
 use crate::audio::{ChannelConfig, DeviceInfo};
 use crate::effects::EffectsSettings;
 use crate::mixing::PartialTrackState;
+use crate::network::PeerAudioStats;
 use serde::{Deserialize, Serialize};
 
 /// All messages from browser to native bridge
@@ -45,6 +46,9 @@ pub enum BrowserMessage {
 
     /// Request current network transport statistics.
     GetNetworkStats,
+
+    /// Request receive-side per-peer audio telemetry.
+    GetPeerAudioStats,
 
     /// Connect the native P2P transport to a discovered peer endpoint
     ConnectPeer {
@@ -419,6 +423,10 @@ pub enum NativeMessage {
         #[serde(rename = "audioSamplesRecv")]
         audio_samples_recv: u64,
     },
+
+    /// Receive-side per-peer audio telemetry.
+    #[serde(rename = "peerAudioStats")]
+    PeerAudioStats { peers: Vec<PeerAudioStats> },
 }
 
 /// Binary audio message header (for efficient audio streaming)
@@ -455,6 +463,8 @@ impl AudioMessageHeader {
 
 #[cfg(test)]
 mod tests {
+    use crate::network::{PeerAudioStats, PeerAudioTrackStats};
+
     use super::{BrowserMessage, NativeMessage};
     use serde_json::json;
 
@@ -469,6 +479,14 @@ mod tests {
             serde_json::from_value(json!({ "type": "getNetworkStats" }))
                 .expect("getNetworkStats must deserialize");
         assert!(matches!(stats_msg, BrowserMessage::GetNetworkStats));
+
+        let peer_audio_stats_msg: BrowserMessage =
+            serde_json::from_value(json!({ "type": "getPeerAudioStats" }))
+                .expect("getPeerAudioStats must deserialize");
+        assert!(matches!(
+            peer_audio_stats_msg,
+            BrowserMessage::GetPeerAudioStats
+        ));
 
         let peer_msg: BrowserMessage = serde_json::from_value(json!({
             "type": "connectPeer",
@@ -533,5 +551,51 @@ mod tests {
         assert_eq!(stats["type"], "networkStats");
         assert_eq!(stats["peerCount"], 1);
         assert_eq!(stats["audioFramesRecv"], 3);
+
+        let peer_audio_stats = serde_json::to_value(NativeMessage::PeerAudioStats {
+            peers: vec![PeerAudioStats {
+                peer_id: 42,
+                user_id: "user-2".to_string(),
+                user_name: "Dana".to_string(),
+                has_native_bridge: true,
+                audio_active: true,
+                rtt_ms: 4.0,
+                jitter_ms: 0.2,
+                packet_loss_pct: 0.0,
+                quality_score: 99,
+                audio_packets_received: 30,
+                audio_bytes_received: 4800,
+                last_audio_sequence: 128,
+                last_audio_sender_timestamp_ms: 2048,
+                last_audio_arrival_timestamp_ms: 1_700_000_000_000,
+                ms_since_last_audio: Some(12),
+                tracks: vec![PeerAudioTrackStats {
+                    track_id: 1,
+                    track_name: "Mic".to_string(),
+                    muted: false,
+                    solo: false,
+                    volume: 0.75,
+                    jitter_buffer_level_samples: 960,
+                    jitter_buffer_level_ms: 10.0,
+                    jitter_buffer_fill_ratio: 0.25,
+                    jitter_buffer_target_ratio: 2.0,
+                    avg_jitter_ms: 0.1,
+                    max_jitter_ms: 0.3,
+                    packet_loss_pct: 0.0,
+                    underruns: 0,
+                    overruns: 0,
+                    reordered: 0,
+                    plc_frames: 0,
+                }],
+            }],
+        })
+        .expect("peerAudioStats must serialize");
+
+        assert_eq!(peer_audio_stats["type"], "peerAudioStats");
+        assert_eq!(peer_audio_stats["peers"][0]["userId"], "user-2");
+        assert_eq!(
+            peer_audio_stats["peers"][0]["tracks"][0]["jitterBufferFillRatio"],
+            0.25
+        );
     }
 }

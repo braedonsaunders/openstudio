@@ -3,6 +3,7 @@
 //! Represents a connected peer in the P2P network or relay.
 
 use super::jitter::{JitterBuffer, JitterConfig};
+use super::{PeerAudioStats, PeerAudioTrackStats};
 use parking_lot::RwLock;
 use std::collections::HashMap;
 use std::net::SocketAddr;
@@ -118,10 +119,14 @@ pub struct Peer {
     audio_active: RwLock<bool>,
     /// Total audio packets received from this peer
     audio_packets_received: AtomicU64,
-    /// Timestamp of last audio packet received from this peer (ms since UNIX epoch)
-    last_audio_timestamp_ms: AtomicU64,
     /// Total audio bytes received from this peer
     audio_bytes_received: AtomicU64,
+    /// Last OSP packet sequence number received from this peer
+    last_audio_sequence: AtomicU64,
+    /// Last sender-side OSP packet timestamp received from this peer
+    last_audio_sender_timestamp_ms: AtomicU64,
+    /// Local timestamp of last audio packet arrival from this peer (ms since UNIX epoch)
+    last_audio_arrival_timestamp_ms: AtomicU64,
 }
 
 impl Peer {
@@ -154,8 +159,10 @@ impl Peer {
             instrument: RwLock::new(None),
             audio_active: RwLock::new(false),
             audio_packets_received: AtomicU64::new(0),
-            last_audio_timestamp_ms: AtomicU64::new(0),
             audio_bytes_received: AtomicU64::new(0),
+            last_audio_sequence: AtomicU64::new(0),
+            last_audio_sender_timestamp_ms: AtomicU64::new(0),
+            last_audio_arrival_timestamp_ms: AtomicU64::new(0),
         }
     }
 
@@ -187,7 +194,17 @@ impl Peer {
     /// Update RTT (exponential moving average)
     pub fn update_rtt(&self, rtt: f32) {
         let mut current = self.rtt_ms.write();
-        *current = *current * 0.8 + rtt * 0.2;
+        let previous = *current;
+        *current = if previous <= f32::EPSILON {
+            rtt
+        } else {
+            previous * 0.8 + rtt * 0.2
+        };
+        drop(current);
+
+        if previous > f32::EPSILON {
+            self.update_jitter((rtt - previous).abs());
+        }
     }
 
     /// Get jitter
@@ -363,16 +380,26 @@ impl Peer {
     }
 
     /// Record reception of an audio packet from this peer.
-    /// Updates packet count, byte count, and last-received timestamp.
-    pub fn record_audio_received(&self, byte_count: usize) {
+    /// Updates packet count, byte count, packet timing, and last-received timestamp.
+    pub fn record_audio_received(
+        &self,
+        byte_count: usize,
+        packet_sequence: u16,
+        sender_timestamp_ms: u16,
+    ) {
         self.audio_packets_received.fetch_add(1, Ordering::Relaxed);
         self.audio_bytes_received
             .fetch_add(byte_count as u64, Ordering::Relaxed);
+        self.last_audio_sequence
+            .store(packet_sequence as u64, Ordering::Relaxed);
+        self.last_audio_sender_timestamp_ms
+            .store(sender_timestamp_ms as u64, Ordering::Relaxed);
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .unwrap_or_default()
             .as_millis() as u64;
-        self.last_audio_timestamp_ms.store(now, Ordering::Relaxed);
+        self.last_audio_arrival_timestamp_ms
+            .store(now, Ordering::Relaxed);
     }
 
     /// Get total audio packets received from this peer
@@ -380,14 +407,80 @@ impl Peer {
         self.audio_packets_received.load(Ordering::Relaxed)
     }
 
-    /// Get timestamp (ms since UNIX epoch) of last audio packet from this peer
-    pub fn last_audio_timestamp_ms(&self) -> u64 {
-        self.last_audio_timestamp_ms.load(Ordering::Relaxed)
+    /// Get last OSP packet sequence received from this peer
+    pub fn last_audio_sequence(&self) -> u64 {
+        self.last_audio_sequence.load(Ordering::Relaxed)
+    }
+
+    /// Get last sender-side OSP packet timestamp received from this peer
+    pub fn last_audio_sender_timestamp_ms(&self) -> u64 {
+        self.last_audio_sender_timestamp_ms.load(Ordering::Relaxed)
+    }
+
+    /// Get timestamp (ms since UNIX epoch) of last audio packet arrival from this peer
+    pub fn last_audio_arrival_timestamp_ms(&self) -> u64 {
+        self.last_audio_arrival_timestamp_ms.load(Ordering::Relaxed)
     }
 
     /// Get total audio bytes received from this peer
     pub fn audio_bytes_received(&self) -> u64 {
         self.audio_bytes_received.load(Ordering::Relaxed)
+    }
+
+    /// Get receive-side audio telemetry for this peer.
+    pub fn audio_stats(&self, now_ms: u64) -> PeerAudioStats {
+        let last_audio_arrival_timestamp_ms = self.last_audio_arrival_timestamp_ms();
+        let ms_since_last_audio = if last_audio_arrival_timestamp_ms == 0 {
+            None
+        } else {
+            Some(now_ms.saturating_sub(last_audio_arrival_timestamp_ms))
+        };
+
+        let mut tracks: Vec<PeerAudioTrackStats> = self
+            .tracks()
+            .into_iter()
+            .map(|track| {
+                let jitter_stats = track.jitter_buffer.stats();
+                PeerAudioTrackStats {
+                    track_id: track.track_id,
+                    track_name: track.track_name,
+                    muted: track.is_muted,
+                    solo: track.is_solo,
+                    volume: track.volume,
+                    jitter_buffer_level_samples: jitter_stats.buffer_level,
+                    jitter_buffer_level_ms: track.jitter_buffer.buffer_level_ms(),
+                    jitter_buffer_fill_ratio: track.jitter_buffer.fill_ratio(),
+                    jitter_buffer_target_ratio: track.jitter_buffer.target_fill_ratio(),
+                    avg_jitter_ms: jitter_stats.avg_jitter_ms,
+                    max_jitter_ms: jitter_stats.max_jitter_ms,
+                    packet_loss_pct: jitter_stats.packet_loss_percent,
+                    underruns: jitter_stats.underruns,
+                    overruns: jitter_stats.overruns,
+                    reordered: jitter_stats.reordered,
+                    plc_frames: jitter_stats.plc_frames,
+                }
+            })
+            .collect();
+        tracks.sort_by_key(|track| track.track_id);
+
+        PeerAudioStats {
+            peer_id: self.id,
+            user_id: self.user_id.clone(),
+            user_name: self.user_name.clone(),
+            has_native_bridge: self.has_native_bridge,
+            audio_active: self.is_audio_active(),
+            rtt_ms: self.rtt_ms(),
+            jitter_ms: self.jitter_ms(),
+            packet_loss_pct: self.packet_loss(),
+            quality_score: self.quality_score(),
+            audio_packets_received: self.audio_packets_received(),
+            audio_bytes_received: self.audio_bytes_received(),
+            last_audio_sequence: self.last_audio_sequence(),
+            last_audio_sender_timestamp_ms: self.last_audio_sender_timestamp_ms(),
+            last_audio_arrival_timestamp_ms,
+            ms_since_last_audio,
+            tracks,
+        }
     }
 }
 
@@ -505,6 +598,39 @@ impl PeerRegistry {
             return 0.0;
         }
         peers.iter().map(|p| p.rtt_ms()).sum::<f32>() / peers.len() as f32
+    }
+
+    /// Get average jitter across all peers
+    pub fn average_jitter(&self) -> f32 {
+        let peers = self.connected();
+        if peers.is_empty() {
+            return 0.0;
+        }
+        peers.iter().map(|p| p.jitter_ms()).sum::<f32>() / peers.len() as f32
+    }
+
+    /// Get average packet loss across all peers
+    pub fn average_packet_loss(&self) -> f32 {
+        let peers = self.connected();
+        if peers.is_empty() {
+            return 0.0;
+        }
+        peers.iter().map(|p| p.packet_loss()).sum::<f32>() / peers.len() as f32
+    }
+
+    /// Get receive-side audio telemetry for all connected peers.
+    pub fn audio_stats(&self) -> Vec<PeerAudioStats> {
+        let now_ms = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as u64;
+        let mut peers: Vec<PeerAudioStats> = self
+            .connected()
+            .iter()
+            .map(|peer| peer.audio_stats(now_ms))
+            .collect();
+        peers.sort_by_key(|peer| peer.peer_id);
+        peers
     }
 
     /// Get maximum RTT

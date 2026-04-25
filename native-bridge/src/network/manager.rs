@@ -4,8 +4,8 @@
 //! room size and network conditions.
 
 use super::{
-    clock::*, codec::*, osp::*, p2p::*, peer::*, relay::*, NetworkError, NetworkStats, Result,
-    RoomConfig,
+    clock::*, codec::*, osp::*, p2p::*, peer::*, relay::*, NetworkError, NetworkStats,
+    PeerAudioStats, Result, RoomConfig,
 };
 use parking_lot::RwLock;
 use std::net::SocketAddr;
@@ -432,6 +432,22 @@ impl NetworkManager {
         };
         stats.mode = self.mode();
         stats
+    }
+
+    /// Get receive-side audio telemetry for connected peers.
+    pub fn peer_audio_stats(&self) -> Vec<PeerAudioStats> {
+        match self.mode() {
+            NetworkMode::P2P => self.p2p.peer_audio_stats(),
+            NetworkMode::Relay => self.relay.peer_audio_stats(),
+            NetworkMode::Hybrid => {
+                let mut stats = self.p2p.peer_audio_stats();
+                stats.extend(self.relay.peer_audio_stats());
+                stats.sort_by_key(|peer| peer.peer_id);
+                stats.dedup_by_key(|peer| peer.peer_id);
+                stats
+            }
+            NetworkMode::Disconnected => Vec::new(),
+        }
     }
 
     /// Get clock
@@ -977,6 +993,7 @@ mod tests {
         };
         config.p2p.bind_addr = SocketAddr::from(([127, 0, 0, 1], 0));
         config.p2p.stun_server = None;
+        config.p2p.heartbeat_interval_ms = 50;
         config
     }
 
@@ -1029,6 +1046,20 @@ mod tests {
             sleep(Duration::from_millis(25)).await;
         }
 
+        let deadline = Instant::now() + Duration::from_secs(3);
+        loop {
+            let alice_stats = alice.stats();
+            let bob_stats = bob.stats();
+            if alice_stats.rtt_ms > 0.0 && bob_stats.rtt_ms > 0.0 {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "P2P RTT did not propagate to network manager stats: alice={alice_stats:?}, bob={bob_stats:?}"
+            );
+            sleep(Duration::from_millis(25)).await;
+        }
+
         alice.send_audio(7, vec![0.25; 960]);
 
         let deadline = Instant::now() + Duration::from_secs(3);
@@ -1037,6 +1068,20 @@ mod tests {
             let bob_stats = bob.stats();
             if alice_stats.audio_frames_sent > 0 && bob_stats.audio_frames_recv > 0 {
                 assert!(bob_stats.audio_samples_recv > 0);
+                let peer_audio_stats = bob.peer_audio_stats();
+                let alice_audio_stats = peer_audio_stats
+                    .iter()
+                    .find(|peer| peer.user_name == "Alice")
+                    .expect("bob should expose receive-side audio stats for alice");
+                assert!(alice_audio_stats.audio_packets_received > 0);
+                assert!(alice_audio_stats.last_audio_arrival_timestamp_ms > 0);
+                assert!(alice_audio_stats.ms_since_last_audio.is_some());
+                assert!(alice_audio_stats
+                    .tracks
+                    .iter()
+                    .any(|track| track.track_id == 7
+                        && track.jitter_buffer_level_samples > 0
+                        && track.jitter_buffer_fill_ratio > 0.0));
                 break;
             }
             assert!(

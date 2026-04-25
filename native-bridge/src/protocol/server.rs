@@ -1304,6 +1304,20 @@ impl BridgeServer {
                 }
             }
 
+            BrowserMessage::GetPeerAudioStats => {
+                let app = self.state.lock().await;
+                if let Some(ref network) = app.network {
+                    Some(NativeMessage::PeerAudioStats {
+                        peers: network.peer_audio_stats(),
+                    })
+                } else {
+                    Some(NativeMessage::Error {
+                        code: "NETWORK_UNAVAILABLE".to_string(),
+                        message: "Network manager not initialized".to_string(),
+                    })
+                }
+            }
+
             BrowserMessage::ConnectPeer {
                 user_id,
                 user_name,

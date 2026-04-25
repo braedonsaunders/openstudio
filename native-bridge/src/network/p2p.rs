@@ -6,7 +6,8 @@
 #![allow(dead_code)]
 
 use super::{
-    clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, Result, RoomConfig,
+    clock::*, codec::*, jitter::*, osp::*, peer::*, NetworkError, NetworkStats, PeerAudioStats,
+    Result, RoomConfig,
 };
 use dashmap::DashMap;
 use parking_lot::RwLock;
@@ -326,7 +327,11 @@ impl P2PNetwork {
                     // Update last seen and audio statistics
                     peer.touch();
                     peer.set_audio_active(true);
-                    peer.record_audio_received(frame.data.len());
+                    peer.record_audio_received(
+                        frame.data.len(),
+                        packet.header.sequence,
+                        packet.header.timestamp,
+                    );
 
                     // Emit event
                     if let Some(tx) = context.event_tx {
@@ -957,6 +962,11 @@ impl P2PNetwork {
             // Push to jitter buffer with sequence from packet header
             peer.push_audio(frame.track_id, header_seq, header_ts, samples.clone());
 
+            // Update last seen and audio statistics
+            peer.touch();
+            peer.set_audio_active(true);
+            peer.record_audio_received(frame.data.len(), header_seq, header_ts);
+
             // Emit event
             if let Some(tx) = self.event_tx.read().as_ref() {
                 let _ = tx.send(P2PEvent::AudioReceived {
@@ -1312,6 +1322,11 @@ impl P2PNetwork {
         &self.peers
     }
 
+    /// Get receive-side audio telemetry for connected peers.
+    pub fn peer_audio_stats(&self) -> Vec<PeerAudioStats> {
+        self.peers.audio_stats()
+    }
+
     /// Get the UDP socket address currently bound by this peer.
     pub fn local_addr(&self) -> Result<SocketAddr> {
         let socket =
@@ -1334,8 +1349,15 @@ impl P2PNetwork {
     /// Get stats
     pub fn stats(&self) -> NetworkStats {
         let mut stats = self.stats.read().clone();
+        let clock_state = self.clock.state();
         stats.peer_count = self.peers.connected_count();
-        stats.clock_offset_ms = self.clock.state().offset_ms as f32;
+        stats.rtt_ms = self.peers.average_rtt();
+        stats.jitter_ms = self
+            .peers
+            .average_jitter()
+            .max(clock_state.jitter_ms as f32);
+        stats.packet_loss_pct = self.peers.average_packet_loss();
+        stats.clock_offset_ms = clock_state.offset_ms as f32;
         stats
     }
 
