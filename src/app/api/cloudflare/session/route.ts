@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getSupabase, getAdminSupabase, getUserFromRequest, getRoomMembership } from '@/lib/supabase/server';
 import { validateGuestId, getEffectiveUserId } from '@/lib/auth/guest';
 import { checkRateLimit, getClientIdentifier, rateLimiters, rateLimitResponse } from '@/lib/rate-limit';
+import { resolveCloudflareTrackName } from '@/lib/cloudflare/track-name';
 
 // Cloudflare Calls API configuration
 const CLOUDFLARE_CALLS_APP_ID = process.env.NEXT_PUBLIC_CLOUDFLARE_CALLS_APP_ID || '';
@@ -282,8 +283,14 @@ export async function POST(request: NextRequest) {
 
       case 'pushTrack': {
         // Push a local track to Cloudflare
-        // Track name uses the effective user ID (authenticated or guest)
-        const secureTrackName = `audio-${effectiveUserId}`;
+        // Track names must be scoped to the effective user ID (authenticated or guest).
+        const secureTrackName = resolveCloudflareTrackName(trackName, effectiveUserId);
+        if (!secureTrackName) {
+          return NextResponse.json(
+            { error: 'Track name must be scoped to the authenticated or guest user' },
+            { status: 400 }
+          );
+        }
 
         const result = await callCloudflareAPI(
           `/sessions/${sessionId}/tracks/new`,
