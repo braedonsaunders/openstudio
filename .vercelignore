@@ -1,0 +1,9 @@
+node_modules
+.next
+.playwright-cli
+.vercel
+coverage
+native-bridge/target
+output
+*.tsbuildinfo
+.env*
