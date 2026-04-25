@@ -129,8 +129,8 @@ export function CreateRoomModal({ isOpen, onClose }: CreateRoomModalProps) {
 
       onClose();
       router.push(`/room/${room.id}`);
-    } catch {
-      setError('Failed to create room. Please try again.');
+    } catch (createError) {
+      setError(createError instanceof Error ? createError.message : 'Failed to create room. Please try again.');
     } finally {
       setIsCreating(false);
     }

@@ -57,7 +57,14 @@ export async function createRoom(
   });
 
   if (!response.ok) {
-    throw new Error('Failed to create room');
+    let message = 'Failed to create room';
+    try {
+      const body = await response.json() as { error?: string };
+      if (body.error) message = body.error;
+    } catch {
+      // Keep the generic message when the server does not return JSON.
+    }
+    throw new Error(message);
   }
 
   return response.json();

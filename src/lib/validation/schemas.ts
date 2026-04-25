@@ -5,7 +5,7 @@ import { z } from 'zod';
 
 // Common patterns
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const shortIdPattern = /^[0-9a-f]{8}$/i;
+const shortIdPattern = /^[a-z0-9]{8}$/i;
 const guestIdPattern = /^guest-[0-9a-f-]+-[0-9a-z]+-[0-9a-f]{12}$/i;
 
 // Sanitize string by removing dangerous characters
