@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "runs": [
+    {
+      "at": "2026-04-28T19:18:49.243Z",
+      "sha": "11ce1df2f40641a30fe3ed9e8a1041fb6a8508dd",
+      "pr": null,
+      "actor": "braedonsaunders",
+      "files": 473,
+      "functions": 2360,
+      "loc": 187144,
+      "languages": 16,
+      "topLanguages": [
+        {
+          "ext": "tsx",
+          "pct": 35,
+          "lines": 65678
+        },
+        {
+          "ext": "ts",
+          "pct": 31,
+          "lines": 58893
+        },
+        {
+          "ext": "rs",
+          "pct": 13,
+          "lines": 24930
+        },
+        {
+          "ext": "json",
+          "pct": 6,
+          "lines": 11842
+        },
+        {
+          "ext": "yaml",
+          "pct": 4,
+          "lines": 7293
+        }
+      ],
+      "dead": 84,
+      "deadPct": 3.6,
+      "circular": 1,
+      "godObjects": 1,
+      "avgCoupling": 7,
+      "securityIssues": 11,
+      "patterns": 8,
+      "duplicates": 28,
+      "layerViolations": 951,
+      "connections": 3297,
+      "avgFnLines": 15.5,
+      "longestFn": 16,
+      "testFiles": 10,
+      "testRatio": 2.1,
+      "topFolders": [
+        {
+          "name": "src",
+          "count": 341
+        },
+        {
+          "name": "native-bridge",
+          "count": 88
+        },
+        {
+          "name": "supabase",
+          "count": 21
+        },
+        {
+          "name": "root",
+          "count": 12
+        },
+        {
+          "name": "public",
+          "count": 5
+        }
+      ],
+      "folders": 5,
+      "grade": "D",
+      "score": 60,
+      "topBlast": {
+        "path": "native-bridge/src/audio/engine.rs",
+        "direct": 199,
+        "transitive": 409,
+        "total": 608
+      },
+      "fragility": [
+        {
+          "path": "native-bridge/src/audio/engine.rs",
+          "direct": 199,
+          "transitive": 409,
+          "total": 608
+        },
+        {
+          "path": "native-bridge/src/network/peer.rs",
+          "direct": 174,
+          "transitive": 405,
+          "total": 579
+        },
+        {
+          "path": "native-bridge/src/effects/dsp.rs",
+          "direct": 148,
+          "transitive": 401,
+          "total": 549
+        }
+      ]
+    }
+  ]
+}
