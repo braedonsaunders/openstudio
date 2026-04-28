@@ -22,6 +22,10 @@
 
 </div>
 
+<p align="center">
+  <a href="https://github.com/braedonsaunders/codeflow"><img src=".github/codeflow-card.svg" alt="OpenStudio codebase stats — powered by codeflow" width="100%" /></a>
+</p>
+
 OpenStudio is a browser-based collaborative music studio built for real rehearsals, writing sessions, lessons, and online jams. The easiest way to use it is the hosted app at [openstudio.cafe](https://openstudio.cafe).
 
 If you want to make music with it, start there. If you want to self-host it or contribute to the codebase, this repository has what you need below.
